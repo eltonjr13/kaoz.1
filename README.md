@@ -2,7 +2,7 @@
 
 SaaS para criar videos verticais de react com IA usando Next.js App Router, TypeScript e Supabase.
 
-Login esta desativado por enquanto. A area principal abre direto no dashboard e a funcionalidade prioritaria e a busca viral por nicho para Instagram e YouTube.
+Login esta desativado. A area principal abre direto no dashboard e as funcionalidades usam um workspace fixo da aplicacao, sem depender de sessao do Supabase Auth.
 
 O job aceita um link de Instagram ou YouTube como video fonte. No render, o expert fica na parte superior do video vertical e a fonte escolhida entra colada na parte inferior, como react.
 
@@ -12,6 +12,7 @@ Para render local com download automatico de Instagram/YouTube, o worker precisa
 
 1. Copie `.env.example` para `.env.local`.
 2. Preencha `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   `APP_WORKSPACE_ID` pode ficar no valor padrao para uso em workspace unico.
 3. Rode o SQL em `supabase/schema.sql` no Supabase.
 4. Instale e rode:
 

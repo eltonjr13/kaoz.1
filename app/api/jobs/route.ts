@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { createLocalJob, findLocalAvatar, listLocalJobs } from "@/lib/local-store";
 import { createClient } from "@/lib/supabase/server";
 import { buildSourceVideoMetrics, parseSourceVideoUrl } from "@/lib/videos/source-video";
+import { APP_WORKSPACE_ID } from "@/lib/workspace";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -8,36 +10,23 @@ function jsonError(message: string, status = 400) {
 
 export async function GET() {
   const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return jsonError("Nao autenticado.", 401);
-  }
-
   const { data, error } = await supabase
     .from("reaction_jobs")
     .select("*, avatars(name), viral_videos(title, url, platform)")
+    .eq("user_id", APP_WORKSPACE_ID)
     .order("created_at", { ascending: false });
 
   if (error) {
-    return jsonError(error.message, 500);
+    const localJobs = await listLocalJobs();
+    return NextResponse.json({ jobs: localJobs });
   }
 
-  return NextResponse.json({ jobs: data ?? [] });
+  const localJobs = await listLocalJobs();
+  return NextResponse.json({ jobs: [...localJobs, ...(data ?? [])] });
 }
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return jsonError("Nao autenticado.", 401);
-  }
-
   const body = (await request.json().catch(() => null)) as {
     topic?: unknown;
     avatarId?: unknown;
@@ -66,10 +55,29 @@ export async function POST(request: Request) {
     .from("avatars")
     .select("id, consent_accepted, status")
     .eq("id", avatarId)
+    .eq("user_id", APP_WORKSPACE_ID)
     .single();
 
   if (avatarError || !avatar) {
-    return jsonError("Avatar nao encontrado.", 404);
+    const localAvatar = await findLocalAvatar(avatarId);
+
+    if (!localAvatar) {
+      return jsonError("Avatar nao encontrado.", 404);
+    }
+
+    const parsedSourceVideo = sourceVideoUrl ? parseSourceVideoUrl(sourceVideoUrl) : null;
+
+    if (sourceVideoUrl && !parsedSourceVideo) {
+      return jsonError("Use um link direto de video do Instagram ou YouTube para a colagem.");
+    }
+
+    const localJob = await createLocalJob({
+      avatarId,
+      topic,
+      sourceVideoUrl: parsedSourceVideo?.normalizedUrl ?? null,
+      sourceVideoTitle: sourceVideoTitle || null
+    });
+    return NextResponse.json({ job: localJob, storage: "local" }, { status: 201 });
   }
 
   if (!avatar.consent_accepted || avatar.status !== "ready") {
@@ -132,9 +140,9 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await supabase
-    .from("reaction_jobs")
+      .from("reaction_jobs")
     .insert({
-      user_id: user.id,
+      user_id: APP_WORKSPACE_ID,
       avatar_id: avatarId,
       source_video_id: sourceVideoId,
       topic,
@@ -148,7 +156,7 @@ export async function POST(request: Request) {
   }
 
   await supabase.from("job_events").insert({
-    user_id: user.id,
+    user_id: APP_WORKSPACE_ID,
     job_id: data.id,
     event_type: "job_created",
     message: sourceVideoId ? "Job criado com video fonte para colagem." : "Job criado.",

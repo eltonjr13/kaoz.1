@@ -41,6 +41,8 @@ export type ReactionJob = {
   user_id: string;
   avatar_id: string;
   source_video_id: string | null;
+  source_video_url?: string | null;
+  source_video_title?: string | null;
   topic: string;
   status: JobStatus;
   script_text: string | null;

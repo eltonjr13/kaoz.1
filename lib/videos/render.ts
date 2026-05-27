@@ -8,6 +8,7 @@ export type RenderVerticalVideoInput = {
   reactionVideoPath: string;
   sourceVideoPath?: string | null;
   sourceVideoUrl?: string | null;
+  reactionIsImage?: boolean;
   outputPath?: string | null;
   workDir?: string | null;
 };
@@ -31,8 +32,12 @@ function getFfmpegPath() {
   return process.env.FFMPEG_PATH || "ffmpeg";
 }
 
-function getYtDlpPath() {
-  return process.env.YTDLP_PATH || "yt-dlp";
+function getYtDlpCommand() {
+  if (process.env.YTDLP_PATH) {
+    return { command: process.env.YTDLP_PATH, argsPrefix: [] as string[] };
+  }
+
+  return { command: "python", argsPrefix: ["-m", "yt_dlp"] };
 }
 
 function isRemoteUrl(value: string) {
@@ -79,9 +84,11 @@ async function downloadSourceVideo(rawUrl: string, workDir: string) {
 
   const fileStem = `source-${Date.now()}`;
   const outputTemplate = path.join(workDir, `${fileStem}.%(ext)s`);
+  const ytDlp = getYtDlpCommand();
 
   try {
-    await runCommand(getYtDlpPath(), [
+    await runCommand(ytDlp.command, [
+      ...ytDlp.argsPrefix,
       "--no-playlist",
       "--format",
       "bv*+ba/b",
@@ -152,12 +159,23 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
   const outputPath = input.outputPath || path.join(workDir, "final-reaction.mp4");
 
   await mkdir(workDir, { recursive: true });
+  await mkdir(path.dirname(outputPath), { recursive: true });
 
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
   const filter = sourceVideoPath ? buildReactionCollageFilter() : buildExpertOnlyFilter();
   const inputArgs = sourceVideoPath
-    ? ["-i", input.reactionVideoPath, "-i", sourceVideoPath]
-    : ["-i", input.reactionVideoPath];
+    ? [
+        ...(input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(input.reactionVideoPath) ? ["-loop", "1"] : []),
+        "-i",
+        input.reactionVideoPath,
+        "-i",
+        sourceVideoPath
+      ]
+    : [
+        ...(input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(input.reactionVideoPath) ? ["-loop", "1"] : []),
+        "-i",
+        input.reactionVideoPath
+      ];
 
   await renderWithFfmpeg([
     "-y",
@@ -167,7 +185,7 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
     "-map",
     "[vout]",
     "-map",
-    "0:a?",
+    sourceVideoPath ? "1:a?" : "0:a?",
     "-c:v",
     "libx264",
     "-preset",
@@ -180,6 +198,8 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
     "aac",
     "-movflags",
     "+faststart",
+    "-t",
+    "30",
     outputPath
   ]);
 

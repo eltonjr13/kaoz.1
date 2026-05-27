@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { CreateJobForm } from "@/components/jobs/create-job-form";
 import { EmptyState } from "@/components/ui/empty-state";
+import { listLocalAvatars } from "@/lib/local-store";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
+import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import type { Avatar } from "@/types";
 
 type NewJobPageProps = {
@@ -18,18 +20,23 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
   const initialTopic = getSearchParam(params, "topic");
   const initialSourceVideoUrl = getSearchParam(params, "sourceVideoUrl");
   const initialSourceVideoTitle = getSearchParam(params, "sourceVideoTitle");
-  let avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[] = [];
+  const localAvatars = await listLocalAvatars();
+  let avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[] = localAvatars;
 
   if (hasSupabaseConfig()) {
     const supabase = await createClient();
     const { data } = await supabase
       .from("avatars")
       .select("id, name, image_path, consent_accepted, status")
+      .eq("user_id", APP_WORKSPACE_ID)
       .eq("consent_accepted", true)
       .eq("status", "ready")
       .order("created_at", { ascending: false });
 
-    avatars = (data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[];
+    avatars = [
+      ...localAvatars,
+      ...((data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[])
+    ];
   }
 
   return (

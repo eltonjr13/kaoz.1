@@ -1,20 +1,33 @@
 create extension if not exists pgcrypto;
 
-create type public.job_status as enum (
-  'draft',
-  'queued',
-  'researching',
-  'scripting',
-  'voice_generating',
-  'lip_syncing',
-  'rendering',
-  'review',
-  'completed',
-  'failed'
-);
+do $$
+begin
+  create type public.job_status as enum (
+    'draft',
+    'queued',
+    'researching',
+    'scripting',
+    'voice_generating',
+    'lip_syncing',
+    'rendering',
+    'review',
+    'completed',
+    'failed'
+  );
+exception when duplicate_object then null;
+end $$;
 
-create type public.video_platform as enum ('tiktok', 'youtube', 'instagram', 'other');
-create type public.avatar_status as enum ('ready', 'disabled');
+do $$
+begin
+  create type public.video_platform as enum ('tiktok', 'youtube', 'instagram', 'other');
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type public.avatar_status as enum ('ready', 'disabled');
+exception when duplicate_object then null;
+end $$;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -27,7 +40,7 @@ end;
 $$;
 
 create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key,
   full_name text,
   avatar_url text,
   created_at timestamptz not null default now(),
@@ -36,7 +49,7 @@ create table if not exists public.profiles (
 
 create table if not exists public.avatars (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null,
   name text not null,
   image_path text not null,
   thumbnail_path text,
@@ -64,7 +77,7 @@ create table if not exists public.viral_videos (
 
 create table if not exists public.reaction_jobs (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null,
   avatar_id uuid not null references public.avatars(id) on delete restrict,
   source_video_id uuid references public.viral_videos(id) on delete set null,
   topic text not null,
@@ -81,7 +94,7 @@ create table if not exists public.reaction_jobs (
 
 create table if not exists public.job_events (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null,
   job_id uuid not null references public.reaction_jobs(id) on delete cascade,
   event_type text not null,
   message text,
@@ -94,6 +107,11 @@ create index if not exists reaction_jobs_user_id_idx on public.reaction_jobs(use
 create index if not exists reaction_jobs_status_idx on public.reaction_jobs(status);
 create index if not exists job_events_job_id_idx on public.job_events(job_id);
 create index if not exists viral_videos_topic_idx on public.viral_videos(topic);
+
+alter table if exists public.profiles drop constraint if exists profiles_id_fkey;
+alter table if exists public.avatars drop constraint if exists avatars_user_id_fkey;
+alter table if exists public.reaction_jobs drop constraint if exists reaction_jobs_user_id_fkey;
+alter table if exists public.job_events drop constraint if exists job_events_user_id_fkey;
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
@@ -130,9 +148,6 @@ end;
 $$;
 
 drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-after insert on auth.users
-for each row execute function public.handle_new_user();
 
 create or replace function public.ensure_job_avatar_owner()
 returns trigger
@@ -195,87 +210,60 @@ alter table public.reaction_jobs enable row level security;
 alter table public.job_events enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
-create policy "profiles_select_own"
-on public.profiles for select
-to authenticated
-using (auth.uid() = id);
-
 drop policy if exists "profiles_update_own" on public.profiles;
-create policy "profiles_update_own"
-on public.profiles for update
-to authenticated
-using (auth.uid() = id)
-with check (auth.uid() = id);
-
 drop policy if exists "avatars_select_own" on public.avatars;
-create policy "avatars_select_own"
-on public.avatars for select
-to authenticated
-using (auth.uid() = user_id);
-
 drop policy if exists "avatars_insert_own" on public.avatars;
-create policy "avatars_insert_own"
-on public.avatars for insert
-to authenticated
-with check (auth.uid() = user_id and consent_accepted is true);
-
 drop policy if exists "avatars_update_own" on public.avatars;
-create policy "avatars_update_own"
-on public.avatars for update
-to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id and consent_accepted is true);
-
 drop policy if exists "viral_videos_select_authenticated" on public.viral_videos;
-create policy "viral_videos_select_authenticated"
-on public.viral_videos for select
-to authenticated
-using (true);
-
 drop policy if exists "viral_videos_insert_authenticated" on public.viral_videos;
-create policy "viral_videos_insert_authenticated"
-on public.viral_videos for insert
-to authenticated
+drop policy if exists "reaction_jobs_select_own" on public.reaction_jobs;
+drop policy if exists "reaction_jobs_insert_own" on public.reaction_jobs;
+drop policy if exists "reaction_jobs_update_own" on public.reaction_jobs;
+drop policy if exists "reaction_jobs_delete_own" on public.reaction_jobs;
+drop policy if exists "job_events_select_own" on public.job_events;
+drop policy if exists "job_events_insert_own" on public.job_events;
+
+drop policy if exists "profiles_public_workspace" on public.profiles;
+create policy "profiles_public_workspace"
+on public.profiles for all
+to anon, authenticated
+using (true)
 with check (true);
 
-grant select, insert on public.viral_videos to authenticated;
+drop policy if exists "avatars_public_workspace" on public.avatars;
+create policy "avatars_public_workspace"
+on public.avatars for all
+to anon, authenticated
+using (true)
+with check (consent_accepted is true);
 
-drop policy if exists "reaction_jobs_select_own" on public.reaction_jobs;
-create policy "reaction_jobs_select_own"
-on public.reaction_jobs for select
-to authenticated
-using (auth.uid() = user_id);
+drop policy if exists "viral_videos_public_workspace" on public.viral_videos;
+create policy "viral_videos_public_workspace"
+on public.viral_videos for all
+to anon, authenticated
+using (true)
+with check (true);
 
-drop policy if exists "reaction_jobs_insert_own" on public.reaction_jobs;
-create policy "reaction_jobs_insert_own"
-on public.reaction_jobs for insert
-to authenticated
-with check (auth.uid() = user_id);
+drop policy if exists "reaction_jobs_public_workspace" on public.reaction_jobs;
+create policy "reaction_jobs_public_workspace"
+on public.reaction_jobs for all
+to anon, authenticated
+using (true)
+with check (true);
 
-drop policy if exists "reaction_jobs_update_own" on public.reaction_jobs;
-create policy "reaction_jobs_update_own"
-on public.reaction_jobs for update
-to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
+drop policy if exists "job_events_public_workspace" on public.job_events;
+create policy "job_events_public_workspace"
+on public.job_events for all
+to anon, authenticated
+using (true)
+with check (true);
 
-drop policy if exists "reaction_jobs_delete_own" on public.reaction_jobs;
-create policy "reaction_jobs_delete_own"
-on public.reaction_jobs for delete
-to authenticated
-using (auth.uid() = user_id);
-
-drop policy if exists "job_events_select_own" on public.job_events;
-create policy "job_events_select_own"
-on public.job_events for select
-to authenticated
-using (auth.uid() = user_id);
-
-drop policy if exists "job_events_insert_own" on public.job_events;
-create policy "job_events_insert_own"
-on public.job_events for insert
-to authenticated
-with check (auth.uid() = user_id);
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.profiles to anon, authenticated;
+grant select, insert, update, delete on public.avatars to anon, authenticated;
+grant select, insert, update, delete on public.viral_videos to anon, authenticated;
+grant select, insert, update, delete on public.reaction_jobs to anon, authenticated;
+grant select, insert, update, delete on public.job_events to anon, authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -303,27 +291,12 @@ set public = excluded.public,
     file_size_limit = excluded.file_size_limit;
 
 drop policy if exists "avatars_storage_select_own" on storage.objects;
-create policy "avatars_storage_select_own"
-on storage.objects for select
-to authenticated
-using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
-
 drop policy if exists "avatars_storage_insert_own" on storage.objects;
-create policy "avatars_storage_insert_own"
-on storage.objects for insert
-to authenticated
-with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
-
 drop policy if exists "avatars_storage_update_own" on storage.objects;
-create policy "avatars_storage_update_own"
-on storage.objects for update
-to authenticated
-using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)
-with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
-
 drop policy if exists "job_assets_storage_own" on storage.objects;
-create policy "job_assets_storage_own"
+drop policy if exists "project_storage_public_workspace" on storage.objects;
+create policy "project_storage_public_workspace"
 on storage.objects for all
-to authenticated
-using (bucket_id in ('job-assets', 'renders') and (storage.foldername(name))[1] = auth.uid()::text)
-with check (bucket_id in ('job-assets', 'renders') and (storage.foldername(name))[1] = auth.uid()::text);
+to anon, authenticated
+using (bucket_id in ('avatars', 'job-assets', 'renders'))
+with check (bucket_id in ('avatars', 'job-assets', 'renders'));

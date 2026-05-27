@@ -5,6 +5,7 @@ node_modules
 .next
 out
 *.tsbuildinfo
+.generated
 
 # production
 build
@@ -20,6 +21,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 dev-server*.log
+
+# local uploads/runtime data
+public/uploads
 
 # system
 .DS_Store

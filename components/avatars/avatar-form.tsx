@@ -3,14 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-
-function safeFileName(fileName: string) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 export function AvatarForm() {
   const router = useRouter();
@@ -35,34 +27,14 @@ export function AvatarForm() {
     }
 
     setIsLoading(true);
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: userError
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setIsLoading(false);
-      setMessage("Sessao invalida.");
-      return;
-    }
-
-    const imagePath = `${user.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(imagePath, file, {
-      cacheControl: "3600",
-      upsert: false
-    });
-
-    if (uploadError) {
-      setIsLoading(false);
-      setMessage(uploadError.message);
-      return;
-    }
+    const formData = new FormData();
+    formData.set("name", name);
+    formData.set("image", file);
+    formData.set("consentAccepted", String(consentAccepted));
 
     const response = await fetch("/api/avatars", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, imagePath, consentAccepted })
+      body: formData
     });
 
     setIsLoading(false);

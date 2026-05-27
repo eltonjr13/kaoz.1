@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Plus, Search, UserRound } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
+import { listLocalAvatars, listLocalJobs } from "@/lib/local-store";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
+import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import type { JobStatus } from "@/types";
 
 type RecentJob = {
@@ -13,8 +15,10 @@ type RecentJob = {
 };
 
 export default async function DashboardPage() {
-  let recentJobs: RecentJob[] = [];
-  let avatarCount = 0;
+  const localAvatars = await listLocalAvatars();
+  const localJobs = await listLocalJobs();
+  let recentJobs: RecentJob[] = localJobs.slice(0, 5);
+  let avatarCount = localAvatars.length;
   let completedCount = 0;
 
   if (hasSupabaseConfig()) {
@@ -24,18 +28,22 @@ export default async function DashboardPage() {
       supabase
         .from("reaction_jobs")
         .select("id, topic, status, created_at")
+        .eq("user_id", APP_WORKSPACE_ID)
         .order("created_at", { ascending: false })
         .limit(5),
-      supabase.from("avatars").select("id", { count: "exact", head: true }),
+      supabase.from("avatars").select("id", { count: "exact", head: true }).eq("user_id", APP_WORKSPACE_ID),
       supabase
         .from("reaction_jobs")
         .select("id", { count: "exact", head: true })
+        .eq("user_id", APP_WORKSPACE_ID)
         .eq("status", "completed")
     ]);
 
-    recentJobs = (jobs ?? []) as RecentJob[];
-    avatarCount = totalAvatars ?? 0;
-    completedCount = totalCompleted ?? 0;
+    recentJobs = [...recentJobs, ...((jobs ?? []) as RecentJob[])]
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(0, 5);
+    avatarCount += totalAvatars ?? 0;
+    completedCount = localJobs.filter((job) => job.status === "completed").length + (totalCompleted ?? 0);
   }
 
   return (

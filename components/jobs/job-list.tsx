@@ -40,16 +40,18 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
           {jobs.map((job) => {
             const avatar = getRelatedOne(job.avatars);
             const sourceVideo = getRelatedOne(job.viral_videos);
+            const sourceUrl = sourceVideo?.url ?? job.source_video_url ?? null;
+            const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
 
             return (
               <tr key={job.id}>
                 <td>{job.topic}</td>
                 <td>{avatar?.name ?? "Avatar removido"}</td>
                 <td>
-                  {sourceVideo ? (
-                    <a className="source-link" href={sourceVideo.url} target="_blank" rel="noreferrer">
+                  {sourceUrl ? (
+                    <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
                       <ExternalLink size={15} />
-                      {getPlatformLabel(sourceVideo.platform)}
+                      {sourceLabel}
                     </a>
                   ) : (
                     <span className="muted">-</span>
