@@ -27,6 +27,11 @@ const COLLAGE_HEIGHT = 1920;
 const EXPERT_HEIGHT = 1240;
 const SOURCE_HEIGHT = COLLAGE_HEIGHT - EXPERT_HEIGHT;
 const FPS = 30;
+const BOOMERANG_OVERSCAN = 1.08;
+const BOOMERANG_PAN_X = 24;
+const BOOMERANG_PAN_Y = 16;
+const BOOMERANG_PERIOD_X = 4;
+const BOOMERANG_PERIOD_Y = 5;
 
 function getFfmpegPath() {
   return process.env.FFMPEG_PATH || "ffmpeg";
@@ -71,6 +76,12 @@ function runCommand(command: string, args: string[]): Promise<RenderCommandResul
 
 function isMissingCommandError(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function buildBoomerangPanelFilter(inputIndex: number, width: number, height: number, outputLabel: string) {
+  return [
+    `[${inputIndex}:v]scale=ceil(${width}*${BOOMERANG_OVERSCAN}):ceil(${height}*${BOOMERANG_OVERSCAN}):force_original_aspect_ratio=increase,setsar=1,fps=${FPS},crop=${width}:${height}:x='(in_w-out_w)/2+${BOOMERANG_PAN_X}*sin(2*PI*t/${BOOMERANG_PERIOD_X})':y='(in_h-out_h)/2+${BOOMERANG_PAN_Y}*cos(2*PI*t/${BOOMERANG_PERIOD_Y})'[${outputLabel}]`
+  ].join(",");
 }
 
 async function downloadSourceVideo(rawUrl: string, workDir: string) {
@@ -132,14 +143,14 @@ async function prepareSourceVideo(input: RenderVerticalVideoInput, workDir: stri
 
 export function buildReactionCollageFilter() {
   return [
-    `[0:v]scale=${COLLAGE_WIDTH}:${EXPERT_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${EXPERT_HEIGHT},setsar=1,fps=${FPS}[expert]`,
+    buildBoomerangPanelFilter(0, COLLAGE_WIDTH, EXPERT_HEIGHT, "expert"),
     `[1:v]scale=${COLLAGE_WIDTH}:${SOURCE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${SOURCE_HEIGHT},setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=3600[source]`,
     "[expert][source]vstack=inputs=2:shortest=1[vout]"
   ].join(";");
 }
 
 function buildExpertOnlyFilter() {
-  return `[0:v]scale=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT},setsar=1,fps=${FPS}[vout]`;
+  return buildBoomerangPanelFilter(0, COLLAGE_WIDTH, COLLAGE_HEIGHT, "vout");
 }
 
 async function renderWithFfmpeg(args: string[]) {
