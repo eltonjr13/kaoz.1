@@ -2,29 +2,53 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Rocket } from "lucide-react";
+import { Camera, Play, Rocket } from "lucide-react";
 import type { Avatar } from "@/types";
+import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 type CreateJobFormProps = {
   avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[];
+  initialTopic?: string;
+  initialSourceVideoUrl?: string;
+  initialSourceVideoTitle?: string;
 };
 
-export function CreateJobForm({ avatars }: CreateJobFormProps) {
+export function CreateJobForm({
+  avatars,
+  initialTopic = "",
+  initialSourceVideoUrl = "",
+  initialSourceVideoTitle = ""
+}: CreateJobFormProps) {
   const router = useRouter();
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(initialTopic);
   const [avatarId, setAvatarId] = useState(avatars[0]?.id ?? "");
+  const [sourceVideoUrl, setSourceVideoUrl] = useState(initialSourceVideoUrl);
+  const [sourceVideoTitle, setSourceVideoTitle] = useState(initialSourceVideoTitle);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
+  const SourceIcon = parsedSourceVideo?.platform === "instagram" ? Camera : Play;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+
+    if (sourceVideoUrl.trim() && !parsedSourceVideo) {
+      setMessage("Use um link direto de video do Instagram ou YouTube para a colagem.");
+      return;
+    }
+
     setIsLoading(true);
 
     const createResponse = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, avatarId })
+      body: JSON.stringify({
+        topic,
+        avatarId,
+        sourceVideoUrl: sourceVideoUrl.trim() || null,
+        sourceVideoTitle: sourceVideoTitle.trim() || null
+      })
     });
 
     const createPayload = (await createResponse.json()) as { job?: { id: string }; error?: string };
@@ -75,6 +99,38 @@ export function CreateJobForm({ avatars }: CreateJobFormProps) {
           placeholder="Ex: produto viral de cozinha, trend de treino, noticia de tecnologia..."
           required
         />
+      </div>
+
+      <div className="field">
+        <label htmlFor="sourceVideoUrl">Video para colagem</label>
+        <input
+          id="sourceVideoUrl"
+          value={sourceVideoUrl}
+          onChange={(event) => setSourceVideoUrl(event.target.value)}
+          placeholder="Link direto do reel, short ou video"
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="sourceVideoTitle">Titulo do video</label>
+        <input
+          id="sourceVideoTitle"
+          value={sourceVideoTitle}
+          onChange={(event) => setSourceVideoTitle(event.target.value)}
+          placeholder="Referencia escolhida"
+        />
+      </div>
+
+      <div className="collage-preview" aria-label="Preview da colagem">
+        <div className="collage-preview-expert">
+          <span>Expert</span>
+        </div>
+        <div className="collage-preview-source">
+          <SourceIcon size={18} />
+          <span>
+            {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube"}
+          </span>
+        </div>
       </div>
 
       {message ? <p className="form-message">{message}</p> : null}

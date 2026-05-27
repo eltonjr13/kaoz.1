@@ -12,6 +12,10 @@ function getSupabaseConfig() {
   return { supabaseUrl, supabaseAnonKey };
 }
 
+export function hasSupabaseConfig() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
 export async function createClient() {
   const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
   const cookieStore = await cookies();

@@ -1,19 +1,36 @@
 import Link from "next/link";
 import { CreateJobForm } from "@/components/jobs/create-job-form";
 import { EmptyState } from "@/components/ui/empty-state";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import type { Avatar } from "@/types";
 
-export default async function NewJobPage() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("avatars")
-    .select("id, name, image_path, consent_accepted, status")
-    .eq("consent_accepted", true)
-    .eq("status", "ready")
-    .order("created_at", { ascending: false });
+type NewJobPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
-  const avatars = (data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[];
+function getSearchParam(params: Record<string, string | string[] | undefined> | undefined, key: string) {
+  const value = params?.[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+export default async function NewJobPage({ searchParams }: NewJobPageProps) {
+  const params = await searchParams;
+  const initialTopic = getSearchParam(params, "topic");
+  const initialSourceVideoUrl = getSearchParam(params, "sourceVideoUrl");
+  const initialSourceVideoTitle = getSearchParam(params, "sourceVideoTitle");
+  let avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[] = [];
+
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("avatars")
+      .select("id, name, image_path, consent_accepted, status")
+      .eq("consent_accepted", true)
+      .eq("status", "ready")
+      .order("created_at", { ascending: false });
+
+    avatars = (data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[];
+  }
 
   return (
     <>
@@ -31,7 +48,12 @@ export default async function NewJobPage() {
         />
       ) : (
         <div className="split-grid">
-          <CreateJobForm avatars={avatars} />
+          <CreateJobForm
+            avatars={avatars}
+            initialTopic={initialTopic}
+            initialSourceVideoTitle={initialSourceVideoTitle}
+            initialSourceVideoUrl={initialSourceVideoUrl}
+          />
           <section className="card">
             <span>Pipeline</span>
             <h2>Fila preparada</h2>

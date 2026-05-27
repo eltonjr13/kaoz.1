@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { JobList } from "@/components/jobs/job-list";
 import { EmptyState } from "@/components/ui/empty-state";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import type { JobStatus } from "@/types";
 
 export type JobListItem = {
@@ -11,17 +11,22 @@ export type JobListItem = {
   status: JobStatus;
   final_video_path: string | null;
   created_at: string;
-  avatars: { name: string }[] | null;
+  avatars: { name: string }[] | { name: string } | null;
+  viral_videos: { title: string; url: string; platform: string }[] | { title: string; url: string; platform: string } | null;
 };
 
 export default async function JobsPage() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("reaction_jobs")
-    .select("id, topic, status, final_video_path, created_at, avatars(name)")
-    .order("created_at", { ascending: false });
+  let jobs: JobListItem[] = [];
 
-  const jobs = (data ?? []) as unknown as JobListItem[];
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("reaction_jobs")
+      .select("id, topic, status, final_video_path, created_at, avatars(name), viral_videos(title, url, platform)")
+      .order("created_at", { ascending: false });
+
+    jobs = (data ?? []) as unknown as JobListItem[];
+  }
 
   return (
     <>

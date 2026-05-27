@@ -232,6 +232,14 @@ on public.viral_videos for select
 to authenticated
 using (true);
 
+drop policy if exists "viral_videos_insert_authenticated" on public.viral_videos;
+create policy "viral_videos_insert_authenticated"
+on public.viral_videos for insert
+to authenticated
+with check (true);
+
+grant select, insert on public.viral_videos to authenticated;
+
 drop policy if exists "reaction_jobs_select_own" on public.reaction_jobs;
 create policy "reaction_jobs_select_own"
 on public.reaction_jobs for select

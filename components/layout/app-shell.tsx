@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Route } from "next";
-import { Briefcase, LayoutDashboard, LogOut, Play, Plus, UserRound } from "lucide-react";
+import { Briefcase, LayoutDashboard, Play, Plus, Search, UserRound } from "lucide-react";
 
 const navItems: { href: Route; label: string; icon: typeof LayoutDashboard }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/viral-search", label: "Busca viral", icon: Search },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/jobs/new", label: "Criar", icon: Plus },
   { href: "/avatars", label: "Avatares", icon: UserRound }
@@ -14,10 +15,10 @@ const navItems: { href: Route; label: string; icon: typeof LayoutDashboard }[] =
 
 export function AppShell({
   children,
-  userEmail
+  workspaceLabel
 }: Readonly<{
   children: React.ReactNode;
-  userEmail: string;
+  workspaceLabel: string;
 }>) {
   const pathname = usePathname();
 
@@ -44,10 +45,7 @@ export function AppShell({
           })}
         </nav>
         <div className="sidebar-footer">
-          <p>{userEmail}</p>
-          <Link className="nav-link" href="/logout">
-            <LogOut size={18} /> Sair
-          </Link>
+          <p>{workspaceLabel}</p>
         </div>
       </aside>
 

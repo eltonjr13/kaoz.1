@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Plus, UserRound } from "lucide-react";
+import { Plus, Search, UserRound } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import type { JobStatus } from "@/types";
 
 type RecentJob = {
@@ -13,22 +13,30 @@ type RecentJob = {
 };
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  let recentJobs: RecentJob[] = [];
+  let avatarCount = 0;
+  let completedCount = 0;
 
-  const [{ data: jobs }, { count: avatarCount }, { count: completedCount }] = await Promise.all([
-    supabase
-      .from("reaction_jobs")
-      .select("id, topic, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabase.from("avatars").select("id", { count: "exact", head: true }),
-    supabase
-      .from("reaction_jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "completed")
-  ]);
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
 
-  const recentJobs = (jobs ?? []) as RecentJob[];
+    const [{ data: jobs }, { count: totalAvatars }, { count: totalCompleted }] = await Promise.all([
+      supabase
+        .from("reaction_jobs")
+        .select("id, topic, status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5),
+      supabase.from("avatars").select("id", { count: "exact", head: true }),
+      supabase
+        .from("reaction_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "completed")
+    ]);
+
+    recentJobs = (jobs ?? []) as RecentJob[];
+    avatarCount = totalAvatars ?? 0;
+    completedCount = totalCompleted ?? 0;
+  }
 
   return (
     <>
@@ -38,10 +46,13 @@ export default async function DashboardPage() {
           <p>Visao geral dos seus avatares e jobs.</p>
         </div>
         <div className="row-actions" style={{ marginTop: 0 }}>
+          <Link className="button" href="/viral-search">
+            <Search size={18} /> Buscar virais
+          </Link>
           <Link className="button secondary" href="/avatars">
             <UserRound size={18} /> Avatar
           </Link>
-          <Link className="button" href="/jobs/new">
+          <Link className="button secondary" href="/jobs/new">
             <Plus size={18} /> Novo job
           </Link>
         </div>
@@ -54,11 +65,11 @@ export default async function DashboardPage() {
         </div>
         <div className="stat">
           <span>Avatares</span>
-          <strong>{avatarCount ?? 0}</strong>
+          <strong>{avatarCount}</strong>
         </div>
         <div className="stat">
           <span>Videos finalizados</span>
-          <strong>{completedCount ?? 0}</strong>
+          <strong>{completedCount}</strong>
         </div>
       </section>
 
@@ -74,10 +85,10 @@ export default async function DashboardPage() {
 
         {recentJobs.length === 0 ? (
           <EmptyState
-            title="Nenhum job criado"
-            description="Crie um avatar autorizado e inicie seu primeiro video de react."
-            actionHref="/jobs/new"
-            actionLabel="Criar job"
+            title="Comece pela busca viral"
+            description="Encontre referencias por nicho no TikTok e Instagram antes de criar o react."
+            actionHref="/viral-search"
+            actionLabel="Buscar virais"
           />
         ) : (
           <div className="table-wrap">

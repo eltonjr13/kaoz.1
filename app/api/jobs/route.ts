@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { buildSourceVideoMetrics, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -41,14 +42,21 @@ export async function POST(request: Request) {
     topic?: unknown;
     avatarId?: unknown;
     sourceVideoId?: unknown;
+    sourceVideoUrl?: unknown;
+    sourceVideoTitle?: unknown;
   } | null;
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
   const avatarId = typeof body?.avatarId === "string" ? body.avatarId.trim() : "";
-  const sourceVideoId =
+  let sourceVideoId =
     typeof body?.sourceVideoId === "string" && body.sourceVideoId.trim()
       ? body.sourceVideoId.trim()
       : null;
+  const sourceVideoUrl = typeof body?.sourceVideoUrl === "string" ? body.sourceVideoUrl.trim() : "";
+  const sourceVideoTitle =
+    typeof body?.sourceVideoTitle === "string" && body.sourceVideoTitle.trim()
+      ? body.sourceVideoTitle.trim()
+      : topic;
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -66,6 +74,61 @@ export async function POST(request: Request) {
 
   if (!avatar.consent_accepted || avatar.status !== "ready") {
     return jsonError("Avatar precisa ter consentimento aceito e estar ativo.");
+  }
+
+  let sourceVideoEventMetadata: Record<string, string> | null = null;
+
+  if (!sourceVideoId && sourceVideoUrl) {
+    const parsedSourceVideo = parseSourceVideoUrl(sourceVideoUrl);
+
+    if (!parsedSourceVideo) {
+      return jsonError("Use um link direto de video do Instagram ou YouTube para a colagem.");
+    }
+
+    const { data: existingVideo, error: existingVideoError } = await supabase
+      .from("viral_videos")
+      .select("id")
+      .eq("platform", parsedSourceVideo.platform)
+      .eq("external_id", parsedSourceVideo.externalId)
+      .maybeSingle();
+
+    if (existingVideoError) {
+      return jsonError(existingVideoError.message, 500);
+    }
+
+    if (existingVideo) {
+      sourceVideoId = existingVideo.id;
+    } else {
+      const { data: insertedVideo, error: insertedVideoError } = await supabase
+        .from("viral_videos")
+        .insert({
+          platform: parsedSourceVideo.platform,
+          external_id: parsedSourceVideo.externalId,
+          title: sourceVideoTitle,
+          url: parsedSourceVideo.normalizedUrl,
+          topic,
+          metrics: buildSourceVideoMetrics(parsedSourceVideo.platform)
+        })
+        .select("id")
+        .single();
+
+      if (insertedVideoError || !insertedVideo) {
+        return jsonError(insertedVideoError?.message ?? "Nao foi possivel salvar o video fonte.", 500);
+      }
+
+      sourceVideoId = insertedVideo.id;
+    }
+
+    if (!sourceVideoId) {
+      return jsonError("Nao foi possivel conectar o video fonte.", 500);
+    }
+
+    sourceVideoEventMetadata = {
+      source_video_id: sourceVideoId,
+      source_video_url: parsedSourceVideo.normalizedUrl,
+      source_platform: parsedSourceVideo.platform,
+      render_layout: "expert_top_source_bottom"
+    };
   }
 
   const { data, error } = await supabase
@@ -88,7 +151,8 @@ export async function POST(request: Request) {
     user_id: user.id,
     job_id: data.id,
     event_type: "job_created",
-    message: "Job criado."
+    message: sourceVideoId ? "Job criado com video fonte para colagem." : "Job criado.",
+    metadata: sourceVideoEventMetadata ?? {}
   });
 
   return NextResponse.json({ job: data }, { status: 201 });
