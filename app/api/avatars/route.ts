@@ -71,7 +71,10 @@ export async function POST(request: Request) {
     return badRequest("Consentimento obrigatório para usar imagem/vídeo real.");
   }
 
-  if (!ALLOWED_TYPES.has(image.type)) {
+  const ext = image.name.split(".").pop()?.toLowerCase();
+  const isAllowedImageOrVideo = ALLOWED_TYPES.has(image.type) || (ext && new Set(["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm"]).has(ext));
+  
+  if (!isAllowedImageOrVideo) {
     return badRequest("Use uma imagem PNG/JPG/WebP ou vídeo MP4/MOV/WebM válido.");
   }
 
@@ -80,8 +83,11 @@ export async function POST(request: Request) {
   }
 
   let voiceRefFile: File | null = null;
-  if (voiceReference instanceof File) {
-    if (!ALLOWED_AUDIO_TYPES.has(voiceReference.type)) {
+  if (voiceReference instanceof File && voiceReference.size > 0 && voiceReference.name !== "") {
+    const voiceExt = voiceReference.name.split(".").pop()?.toLowerCase();
+    const isAllowedAudio = ALLOWED_AUDIO_TYPES.has(voiceReference.type) || (voiceExt && new Set(["mp3", "wav", "ogg", "mpeg"]).has(voiceExt));
+    
+    if (!isAllowedAudio) {
       return badRequest("O áudio de referência deve ser um arquivo MP3, WAV ou OGG válido.");
     }
     if (voiceReference.size > MAX_AUDIO_SIZE) {

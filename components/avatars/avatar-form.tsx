@@ -76,8 +76,14 @@ export function AvatarForm() {
     setIsLoading(false);
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setMessage(payload.error ?? "Não foi possível criar o avatar.");
+      let errMsg = "Não foi possível criar o avatar.";
+      try {
+        const payload = (await response.json()) as { error?: string };
+        errMsg = payload.error ?? errMsg;
+      } catch (err) {
+        console.error("Falha ao ler JSON de erro:", err);
+      }
+      setMessage(errMsg);
       return;
     }
 
