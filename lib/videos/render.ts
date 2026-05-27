@@ -79,9 +79,7 @@ function isMissingCommandError(error: unknown) {
 }
 
 function buildBoomerangPanelFilter(inputIndex: number, width: number, height: number, outputLabel: string) {
-  return [
-    `[${inputIndex}:v]scale=ceil(${width}*${BOOMERANG_OVERSCAN}):ceil(${height}*${BOOMERANG_OVERSCAN}):force_original_aspect_ratio=increase,setsar=1,fps=${FPS},crop=${width}:${height}:x='(in_w-out_w)/2+${BOOMERANG_PAN_X}*sin(2*PI*t/${BOOMERANG_PERIOD_X})':y='(in_h-out_h)/2+${BOOMERANG_PAN_Y}*cos(2*PI*t/${BOOMERANG_PERIOD_Y})'[${outputLabel}]`
-  ].join(",");
+  return `[${inputIndex}:v]scale=ceil(${width}*${BOOMERANG_OVERSCAN}):ceil(${height}*${BOOMERANG_OVERSCAN}):force_original_aspect_ratio=increase,setsar=1,fps=${FPS},crop=${width}:${height}:x='(in_w-out_w)/2+${BOOMERANG_PAN_X}*sin(2*PI*t/${BOOMERANG_PERIOD_X})':y='(in_h-out_h)/2+${BOOMERANG_PAN_Y}*cos(2*PI*t/${BOOMERANG_PERIOD_Y})'[${outputLabel}]`;
 }
 
 async function downloadSourceVideo(rawUrl: string, workDir: string) {
