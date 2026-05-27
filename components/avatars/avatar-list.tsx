@@ -50,10 +50,15 @@ export function AvatarList({ avatars }: { avatars: Avatar[] }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{avatar.name}</h2>
-              <div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <span className={`status-badge ${avatar.status === "ready" ? "completed" : "failed"}`}>
                   {avatar.status === "ready" ? "ativo" : "desativado"}
                 </span>
+                {avatar.voice_reference_path ? (
+                  <span className="status-badge voice_generating">
+                    🎙️ voz clonada
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>

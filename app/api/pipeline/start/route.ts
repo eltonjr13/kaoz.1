@@ -8,6 +8,35 @@ import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import { generateReactionScript } from "@/lib/ai/script";
 import { generateOmniVoice } from "@/lib/ai/omni-voice";
 import { createLipSyncVideo } from "@/lib/videos/lip-sync";
+import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+
+function extractReferenceAudio(videoPath: string, outputPath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+    const args = [
+      "-y",
+      "-i", videoPath,
+      "-ss", "0",
+      "-t", "8",
+      "-vn",
+      "-acodec", "pcm_s16le",
+      "-ar", "16000",
+      "-ac", "1",
+      outputPath
+    ];
+
+    const child = spawn(ffmpeg, args, { windowsHide: true });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`FFmpeg falhou ao extrair áudio de referência com código ${code}`));
+      }
+    });
+    child.on("error", (err) => reject(err));
+  });
+}
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -49,10 +78,56 @@ export async function POST(request: Request) {
 
             // 2. Voice generation stage (OmniVoice)
             await updateLocalJob(jobId, { status: "voice_generating" });
+
+            let refAudioPath: string | null = null;
+
+            if (localAvatar.voice_reference_path) {
+              if (localAvatar.voice_reference_path.startsWith("/")) {
+                // Local file reference
+                refAudioPath = path.join(process.cwd(), "public", localAvatar.voice_reference_path.replace(/^\//, ""));
+              } else {
+                // Supabase file reference - download to local temp
+                try {
+                  console.log(`[Start Pipeline] Baixando áudio de referência do Supabase: ${localAvatar.voice_reference_path}`);
+                  const { data: fileData, error: downloadErr } = await supabase.storage.from("avatars").download(localAvatar.voice_reference_path);
+                  if (downloadErr || !fileData) {
+                    throw downloadErr || new Error("Arquivo de áudio de referência do Supabase está vazio.");
+                  }
+                  const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+                  await mkdir(jobDir, { recursive: true });
+                  const tempRefPath = path.join(jobDir, `ref-audio-downloaded${path.extname(localAvatar.voice_reference_path) || ".wav"}`);
+                  const buffer = Buffer.from(await fileData.arrayBuffer());
+                  await writeFile(tempRefPath, buffer);
+                  refAudioPath = tempRefPath;
+                } catch (dlErr) {
+                  console.error("Falha ao baixar áudio de referência do Supabase:", dlErr);
+                }
+              }
+            }
+
+            // Fallback to video audio extraction if voice_reference_path is missing but avatar is a video
+            if (!refAudioPath) {
+              const avatarIsVideo = /\.(mp4|mov|webm|mkv|avi)$/i.test(localAvatar.image_path);
+              if (avatarIsVideo) {
+                const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+                await mkdir(jobDir, { recursive: true });
+                const extractedWav = path.join(jobDir, "ref-audio.wav");
+
+                try {
+                  console.log(`[Start Pipeline] Extraindo áudio de referência do avatar: ${avatarDiskPath}`);
+                  await extractReferenceAudio(avatarDiskPath, extractedWav);
+                  refAudioPath = extractedWav;
+                } catch (audioErr) {
+                  console.error("Falha ao extrair áudio de referência do avatar:", audioErr);
+                }
+              }
+            }
+
             const voiceResult = await generateOmniVoice({
               script: scriptText,
               voiceId: "default",
-              jobId
+              jobId,
+              refAudioPath
             });
             await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
 

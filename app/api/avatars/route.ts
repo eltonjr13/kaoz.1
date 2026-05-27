@@ -13,6 +13,15 @@ const ALLOWED_TYPES = new Set([
   "video/webm"
 ]);
 
+const MAX_AUDIO_SIZE = 15 * 1024 * 1024; // 15MB
+const ALLOWED_AUDIO_TYPES = new Set([
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/mp3",
+  "audio/ogg"
+]);
+
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -52,6 +61,7 @@ export async function POST(request: Request) {
   const name = String(formData.get("name") ?? "").trim();
   const consentAccepted = String(formData.get("consentAccepted") ?? "") === "true";
   const image = formData.get("image");
+  const voiceReference = formData.get("voice_reference");
 
   if (!name || !(image instanceof File)) {
     return badRequest("Nome e arquivo de imagem/vídeo são obrigatórios.");
@@ -69,6 +79,18 @@ export async function POST(request: Request) {
     return badRequest("O arquivo de avatar não pode ser maior que 50MB.");
   }
 
+  let voiceRefFile: File | null = null;
+  if (voiceReference instanceof File) {
+    if (!ALLOWED_AUDIO_TYPES.has(voiceReference.type)) {
+      return badRequest("O áudio de referência deve ser um arquivo MP3, WAV ou OGG válido.");
+    }
+    if (voiceReference.size > MAX_AUDIO_SIZE) {
+      return badRequest("O áudio de referência não pode ser maior que 15MB.");
+    }
+    voiceRefFile = voiceReference;
+  }
+
+  // Upload image/video
   const imagePath = `${APP_STORAGE_PREFIX}/${crypto.randomUUID()}-${safeFileName(image.name || "avatar.jpg")}`;
   const { error: uploadError } = await supabase.storage.from("avatars").upload(imagePath, image, {
     cacheControl: "3600",
@@ -77,12 +99,26 @@ export async function POST(request: Request) {
   });
 
   if (!uploadError) {
+    let voicePath: string | null = null;
+    if (voiceRefFile) {
+      const tempPath = `${APP_STORAGE_PREFIX}/${crypto.randomUUID()}-${safeFileName(voiceRefFile.name || "voice.wav")}`;
+      const { error: audioUploadError } = await supabase.storage.from("avatars").upload(tempPath, voiceRefFile, {
+        cacheControl: "3600",
+        contentType: voiceRefFile.type,
+        upsert: false
+      });
+      if (!audioUploadError) {
+        voicePath = tempPath;
+      }
+    }
+
     const { data, error } = await supabase
       .from("avatars")
       .insert({
         user_id: APP_WORKSPACE_ID,
         name,
         image_path: imagePath,
+        voice_reference_path: voicePath,
         consent_accepted: true,
         consent_accepted_at: new Date().toISOString(),
         status: "ready"
@@ -95,6 +131,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const avatar = await createLocalAvatar({ name, file: image });
+  const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile });
   return NextResponse.json({ avatar, storage: "local" }, { status: 201 });
 }

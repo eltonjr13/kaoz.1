@@ -9,6 +9,10 @@ export function AvatarForm() {
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  const [voiceFile, setVoiceFile] = useState<File | null>(null);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
+
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +28,20 @@ export function AvatarForm() {
 
     if (selectedFile) {
       setPreviewUrl(URL.createObjectURL(selectedFile));
+    }
+  }
+
+  function handleVoiceChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setVoiceFile(selectedFile);
+
+    if (voicePreviewUrl) {
+      URL.revokeObjectURL(voicePreviewUrl);
+      setVoicePreviewUrl(null);
+    }
+
+    if (selectedFile) {
+      setVoicePreviewUrl(URL.createObjectURL(selectedFile));
     }
   }
 
@@ -46,6 +64,9 @@ export function AvatarForm() {
     formData.set("name", name);
     formData.set("image", file);
     formData.set("consentAccepted", String(consentAccepted));
+    if (voiceFile) {
+      formData.set("voice_reference", voiceFile);
+    }
 
     const response = await fetch("/api/avatars", {
       method: "POST",
@@ -62,10 +83,15 @@ export function AvatarForm() {
 
     setName("");
     setFile(null);
+    setVoiceFile(null);
     setConsentAccepted(false);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
+    }
+    if (voicePreviewUrl) {
+      URL.revokeObjectURL(voicePreviewUrl);
+      setVoicePreviewUrl(null);
     }
     router.refresh();
   }
@@ -111,6 +137,22 @@ export function AvatarForm() {
                 alt="Preview"
               />
             )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="field">
+        <label htmlFor="avatar-voice">Áudio de voz de referência (Opcional)</label>
+        <input
+          id="avatar-voice"
+          type="file"
+          accept="audio/mpeg,audio/wav,audio/mp3,audio/ogg"
+          onChange={handleVoiceChange}
+        />
+        {voicePreviewUrl ? (
+          <div style={{ marginTop: 8 }}>
+            <span style={{ fontSize: "0.82rem", color: "var(--muted)", display: "block", marginBottom: 6 }}>Prévia da Voz:</span>
+            <audio src={voicePreviewUrl} controls style={{ width: "100%", maxHeight: 40 }} />
           </div>
         ) : null}
       </div>

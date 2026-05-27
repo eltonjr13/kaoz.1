@@ -53,6 +53,7 @@ create table if not exists public.avatars (
   name text not null,
   image_path text not null,
   thumbnail_path text,
+  voice_reference_path text,
   consent_accepted boolean not null,
   consent_accepted_at timestamptz not null,
   status public.avatar_status not null default 'ready',
@@ -270,7 +271,7 @@ values (
   'avatars',
   false,
   52428800,
-  array['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']
+  array['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/ogg']
 )
 on conflict (id) do update
 set public = excluded.public,

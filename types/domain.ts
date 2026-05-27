@@ -16,6 +16,7 @@ export type Avatar = {
   name: string;
   image_path: string;
   thumbnail_path: string | null;
+  voice_reference_path: string | null;
   consent_accepted: boolean;
   consent_accepted_at: string;
   status: "ready" | "disabled";

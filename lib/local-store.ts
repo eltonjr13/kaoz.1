@@ -11,6 +11,7 @@ const PUBLIC_AVATAR_DIR = path.join(process.cwd(), "public", "uploads", "avatars
 type NewLocalAvatarInput = {
   name: string;
   file: File;
+  voiceFile?: File | null;
 };
 
 type NewLocalJobInput = {
@@ -46,7 +47,7 @@ export async function listLocalAvatars(): Promise<Avatar[]> {
   return avatars.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
-export async function createLocalAvatar({ name, file }: NewLocalAvatarInput): Promise<Avatar> {
+export async function createLocalAvatar({ name, file, voiceFile }: NewLocalAvatarInput): Promise<Avatar> {
   await mkdir(PUBLIC_AVATAR_DIR, { recursive: true });
 
   const now = new Date().toISOString();
@@ -57,12 +58,22 @@ export async function createLocalAvatar({ name, file }: NewLocalAvatarInput): Pr
 
   await writeFile(diskPath, buffer);
 
+  let voicePublicPath: string | null = null;
+  if (voiceFile) {
+    const voiceFileName = `${crypto.randomUUID()}-${safeFileName(voiceFile.name || "voice.wav")}`;
+    const voiceDiskPath = path.join(PUBLIC_AVATAR_DIR, voiceFileName);
+    voicePublicPath = `/uploads/avatars/${voiceFileName}`;
+    const voiceBuffer = Buffer.from(await voiceFile.arrayBuffer());
+    await writeFile(voiceDiskPath, voiceBuffer);
+  }
+
   const avatar: Avatar = {
     id: crypto.randomUUID(),
     user_id: APP_WORKSPACE_ID,
     name,
     image_path: publicPath,
     thumbnail_path: null,
+    voice_reference_path: voicePublicPath,
     consent_accepted: true,
     consent_accepted_at: now,
     status: "ready",
