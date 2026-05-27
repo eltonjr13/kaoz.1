@@ -34,7 +34,7 @@ export function CreateJobForm({
     setMessage("");
 
     if (sourceVideoUrl.trim() && !parsedSourceVideo) {
-      setMessage("Use um link direto de video do Instagram ou YouTube para a colagem.");
+      setMessage("Use um link direto valido de video, reel, short ou mp4.");
       return;
     }
 
@@ -107,7 +107,7 @@ export function CreateJobForm({
           id="sourceVideoUrl"
           value={sourceVideoUrl}
           onChange={(event) => setSourceVideoUrl(event.target.value)}
-          placeholder="Link direto do reel, short ou video"
+          placeholder="Link direto do reel, short ou video mp4"
         />
       </div>
 
@@ -128,7 +128,7 @@ export function CreateJobForm({
         <div className="collage-preview-source">
           <SourceIcon size={18} />
           <span>
-            {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube"}
+            {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube / Video"}
           </span>
         </div>
       </div>

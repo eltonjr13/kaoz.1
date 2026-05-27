@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     const parsedSourceVideo = sourceVideoUrl ? parseSourceVideoUrl(sourceVideoUrl) : null;
 
     if (sourceVideoUrl && !parsedSourceVideo) {
-      return jsonError("Use um link direto de video do Instagram ou YouTube para a colagem.");
+      return jsonError("Use um link direto valido de video para a colagem.");
     }
 
     const localJob = await createLocalJob({
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     const parsedSourceVideo = parseSourceVideoUrl(sourceVideoUrl);
 
     if (!parsedSourceVideo) {
-      return jsonError("Use um link direto de video do Instagram ou YouTube para a colagem.");
+      return jsonError("Use um link direto valido de video para a colagem.");
     }
 
     const { data: existingVideo, error: existingVideoError } = await supabase

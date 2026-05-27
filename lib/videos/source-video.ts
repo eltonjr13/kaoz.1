@@ -1,6 +1,6 @@
 import type { ViralVideo } from "@/types";
 
-export type SupportedSourceVideoPlatform = Extract<ViralVideo["platform"], "instagram" | "youtube">;
+export type SupportedSourceVideoPlatform = ViralVideo["platform"];
 
 export type ParsedSourceVideo = {
   platform: SupportedSourceVideoPlatform;
@@ -32,7 +32,7 @@ function compactPath(pathname: string) {
     .filter(Boolean);
 }
 
-function detectPlatform(url: URL): SupportedSourceVideoPlatform | null {
+function detectPlatform(url: URL): Extract<SupportedSourceVideoPlatform, "instagram" | "youtube"> | null {
   const hostname = url.hostname.toLowerCase();
   const normalizedHostname = getHostname(url);
 
@@ -82,15 +82,24 @@ function getInstagramExternalId(url: URL) {
 export function parseSourceVideoUrl(rawUrl: string): ParsedSourceVideo | null {
   try {
     const url = new URL(withProtocol(rawUrl));
-    url.hash = "";
-
-    const platform = detectPlatform(url);
-
-    if (!platform) {
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
       return null;
     }
 
-    const externalId = platform === "youtube" ? getYoutubeExternalId(url) : getInstagramExternalId(url);
+    url.hash = "";
+
+    const platform = detectPlatform(url) ?? "other";
+
+    const externalId =
+      platform === "youtube"
+        ? getYoutubeExternalId(url)
+        : platform === "instagram"
+          ? getInstagramExternalId(url)
+          : url.toString();
+
+    if ((platform === "youtube" || platform === "instagram") && !externalId) {
+      return null;
+    }
 
     if (!externalId) {
       return null;
@@ -107,7 +116,15 @@ export function parseSourceVideoUrl(rawUrl: string): ParsedSourceVideo | null {
 }
 
 export function getSourceVideoPlatformLabel(platform: SupportedSourceVideoPlatform) {
-  return platform === "youtube" ? "YouTube" : "Instagram";
+  if (platform === "youtube") {
+    return "YouTube";
+  }
+
+  if (platform === "instagram") {
+    return "Instagram";
+  }
+
+  return "Video";
 }
 
 export function buildSourceVideoMetrics(platform: SupportedSourceVideoPlatform) {

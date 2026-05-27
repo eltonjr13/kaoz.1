@@ -27,14 +27,14 @@ const COLLAGE_HEIGHT = 1920;
 const EXPERT_HEIGHT = 1240;
 const SOURCE_HEIGHT = COLLAGE_HEIGHT - EXPERT_HEIGHT;
 const FPS = 30;
-const BOOMERANG_OVERSCAN = 1.08;
-const BOOMERANG_PAN_X = 24;
-const BOOMERANG_PAN_Y = 16;
-const BOOMERANG_PERIOD_X = 4;
-const BOOMERANG_PERIOD_Y = 5;
+const LOOP_THRESHOLD_SECONDS = 30;
 
 function getFfmpegPath() {
   return process.env.FFMPEG_PATH || "ffmpeg";
+}
+
+function getFfprobePath() {
+  return process.env.FFPROBE_PATH || "ffprobe";
 }
 
 function getYtDlpCommand() {
@@ -78,8 +78,83 @@ function isMissingCommandError(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-function buildBoomerangPanelFilter(inputIndex: number, width: number, height: number, outputLabel: string) {
-  return `[${inputIndex}:v]scale=ceil(${width}*${BOOMERANG_OVERSCAN}):ceil(${height}*${BOOMERANG_OVERSCAN}):force_original_aspect_ratio=increase,setsar=1,fps=${FPS},crop=${width}:${height}:x='(in_w-out_w)/2+${BOOMERANG_PAN_X}*sin(2*PI*t/${BOOMERANG_PERIOD_X})':y='(in_h-out_h)/2+${BOOMERANG_PAN_Y}*cos(2*PI*t/${BOOMERANG_PERIOD_Y})'[${outputLabel}]`;
+async function probeMediaInfo(mediaPath: string) {
+  try {
+    const result = await runCommand(getFfprobePath(), [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration:stream=codec_type",
+      "-of",
+      "json",
+      mediaPath
+    ]);
+
+    const payload = JSON.parse(result.stdout || "{}") as {
+      format?: { duration?: string };
+      streams?: { codec_type?: string }[];
+    };
+
+    const durationValue = payload.format?.duration ? Number(payload.format.duration) : Number.NaN;
+
+    return {
+      duration: Number.isFinite(durationValue) ? durationValue : null,
+      hasAudio: Boolean(payload.streams?.some((stream) => stream.codec_type === "audio"))
+    };
+  } catch (error) {
+    if (isMissingCommandError(error)) {
+      throw new Error("ffprobe nao encontrado. Configure FFPROBE_PATH ou instale ffprobe no worker.");
+    }
+
+    throw error;
+  }
+}
+
+async function createBoomerangSourceVideo(sourcePath: string, workDir: string) {
+  const mediaInfo = await probeMediaInfo(sourcePath);
+
+  if (mediaInfo.duration === null || mediaInfo.duration >= LOOP_THRESHOLD_SECONDS) {
+    return sourcePath;
+  }
+
+  const boomerangPath = path.join(workDir, "source-boomerang.mp4");
+
+  const filterComplex = mediaInfo.hasAudio
+    ? [
+        "[0:v]split=2[vf][vr]",
+        "[vr]reverse[rv]",
+        "[vf][rv]concat=n=2:v=1:a=0[vboomerang]",
+        "[0:a]asplit=2[af][ar]",
+        "[ar]areverse[ra]",
+        "[af][ra]concat=n=2:v=0:a=1[aboomerang]"
+      ].join(";")
+    : ["[0:v]split=2[vf][vr]", "[vr]reverse[rv]", "[vf][rv]concat=n=2:v=1:a=0[vboomerang]"].join(";");
+
+  const args = [
+    "-y",
+    "-i",
+    sourcePath,
+    "-filter_complex",
+    filterComplex,
+    "-map",
+    "[vboomerang]",
+    ...(mediaInfo.hasAudio ? ["-map", "[aboomerang]"] : []),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
+    ...(mediaInfo.hasAudio ? ["-c:a", "aac"] : ["-an"]),
+    "-movflags",
+    "+faststart",
+    boomerangPath
+  ];
+
+  await renderWithFfmpeg(args);
+  return boomerangPath;
 }
 
 async function downloadSourceVideo(rawUrl: string, workDir: string) {
@@ -132,23 +207,21 @@ async function prepareSourceVideo(input: RenderVerticalVideoInput, workDir: stri
     return null;
   }
 
-  if (isRemoteUrl(source) && parseSourceVideoUrl(source)) {
-    return downloadSourceVideo(source, workDir);
-  }
+  const resolvedSource = isRemoteUrl(source) && parseSourceVideoUrl(source) ? await downloadSourceVideo(source, workDir) : source;
 
-  return source;
+  return createBoomerangSourceVideo(resolvedSource, workDir);
 }
 
 export function buildReactionCollageFilter() {
   return [
-    buildBoomerangPanelFilter(0, COLLAGE_WIDTH, EXPERT_HEIGHT, "expert"),
-    `[1:v]scale=${COLLAGE_WIDTH}:${SOURCE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${SOURCE_HEIGHT},setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=3600[source]`,
+    `[0:v]scale=${COLLAGE_WIDTH}:${EXPERT_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${EXPERT_HEIGHT},setsar=1,fps=${FPS}[expert]`,
+    `[1:v]scale=${COLLAGE_WIDTH}:${SOURCE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${SOURCE_HEIGHT},setsar=1,fps=${FPS}[source]`,
     "[expert][source]vstack=inputs=2:shortest=1[vout]"
   ].join(";");
 }
 
 function buildExpertOnlyFilter() {
-  return buildBoomerangPanelFilter(0, COLLAGE_WIDTH, COLLAGE_HEIGHT, "vout");
+  return `[0:v]scale=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT},setsar=1,fps=${FPS}[vout]`;
 }
 
 async function renderWithFfmpeg(args: string[]) {
@@ -177,6 +250,8 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
         ...(input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(input.reactionVideoPath) ? ["-loop", "1"] : []),
         "-i",
         input.reactionVideoPath,
+        "-stream_loop",
+        "-1",
         "-i",
         sourceVideoPath
       ]
