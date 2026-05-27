@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { CreateJobForm } from "@/components/jobs/create-job-form";
 import { EmptyState } from "@/components/ui/empty-state";

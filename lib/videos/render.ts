@@ -213,6 +213,55 @@ async function prepareSourceVideo(input: RenderVerticalVideoInput, workDir: stri
   return createBoomerangSourceVideo(resolvedSource, workDir);
 }
 
+async function createBoomerangReactionVideo(reactionPath: string, workDir: string) {
+  const mediaInfo = await probeMediaInfo(reactionPath);
+
+  const boomerangPath = path.join(workDir, "reaction-boomerang.mp4");
+
+  const filterComplex = "[0:v]split=2[vf][vr]; [vr]reverse[rv]; [vf][rv]concat=n=2:v=1:a=0[vboomerang]";
+
+  const args = [
+    "-y",
+    "-i",
+    reactionPath,
+    "-filter_complex",
+    filterComplex,
+    "-map",
+    "[vboomerang]",
+    "-an",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    boomerangPath
+  ];
+
+  await renderWithFfmpeg(args);
+  return boomerangPath;
+}
+
+async function prepareReactionVideo(input: RenderVerticalVideoInput, workDir: string) {
+  const reactionPath = input.reactionVideoPath;
+  const isImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(reactionPath);
+
+  if (isImage) {
+    return reactionPath;
+  }
+
+  try {
+    return await createBoomerangReactionVideo(reactionPath, workDir);
+  } catch (error) {
+    console.error("Falha ao criar boomerang do avatar, usando original:", error);
+    return reactionPath;
+  }
+}
+
 export function buildReactionCollageFilter() {
   return [
     `[0:v]scale=${COLLAGE_WIDTH}:${EXPERT_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${EXPERT_HEIGHT},setsar=1,fps=${FPS}[expert]`,
@@ -245,21 +294,24 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
   await mkdir(path.dirname(outputPath), { recursive: true });
 
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
+  const preparedReactionPath = await prepareReactionVideo(input, workDir);
+  const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
+
   const filter = sourceVideoPath ? buildReactionCollageFilter() : buildExpertOnlyFilter();
   const inputArgs = sourceVideoPath
     ? [
-        ...(input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(input.reactionVideoPath) ? ["-loop", "1"] : []),
+        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
         "-i",
-        input.reactionVideoPath,
+        preparedReactionPath,
         "-stream_loop",
         "-1",
         "-i",
         sourceVideoPath
       ]
     : [
-        ...(input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(input.reactionVideoPath) ? ["-loop", "1"] : []),
+        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
         "-i",
-        input.reactionVideoPath
+        preparedReactionPath
       ];
 
   if (input.voiceAudioPath) {
@@ -271,6 +323,18 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
     audioMap = sourceVideoPath ? "2:a" : "1:a";
   } else if (sourceVideoPath) {
     audioMap = "1:a?";
+  }
+
+  let durationLimit = 30;
+  if (input.voiceAudioPath) {
+    try {
+      const audioInfo = await probeMediaInfo(input.voiceAudioPath);
+      if (audioInfo.duration && audioInfo.duration > 0) {
+        durationLimit = Math.min(audioInfo.duration, 60);
+      }
+    } catch (error) {
+      console.error("Erro ao obter duracao do audio de voz:", error);
+    }
   }
 
   await renderWithFfmpeg([
@@ -295,7 +359,7 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
     "-movflags",
     "+faststart",
     "-t",
-    "30",
+    durationLimit.toFixed(3),
     outputPath
   ]);
 

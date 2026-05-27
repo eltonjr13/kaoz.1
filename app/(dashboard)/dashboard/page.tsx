@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Plus, Search, UserRound } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";

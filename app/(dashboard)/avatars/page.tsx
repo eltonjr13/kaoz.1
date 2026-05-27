@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { AvatarForm } from "@/components/avatars/avatar-form";
 import { AvatarList } from "@/components/avatars/avatar-list";
 import { listLocalAvatars } from "@/lib/local-store";

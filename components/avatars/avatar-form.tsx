@@ -6,6 +6,7 @@ import { Upload } from "lucide-react";
 
 export function AvatarForm() {
   const router = useRouter();
+  const [formKey, setFormKey] = useState(0);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -60,50 +61,57 @@ export function AvatarForm() {
     }
 
     setIsLoading(true);
-    const formData = new FormData();
-    formData.set("name", name);
-    formData.set("image", file);
-    formData.set("consentAccepted", String(consentAccepted));
-    if (voiceFile) {
-      formData.set("voice_reference", voiceFile);
-    }
-
-    const response = await fetch("/api/avatars", {
-      method: "POST",
-      body: formData
-    });
-
-    setIsLoading(false);
-
-    if (!response.ok) {
-      let errMsg = "Não foi possível criar o avatar.";
-      try {
-        const payload = (await response.json()) as { error?: string };
-        errMsg = payload.error ?? errMsg;
-      } catch (err) {
-        console.error("Falha ao ler JSON de erro:", err);
+    try {
+      const formData = new FormData();
+      formData.set("name", name);
+      formData.set("image", file);
+      formData.set("consentAccepted", String(consentAccepted));
+      if (voiceFile) {
+        formData.set("voice_reference", voiceFile);
       }
-      setMessage(errMsg);
-      return;
-    }
 
-    setName("");
-    setFile(null);
-    setVoiceFile(null);
-    setConsentAccepted(false);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
+      const response = await fetch("/api/avatars", {
+        method: "POST",
+        body: formData
+      });
+
+      setIsLoading(false);
+
+      if (!response.ok) {
+        let errMsg = "Não foi possível criar o avatar.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          errMsg = payload.error ?? errMsg;
+        } catch (err) {
+          console.error("Falha ao ler JSON de erro:", err);
+        }
+        setMessage(errMsg);
+        return;
+      }
+
+      setName("");
+      setFile(null);
+      setVoiceFile(null);
+      setConsentAccepted(false);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
+      if (voicePreviewUrl) {
+        URL.revokeObjectURL(voicePreviewUrl);
+        setVoicePreviewUrl(null);
+      }
+      setFormKey((prev) => prev + 1);
+      router.refresh();
+    } catch (err) {
+      setIsLoading(false);
+      setMessage(err instanceof Error ? err.message : "Erro de conexão ao criar o avatar.");
+      console.error(err);
     }
-    if (voicePreviewUrl) {
-      URL.revokeObjectURL(voicePreviewUrl);
-      setVoicePreviewUrl(null);
-    }
-    router.refresh();
   }
 
   return (
-    <form className="form-panel" onSubmit={handleSubmit}>
+    <form key={formKey} className="form-panel" onSubmit={handleSubmit}>
       <div className="field" style={{ marginTop: 0 }}>
         <label htmlFor="avatar-name">Nome</label>
         <input

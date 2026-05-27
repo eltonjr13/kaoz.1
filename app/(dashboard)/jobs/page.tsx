@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { JobList } from "@/components/jobs/job-list";
