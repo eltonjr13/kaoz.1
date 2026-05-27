@@ -3,8 +3,15 @@ import { createLocalAvatar, listLocalAvatars } from "@/lib/local-store";
 import { createClient } from "@/lib/supabase/server";
 import { APP_STORAGE_PREFIX, APP_WORKSPACE_ID } from "@/lib/workspace";
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const ALLOWED_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm"
+]);
 
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -47,19 +54,19 @@ export async function POST(request: Request) {
   const image = formData.get("image");
 
   if (!name || !(image instanceof File)) {
-    return badRequest("Nome e imagem sao obrigatorios.");
+    return badRequest("Nome e arquivo de imagem/vídeo são obrigatórios.");
   }
 
   if (!consentAccepted) {
-    return badRequest("Consentimento obrigatorio para usar imagem real.");
+    return badRequest("Consentimento obrigatório para usar imagem/vídeo real.");
   }
 
-  if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
-    return badRequest("Use imagem PNG, JPG ou WebP.");
+  if (!ALLOWED_TYPES.has(image.type)) {
+    return badRequest("Use uma imagem PNG/JPG/WebP ou vídeo MP4/MOV/WebM válido.");
   }
 
-  if (image.size > MAX_IMAGE_SIZE) {
-    return badRequest("Imagem maior que 10MB.");
+  if (image.size > MAX_FILE_SIZE) {
+    return badRequest("O arquivo de avatar não pode ser maior que 50MB.");
   }
 
   const imagePath = `${APP_STORAGE_PREFIX}/${crypto.randomUUID()}-${safeFileName(image.name || "avatar.jpg")}`;

@@ -9,11 +9,9 @@ export type LipSyncResult = {
 };
 
 export async function createLipSyncVideo(input: LipSyncInput): Promise<LipSyncResult> {
-  void input;
-
-  if (!process.env.LIPSYNC_API_KEY) {
-    throw new Error("LIPSYNC_API_KEY nao configurada no servidor.");
-  }
-
-  throw new Error("Integre o provedor de lip-sync em lib/videos/lip-sync.ts.");
+  // O usuário ainda não definiu a ferramenta de lip-sync e fará a animação de forma manual.
+  // Por isso, retornamos diretamente o caminho do vídeo/imagem do avatar original.
+  return {
+    videoPath: input.avatarPath
+  };
 }

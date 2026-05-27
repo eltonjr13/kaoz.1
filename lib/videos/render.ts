@@ -8,6 +8,7 @@ export type RenderVerticalVideoInput = {
   reactionVideoPath: string;
   sourceVideoPath?: string | null;
   sourceVideoUrl?: string | null;
+  voiceAudioPath?: string | null;
   reactionIsImage?: boolean;
   outputPath?: string | null;
   workDir?: string | null;
@@ -261,6 +262,17 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
         input.reactionVideoPath
       ];
 
+  if (input.voiceAudioPath) {
+    inputArgs.push("-i", input.voiceAudioPath);
+  }
+
+  let audioMap = "0:a?";
+  if (input.voiceAudioPath) {
+    audioMap = sourceVideoPath ? "2:a" : "1:a";
+  } else if (sourceVideoPath) {
+    audioMap = "1:a?";
+  }
+
   await renderWithFfmpeg([
     "-y",
     ...inputArgs,
@@ -269,7 +281,7 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
     "-map",
     "[vout]",
     "-map",
-    sourceVideoPath ? "1:a?" : "0:a?",
+    audioMap,
     "-c:v",
     "libx264",
     "-preset",

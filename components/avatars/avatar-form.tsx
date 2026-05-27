@@ -8,21 +8,36 @@ export function AvatarForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setFile(selectedFile);
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+
+    if (selectedFile) {
+      setPreviewUrl(URL.createObjectURL(selectedFile));
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
 
     if (!file) {
-      setMessage("Selecione uma imagem.");
+      setMessage("Selecione um arquivo de imagem ou vídeo.");
       return;
     }
 
     if (!consentAccepted) {
-      setMessage("Consentimento obrigatorio para usar imagem real.");
+      setMessage("Consentimento obrigatório para usar imagem ou vídeo real.");
       return;
     }
 
@@ -41,13 +56,17 @@ export function AvatarForm() {
 
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
-      setMessage(payload.error ?? "Nao foi possivel criar o avatar.");
+      setMessage(payload.error ?? "Não foi possível criar o avatar.");
       return;
     }
 
     setName("");
     setFile(null);
     setConsentAccepted(false);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
     router.refresh();
   }
 
@@ -65,14 +84,35 @@ export function AvatarForm() {
       </div>
 
       <div className="field">
-        <label htmlFor="avatar-file">Imagem autorizada</label>
+        <label htmlFor="avatar-file">Imagem ou Vídeo autorizado</label>
         <input
           id="avatar-file"
           type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm"
+          onChange={handleFileChange}
           required
         />
+        {previewUrl && file ? (
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: "0.82rem", color: "var(--muted)", display: "block", marginBottom: 6 }}>Pré-visualização:</span>
+            {file.type.startsWith("video/") ? (
+              <video
+                src={previewUrl}
+                muted
+                loop
+                autoPlay
+                playsInline
+                style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }}
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }}
+                alt="Preview"
+              />
+            )}
+          </div>
+        ) : null}
       </div>
 
       <label className="checkbox-row">
@@ -81,7 +121,7 @@ export function AvatarForm() {
           checked={consentAccepted}
           onChange={(event) => setConsentAccepted(event.target.checked)}
         />
-        <span>Confirmo que tenho autorizacao para usar esta imagem real como avatar.</span>
+        <span>Confirmo que tenho autorização para usar esta imagem ou vídeo real como avatar.</span>
       </label>
 
       {message ? <p className="form-message">{message}</p> : null}

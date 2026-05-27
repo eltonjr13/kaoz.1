@@ -264,14 +264,13 @@ grant select, insert, update, delete on public.avatars to anon, authenticated;
 grant select, insert, update, delete on public.viral_videos to anon, authenticated;
 grant select, insert, update, delete on public.reaction_jobs to anon, authenticated;
 grant select, insert, update, delete on public.job_events to anon, authenticated;
-
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'avatars',
   'avatars',
   false,
-  10485760,
-  array['image/png', 'image/jpeg', 'image/webp']
+  52428800,
+  array['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']
 )
 on conflict (id) do update
 set public = excluded.public,
