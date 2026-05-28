@@ -69,38 +69,56 @@ export function CreateJobForm({
 
     setIsLoading(true);
 
-    const createResponse = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        topic,
-        avatarId,
-        sourceVideoUrl: sourceVideoUrl.trim() || null,
-        sourceVideoTitle: sourceVideoTitle.trim() || null,
-        renderLayout,
-        voiceSettings: {
-          inference_steps: inferenceSteps,
-          guidance_scale: guidanceScale,
-          denoise_ratio: denoiseRatio,
-          speed,
-          duration,
-          preprocess_prompt: preprocessPrompt,
-          postprocess_output: postprocessOutput
-        }
-      })
-      body: JSON.stringify({ jobId: createPayload.job.id })
-    });
+    try {
+      const createResponse = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          avatarId,
+          sourceVideoUrl: sourceVideoUrl.trim() || null,
+          sourceVideoTitle: sourceVideoTitle.trim() || null,
+          renderLayout,
+          voiceSettings: {
+            inference_steps: inferenceSteps,
+            guidance_scale: guidanceScale,
+            denoise_ratio: denoiseRatio,
+            speed,
+            duration,
+            preprocess_prompt: preprocessPrompt,
+            postprocess_output: postprocessOutput
+          }
+        })
+      });
 
-    setIsLoading(false);
+      const createPayload = (await createResponse.json()) as { job?: { id: string }; error?: string };
 
-    if (!startResponse.ok) {
-      const payload = (await startResponse.json()) as { error?: string };
-      setMessage(payload.error ?? "Job criado, mas o pipeline nao iniciou.");
-      return;
+      if (!createResponse.ok || !createPayload.job) {
+        setIsLoading(false);
+        setMessage(createPayload.error ?? "Nao foi possivel criar o job.");
+        return;
+      }
+
+      const startResponse = await fetch("/api/pipeline/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: createPayload.job.id })
+      });
+
+      setIsLoading(false);
+
+      if (!startResponse.ok) {
+        const payload = (await startResponse.json()) as { error?: string };
+        setMessage(payload.error ?? "Job criado, mas o pipeline nao iniciou.");
+        return;
+      }
+
+      router.push("/jobs");
+      router.refresh();
+    } catch (err) {
+      setIsLoading(false);
+      setMessage("Erro de conexao ao processar requisicoes.");
     }
-
-    router.push("/jobs");
-    router.refresh();
   }
 
   return (

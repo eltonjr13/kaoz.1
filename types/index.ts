@@ -1,1 +1,1 @@
-export type { Avatar, JobStatus, ReactionJob, RenderLayout, ViralVideo } from "./domain";
+export type { Avatar, JobStatus, ReactionJob, RenderLayout, ViralVideo, VoiceSettings } from "./domain";
