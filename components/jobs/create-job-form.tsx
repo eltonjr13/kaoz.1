@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Play, Rocket } from "lucide-react";
+import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 import type { Avatar, RenderLayout } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 type CreateJobFormProps = {
-  avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[];
+  avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status" | "voice_reference_path">[];
   initialTopic?: string;
   initialSourceVideoUrl?: string;
   initialSourceVideoTitle?: string;
@@ -48,6 +48,16 @@ export function CreateJobForm({
   const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
   const SourceIcon = parsedSourceVideo?.platform === "instagram" ? Camera : Play;
 
+  // Voice advanced settings state
+  const [inferenceSteps, setInferenceSteps] = useState(32);
+  const [guidanceScale, setGuidanceScale] = useState(3);
+  const [denoiseRatio, setDenoiseRatio] = useState(0.8);
+  const [speed, setSpeed] = useState(1);
+  const [duration, setDuration] = useState(0);
+  const [preprocessPrompt, setPreprocessPrompt] = useState(true);
+  const [postprocessOutput, setPostprocessOutput] = useState(true);
+  const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
@@ -67,21 +77,17 @@ export function CreateJobForm({
         avatarId,
         sourceVideoUrl: sourceVideoUrl.trim() || null,
         sourceVideoTitle: sourceVideoTitle.trim() || null,
-        renderLayout
+        renderLayout,
+        voiceSettings: {
+          inference_steps: inferenceSteps,
+          guidance_scale: guidanceScale,
+          denoise_ratio: denoiseRatio,
+          speed,
+          duration,
+          preprocess_prompt: preprocessPrompt,
+          postprocess_output: postprocessOutput
+        }
       })
-    });
-
-    const createPayload = (await createResponse.json()) as { job?: { id: string }; error?: string };
-
-    if (!createResponse.ok || !createPayload.job) {
-      setIsLoading(false);
-      setMessage(createPayload.error ?? "Nao foi possivel criar o job.");
-      return;
-    }
-
-    const startResponse = await fetch("/api/pipeline/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jobId: createPayload.job.id })
     });
 
@@ -156,6 +162,205 @@ export function CreateJobForm({
           ))}
         </div>
         <span className="field-hint">{layoutOptions.find((option) => option.value === renderLayout)?.description}</span>
+      </div>
+
+      {/* Advanced Voice Settings */}
+      <div className="advanced-settings-panel">
+        <button
+          type="button"
+          className="advanced-settings-header button secondary full"
+          style={{ 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center", 
+            border: "none", 
+            borderRadius: 0,
+            background: "none",
+            minHeight: "48px",
+            padding: "12px 16px"
+          }}
+          onClick={() => setShowAdvancedVoice(!showAdvancedVoice)}
+        >
+          <span className="advanced-settings-title" style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800 }}>
+            <Settings size={18} />
+            Configurações Avançadas de Voz
+          </span>
+          {showAdvancedVoice ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+
+        {showAdvancedVoice && (
+          <div className="advanced-settings-content">
+            {/* Inference Steps */}
+            <div className="advanced-slider-group">
+              <div className="advanced-slider-header">
+                <span className="advanced-slider-label">Inference Steps</span>
+                <div className="advanced-slider-controls">
+                  <span className="advanced-slider-val">{inferenceSteps}</span>
+                  <button
+                    type="button"
+                    className="advanced-slider-reset"
+                    onClick={() => setInferenceSteps(32)}
+                    title="Resetar"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="advanced-slider-input-row">
+                <span className="advanced-slider-limit">8</span>
+                <input
+                  type="range"
+                  min="8"
+                  max="64"
+                  step="1"
+                  value={inferenceSteps}
+                  onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
+                />
+                <span className="advanced-slider-limit">64</span>
+              </div>
+            </div>
+
+            {/* Guidance Scale */}
+            <div className="advanced-slider-group">
+              <div className="advanced-slider-header">
+                <span className="advanced-slider-label">Guidance Scale</span>
+                <div className="advanced-slider-controls">
+                  <span className="advanced-slider-val">{guidanceScale}</span>
+                  <button
+                    type="button"
+                    className="advanced-slider-reset"
+                    onClick={() => setGuidanceScale(3)}
+                    title="Resetar"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="advanced-slider-input-row">
+                <span className="advanced-slider-limit">0</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={guidanceScale}
+                  onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
+                />
+                <span className="advanced-slider-limit">10</span>
+              </div>
+            </div>
+
+            {/* Denoise Ratio */}
+            <div className="advanced-slider-group">
+              <div className="advanced-slider-header">
+                <span className="advanced-slider-label">Denoise Ratio</span>
+                <div className="advanced-slider-controls">
+                  <span className="advanced-slider-val">{denoiseRatio.toFixed(1).replace(".", ",")}</span>
+                  <button
+                    type="button"
+                    className="advanced-slider-reset"
+                    onClick={() => setDenoiseRatio(0.8)}
+                    title="Resetar"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="advanced-slider-input-row">
+                <span className="advanced-slider-limit">0</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={denoiseRatio}
+                  onChange={(e) => setDenoiseRatio(parseFloat(e.target.value))}
+                />
+                <span className="advanced-slider-limit">1</span>
+              </div>
+            </div>
+
+            {/* Speed */}
+            <div className="advanced-slider-group">
+              <div className="advanced-slider-header">
+                <span className="advanced-slider-label">Speed</span>
+                <div className="advanced-slider-controls">
+                  <span className="advanced-slider-val">{speed.toFixed(1).replace(".", ",")}</span>
+                  <button
+                    type="button"
+                    className="advanced-slider-reset"
+                    onClick={() => setSpeed(1)}
+                    title="Resetar"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="advanced-slider-input-row">
+                <span className="advanced-slider-limit">0.5</span>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2"
+                  step="0.1"
+                  value={speed}
+                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                />
+                <span className="advanced-slider-limit">2</span>
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div className="advanced-slider-group">
+              <div className="advanced-slider-header">
+                <span className="advanced-slider-label">Duration (0 = auto)</span>
+                <div className="advanced-slider-controls">
+                  <span className="advanced-slider-val">{duration}</span>
+                  <button
+                    type="button"
+                    className="advanced-slider-reset"
+                    onClick={() => setDuration(0)}
+                    title="Resetar"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="advanced-slider-input-row">
+                <span className="advanced-slider-limit">0</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="1"
+                  value={duration}
+                  onChange={(e) => setDuration(parseInt(e.target.value))}
+                />
+                <span className="advanced-slider-limit">30</span>
+              </div>
+            </div>
+
+            {/* Checkboxes Row */}
+            <div className="advanced-checkboxes-row">
+              <label className="advanced-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={preprocessPrompt}
+                  onChange={(e) => setPreprocessPrompt(e.target.checked)}
+                />
+                <span>Preprocess Prompt</span>
+              </label>
+              <label className="advanced-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={postprocessOutput}
+                  onChange={(e) => setPostprocessOutput(e.target.checked)}
+                />
+                <span>Postprocess Output</span>
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={`collage-preview ${renderLayout}`} aria-label="Preview da colagem">

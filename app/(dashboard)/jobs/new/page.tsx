@@ -23,13 +23,13 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
   const initialSourceVideoUrl = getSearchParam(params, "sourceVideoUrl");
   const initialSourceVideoTitle = getSearchParam(params, "sourceVideoTitle");
   const localAvatars = await listLocalAvatars();
-  let avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[] = localAvatars;
+  let avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status" | "voice_reference_path">[] = localAvatars;
 
   if (hasSupabaseConfig()) {
     const supabase = await createClient();
     const { data } = await supabase
       .from("avatars")
-      .select("id, name, image_path, consent_accepted, status")
+      .select("id, name, image_path, consent_accepted, status, voice_reference_path")
       .eq("user_id", APP_WORKSPACE_ID)
       .eq("consent_accepted", true)
       .eq("status", "ready")
@@ -37,7 +37,7 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
 
     avatars = [
       ...localAvatars,
-      ...((data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status">[])
+      ...((data ?? []) as Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status" | "voice_reference_path">[])
     ];
   }
 

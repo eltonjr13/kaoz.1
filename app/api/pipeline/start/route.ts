@@ -154,7 +154,8 @@ export async function POST(request: Request) {
               script: scriptText,
               voiceId: "default",
               jobId,
-              refAudioPath
+              refAudioPath,
+              settings: jobRecord.voice_settings
             });
 
             // Upload the generated voice to Supabase
@@ -353,7 +354,8 @@ export async function POST(request: Request) {
         script: scriptText,
         voiceId: "default",
         jobId,
-        refAudioPath
+        refAudioPath,
+        settings: localJobRecord.voice_settings
       });
       await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
 

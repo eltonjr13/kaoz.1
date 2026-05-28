@@ -90,6 +90,7 @@ create table if not exists public.reaction_jobs (
   lip_sync_video_path text,
   final_video_path text,
   error_message text,
+  voice_settings jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -97,10 +98,12 @@ create table if not exists public.reaction_jobs (
 alter table public.reaction_jobs
 add column if not exists render_layout text not null default 'source_pip';
 
+alter table public.reaction_jobs
+add column if not exists voice_settings jsonb not null default '{}'::jsonb;
+
 create table if not exists public.job_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
-  job_id uuid not null references public.reaction_jobs(id) on delete cascade,
   event_type text not null,
   message text,
   metadata jsonb not null default '{}'::jsonb,

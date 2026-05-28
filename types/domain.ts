@@ -39,6 +39,16 @@ export type ViralVideo = {
   created_at: string;
 };
 
+export type VoiceSettings = {
+  inference_steps?: number;
+  guidance_scale?: number;
+  denoise_ratio?: number;
+  speed?: number;
+  duration?: number;
+  preprocess_prompt?: boolean;
+  postprocess_output?: boolean;
+};
+
 export type ReactionJob = {
   id: string;
   user_id: string;
@@ -55,6 +65,8 @@ export type ReactionJob = {
   lip_sync_video_path: string | null;
   final_video_path: string | null;
   error_message: string | null;
+  voice_settings?: VoiceSettings | null;
   created_at: string;
   updated_at: string;
 };
+

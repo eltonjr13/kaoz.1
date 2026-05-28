@@ -937,3 +937,138 @@ video {
     display: none;
   }
 }
+
+/* Advanced Voice Settings Panel */
+.advanced-settings-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.advanced-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 800;
+  transition: background 150ms ease;
+}
+
+.advanced-settings-header:hover {
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+
+.advanced-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.advanced-settings-content {
+  padding: 18px;
+  display: grid;
+  gap: 20px;
+}
+
+.advanced-slider-group {
+  display: grid;
+  gap: 8px;
+}
+
+.advanced-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.advanced-slider-label {
+  background: #3b29c7;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.advanced-slider-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advanced-slider-val {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  min-width: 48px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.advanced-slider-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 5px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.advanced-slider-reset:hover {
+  border-color: var(--brand);
+  color: var(--brand-strong);
+}
+
+.advanced-slider-input-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.advanced-slider-limit {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.advanced-slider-input-row input[type="range"] {
+  width: 100%;
+  accent-color: #3b29c7;
+  cursor: pointer;
+}
+
+.advanced-checkboxes-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.advanced-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.advanced-checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #3b29c7;
+  cursor: pointer;
+}

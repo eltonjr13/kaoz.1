@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     sourceVideoUrl?: unknown;
     sourceVideoTitle?: unknown;
     renderLayout?: unknown;
+    voiceSettings?: unknown;
   } | null;
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
     typeof body?.renderLayout === "string" && renderLayouts.has(body.renderLayout as RenderLayout)
       ? (body.renderLayout as RenderLayout)
       : "source_pip";
+  const voiceSettings = body?.voiceSettings && typeof body.voiceSettings === "object" ? body.voiceSettings : null;
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -142,7 +144,8 @@ export async function POST(request: Request) {
             source_video_id: sourceVideoId,
             topic,
             render_layout: renderLayout,
-            status: "draft"
+            status: "draft",
+            voice_settings: voiceSettings || {}
           })
           .select("*")
           .single();
@@ -183,7 +186,8 @@ export async function POST(request: Request) {
     topic,
     sourceVideoUrl: parsedSourceVideo?.normalizedUrl ?? null,
     sourceVideoTitle: sourceVideoTitle || null,
-    renderLayout
+    renderLayout,
+    voiceSettings
   });
   return NextResponse.json({ job: localJob, storage: "local" }, { status: 201 });
 }

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Avatar, JobStatus, ReactionJob, RenderLayout } from "@/types";
+import type { Avatar, JobStatus, ReactionJob, RenderLayout, VoiceSettings } from "@/types";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
@@ -21,7 +21,9 @@ type NewLocalJobInput = {
   sourceVideoTitle?: string | null;
   renderLayout?: RenderLayout;
   topic: string;
+  voiceSettings?: VoiceSettings | null;
 };
+
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -109,7 +111,8 @@ export async function createLocalJob({
   sourceVideoUrl = null,
   sourceVideoTitle = null,
   renderLayout = "source_pip",
-  topic
+  topic,
+  voiceSettings = null
 }: NewLocalJobInput): Promise<ReactionJob> {
   const now = new Date().toISOString();
   const job: ReactionJob = {
@@ -128,6 +131,7 @@ export async function createLocalJob({
     lip_sync_video_path: null,
     final_video_path: null,
     error_message: null,
+    voice_settings: voiceSettings ?? null,
     created_at: now,
     updated_at: now
   };

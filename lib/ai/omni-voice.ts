@@ -1,12 +1,14 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import type { VoiceSettings } from "@/types";
 
 export type GenerateVoiceInput = {
   script: string;
   voiceId: string;
   jobId: string;
   refAudioPath?: string | null;
+  settings?: VoiceSettings | null;
 };
 
 export type GeneratedVoice = {
@@ -24,6 +26,18 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
   // Connect to Gradio client
   const app = await Client.connect(apiUrl);
 
+  // Extract advanced voice parameters with safe fallbacks
+  const settings = input.settings || {};
+  const ns = settings.inference_steps ?? 32;
+  const gs = settings.guidance_scale ?? 3.0;
+  const dn = settings.denoise_ratio ?? 0.8;
+  const sp = settings.speed ?? 1.0;
+  const du = settings.duration ?? 0;
+  const pp = settings.preprocess_prompt ?? true;
+  const po = settings.postprocess_output ?? true;
+
+  console.log(`[OmniVoice] Parâmetros de Dublagem - Steps: ${ns}, Guidance: ${gs}, Denoise: ${dn}, Speed: ${sp}, Duration: ${du}, Preprocess: ${pp}, Postprocess: ${po}`);
+
   let result;
   if (input.refAudioPath) {
     // Mode: Voice Clone (predict(0))
@@ -34,13 +48,13 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
       "Portuguese (pt)",    // vc_lang
       ref_audio,            // vc_ref_audio
       null,                 // vc_ref_text
-      32,                   // vc_ns
-      3.0,                  // vc_gs
-      0.8,                  // vc_dn
-      1.0,                  // vc_sp
-      0,                    // vc_du
-      true,                 // vc_pp
-      true                  // vc_po
+      ns,                   // vc_ns
+      gs,                   // vc_gs
+      dn,                   // vc_dn
+      sp,                   // vc_sp
+      du,                   // vc_du
+      pp,                   // vc_pp
+      po                    // vc_po
     ]);
   } else {
     // Mode: Voice Design (predict(1))
@@ -48,19 +62,19 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
     result = await app.predict(1, [
       input.script,         // vd_text
       "Portuguese (pt)",    // vd_lang
-      32,                   // vd_ns
-      3.0,                  // vd_gs
-      0.8, // vd_dn
-      1.0, // vd_sp
-      0, // vd_du
-      true, // vd_pp
-      true, // vd_po
-      "female", // Gender
-      "young adult", // Age
-      "moderate pitch", // Pitch
-      "Auto", // Style
-      "Auto", // English Accent
-      "Auto" // Chinese Dialect
+      ns,                   // vd_ns
+      gs,                   // vd_gs
+      dn,                   // vd_dn
+      sp,                   // vd_sp
+      du,                   // vd_du
+      pp,                   // vd_pp
+      po,                   // vd_po
+      "female",             // Gender
+      "young adult",        // Age
+      "moderate pitch",     // Pitch
+      "Auto",               // Style
+      "Auto",               // English Accent
+      "Auto"                // Chinese Dialect
     ]);
   }
 
