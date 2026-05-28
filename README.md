@@ -13,6 +13,7 @@ Funcionalidades implementadas:
 - Cadastro de avatares em `/avatars`, com consentimento obrigatorio e upload de imagem/video, alem de audio de referencia opcional.
 - Busca viral em `/viral-search`, gerando oportunidades por nicho para TikTok, Instagram e YouTube.
 - Criacao de jobs em `/jobs/new`, incluindo assunto, avatar e link de video fonte para colagem.
+- Selecao de layout por job, com 3 modelos: fonte cheia com expert flutuante, fonte dominante e divisao equilibrada.
 - Listagem de jobs em `/jobs`, com status, fonte usada e download quando houver render final.
 - APIs internas para avatares, jobs, busca viral e inicio do pipeline.
 - Persistencia em Supabase quando configurado, com fallback local em `.generated/local-data`.
@@ -129,13 +130,17 @@ npm run typecheck  # TypeScript sem emitir arquivos
 1. Cadastre um avatar em `/avatars` e aceite o consentimento.
 2. Use `/viral-search` para gerar ideias, hooks e links de busca por nicho.
 3. Crie um job em `/jobs/new`, escolhendo avatar, assunto e opcionalmente um link de video fonte.
-4. O app inicia o pipeline:
+4. Escolha o layout do render:
+   - `Fonte cheia + expert`: video fonte em tela cheia com expert menor no canto.
+   - `Fonte dominante`: video fonte no topo e expert menor embaixo.
+   - `Divisao equilibrada`: video fonte maior, mas com mais presenca do expert.
+5. O app inicia o pipeline:
    - gera roteiro;
    - gera voz via OmniVoice;
    - prepara o avatar para lip-sync, hoje ainda como placeholder;
    - baixa/prepara o video fonte quando informado;
    - renderiza o video vertical final.
-5. Acompanhe o status e baixe o resultado em `/jobs`.
+6. Acompanhe o status e baixe o resultado em `/jobs`.
 
 ## Persistencia
 

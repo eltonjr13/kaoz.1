@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Avatar, JobStatus, ReactionJob } from "@/types";
+import type { Avatar, JobStatus, ReactionJob, RenderLayout } from "@/types";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
@@ -19,6 +19,7 @@ type NewLocalJobInput = {
   sourceVideoId?: string | null;
   sourceVideoUrl?: string | null;
   sourceVideoTitle?: string | null;
+  renderLayout?: RenderLayout;
   topic: string;
 };
 
@@ -107,6 +108,7 @@ export async function createLocalJob({
   sourceVideoId = null,
   sourceVideoUrl = null,
   sourceVideoTitle = null,
+  renderLayout = "source_pip",
   topic
 }: NewLocalJobInput): Promise<ReactionJob> {
   const now = new Date().toISOString();
@@ -117,6 +119,7 @@ export async function createLocalJob({
     source_video_id: sourceVideoId,
     source_video_url: sourceVideoUrl,
     source_video_title: sourceVideoTitle,
+    render_layout: renderLayout,
     topic,
     status: "draft",
     script_text: null,

@@ -3,6 +3,9 @@ import { createLocalJob, findLocalAvatar, listLocalJobs } from "@/lib/local-stor
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { buildSourceVideoMetrics, parseSourceVideoUrl } from "@/lib/videos/source-video";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
+import type { RenderLayout } from "@/types";
+
+const renderLayouts = new Set<RenderLayout>(["source_pip", "source_top_expert_bottom", "balanced_split"]);
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -38,6 +41,7 @@ export async function POST(request: Request) {
     sourceVideoId?: unknown;
     sourceVideoUrl?: unknown;
     sourceVideoTitle?: unknown;
+    renderLayout?: unknown;
   } | null;
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
@@ -51,6 +55,10 @@ export async function POST(request: Request) {
     typeof body?.sourceVideoTitle === "string" && body.sourceVideoTitle.trim()
       ? body.sourceVideoTitle.trim()
       : topic;
+  const renderLayout =
+    typeof body?.renderLayout === "string" && renderLayouts.has(body.renderLayout as RenderLayout)
+      ? (body.renderLayout as RenderLayout)
+      : "source_pip";
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -122,7 +130,7 @@ export async function POST(request: Request) {
             source_video_id: sourceVideoId,
             source_video_url: parsedSourceVideo.normalizedUrl,
             source_platform: parsedSourceVideo.platform,
-            render_layout: "expert_top_source_bottom"
+            render_layout: renderLayout
           };
         }
 
@@ -133,6 +141,7 @@ export async function POST(request: Request) {
             avatar_id: avatarId,
             source_video_id: sourceVideoId,
             topic,
+            render_layout: renderLayout,
             status: "draft"
           })
           .select("*")
@@ -173,7 +182,8 @@ export async function POST(request: Request) {
     avatarId,
     topic,
     sourceVideoUrl: parsedSourceVideo?.normalizedUrl ?? null,
-    sourceVideoTitle: sourceVideoTitle || null
+    sourceVideoTitle: sourceVideoTitle || null,
+    renderLayout
   });
   return NextResponse.json({ job: localJob, storage: "local" }, { status: 201 });
 }

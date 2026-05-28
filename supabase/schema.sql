@@ -82,6 +82,7 @@ create table if not exists public.reaction_jobs (
   avatar_id uuid not null references public.avatars(id) on delete restrict,
   source_video_id uuid references public.viral_videos(id) on delete set null,
   topic text not null,
+  render_layout text not null default 'source_pip',
   status public.job_status not null default 'draft',
   script_text text,
   voice_provider text,
@@ -92,6 +93,9 @@ create table if not exists public.reaction_jobs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.reaction_jobs
+add column if not exists render_layout text not null default 'source_pip';
 
 create table if not exists public.job_events (
   id uuid primary key default gen_random_uuid(),

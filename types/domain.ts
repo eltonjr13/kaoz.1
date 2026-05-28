@@ -10,6 +10,8 @@ export type JobStatus =
   | "completed"
   | "failed";
 
+export type RenderLayout = "source_pip" | "source_top_expert_bottom" | "balanced_split";
+
 export type Avatar = {
   id: string;
   user_id: string;
@@ -44,6 +46,7 @@ export type ReactionJob = {
   source_video_id: string | null;
   source_video_url?: string | null;
   source_video_title?: string | null;
+  render_layout?: RenderLayout | null;
   topic: string;
   status: JobStatus;
   script_text: string | null;

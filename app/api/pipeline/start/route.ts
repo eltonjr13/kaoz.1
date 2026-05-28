@@ -246,6 +246,7 @@ export async function POST(request: Request) {
               reactionIsImage,
               sourceVideoUrl: sourceUrl ?? null,
               voiceAudioPath: localVoiceDiskPath,
+              layout: jobRecord.render_layout ?? "source_pip",
               outputPath: localOutputPath,
               workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
             });
@@ -375,6 +376,7 @@ export async function POST(request: Request) {
         reactionIsImage,
         sourceVideoUrl: localJobRecord.source_video_url ?? null,
         voiceAudioPath: voiceDiskPath,
+        layout: localJobRecord.render_layout ?? "source_pip",
         outputPath,
         workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
       });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Play, Rocket } from "lucide-react";
-import type { Avatar } from "@/types";
+import type { Avatar, RenderLayout } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 type CreateJobFormProps = {
@@ -12,6 +12,24 @@ type CreateJobFormProps = {
   initialSourceVideoUrl?: string;
   initialSourceVideoTitle?: string;
 };
+
+const layoutOptions: { value: RenderLayout; label: string; description: string }[] = [
+  {
+    value: "source_pip",
+    label: "Fonte cheia + expert",
+    description: "Video principal em tela cheia com expert menor no canto."
+  },
+  {
+    value: "source_top_expert_bottom",
+    label: "Fonte dominante",
+    description: "Video fonte no topo com expert menor embaixo."
+  },
+  {
+    value: "balanced_split",
+    label: "Divisao equilibrada",
+    description: "Video fonte maior, mas com expert ainda bem visivel."
+  }
+];
 
 export function CreateJobForm({
   avatars,
@@ -24,6 +42,7 @@ export function CreateJobForm({
   const [avatarId, setAvatarId] = useState(avatars[0]?.id ?? "");
   const [sourceVideoUrl, setSourceVideoUrl] = useState(initialSourceVideoUrl);
   const [sourceVideoTitle, setSourceVideoTitle] = useState(initialSourceVideoTitle);
+  const [renderLayout, setRenderLayout] = useState<RenderLayout>("source_pip");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
@@ -47,7 +66,8 @@ export function CreateJobForm({
         topic,
         avatarId,
         sourceVideoUrl: sourceVideoUrl.trim() || null,
-        sourceVideoTitle: sourceVideoTitle.trim() || null
+        sourceVideoTitle: sourceVideoTitle.trim() || null,
+        renderLayout
       })
     });
 
@@ -121,15 +141,32 @@ export function CreateJobForm({
         />
       </div>
 
-      <div className="collage-preview" aria-label="Preview da colagem">
-        <div className="collage-preview-expert">
-          <span>Expert</span>
+      <div className="field">
+        <label>Layout do video</label>
+        <div className="layout-options" role="group" aria-label="Layout do video">
+          {layoutOptions.map((option) => (
+            <button
+              className={`layout-option ${renderLayout === option.value ? "active" : ""}`}
+              type="button"
+              onClick={() => setRenderLayout(option.value)}
+              key={option.value}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
+        <span className="field-hint">{layoutOptions.find((option) => option.value === renderLayout)?.description}</span>
+      </div>
+
+      <div className={`collage-preview ${renderLayout}`} aria-label="Preview da colagem">
         <div className="collage-preview-source">
           <SourceIcon size={18} />
           <span>
             {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube / Video"}
           </span>
+        </div>
+        <div className="collage-preview-expert">
+          <span>Expert</span>
         </div>
       </div>
 

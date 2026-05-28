@@ -131,8 +131,8 @@ export function buildSourceVideoMetrics(platform: SupportedSourceVideoPlatform) 
   return {
     source_kind: "reaction_collage",
     source_platform: platform,
-    render_layout: "expert_top_source_bottom",
-    expert_area: "top",
-    source_area: "bottom"
+    render_layout: "source_pip",
+    expert_area: "overlay",
+    source_area: "full_frame"
   };
 }

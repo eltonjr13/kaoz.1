@@ -3,6 +3,8 @@ import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { parseSourceVideoUrl } from "@/lib/videos/source-video";
 
+export type ReactionRenderLayout = "source_pip" | "source_top_expert_bottom" | "balanced_split";
+
 export type RenderVerticalVideoInput = {
   jobId: string;
   reactionVideoPath: string;
@@ -10,6 +12,7 @@ export type RenderVerticalVideoInput = {
   sourceVideoUrl?: string | null;
   voiceAudioPath?: string | null;
   reactionIsImage?: boolean;
+  layout?: ReactionRenderLayout | null;
   outputPath?: string | null;
   workDir?: string | null;
 };
@@ -25,8 +28,14 @@ type RenderCommandResult = {
 
 const COLLAGE_WIDTH = 1080;
 const COLLAGE_HEIGHT = 1920;
-const EXPERT_HEIGHT = 1240;
-const SOURCE_HEIGHT = COLLAGE_HEIGHT - EXPERT_HEIGHT;
+const SOURCE_DOMINANT_SOURCE_HEIGHT = 1280;
+const SOURCE_DOMINANT_EXPERT_HEIGHT = COLLAGE_HEIGHT - SOURCE_DOMINANT_SOURCE_HEIGHT;
+const BALANCED_SOURCE_HEIGHT = 1080;
+const BALANCED_EXPERT_HEIGHT = COLLAGE_HEIGHT - BALANCED_SOURCE_HEIGHT;
+const PIP_EXPERT_WIDTH = 420;
+const PIP_EXPERT_HEIGHT = 560;
+const PIP_MARGIN_X = 44;
+const PIP_MARGIN_Y = 64;
 const FPS = 30;
 const LOOP_THRESHOLD_SECONDS = 30;
 
@@ -214,8 +223,6 @@ async function prepareSourceVideo(input: RenderVerticalVideoInput, workDir: stri
 }
 
 async function createBoomerangReactionVideo(reactionPath: string, workDir: string) {
-  const mediaInfo = await probeMediaInfo(reactionPath);
-
   const boomerangPath = path.join(workDir, "reaction-boomerang.mp4");
 
   const filterComplex = "[0:v]split=2[vf][vr]; [vr]reverse[rv]; [vf][rv]concat=n=2:v=1:a=0[vboomerang]";
@@ -262,11 +269,27 @@ async function prepareReactionVideo(input: RenderVerticalVideoInput, workDir: st
   }
 }
 
-export function buildReactionCollageFilter() {
+function buildStackedFilter(sourceHeight: number, expertHeight: number) {
   return [
-    `[0:v]scale=${COLLAGE_WIDTH}:${EXPERT_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${EXPERT_HEIGHT},setsar=1,fps=${FPS}[expert]`,
-    `[1:v]scale=${COLLAGE_WIDTH}:${SOURCE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${SOURCE_HEIGHT},setsar=1,fps=${FPS}[source]`,
-    "[expert][source]vstack=inputs=2:shortest=1[vout]"
+    `[1:v]scale=${COLLAGE_WIDTH}:${sourceHeight}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${sourceHeight},setsar=1,fps=${FPS}[source]`,
+    `[0:v]scale=${COLLAGE_WIDTH}:${expertHeight}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${expertHeight},setsar=1,fps=${FPS}[expert]`,
+    "[source][expert]vstack=inputs=2:shortest=1[vout]"
+  ].join(";");
+}
+
+export function buildReactionCollageFilter(layout: ReactionRenderLayout = "source_pip") {
+  if (layout === "source_top_expert_bottom") {
+    return buildStackedFilter(SOURCE_DOMINANT_SOURCE_HEIGHT, SOURCE_DOMINANT_EXPERT_HEIGHT);
+  }
+
+  if (layout === "balanced_split") {
+    return buildStackedFilter(BALANCED_SOURCE_HEIGHT, BALANCED_EXPERT_HEIGHT);
+  }
+
+  return [
+    `[1:v]scale=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT},setsar=1,fps=${FPS}[source]`,
+    `[0:v]scale=${PIP_EXPERT_WIDTH}:${PIP_EXPERT_HEIGHT}:force_original_aspect_ratio=increase,crop=${PIP_EXPERT_WIDTH}:${PIP_EXPERT_HEIGHT},setsar=1,fps=${FPS}[expert]`,
+    `[source][expert]overlay=x=W-w-${PIP_MARGIN_X}:y=H-h-${PIP_MARGIN_Y}:shortest=1[vout]`
   ].join(";");
 }
 
@@ -296,8 +319,9 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
   const preparedReactionPath = await prepareReactionVideo(input, workDir);
   const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
+  const layout = input.layout ?? "source_pip";
 
-  const filter = sourceVideoPath ? buildReactionCollageFilter() : buildExpertOnlyFilter();
+  const filter = sourceVideoPath ? buildReactionCollageFilter(layout) : buildExpertOnlyFilter();
   const inputArgs = sourceVideoPath
     ? [
         ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
