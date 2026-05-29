@@ -170,3 +170,8 @@ Quando Supabase nao esta configurado ou uma operacao falha, o app usa fallback l
 - As politicas RLS do schema estao abertas para `anon` e `authenticated` dentro do desenho atual.
 - O middleware apenas desativa a tela de login redirecionando `/login` para `/dashboard`.
 - Para producao, antes de expor publicamente, e necessario revisar autenticacao, isolamento por usuario/workspace, politicas RLS e armazenamento de arquivos.
+- **Execução Assíncrona Local**: O pipeline local agora executa em background (segundo plano). Ao iniciar um novo vídeo, a resposta da API é imediata e o usuário é redirecionado para `/jobs`, onde o status atualiza dinamicamente conforme cada etapa avança.
+- **Botão Reiniciar**: Se um job falhar ou ficar travado (ex: devido a um reinício do servidor de desenvolvimento), é possível reiniciá-lo diretamente pela lista de jobs em `/jobs`.
+- **Logs em Tempo Real**: As saídas dos subprocessos (como progresso do FFmpeg e contagem de frames processados pelo Python `rembg`) são enviadas diretamente ao terminal do Next.js em tempo real, permitindo auditoria visual detalhada da renderização.
+- **Resiliência com OneDrive (Windows)**: O script de remoção de fundo possui um sistema de retry (5 tentativas com delay de 300ms) para evitar que o sincronismo automático do OneDrive crie bloqueios que quebrem o processamento com erro `FileNotFoundError`.
+- **Prevenção de Socket Leaks**: As conexões SSE do Gradio Client abertas no OmniVoice são explicitamente fechadas com `app.close()` após o término de cada predição de voz.

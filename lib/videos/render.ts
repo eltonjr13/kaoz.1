@@ -72,8 +72,16 @@ export function runCommand(command: string, args: string[]): Promise<RenderComma
     const stdout: string[] = [];
     const stderr: string[] = [];
 
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk.toString()));
+    child.stdout.on("data", (chunk: Buffer) => {
+      const chunkStr = chunk.toString();
+      stdout.push(chunkStr);
+      process.stdout.write(chunkStr);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      const chunkStr = chunk.toString();
+      stderr.push(chunkStr);
+      process.stderr.write(chunkStr);
+    });
     child.on("error", (error) => reject(error));
     child.on("close", (code) => {
       const result = {
