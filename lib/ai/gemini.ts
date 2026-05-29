@@ -10,8 +10,13 @@ export type GeminiAnalysisResult = {
 };
 
 async function extractVideoAssets(videoPath: string, workDir: string) {
-  const mediaInfo = await probeMediaInfo(videoPath);
-  const duration = mediaInfo.duration || 10; // fallback to 10 seconds if probe fails
+  let duration = 10;
+  try {
+    const mediaInfo = await probeMediaInfo(videoPath);
+    duration = mediaInfo.duration || 10;
+  } catch (probeErr) {
+    console.warn("Falha ao obter informacoes de duracao com ffprobe, usando padrao de 10s:", probeErr);
+  }
 
   const assetsDir = path.join(workDir, "gemini-assets");
   await mkdir(assetsDir, { recursive: true });
@@ -28,6 +33,7 @@ async function extractVideoAssets(videoPath: string, workDir: string) {
       "-i", videoPath,
       "-vframes", "1",
       "-vf", "scale=512:-1",
+      "-update", "1",
       framePath
     ];
     try {
