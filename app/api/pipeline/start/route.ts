@@ -150,11 +150,15 @@ export async function POST(request: Request) {
                 });
               } catch (geminiErr) {
                 console.error("Erro na análise do Gemini, usando fallback:", geminiErr);
+                const errMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
+                await supabase.from("reaction_jobs").update({
+                  error_message: `Gemini Error: ${errMsg}`
+                }).eq("id", jobId);
                 await supabase.from("job_events").insert({
                   user_id: APP_WORKSPACE_ID,
                   job_id: jobId,
                   event_type: "gemini_analysis_failed",
-                  message: `Falha na análise automática: ${geminiErr instanceof Error ? geminiErr.message : "Erro desconhecido"}. Usando roteiro de fallback.`
+                  message: `Falha na análise automática: ${errMsg}. Usando roteiro de fallback.`
                 });
                 
                 await supabase.from("reaction_jobs").update({ status: "scripting" }).eq("id", jobId);
@@ -437,7 +441,11 @@ export async function POST(request: Request) {
             });
           } catch (geminiErr) {
             console.error("Erro na análise do Gemini localmente, usando fallback:", geminiErr);
-            await updateLocalJob(jobId, { status: "scripting" });
+            const errMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
+            await updateLocalJob(jobId, { 
+              status: "scripting",
+              error_message: `Gemini Error: ${errMsg}` 
+            });
             scriptText = await generateReactionScript({
               topic: localJobRecord.topic,
               viralVideos: [],
