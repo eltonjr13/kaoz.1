@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+import time
 from pathlib import Path
 
 
@@ -26,9 +27,18 @@ def load_dependencies():
 def process_file(image_module, remove, input_path: Path, output_path: Path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with image_module.open(input_path) as image:
-        result = remove(image.convert("RGBA"))
-        result.save(output_path)
+    # Retry mechanism to handle Windows/OneDrive file locking or VFS sync latency
+    for attempt in range(5):
+        try:
+            with image_module.open(input_path) as image:
+                result = remove(image.convert("RGBA"))
+                result.save(output_path)
+            return
+        except Exception as exc:
+            if attempt == 4:
+                raise exc
+            print(f"Aviso: Tentativa {attempt + 1} falhou para {input_path.name}: {exc}. Retentando...", file=sys.stderr)
+            time.sleep(0.3)
 
 
 def iter_input_files(input_dir: Path):

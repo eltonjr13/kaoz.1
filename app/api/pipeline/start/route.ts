@@ -465,6 +465,7 @@ export async function POST(request: Request) {
           }
         }
 
+        console.log(`[Local Pipeline] Iniciando geração de voz (OmniVoice)...`);
         const voiceResult = await generateOmniVoice({
           script: scriptText,
           voiceId: "default",
@@ -473,8 +474,10 @@ export async function POST(request: Request) {
           settings: localJobRecord.voice_settings
         });
         await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
+        console.log(`[Local Pipeline] Geração de voz concluída com sucesso! Áudio salvo em: ${voiceResult.audioPath}`);
 
         // 3. Lip-sync stage (Stub)
+        console.log(`[Local Pipeline] Iniciando sincronização labial (lip-sync)...`);
         await updateLocalJob(jobId, { status: "lip_syncing" });
         const voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
         const lipSyncResult = await createLipSyncVideo({
@@ -483,8 +486,10 @@ export async function POST(request: Request) {
           jobId
         });
         await updateLocalJob(jobId, { lip_sync_video_path: lipSyncResult.videoPath });
+        console.log(`[Local Pipeline] Sincronização labial concluída! Vídeo: ${lipSyncResult.videoPath}`);
 
         // 4. Rendering stage
+        console.log(`[Local Pipeline] Iniciando renderização do vídeo vertical final (FFmpeg)...`);
         await updateLocalJob(jobId, { status: "rendering" });
         const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
         await renderVerticalVideo({
@@ -499,9 +504,11 @@ export async function POST(request: Request) {
           outputPath,
           workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
         });
+        console.log(`[Local Pipeline] Renderização de vídeo concluída! Vídeo salvo em: ${outputPath}`);
 
         // 5. Completion
         await completeLocalJob(jobId, publicVideoPath);
+        console.log(`[Local Pipeline] Job ${jobId} COMPLETO com sucesso!`);
       } catch (renderError) {
         console.error("Erro no processamento local do pipeline em segundo plano:", renderError);
         await updateLocalJob(jobId, {

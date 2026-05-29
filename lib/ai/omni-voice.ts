@@ -26,7 +26,9 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
   }
 
   // Connect to Gradio client
+  console.log(`[OmniVoice] Conectando à API Gradio: ${apiUrl}`);
   const app = await Client.connect(apiUrl);
+  console.log("[OmniVoice] Conectado com sucesso à API Gradio!");
 
   // Extract advanced voice parameters with safe fallbacks
   const settings = input.settings || {};
@@ -46,6 +48,7 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
       // Mode: Voice Clone (predict(0))
       console.log(`[OmniVoice] Iniciando Clonagem de Voz usando: ${input.refAudioPath}`);
       const ref_audio = handle_file(input.refAudioPath);
+      console.log("[OmniVoice] Enviando requisição de clonagem para o Gradio (isso pode levar de 30 a 60 segundos)...");
       result = await app.predict(0, [
         input.script,         // vc_text
         "Portuguese (pt)",    // vc_lang
@@ -59,9 +62,11 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
         pp,                   // vc_pp
         po                    // vc_po
       ]);
+      console.log("[OmniVoice] Clonagem de voz concluída no Gradio!");
     } else {
       // Mode: Voice Design (predict(1))
       console.log("[OmniVoice] Iniciando Voice Design (fallback padrão)");
+      console.log("[OmniVoice] Enviando requisição de design de voz para o Gradio...");
       result = await app.predict(1, [
         input.script,         // vd_text
         "Portuguese (pt)",    // vd_lang
@@ -79,6 +84,7 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
         "Auto",               // English Accent
         "Auto"                // Chinese Dialect
       ]);
+      console.log("[OmniVoice] Design de voz concluído no Gradio!");
     }
   } finally {
     try {
