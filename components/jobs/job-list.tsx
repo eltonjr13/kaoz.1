@@ -1,4 +1,8 @@
-import { Download, ExternalLink } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Download, ExternalLink, RefreshCw } from "lucide-react";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 import type { JobListItem } from "@/app/(dashboard)/jobs/page";
 
@@ -23,6 +27,31 @@ function getPlatformLabel(platform: string) {
 }
 
 export function JobList({ jobs }: { jobs: JobListItem[] }) {
+  const router = useRouter();
+  const [loadingJobId, setLoadingJobId] = useState<string | null>(null);
+
+  async function handleRestart(jobId: string) {
+    setLoadingJobId(jobId);
+    try {
+      const response = await fetch("/api/pipeline/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId })
+      });
+      if (response.ok) {
+        router.refresh();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.error || "Erro ao reiniciar o pipeline.");
+      }
+    } catch (err) {
+      console.error("Erro de conexão ao reiniciar o pipeline:", err);
+      alert("Erro de conexão ao reiniciar o pipeline.");
+    } finally {
+      setLoadingJobId(null);
+    }
+  }
+
   return (
     <div className="table-wrap">
       <table className="data-table">
@@ -33,7 +62,7 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
             <th>Fonte</th>
             <th>Status</th>
             <th>Criado em</th>
-            <th>Download</th>
+            <th>Ações / Download</th>
           </tr>
         </thead>
         <tbody>
@@ -67,7 +96,22 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                       <Download size={16} /> Baixar
                     </a>
                   ) : (
-                    <span className="muted">-</span>
+                    <button
+                      className="button secondary"
+                      style={{ 
+                        display: "inline-flex", 
+                        alignItems: "center", 
+                        gap: "6px",
+                        padding: "6px 12px",
+                        fontSize: "13px",
+                        minHeight: "auto"
+                      }}
+                      onClick={() => handleRestart(job.id)}
+                      disabled={loadingJobId !== null}
+                    >
+                      <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
+                      {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
+                    </button>
                   )}
                 </td>
               </tr>
