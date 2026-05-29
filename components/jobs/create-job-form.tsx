@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
-import type { Avatar, RenderLayout } from "@/types";
+import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors } from "lucide-react";
+import type { Avatar, ExpertBackgroundMode, RenderLayout } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 type CreateJobFormProps = {
@@ -43,10 +43,12 @@ export function CreateJobForm({
   const [sourceVideoUrl, setSourceVideoUrl] = useState(initialSourceVideoUrl);
   const [sourceVideoTitle, setSourceVideoTitle] = useState(initialSourceVideoTitle);
   const [renderLayout, setRenderLayout] = useState<RenderLayout>("source_pip");
+  const [expertBackgroundMode, setExpertBackgroundMode] = useState<ExpertBackgroundMode>("original");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
   const SourceIcon = parsedSourceVideo?.platform === "instagram" ? Camera : Play;
+  const canRemoveExpertBackground = renderLayout === "source_pip";
 
   // Voice advanced settings state
   const [inferenceSteps, setInferenceSteps] = useState(32);
@@ -79,6 +81,7 @@ export function CreateJobForm({
           sourceVideoUrl: sourceVideoUrl.trim() || null,
           sourceVideoTitle: sourceVideoTitle.trim() || null,
           renderLayout,
+          expertBackgroundMode,
           voiceSettings: {
             inference_steps: inferenceSteps,
             guidance_scale: guidanceScale,
@@ -115,7 +118,7 @@ export function CreateJobForm({
 
       router.push("/jobs");
       router.refresh();
-    } catch (err) {
+    } catch {
       setIsLoading(false);
       setMessage("Erro de conexao ao processar requisicoes.");
     }
@@ -172,7 +175,12 @@ export function CreateJobForm({
             <button
               className={`layout-option ${renderLayout === option.value ? "active" : ""}`}
               type="button"
-              onClick={() => setRenderLayout(option.value)}
+              onClick={() => {
+                setRenderLayout(option.value);
+                if (option.value !== "source_pip") {
+                  setExpertBackgroundMode("original");
+                }
+              }}
               key={option.value}
             >
               {option.label}
@@ -180,6 +188,20 @@ export function CreateJobForm({
           ))}
         </div>
         <span className="field-hint">{layoutOptions.find((option) => option.value === renderLayout)?.description}</span>
+      </div>
+
+      <div className="field">
+        <label className={`toggle-row ${!canRemoveExpertBackground ? "disabled" : ""}`}>
+          <input
+            type="checkbox"
+            checked={expertBackgroundMode === "remove"}
+            disabled={!canRemoveExpertBackground}
+            onChange={(event) => setExpertBackgroundMode(event.target.checked ? "remove" : "original")}
+          />
+          <Scissors size={18} />
+          <span>Remover fundo do expert</span>
+        </label>
+        <span className="field-hint">Disponivel no layout Fonte cheia + expert. Exige rembg no worker.</span>
       </div>
 
       {/* Advanced Voice Settings */}
@@ -381,7 +403,10 @@ export function CreateJobForm({
         )}
       </div>
 
-      <div className={`collage-preview ${renderLayout}`} aria-label="Preview da colagem">
+      <div
+        className={`collage-preview ${renderLayout} ${expertBackgroundMode === "remove" ? "expert-cutout" : ""}`}
+        aria-label="Preview da colagem"
+      >
         <div className="collage-preview-source">
           <SourceIcon size={18} />
           <span>

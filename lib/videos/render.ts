@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { parseSourceVideoUrl } from "@/lib/videos/source-video";
+import { prepareExpertCutout } from "@/lib/videos/expert-background";
+import type { ExpertBackgroundMode } from "@/types";
 
 export type ReactionRenderLayout = "source_pip" | "source_top_expert_bottom" | "balanced_split";
 
@@ -13,6 +15,7 @@ export type RenderVerticalVideoInput = {
   voiceAudioPath?: string | null;
   reactionIsImage?: boolean;
   layout?: ReactionRenderLayout | null;
+  expertBackgroundMode?: ExpertBackgroundMode | null;
   outputPath?: string | null;
   workDir?: string | null;
 };
@@ -36,6 +39,10 @@ const PIP_EXPERT_WIDTH = 420;
 const PIP_EXPERT_HEIGHT = 560;
 const PIP_MARGIN_X = 44;
 const PIP_MARGIN_Y = 64;
+const CUTOUT_EXPERT_WIDTH = 560;
+const CUTOUT_EXPERT_HEIGHT = 760;
+const CUTOUT_MARGIN_X = 0;
+const CUTOUT_MARGIN_Y = 0;
 const FPS = 30;
 const LOOP_THRESHOLD_SECONDS = 30;
 
@@ -253,20 +260,31 @@ async function createBoomerangReactionVideo(reactionPath: string, workDir: strin
   return boomerangPath;
 }
 
-async function prepareReactionVideo(input: RenderVerticalVideoInput, workDir: string) {
+async function prepareReactionVideo(input: RenderVerticalVideoInput, workDir: string, shouldRemoveBackground: boolean) {
   const reactionPath = input.reactionVideoPath;
   const isImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(reactionPath);
+  let preparedPath = reactionPath;
 
-  if (isImage) {
-    return reactionPath;
+  if (!isImage) {
+    try {
+      preparedPath = await createBoomerangReactionVideo(reactionPath, workDir);
+    } catch (error) {
+      console.error("Falha ao criar boomerang do avatar, usando original:", error);
+      preparedPath = reactionPath;
+    }
   }
 
-  try {
-    return await createBoomerangReactionVideo(reactionPath, workDir);
-  } catch (error) {
-    console.error("Falha ao criar boomerang do avatar, usando original:", error);
-    return reactionPath;
+  if (shouldRemoveBackground) {
+    return prepareExpertCutout({
+      mediaPath: preparedPath,
+      workDir,
+      isImage,
+      fps: FPS,
+      renderWithFfmpeg
+    });
   }
+
+  return preparedPath;
 }
 
 function buildStackedFilter(sourceHeight: number, expertHeight: number) {
@@ -277,13 +295,24 @@ function buildStackedFilter(sourceHeight: number, expertHeight: number) {
   ].join(";");
 }
 
-export function buildReactionCollageFilter(layout: ReactionRenderLayout = "source_pip") {
+export function buildReactionCollageFilter(
+  layout: ReactionRenderLayout = "source_pip",
+  expertBackgroundMode: ExpertBackgroundMode = "original"
+) {
   if (layout === "source_top_expert_bottom") {
     return buildStackedFilter(SOURCE_DOMINANT_SOURCE_HEIGHT, SOURCE_DOMINANT_EXPERT_HEIGHT);
   }
 
   if (layout === "balanced_split") {
     return buildStackedFilter(BALANCED_SOURCE_HEIGHT, BALANCED_EXPERT_HEIGHT);
+  }
+
+  if (expertBackgroundMode === "remove") {
+    return [
+      `[1:v]scale=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT}:force_original_aspect_ratio=increase,crop=${COLLAGE_WIDTH}:${COLLAGE_HEIGHT},setsar=1,fps=${FPS}[source]`,
+      `[0:v]scale=${CUTOUT_EXPERT_WIDTH}:${CUTOUT_EXPERT_HEIGHT}:force_original_aspect_ratio=decrease,setsar=1,fps=${FPS},format=rgba[expert]`,
+      `[source][expert]overlay=x=${CUTOUT_MARGIN_X}:y=H-h-${CUTOUT_MARGIN_Y}:shortest=1[vout]`
+    ].join(";");
   }
 
   return [
@@ -317,11 +346,13 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
   await mkdir(path.dirname(outputPath), { recursive: true });
 
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
-  const preparedReactionPath = await prepareReactionVideo(input, workDir);
-  const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
   const layout = input.layout ?? "source_pip";
+  const expertBackgroundMode =
+    input.expertBackgroundMode === "remove" && sourceVideoPath && layout === "source_pip" ? "remove" : "original";
+  const preparedReactionPath = await prepareReactionVideo(input, workDir, expertBackgroundMode === "remove");
+  const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
 
-  const filter = sourceVideoPath ? buildReactionCollageFilter(layout) : buildExpertOnlyFilter();
+  const filter = sourceVideoPath ? buildReactionCollageFilter(layout, expertBackgroundMode) : buildExpertOnlyFilter();
   const inputArgs = sourceVideoPath
     ? [
         ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),

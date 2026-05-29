@@ -83,6 +83,7 @@ create table if not exists public.reaction_jobs (
   source_video_id uuid references public.viral_videos(id) on delete set null,
   topic text not null,
   render_layout text not null default 'source_pip',
+  expert_background_mode text not null default 'original',
   status public.job_status not null default 'draft',
   script_text text,
   voice_provider text,
@@ -97,6 +98,9 @@ create table if not exists public.reaction_jobs (
 
 alter table public.reaction_jobs
 add column if not exists render_layout text not null default 'source_pip';
+
+alter table public.reaction_jobs
+add column if not exists expert_background_mode text not null default 'original';
 
 alter table public.reaction_jobs
 add column if not exists voice_settings jsonb not null default '{}'::jsonb;

@@ -14,6 +14,7 @@ Funcionalidades implementadas:
 - Busca viral em `/viral-search`, gerando oportunidades por nicho para TikTok, Instagram e YouTube.
 - Criacao de jobs em `/jobs/new`, incluindo assunto, avatar e link de video fonte para colagem.
 - Selecao de layout por job, com 3 modelos: fonte cheia com expert flutuante, fonte dominante e divisao equilibrada.
+- Remocao opcional de fundo do expert no layout de fonte cheia, deixando o expert recortado sobre o video fonte.
 - Listagem de jobs em `/jobs`, com status, fonte usada e download quando houver render final.
 - APIs internas para avatares, jobs, busca viral e inicio do pipeline.
 - Persistencia em Supabase quando configurado, com fallback local em `.generated/local-data`.
@@ -26,6 +27,7 @@ Pontos ainda parciais ou dependentes de servico externo:
 - A voz depende de uma instancia OmniVoice/Gradio acessivel por `OMNIVOICE_API_URL`.
 - O download de Instagram/YouTube para render depende de `yt-dlp`.
 - A geracao de roteiro usa OpenAI quando `OPENAI_API_KEY` existe; sem chave, usa um texto fallback.
+- A remocao de fundo do expert depende de Python com `rembg`, `pillow` e `onnxruntime`.
 
 ## Stack
 
@@ -101,6 +103,13 @@ Tambem e possivel configurar caminhos explicitos:
 FFMPEG_PATH=
 FFPROBE_PATH=
 YTDLP_PATH=
+REMBG_PYTHON_PATH=
+```
+
+Para usar o recorte do expert, instale as dependencias Python no worker:
+
+```bash
+python -m pip install rembg pillow onnxruntime
 ```
 
 ## Rodando
@@ -134,6 +143,7 @@ npm run typecheck  # TypeScript sem emitir arquivos
    - `Fonte cheia + expert`: video fonte em tela cheia com expert menor no canto.
    - `Fonte dominante`: video fonte no topo e expert menor embaixo.
    - `Divisao equilibrada`: video fonte maior, mas com mais presenca do expert.
+   - Opcionalmente marque `Remover fundo do expert` para gerar o formato com expert recortado sobre a fonte.
 5. O app inicia o pipeline:
    - gera roteiro;
    - gera voz via OmniVoice;

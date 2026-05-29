@@ -248,6 +248,7 @@ export async function POST(request: Request) {
               sourceVideoUrl: sourceUrl ?? null,
               voiceAudioPath: localVoiceDiskPath,
               layout: jobRecord.render_layout ?? "source_pip",
+              expertBackgroundMode: jobRecord.expert_background_mode ?? "original",
               outputPath: localOutputPath,
               workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
             });
@@ -379,6 +380,7 @@ export async function POST(request: Request) {
         sourceVideoUrl: localJobRecord.source_video_url ?? null,
         voiceAudioPath: voiceDiskPath,
         layout: localJobRecord.render_layout ?? "source_pip",
+        expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",
         outputPath,
         workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
       });

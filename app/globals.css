@@ -399,6 +399,27 @@ video {
   background: var(--brand);
 }
 
+.toggle-row {
+  display: grid;
+  grid-template-columns: 20px auto 1fr;
+  gap: 10px;
+  align-items: center;
+  width: fit-content;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.toggle-row.disabled {
+  color: var(--muted);
+}
+
 .checkbox-row {
   display: grid;
   grid-template-columns: 20px 1fr;
@@ -477,6 +498,19 @@ video {
   border: 2px solid rgba(255, 255, 255, 0.85);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.collage-preview.source_pip.expert-cutout .collage-preview-expert {
+  right: auto;
+  left: 0;
+  bottom: 0;
+  width: 48%;
+  height: 38%;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 18%, #f4c7a2 0 18%, transparent 19%),
+    linear-gradient(160deg, transparent 0 25%, var(--brand) 26% 100%);
 }
 
 .collage-preview.source_top_expert_bottom,

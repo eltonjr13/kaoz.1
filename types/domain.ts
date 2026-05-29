@@ -12,6 +12,8 @@ export type JobStatus =
 
 export type RenderLayout = "source_pip" | "source_top_expert_bottom" | "balanced_split";
 
+export type ExpertBackgroundMode = "original" | "remove";
+
 export type Avatar = {
   id: string;
   user_id: string;
@@ -57,6 +59,7 @@ export type ReactionJob = {
   source_video_url?: string | null;
   source_video_title?: string | null;
   render_layout?: RenderLayout | null;
+  expert_background_mode?: ExpertBackgroundMode | null;
   topic: string;
   status: JobStatus;
   script_text: string | null;
@@ -69,4 +72,3 @@ export type ReactionJob = {
   created_at: string;
   updated_at: string;
 };
-

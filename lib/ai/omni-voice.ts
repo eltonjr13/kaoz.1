@@ -16,6 +16,8 @@ export type GeneratedVoice = {
   durationSeconds: number;
 };
 
+type GradioAudioOutput = string | { url?: string };
+
 export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
   const apiUrl = process.env.OMNIVOICE_API_URL;
 
@@ -78,7 +80,7 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
     ]);
   }
 
-  const data = result.data as any;
+  const data = result.data as GradioAudioOutput[];
   const audioData = data?.[0];
   const audioUrl = typeof audioData === "string" ? audioData : audioData?.url;
 

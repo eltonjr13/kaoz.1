@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+
 import type { Avatar } from "@/types";
 
 function getMediaUrl(filePath: string | null | undefined) {
