@@ -24,6 +24,7 @@ export type Avatar = {
   consent_accepted: boolean;
   consent_accepted_at: string;
   status: "ready" | "disabled";
+  personality?: any | null;
   created_at: string;
   updated_at: string;
 };
@@ -71,6 +72,8 @@ export type ReactionJob = {
   voice_settings?: VoiceSettings | null;
   source_video_description?: string | null;
   source_video_transcription?: string | null;
+  trim_start?: string | null;
+  trim_end?: string | null;
   created_at: string;
   updated_at: string;
 };
