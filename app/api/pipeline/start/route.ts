@@ -380,40 +380,52 @@ export async function POST(request: Request) {
 
     await updateLocalJobStatus(jobId, "queued");
 
-    try {
-      // 1. Research & Analysis stage
-      let downloadedSourcePath: string | null = null;
-      const localJobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
-      await mkdir(localJobDir, { recursive: true });
+    // Process local job asynchronously in background
+    (async () => {
+      try {
+        // 1. Research & Analysis stage
+        let downloadedSourcePath: string | null = null;
+        const localJobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+        await mkdir(localJobDir, { recursive: true });
 
-      const localSourceUrl = localJobRecord.source_video_url;
-      if (localSourceUrl) {
-        await updateLocalJob(jobId, { status: "researching", error_message: null });
-        try {
-          console.log(`[Local Pipeline] Baixando vídeo para análise: ${localSourceUrl}`);
-          downloadedSourcePath = await downloadSourceVideo(localSourceUrl, localJobDir);
-        } catch (dlErr) {
-          console.error("Falha ao baixar vídeo fonte localmente:", dlErr);
+        const localSourceUrl = localJobRecord.source_video_url;
+        if (localSourceUrl) {
+          await updateLocalJob(jobId, { status: "researching", error_message: null });
+          try {
+            console.log(`[Local Pipeline] Baixando vídeo para análise: ${localSourceUrl}`);
+            downloadedSourcePath = await downloadSourceVideo(localSourceUrl, localJobDir);
+          } catch (dlErr) {
+            console.error("Falha ao baixar vídeo fonte localmente:", dlErr);
+          }
         }
-      }
 
-      let scriptText = "";
-      if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
-        console.log("[Local Pipeline] Analisando vídeo com Gemini...");
-        try {
-          const geminiResult = await analyzeAndGenerateScript(
-            downloadedSourcePath,
-            localJobRecord.topic,
-            localJobDir
-          );
-          scriptText = geminiResult.script;
-          await updateLocalJob(jobId, {
-            script_text: geminiResult.script,
-            source_video_description: geminiResult.description,
-            source_video_transcription: geminiResult.transcription
-          });
-        } catch (geminiErr: any) {
-          console.error("Erro na análise do Gemini localmente, usando fallback:", geminiErr);
+        let scriptText = "";
+        if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
+          console.log("[Local Pipeline] Analisando vídeo com Gemini...");
+          try {
+            const geminiResult = await analyzeAndGenerateScript(
+              downloadedSourcePath,
+              localJobRecord.topic,
+              localJobDir
+            );
+            scriptText = geminiResult.script;
+            await updateLocalJob(jobId, {
+              script_text: geminiResult.script,
+              source_video_description: geminiResult.description,
+              source_video_transcription: geminiResult.transcription
+            });
+          } catch (geminiErr: any) {
+            console.error("Erro na análise do Gemini localmente, usando fallback:", geminiErr);
+            await updateLocalJob(jobId, { status: "scripting" });
+            scriptText = await generateReactionScript({
+              topic: localJobRecord.topic,
+              viralVideos: [],
+              sourceVideoDescription: localJobRecord.source_video_description,
+              sourceVideoTranscription: localJobRecord.source_video_transcription
+            });
+            await updateLocalJob(jobId, { script_text: scriptText });
+          }
+        } else {
           await updateLocalJob(jobId, { status: "scripting" });
           scriptText = await generateReactionScript({
             topic: localJobRecord.topic,
@@ -423,91 +435,83 @@ export async function POST(request: Request) {
           });
           await updateLocalJob(jobId, { script_text: scriptText });
         }
-      } else {
-        await updateLocalJob(jobId, { status: "scripting" });
-        scriptText = await generateReactionScript({
-          topic: localJobRecord.topic,
-          viralVideos: [],
-          sourceVideoDescription: localJobRecord.source_video_description,
-          sourceVideoTranscription: localJobRecord.source_video_transcription
-        });
-        await updateLocalJob(jobId, { script_text: scriptText });
-      }
 
-      // 2. Voice generation stage (OmniVoice)
-      await updateLocalJob(jobId, { status: "voice_generating" });
+        // 2. Voice generation stage (OmniVoice)
+        await updateLocalJob(jobId, { status: "voice_generating" });
 
-      let refAudioPath: string | null = null;
+        let refAudioPath: string | null = null;
 
-      if (localAvatar.voice_reference_path) {
-        if (localAvatar.voice_reference_path.startsWith("/")) {
-          refAudioPath = path.join(process.cwd(), "public", localAvatar.voice_reference_path.replace(/^\//, ""));
-        }
-      }
-
-      // Fallback to video audio extraction if voice_reference_path is missing but avatar is a video
-      if (!refAudioPath) {
-        const avatarIsVideo = /\.(mp4|mov|webm|mkv|avi)$/i.test(localAvatar.image_path);
-        if (avatarIsVideo) {
-          const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
-          await mkdir(jobDir, { recursive: true });
-          const extractedWav = path.join(jobDir, "ref-audio.wav");
-
-          try {
-            console.log(`[Start Pipeline] Extraindo áudio de referência do avatar: ${avatarDiskPath}`);
-            await extractReferenceAudio(avatarDiskPath, extractedWav);
-            refAudioPath = extractedWav;
-          } catch (audioErr) {
-            console.error("Falha ao extrair áudio de referência do avatar:", audioErr);
+        if (localAvatar.voice_reference_path) {
+          if (localAvatar.voice_reference_path.startsWith("/")) {
+            refAudioPath = path.join(process.cwd(), "public", localAvatar.voice_reference_path.replace(/^\//, ""));
           }
         }
+
+        // Fallback to video audio extraction if voice_reference_path is missing but avatar is a video
+        if (!refAudioPath) {
+          const avatarIsVideo = /\.(mp4|mov|webm|mkv|avi)$/i.test(localAvatar.image_path);
+          if (avatarIsVideo) {
+            const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+            await mkdir(jobDir, { recursive: true });
+            const extractedWav = path.join(jobDir, "ref-audio.wav");
+
+            try {
+              console.log(`[Start Pipeline] Extraindo áudio de referência do avatar: ${avatarDiskPath}`);
+              await extractReferenceAudio(avatarDiskPath, extractedWav);
+              refAudioPath = extractedWav;
+            } catch (audioErr) {
+              console.error("Falha ao extrair áudio de referência do avatar:", audioErr);
+            }
+          }
+        }
+
+        const voiceResult = await generateOmniVoice({
+          script: scriptText,
+          voiceId: "default",
+          jobId,
+          refAudioPath,
+          settings: localJobRecord.voice_settings
+        });
+        await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
+
+        // 3. Lip-sync stage (Stub)
+        await updateLocalJob(jobId, { status: "lip_syncing" });
+        const voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
+        const lipSyncResult = await createLipSyncVideo({
+          avatarPath: avatarDiskPath,
+          audioPath: voiceDiskPath,
+          jobId
+        });
+        await updateLocalJob(jobId, { lip_sync_video_path: lipSyncResult.videoPath });
+
+        // 4. Rendering stage
+        await updateLocalJob(jobId, { status: "rendering" });
+        const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
+        await renderVerticalVideo({
+          jobId,
+          reactionVideoPath: lipSyncResult.videoPath,
+          reactionIsImage,
+          sourceVideoUrl: localJobRecord.source_video_url ?? null,
+          sourceVideoPath: downloadedSourcePath,
+          voiceAudioPath: voiceDiskPath,
+          layout: localJobRecord.render_layout ?? "source_pip",
+          expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",
+          outputPath,
+          workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
+        });
+
+        // 5. Completion
+        await completeLocalJob(jobId, publicVideoPath);
+      } catch (renderError) {
+        console.error("Erro no processamento local do pipeline em segundo plano:", renderError);
+        await updateLocalJob(jobId, {
+          status: "failed",
+          error_message: renderError instanceof Error ? renderError.message : "Falha ao processar pipeline."
+        });
       }
+    })();
 
-      const voiceResult = await generateOmniVoice({
-        script: scriptText,
-        voiceId: "default",
-        jobId,
-        refAudioPath,
-        settings: localJobRecord.voice_settings
-      });
-      await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
-
-      // 3. Lip-sync stage (Stub)
-      await updateLocalJob(jobId, { status: "lip_syncing" });
-      const voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
-      const lipSyncResult = await createLipSyncVideo({
-        avatarPath: avatarDiskPath,
-        audioPath: voiceDiskPath,
-        jobId
-      });
-      await updateLocalJob(jobId, { lip_sync_video_path: lipSyncResult.videoPath });
-
-      // 4. Rendering stage
-      await updateLocalJob(jobId, { status: "rendering" });
-      const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
-      await renderVerticalVideo({
-        jobId,
-        reactionVideoPath: lipSyncResult.videoPath,
-        reactionIsImage,
-        sourceVideoUrl: localJobRecord.source_video_url ?? null,
-        sourceVideoPath: downloadedSourcePath,
-        voiceAudioPath: voiceDiskPath,
-        layout: localJobRecord.render_layout ?? "source_pip",
-        expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",
-        outputPath,
-        workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
-      });
-
-      // 5. Completion
-      const completedJob = await completeLocalJob(jobId, publicVideoPath);
-      return NextResponse.json({ job: completedJob ?? localJobRecord, started: true, storage: "local" });
-    } catch (renderError) {
-      await updateLocalJob(jobId, {
-        status: "failed",
-        error_message: renderError instanceof Error ? renderError.message : "Falha ao processar pipeline."
-      });
-      return jsonError(renderError instanceof Error ? renderError.message : "Falha ao processar pipeline.", 500);
-    }
+    return NextResponse.json({ job: localJobRecord, started: true, storage: "local" });
   }
 
   return jsonError("Job nao encontrado.", 404);
