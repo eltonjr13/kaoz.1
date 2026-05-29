@@ -23,6 +23,8 @@ type NewLocalJobInput = {
   expertBackgroundMode?: ExpertBackgroundMode;
   topic: string;
   voiceSettings?: VoiceSettings | null;
+  sourceVideoDescription?: string | null;
+  sourceVideoTranscription?: string | null;
 };
 
 
@@ -114,7 +116,9 @@ export async function createLocalJob({
   renderLayout = "source_pip",
   expertBackgroundMode = "original",
   topic,
-  voiceSettings = null
+  voiceSettings = null,
+  sourceVideoDescription = null,
+  sourceVideoTranscription = null
 }: NewLocalJobInput): Promise<ReactionJob> {
   const now = new Date().toISOString();
   const job: ReactionJob = {
@@ -135,6 +139,8 @@ export async function createLocalJob({
     final_video_path: null,
     error_message: null,
     voice_settings: voiceSettings ?? null,
+    source_video_description: sourceVideoDescription,
+    source_video_transcription: sourceVideoTranscription,
     created_at: now,
     updated_at: now
   };

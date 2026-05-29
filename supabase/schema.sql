@@ -311,3 +311,6 @@ on storage.objects for all
 to anon, authenticated
 using (bucket_id in ('avatars', 'job-assets', 'renders'))
 with check (bucket_id in ('avatars', 'job-assets', 'renders'));
+
+alter table public.reaction_jobs add column if not exists source_video_description text;
+alter table public.reaction_jobs add column if not exists source_video_transcription text;

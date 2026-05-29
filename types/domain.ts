@@ -69,6 +69,8 @@ export type ReactionJob = {
   final_video_path: string | null;
   error_message: string | null;
   voice_settings?: VoiceSettings | null;
+  source_video_description?: string | null;
+  source_video_transcription?: string | null;
   created_at: string;
   updated_at: string;
 };
