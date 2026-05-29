@@ -46,7 +46,7 @@ const CUTOUT_MARGIN_Y = 0;
 const FPS = 30;
 const LOOP_THRESHOLD_SECONDS = 30;
 
-function getFfmpegPath() {
+export function getFfmpegPath() {
   return process.env.FFMPEG_PATH || "ffmpeg";
 }
 
@@ -66,7 +66,7 @@ function isRemoteUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
-function runCommand(command: string, args: string[]): Promise<RenderCommandResult> {
+export function runCommand(command: string, args: string[]): Promise<RenderCommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { windowsHide: true });
     const stdout: string[] = [];
@@ -95,7 +95,7 @@ function isMissingCommandError(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-async function probeMediaInfo(mediaPath: string) {
+export async function probeMediaInfo(mediaPath: string) {
   try {
     const result = await runCommand(getFfprobePath(), [
       "-v",
@@ -174,7 +174,7 @@ async function createBoomerangSourceVideo(sourcePath: string, workDir: string) {
   return boomerangPath;
 }
 
-async function downloadSourceVideo(rawUrl: string, workDir: string) {
+export async function downloadSourceVideo(rawUrl: string, workDir: string) {
   const parsedUrl = parseSourceVideoUrl(rawUrl);
 
   if (!parsedUrl) {

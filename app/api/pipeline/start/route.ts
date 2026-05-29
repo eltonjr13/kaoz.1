@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { completeLocalJob, findLocalAvatar, findLocalJob, updateLocalJob, updateLocalJobStatus } from "@/lib/local-store";
-import { renderVerticalVideo } from "@/lib/videos/render";
+import { renderVerticalVideo, downloadSourceVideo } from "@/lib/videos/render";
 import { PipelineError, startReactionPipeline } from "@/lib/videos/pipeline";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
@@ -10,6 +10,7 @@ import { generateOmniVoice } from "@/lib/ai/omni-voice";
 import { createLipSyncVideo } from "@/lib/videos/lip-sync";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { analyzeAndGenerateScript } from "@/lib/ai/gemini";
 
 function extractReferenceAudio(videoPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -74,22 +75,95 @@ export async function POST(request: Request) {
               throw new Error("Avatar associado não encontrado.");
             }
 
-            // 1. Scripting stage
-            await supabase.from("reaction_jobs").update({ status: "scripting", error_message: null }).eq("id", jobId);
-            await supabase.from("job_events").insert({
-              user_id: APP_WORKSPACE_ID,
-              job_id: jobId,
-              event_type: "scripting_started",
-              message: "Gerando roteiro da reação..."
-            });
+            // 1. Scripting/Research stage
+            let downloadedSourcePath: string | null = null;
+            const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+            await mkdir(jobDir, { recursive: true });
 
-            const scriptText = await generateReactionScript({
-              topic: jobRecord.topic,
-              viralVideos: [],
-              sourceVideoDescription: jobRecord.source_video_description,
-              sourceVideoTranscription: jobRecord.source_video_transcription
-            });
-            await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
+            let sourceUrl = jobRecord.source_video_url;
+            if (jobRecord.source_video_id) {
+              const { data: viralVideo } = await supabase
+                .from("viral_videos")
+                .select("url")
+                .eq("id", jobRecord.source_video_id)
+                .single();
+              if (viralVideo) {
+                sourceUrl = viralVideo.url;
+              }
+            }
+
+            if (sourceUrl) {
+              await supabase.from("reaction_jobs").update({ status: "researching", error_message: null }).eq("id", jobId);
+              await supabase.from("job_events").insert({
+                user_id: APP_WORKSPACE_ID,
+                job_id: jobId,
+                event_type: "researching_started",
+                message: "Baixando o vídeo de origem para análise multimodal..."
+              });
+              try {
+                downloadedSourcePath = await downloadSourceVideo(sourceUrl, jobDir);
+              } catch (dlErr) {
+                console.error("Falha ao baixar vídeo fonte no pipeline Supabase:", dlErr);
+              }
+            }
+
+            let scriptText = "";
+            if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
+              await supabase.from("job_events").insert({
+                user_id: APP_WORKSPACE_ID,
+                job_id: jobId,
+                event_type: "gemini_analysis_started",
+                message: "Analisando áudio e quadros do vídeo com Gemini..."
+              });
+
+              try {
+                const geminiResult = await analyzeAndGenerateScript(
+                  downloadedSourcePath,
+                  jobRecord.topic,
+                  jobDir
+                );
+                scriptText = geminiResult.script;
+
+                await supabase.from("reaction_jobs").update({
+                  script_text: geminiResult.script,
+                  source_video_description: geminiResult.description,
+                  source_video_transcription: geminiResult.transcription
+                }).eq("id", jobId);
+
+                await supabase.from("job_events").insert({
+                  user_id: APP_WORKSPACE_ID,
+                  job_id: jobId,
+                  event_type: "gemini_analysis_completed",
+                  message: "Análise do Gemini concluída e roteiro gerado."
+                });
+              } catch (geminiErr: any) {
+                console.error("Erro na análise do Gemini, usando fallback:", geminiErr);
+                await supabase.from("job_events").insert({
+                  user_id: APP_WORKSPACE_ID,
+                  job_id: jobId,
+                  event_type: "gemini_analysis_failed",
+                  message: `Falha na análise automática: ${geminiErr.message}. Usando roteiro de fallback.`
+                });
+                
+                await supabase.from("reaction_jobs").update({ status: "scripting" }).eq("id", jobId);
+                scriptText = await generateReactionScript({
+                  topic: jobRecord.topic,
+                  viralVideos: [],
+                  sourceVideoDescription: jobRecord.source_video_description,
+                  sourceVideoTranscription: jobRecord.source_video_transcription
+                });
+                await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
+              }
+            } else {
+              await supabase.from("reaction_jobs").update({ status: "scripting" }).eq("id", jobId);
+              scriptText = await generateReactionScript({
+                topic: jobRecord.topic,
+                viralVideos: [],
+                sourceVideoDescription: jobRecord.source_video_description,
+                sourceVideoTranscription: jobRecord.source_video_transcription
+              });
+              await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
+            }
 
             // 2. Voice generation stage (OmniVoice)
             await supabase.from("reaction_jobs").update({ status: "voice_generating" }).eq("id", jobId);
@@ -231,23 +305,14 @@ export async function POST(request: Request) {
             const localOutputPath = path.join(process.cwd(), ".generated", "jobs", jobId, "final-reaction.mp4");
             const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
 
-            let sourceUrl = jobRecord.source_video_url;
-            if (jobRecord.source_video_id) {
-              const { data: viralVideo } = await supabase
-                .from("viral_videos")
-                .select("url")
-                .eq("id", jobRecord.source_video_id)
-                .single();
-              if (viralVideo) {
-                sourceUrl = viralVideo.url;
-              }
-            }
+
 
             await renderVerticalVideo({
               jobId,
               reactionVideoPath: lipSyncResult.videoPath,
               reactionIsImage,
               sourceVideoUrl: sourceUrl ?? null,
+              sourceVideoPath: downloadedSourcePath,
               voiceAudioPath: localVoiceDiskPath,
               layout: jobRecord.render_layout ?? "source_pip",
               expertBackgroundMode: jobRecord.expert_background_mode ?? "original",
@@ -316,15 +381,58 @@ export async function POST(request: Request) {
     await updateLocalJobStatus(jobId, "queued");
 
     try {
-      // 1. Scripting stage
-      await updateLocalJob(jobId, { status: "scripting", error_message: null });
-      const scriptText = await generateReactionScript({
-        topic: localJobRecord.topic,
-        viralVideos: [],
-        sourceVideoDescription: localJobRecord.source_video_description,
-        sourceVideoTranscription: localJobRecord.source_video_transcription
-      });
-      await updateLocalJob(jobId, { script_text: scriptText });
+      // 1. Research & Analysis stage
+      let downloadedSourcePath: string | null = null;
+      const localJobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
+      await mkdir(localJobDir, { recursive: true });
+
+      const localSourceUrl = localJobRecord.source_video_url;
+      if (localSourceUrl) {
+        await updateLocalJob(jobId, { status: "researching", error_message: null });
+        try {
+          console.log(`[Local Pipeline] Baixando vídeo para análise: ${localSourceUrl}`);
+          downloadedSourcePath = await downloadSourceVideo(localSourceUrl, localJobDir);
+        } catch (dlErr) {
+          console.error("Falha ao baixar vídeo fonte localmente:", dlErr);
+        }
+      }
+
+      let scriptText = "";
+      if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
+        console.log("[Local Pipeline] Analisando vídeo com Gemini...");
+        try {
+          const geminiResult = await analyzeAndGenerateScript(
+            downloadedSourcePath,
+            localJobRecord.topic,
+            localJobDir
+          );
+          scriptText = geminiResult.script;
+          await updateLocalJob(jobId, {
+            script_text: geminiResult.script,
+            source_video_description: geminiResult.description,
+            source_video_transcription: geminiResult.transcription
+          });
+        } catch (geminiErr: any) {
+          console.error("Erro na análise do Gemini localmente, usando fallback:", geminiErr);
+          await updateLocalJob(jobId, { status: "scripting" });
+          scriptText = await generateReactionScript({
+            topic: localJobRecord.topic,
+            viralVideos: [],
+            sourceVideoDescription: localJobRecord.source_video_description,
+            sourceVideoTranscription: localJobRecord.source_video_transcription
+          });
+          await updateLocalJob(jobId, { script_text: scriptText });
+        }
+      } else {
+        await updateLocalJob(jobId, { status: "scripting" });
+        scriptText = await generateReactionScript({
+          topic: localJobRecord.topic,
+          viralVideos: [],
+          sourceVideoDescription: localJobRecord.source_video_description,
+          sourceVideoTranscription: localJobRecord.source_video_transcription
+        });
+        await updateLocalJob(jobId, { script_text: scriptText });
+      }
 
       // 2. Voice generation stage (OmniVoice)
       await updateLocalJob(jobId, { status: "voice_generating" });
@@ -382,6 +490,7 @@ export async function POST(request: Request) {
         reactionVideoPath: lipSyncResult.videoPath,
         reactionIsImage,
         sourceVideoUrl: localJobRecord.source_video_url ?? null,
+        sourceVideoPath: downloadedSourcePath,
         voiceAudioPath: voiceDiskPath,
         layout: localJobRecord.render_layout ?? "source_pip",
         expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",

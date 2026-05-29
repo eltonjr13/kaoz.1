@@ -44,8 +44,6 @@ export function CreateJobForm({
   const [sourceVideoTitle, setSourceVideoTitle] = useState(initialSourceVideoTitle);
   const [renderLayout, setRenderLayout] = useState<RenderLayout>("source_pip");
   const [expertBackgroundMode, setExpertBackgroundMode] = useState<ExpertBackgroundMode>("original");
-  const [sourceVideoDescription, setSourceVideoDescription] = useState("");
-  const [sourceVideoTranscription, setSourceVideoTranscription] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
@@ -84,8 +82,6 @@ export function CreateJobForm({
           sourceVideoTitle: sourceVideoTitle.trim() || null,
           renderLayout,
           expertBackgroundMode,
-          sourceVideoDescription: sourceVideoDescription.trim() || null,
-          sourceVideoTranscription: sourceVideoTranscription.trim() || null,
           voiceSettings: {
             inference_steps: inferenceSteps,
             guidance_scale: guidanceScale,
@@ -169,28 +165,6 @@ export function CreateJobForm({
           value={sourceVideoTitle}
           onChange={(event) => setSourceVideoTitle(event.target.value)}
           placeholder="Referencia escolhida"
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor="sourceVideoDescription">Contexto/Descrição do Vídeo (Opcional)</label>
-        <textarea
-          id="sourceVideoDescription"
-          value={sourceVideoDescription}
-          onChange={(event) => setSourceVideoDescription(event.target.value)}
-          placeholder="Descreva o que acontece no vídeo de origem (ex: o gato espirra e cai da mesa)"
-          rows={3}
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor="sourceVideoTranscription">Transcrição/Legenda do Vídeo (Opcional)</label>
-        <textarea
-          id="sourceVideoTranscription"
-          value={sourceVideoTranscription}
-          onChange={(event) => setSourceVideoTranscription(event.target.value)}
-          placeholder="Cole falas ou legendas específicas do vídeo fonte para a reação comentar"
-          rows={3}
         />
       </div>
 
