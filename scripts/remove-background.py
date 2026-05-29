@@ -2,15 +2,20 @@
 import argparse
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
+MODEL_PATH = Path(__file__).parent / "selfie_segmenter.tflite"
 
 
 def load_dependencies():
     try:
         from PIL import Image
         import mediapipe as mp
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python import vision
         import numpy as np
     except ModuleNotFoundError as exc:
         missing = exc.name or "mediapipe"
@@ -21,10 +26,23 @@ def load_dependencies():
         )
         raise SystemExit(2)
 
-    return Image, np, mp
+    return Image, np, mp, python, vision
 
 
-def process_file(image_module, numpy_module, segmentor, input_path: Path, output_path: Path):
+def download_model_if_needed():
+    if not MODEL_PATH.exists():
+        print(f"Baixando modelo do MediaPipe de {MODEL_URL} para {MODEL_PATH}...", file=sys.stderr)
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Download file
+            urllib.request.urlretrieve(MODEL_URL, str(MODEL_PATH))
+            print("Download concluido.", file=sys.stderr)
+        except Exception as exc:
+            print(f"Erro ao baixar o modelo do MediaPipe: {exc}", file=sys.stderr)
+            raise SystemExit(3)
+
+
+def process_file(image_module, numpy_module, mp_module, segmenter, input_path: Path, output_path: Path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Retry mechanism to handle Windows/OneDrive file locking or VFS sync latency
@@ -37,13 +55,20 @@ def process_file(image_module, numpy_module, segmentor, input_path: Path, output
                 img_rgb = img.convert("RGB")
                 img_np = numpy_module.array(img_rgb)
                 
-                # Get the segmentation mask
-                results = segmentor.process(img_np)
-                mask = results.segmentation_mask
+                # Create MediaPipe Image
+                mp_image = mp_module.Image(image_format=mp_module.ImageFormat.SRGB, data=img_np)
                 
-                # Apply simple binary thresholding to get the alpha channel (threshold = 0.5)
-                threshold = 0.5
-                alpha = numpy_module.where(mask > threshold, 255, 0).astype(numpy_module.uint8)
+                # Get the segmentation mask
+                results = segmenter.segment(mp_image)
+                if not results.category_mask:
+                    raise ValueError("Nao foi possivel obter a mascara de categoria do segmentador.")
+                
+                cat_mask = results.category_mask.numpy_view()
+                mask_2d = cat_mask.squeeze(axis=-1)
+                
+                # In selfie_segmenter, 0 is the foreground (person) and 255 is the background.
+                # So we make the person opaque (255) and the background transparent (0).
+                alpha = numpy_module.where(mask_2d == 0, 255, 0).astype(numpy_module.uint8)
                 
                 # Split channels of the original RGBA image
                 r, g, b, _ = img_rgba.split()
@@ -77,14 +102,18 @@ def main():
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
 
-    image_module, numpy_module, mp_module = load_dependencies()
+    image_module, numpy_module, mp_module, python_module, vision_module = load_dependencies()
+    download_model_if_needed()
 
-    # Use model_selection=0 (general model, faster and lightweight)
-    mp_selfie = mp_module.solutions.selfie_segmentation
+    base_options = python_module.BaseOptions(model_asset_path=str(MODEL_PATH))
+    options = vision_module.ImageSegmenterOptions(
+        base_options=base_options,
+        output_category_mask=True
+    )
     
-    with mp_selfie.SelfieSegmentation(model_selection=0) as segmentor:
+    with vision_module.ImageSegmenter.create_from_options(options) as segmenter:
         if args.input and args.output:
-            process_file(image_module, numpy_module, segmentor, args.input, args.output)
+            process_file(image_module, numpy_module, mp_module, segmenter, args.input, args.output)
             return
 
         if args.input_dir and args.output_dir:
@@ -97,7 +126,7 @@ def main():
             total = len(files)
             for index, input_path in enumerate(files, start=1):
                 output_path = args.output_dir / f"{input_path.stem}.png"
-                process_file(image_module, numpy_module, segmentor, input_path, output_path)
+                process_file(image_module, numpy_module, mp_module, segmenter, input_path, output_path)
                 if index == 1 or index == total or index % 30 == 0:
                     print(f"Processados {index}/{total} frames", file=sys.stderr)
             return
