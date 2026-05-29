@@ -45,6 +45,8 @@ export async function POST(request: Request) {
     renderLayout?: unknown;
     expertBackgroundMode?: unknown;
     voiceSettings?: unknown;
+    sourceVideoDescription?: unknown;
+    sourceVideoTranscription?: unknown;
   } | null;
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
@@ -68,6 +70,8 @@ export async function POST(request: Request) {
       ? (body.expertBackgroundMode as ExpertBackgroundMode)
       : "original";
   const voiceSettings = body?.voiceSettings && typeof body.voiceSettings === "object" ? body.voiceSettings : null;
+  const sourceVideoDescription = typeof body?.sourceVideoDescription === "string" ? body.sourceVideoDescription.trim() : "";
+  const sourceVideoTranscription = typeof body?.sourceVideoTranscription === "string" ? body.sourceVideoTranscription.trim() : "";
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -154,7 +158,9 @@ export async function POST(request: Request) {
             render_layout: renderLayout,
             expert_background_mode: expertBackgroundMode,
             status: "draft",
-            voice_settings: voiceSettings || {}
+            voice_settings: voiceSettings || {},
+            source_video_description: sourceVideoDescription || null,
+            source_video_transcription: sourceVideoTranscription || null
           })
           .select("*")
           .single();
@@ -197,7 +203,9 @@ export async function POST(request: Request) {
     sourceVideoTitle: sourceVideoTitle || null,
     renderLayout,
     expertBackgroundMode,
-    voiceSettings
+    voiceSettings,
+    sourceVideoDescription: sourceVideoDescription || null,
+    sourceVideoTranscription: sourceVideoTranscription || null
   });
   return NextResponse.json({ job: localJob, storage: "local" }, { status: 201 });
 }

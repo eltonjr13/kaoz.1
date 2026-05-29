@@ -85,7 +85,9 @@ export async function POST(request: Request) {
 
             const scriptText = await generateReactionScript({
               topic: jobRecord.topic,
-              viralVideos: []
+              viralVideos: [],
+              sourceVideoDescription: jobRecord.source_video_description,
+              sourceVideoTranscription: jobRecord.source_video_transcription
             });
             await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
 
@@ -318,7 +320,9 @@ export async function POST(request: Request) {
       await updateLocalJob(jobId, { status: "scripting", error_message: null });
       const scriptText = await generateReactionScript({
         topic: localJobRecord.topic,
-        viralVideos: []
+        viralVideos: [],
+        sourceVideoDescription: localJobRecord.source_video_description,
+        sourceVideoTranscription: localJobRecord.source_video_transcription
       });
       await updateLocalJob(jobId, { script_text: scriptText });
 
