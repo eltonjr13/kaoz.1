@@ -71,7 +71,7 @@ async function runRembg(args: string[]) {
     const details = error instanceof Error ? error.message : String(error);
     throw new Error(
       "Nao foi possivel remover o fundo do expert. Instale as dependencias com " +
-        "`python -m pip install rembg pillow onnxruntime`.\n" +
+        "`python -m pip install mediapipe numpy pillow`.\n" +
         details
     );
   }
