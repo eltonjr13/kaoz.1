@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { completeLocalJob, findLocalAvatar, findLocalJob, updateLocalJob, updateLocalJobStatus } from "@/lib/local-store";
-import { renderVerticalVideo, downloadSourceVideo } from "@/lib/videos/render";
+import { renderVerticalVideo, downloadSourceVideo, trimVideo } from "@/lib/videos/render";
 import { PipelineError, startReactionPipeline } from "@/lib/videos/pipeline";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
@@ -102,8 +102,19 @@ export async function POST(request: Request) {
               });
               try {
                 downloadedSourcePath = await downloadSourceVideo(sourceUrl, jobDir);
+                if (downloadedSourcePath && (jobRecord.trim_start || jobRecord.trim_end)) {
+                  await supabase.from("job_events").insert({
+                    user_id: APP_WORKSPACE_ID,
+                    job_id: jobId,
+                    event_type: "trimming_started",
+                    message: `Recortando trecho selecionado (de ${jobRecord.trim_start || "início"} até ${jobRecord.trim_end || "fim"})...`
+                  });
+                  const trimmedPath = path.join(jobDir, `trimmed-source-${Date.now()}.mp4`);
+                  await trimVideo(downloadedSourcePath, trimmedPath, jobRecord.trim_start, jobRecord.trim_end);
+                  downloadedSourcePath = trimmedPath;
+                }
               } catch (dlErr) {
-                console.error("Falha ao baixar vídeo fonte no pipeline Supabase:", dlErr);
+                console.error("Falha ao baixar/recortar vídeo fonte no pipeline Supabase:", dlErr);
               }
             }
 
@@ -120,7 +131,8 @@ export async function POST(request: Request) {
                 const geminiResult = await analyzeAndGenerateScript(
                   downloadedSourcePath,
                   jobRecord.topic,
-                  jobDir
+                  jobDir,
+                  avatar.personality
                 );
                 scriptText = geminiResult.script;
 
@@ -136,13 +148,13 @@ export async function POST(request: Request) {
                   event_type: "gemini_analysis_completed",
                   message: "Análise do Gemini concluída e roteiro gerado."
                 });
-              } catch (geminiErr: any) {
+              } catch (geminiErr) {
                 console.error("Erro na análise do Gemini, usando fallback:", geminiErr);
                 await supabase.from("job_events").insert({
                   user_id: APP_WORKSPACE_ID,
                   job_id: jobId,
                   event_type: "gemini_analysis_failed",
-                  message: `Falha na análise automática: ${geminiErr.message}. Usando roteiro de fallback.`
+                  message: `Falha na análise automática: ${geminiErr instanceof Error ? geminiErr.message : "Erro desconhecido"}. Usando roteiro de fallback.`
                 });
                 
                 await supabase.from("reaction_jobs").update({ status: "scripting" }).eq("id", jobId);
@@ -150,7 +162,8 @@ export async function POST(request: Request) {
                   topic: jobRecord.topic,
                   viralVideos: [],
                   sourceVideoDescription: jobRecord.source_video_description,
-                  sourceVideoTranscription: jobRecord.source_video_transcription
+                  sourceVideoTranscription: jobRecord.source_video_transcription,
+                  avatarPersonality: avatar.personality
                 });
                 await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
               }
@@ -160,7 +173,8 @@ export async function POST(request: Request) {
                 topic: jobRecord.topic,
                 viralVideos: [],
                 sourceVideoDescription: jobRecord.source_video_description,
-                sourceVideoTranscription: jobRecord.source_video_transcription
+                sourceVideoTranscription: jobRecord.source_video_transcription,
+                avatarPersonality: avatar.personality
               });
               await supabase.from("reaction_jobs").update({ script_text: scriptText }).eq("id", jobId);
             }
@@ -394,8 +408,14 @@ export async function POST(request: Request) {
           try {
             console.log(`[Local Pipeline] Baixando vídeo para análise: ${localSourceUrl}`);
             downloadedSourcePath = await downloadSourceVideo(localSourceUrl, localJobDir);
+            if (downloadedSourcePath && (localJobRecord.trim_start || localJobRecord.trim_end)) {
+              console.log(`[Local Pipeline] Recortando trecho selecionado (de ${localJobRecord.trim_start || "início"} até ${localJobRecord.trim_end || "fim"})...`);
+              const trimmedPath = path.join(localJobDir, `trimmed-source-${Date.now()}.mp4`);
+              await trimVideo(downloadedSourcePath, trimmedPath, localJobRecord.trim_start, localJobRecord.trim_end);
+              downloadedSourcePath = trimmedPath;
+            }
           } catch (dlErr) {
-            console.error("Falha ao baixar vídeo fonte localmente:", dlErr);
+            console.error("Falha ao baixar/recortar vídeo fonte localmente:", dlErr);
           }
         }
 
@@ -406,7 +426,8 @@ export async function POST(request: Request) {
             const geminiResult = await analyzeAndGenerateScript(
               downloadedSourcePath,
               localJobRecord.topic,
-              localJobDir
+              localJobDir,
+              localAvatar.personality
             );
             scriptText = geminiResult.script;
             await updateLocalJob(jobId, {
@@ -414,14 +435,15 @@ export async function POST(request: Request) {
               source_video_description: geminiResult.description,
               source_video_transcription: geminiResult.transcription
             });
-          } catch (geminiErr: any) {
+          } catch (geminiErr) {
             console.error("Erro na análise do Gemini localmente, usando fallback:", geminiErr);
             await updateLocalJob(jobId, { status: "scripting" });
             scriptText = await generateReactionScript({
               topic: localJobRecord.topic,
               viralVideos: [],
               sourceVideoDescription: localJobRecord.source_video_description,
-              sourceVideoTranscription: localJobRecord.source_video_transcription
+              sourceVideoTranscription: localJobRecord.source_video_transcription,
+              avatarPersonality: localAvatar.personality
             });
             await updateLocalJob(jobId, { script_text: scriptText });
           }
@@ -431,7 +453,8 @@ export async function POST(request: Request) {
             topic: localJobRecord.topic,
             viralVideos: [],
             sourceVideoDescription: localJobRecord.source_video_description,
-            sourceVideoTranscription: localJobRecord.source_video_transcription
+            sourceVideoTranscription: localJobRecord.source_video_transcription,
+            avatarPersonality: localAvatar.personality
           });
           await updateLocalJob(jobId, { script_text: scriptText });
         }

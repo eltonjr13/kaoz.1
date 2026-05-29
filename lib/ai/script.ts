@@ -6,6 +6,7 @@ export type GenerateReactionScriptInput = {
   maxSeconds?: number;
   sourceVideoDescription?: string | null;
   sourceVideoTranscription?: string | null;
+  avatarPersonality?: Record<string, unknown> | null;
 };
 
 import { OpenAI } from "openai";
@@ -32,12 +33,17 @@ export async function generateReactionScript(input: GenerateReactionScriptInput)
       prompt += `\nTranscrição/Legenda/Falas do vídeo de origem: ${input.sourceVideoTranscription}`;
     }
 
+    let systemInstruction = "Você é um criador de conteúdo de react. Escreva um roteiro curto (máximo 15 segundos) em português, direto e carismático, reagindo especificamente aos acontecimentos e falas descritos no vídeo de origem fornecido.";
+    if (input.avatarPersonality) {
+      systemInstruction += ` Adote a seguinte personalidade para a reação:\n${JSON.stringify(input.avatarPersonality, null, 2)}\nAjuste seu estilo, vocabulário e tom a essas instruções.`;
+    }
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "Você é um criador de conteúdo de react. Escreva um roteiro curto (máximo 15 segundos) em português, direto e carismático, reagindo especificamente aos acontecimentos e falas descritos no vídeo de origem fornecido."
+          content: systemInstruction
         },
         {
           role: "user",

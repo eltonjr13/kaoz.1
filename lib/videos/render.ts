@@ -182,6 +182,49 @@ async function createBoomerangSourceVideo(sourcePath: string, workDir: string) {
   return boomerangPath;
 }
 
+export function trimVideo(
+  inputPath: string,
+  outputPath: string,
+  start?: string | null,
+  end?: string | null
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = getFfmpegPath();
+    const args: string[] = ["-y"];
+
+    if (start && start.trim() !== "") {
+      args.push("-ss", start.trim());
+    }
+
+    args.push("-i", inputPath);
+
+    if (end && end.trim() !== "") {
+      args.push("-to", end.trim());
+    }
+
+    args.push(
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "20",
+      "-c:a", "aac",
+      outputPath
+    );
+
+    console.log(`[FFmpeg Trim] Running: ${ffmpeg} ${args.join(" ")}`);
+    const child = spawn(ffmpeg, args, { windowsHide: true });
+    
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`FFmpeg falhou ao recortar vídeo com código ${code}`));
+      }
+    });
+    
+    child.on("error", (err) => reject(err));
+  });
+}
+
 export async function downloadSourceVideo(rawUrl: string, workDir: string) {
   const parsedUrl = parseSourceVideoUrl(rawUrl);
 

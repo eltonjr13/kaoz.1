@@ -64,7 +64,8 @@ async function extractVideoAssets(videoPath: string, workDir: string) {
 export async function analyzeAndGenerateScript(
   videoPath: string,
   topic: string,
-  workDir: string
+  workDir: string,
+  avatarPersonality?: Record<string, unknown> | null
 ): Promise<GeminiAnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -76,7 +77,7 @@ export async function analyzeAndGenerateScript(
   console.log(`[Gemini Pipeline] Iniciando extração de mídias para o vídeo: ${videoPath}`);
   const { framePaths, audioPath } = await extractVideoAssets(videoPath, workDir);
 
-  const contents: any[] = [];
+  const contents: unknown[] = [];
 
   // Add frames as base64 inlineData
   for (const framePath of framePaths) {
@@ -100,9 +101,17 @@ export async function analyzeAndGenerateScript(
     });
   }
 
+  let personalityInstructions = "Você é um criador de conteúdo de react carismático e de alta energia.";
+  if (avatarPersonality) {
+    personalityInstructions = `Você deve simular a seguinte personalidade para a reação do avatar:
+${JSON.stringify(avatarPersonality, null, 2)}
+Adapte o roteiro ("script") usando o tom de voz, jargões/bordões, estilo e instruções contidos nesta personalidade.`;
+  }
+
   // Add text prompt
   const textPrompt = `
-Você é um criador de conteúdo de react carismático e de alta energia.
+${personalityInstructions}
+
 Analise o vídeo de origem fornecido através das imagens (frames cronológicos) e do áudio fornecido.
 
 Assunto proposto pelo usuário: "${topic}"
@@ -110,7 +119,7 @@ Assunto proposto pelo usuário: "${topic}"
 Sua tarefa:
 1. Descreva resumidamente em 1 ou 2 frases o que acontece visualmente no vídeo (campo "description").
 2. Transcreva ou resuma o áudio/falas do vídeo se houver (campo "transcription"). Se for instrumental, informe que não há falas significativas.
-3. Escreva um roteiro de reação curto, de no máximo 15 segundos em português (campo "script"). O roteiro deve ser carismático, dinâmico e reagir diretamente a detalhes específicos (ações ou falas) observados na sua análise do vídeo.
+3. Escreva um roteiro de reação curto, de no máximo 15 segundos em português (campo "script"). O roteiro deve reagir diretamente a detalhes específicos (ações ou falas) observados na sua análise do vídeo de acordo com as instruções da personalidade acima.
 
 Você DEVE responder rigorosamente em formato JSON com o seguinte formato de objeto:
 {

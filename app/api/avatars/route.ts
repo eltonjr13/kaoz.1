@@ -68,6 +68,7 @@ export async function POST(request: Request) {
     const consentAccepted = String(formData.get("consentAccepted") ?? "") === "true";
     const image = formData.get("image");
     const voiceReference = formData.get("voice_reference");
+    const personalityInput = formData.get("personality");
 
     if (!name || !(image instanceof File)) {
       return badRequest("Nome e arquivo de imagem/vídeo são obrigatórios.");
@@ -75,6 +76,22 @@ export async function POST(request: Request) {
 
     if (!consentAccepted) {
       return badRequest("Consentimento obrigatório para usar imagem/vídeo real.");
+    }
+
+    let personalityJson: Record<string, unknown> | null = null;
+    if (personalityInput instanceof File && personalityInput.size > 0) {
+      try {
+        const text = await personalityInput.text();
+        personalityJson = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return badRequest("O arquivo de personalidade não contém um JSON válido.");
+      }
+    } else if (typeof personalityInput === "string" && personalityInput.trim() !== "") {
+      try {
+        personalityJson = JSON.parse(personalityInput) as Record<string, unknown>;
+      } catch {
+        return badRequest("O campo de personalidade não contém um JSON válido.");
+      }
     }
 
     const ext = image.name.split(".").pop()?.toLowerCase();
@@ -136,7 +153,8 @@ export async function POST(request: Request) {
               voice_reference_path: voicePath,
               consent_accepted: true,
               consent_accepted_at: new Date().toISOString(),
-              status: "ready"
+              status: "ready",
+              personality: personalityJson
             })
             .select("*")
             .single();
@@ -150,7 +168,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile });
+    const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile, personality: personalityJson });
     return NextResponse.json({ avatar, storage: "local" }, { status: 201 });
   } catch (err) {
     console.error("Erro interno ao criar avatar:", err);

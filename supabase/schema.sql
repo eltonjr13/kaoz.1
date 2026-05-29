@@ -57,6 +57,7 @@ create table if not exists public.avatars (
   consent_accepted boolean not null,
   consent_accepted_at timestamptz not null,
   status public.avatar_status not null default 'ready',
+  personality jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint avatars_consent_required check (consent_accepted is true)
@@ -92,6 +93,10 @@ create table if not exists public.reaction_jobs (
   final_video_path text,
   error_message text,
   voice_settings jsonb not null default '{}'::jsonb,
+  source_video_description text,
+  source_video_transcription text,
+  trim_start text,
+  trim_end text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -314,3 +319,6 @@ with check (bucket_id in ('avatars', 'job-assets', 'renders'));
 
 alter table public.reaction_jobs add column if not exists source_video_description text;
 alter table public.reaction_jobs add column if not exists source_video_transcription text;
+alter table public.reaction_jobs add column if not exists trim_start text;
+alter table public.reaction_jobs add column if not exists trim_end text;
+alter table public.avatars add column if not exists personality jsonb;

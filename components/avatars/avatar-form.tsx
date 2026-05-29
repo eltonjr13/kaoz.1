@@ -17,6 +17,8 @@ export function AvatarForm() {
   const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
 
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [personalityFile, setPersonalityFile] = useState<File | null>(null);
+  const [personalityError, setPersonalityError] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,6 +50,16 @@ export function AvatarForm() {
     }
   }
 
+  function handlePersonalityChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setPersonalityFile(selectedFile);
+    setPersonalityError("");
+
+    if (selectedFile && !selectedFile.name.endsWith(".json")) {
+      setPersonalityError("O arquivo de personalidade deve ser um JSON (.json).");
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
@@ -70,6 +82,9 @@ export function AvatarForm() {
       formData.set("consentAccepted", String(consentAccepted));
       if (voiceFile) {
         formData.set("voice_reference", voiceFile);
+      }
+      if (personalityFile) {
+        formData.set("personality", personalityFile);
       }
 
       const response = await fetch("/api/avatars", {
@@ -94,6 +109,7 @@ export function AvatarForm() {
       setName("");
       setFile(null);
       setVoiceFile(null);
+      setPersonalityFile(null);
       setConsentAccepted(false);
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
@@ -169,6 +185,25 @@ export function AvatarForm() {
           <div style={{ marginTop: 8 }}>
             <span style={{ fontSize: "0.82rem", color: "var(--muted)", display: "block", marginBottom: 6 }}>Prévia da Voz:</span>
             <audio src={voicePreviewUrl} controls style={{ width: "100%", maxHeight: 40 }} />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="field">
+        <label htmlFor="avatar-personality">Detalhes da Personalidade (.json - Opcional)</label>
+        <input
+          id="avatar-personality"
+          type="file"
+          accept=".json,application/json"
+          onChange={handlePersonalityChange}
+        />
+        {personalityError ? (
+          <p className="form-message" style={{ marginTop: 6 }}>{personalityError}</p>
+        ) : personalityFile ? (
+          <div style={{ marginTop: 8 }}>
+            <span style={{ fontSize: "0.82rem", color: "var(--success)", display: "block" }}>
+              ✓ Personalidade carregada: {personalityFile.name}
+            </span>
           </div>
         ) : null}
       </div>

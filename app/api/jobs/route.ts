@@ -47,6 +47,8 @@ export async function POST(request: Request) {
     voiceSettings?: unknown;
     sourceVideoDescription?: unknown;
     sourceVideoTranscription?: unknown;
+    trimStart?: unknown;
+    trimEnd?: unknown;
   } | null;
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
@@ -72,6 +74,8 @@ export async function POST(request: Request) {
   const voiceSettings = body?.voiceSettings && typeof body.voiceSettings === "object" ? body.voiceSettings : null;
   const sourceVideoDescription = typeof body?.sourceVideoDescription === "string" ? body.sourceVideoDescription.trim() : "";
   const sourceVideoTranscription = typeof body?.sourceVideoTranscription === "string" ? body.sourceVideoTranscription.trim() : "";
+  const trimStart = typeof body?.trimStart === "string" && body.trimStart.trim() ? body.trimStart.trim() : null;
+  const trimEnd = typeof body?.trimEnd === "string" && body.trimEnd.trim() ? body.trimEnd.trim() : null;
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -160,7 +164,9 @@ export async function POST(request: Request) {
             status: "draft",
             voice_settings: voiceSettings || {},
             source_video_description: sourceVideoDescription || null,
-            source_video_transcription: sourceVideoTranscription || null
+            source_video_transcription: sourceVideoTranscription || null,
+            trim_start: trimStart,
+            trim_end: trimEnd
           })
           .select("*")
           .single();
@@ -205,7 +211,9 @@ export async function POST(request: Request) {
     expertBackgroundMode,
     voiceSettings,
     sourceVideoDescription: sourceVideoDescription || null,
-    sourceVideoTranscription: sourceVideoTranscription || null
+    sourceVideoTranscription: sourceVideoTranscription || null,
+    trimStart,
+    trimEnd
   });
   return NextResponse.json({ job: localJob, storage: "local" }, { status: 201 });
 }

@@ -24,7 +24,7 @@ export type Avatar = {
   consent_accepted: boolean;
   consent_accepted_at: string;
   status: "ready" | "disabled";
-  personality?: any | null;
+  personality?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };

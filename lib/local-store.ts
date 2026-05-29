@@ -12,6 +12,7 @@ type NewLocalAvatarInput = {
   name: string;
   file: File;
   voiceFile?: File | null;
+  personality?: Record<string, unknown> | null;
 };
 
 type NewLocalJobInput = {
@@ -25,6 +26,8 @@ type NewLocalJobInput = {
   voiceSettings?: VoiceSettings | null;
   sourceVideoDescription?: string | null;
   sourceVideoTranscription?: string | null;
+  trimStart?: string | null;
+  trimEnd?: string | null;
 };
 
 
@@ -53,7 +56,7 @@ export async function listLocalAvatars(): Promise<Avatar[]> {
   return avatars.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
-export async function createLocalAvatar({ name, file, voiceFile }: NewLocalAvatarInput): Promise<Avatar> {
+export async function createLocalAvatar({ name, file, voiceFile, personality }: NewLocalAvatarInput): Promise<Avatar> {
   await mkdir(PUBLIC_AVATAR_DIR, { recursive: true });
 
   const now = new Date().toISOString();
@@ -83,6 +86,7 @@ export async function createLocalAvatar({ name, file, voiceFile }: NewLocalAvata
     consent_accepted: true,
     consent_accepted_at: now,
     status: "ready",
+    personality: personality ?? null,
     created_at: now,
     updated_at: now
   };
@@ -118,7 +122,9 @@ export async function createLocalJob({
   topic,
   voiceSettings = null,
   sourceVideoDescription = null,
-  sourceVideoTranscription = null
+  sourceVideoTranscription = null,
+  trimStart = null,
+  trimEnd = null
 }: NewLocalJobInput): Promise<ReactionJob> {
   const now = new Date().toISOString();
   const job: ReactionJob = {
@@ -141,6 +147,8 @@ export async function createLocalJob({
     voice_settings: voiceSettings ?? null,
     source_video_description: sourceVideoDescription,
     source_video_transcription: sourceVideoTranscription,
+    trim_start: trimStart,
+    trim_end: trimEnd,
     created_at: now,
     updated_at: now
   };
