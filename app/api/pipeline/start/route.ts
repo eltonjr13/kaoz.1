@@ -282,6 +282,17 @@ export async function POST(request: Request) {
               message: "Iniciando sincronização labial (lip-sync)..."
             });
 
+            if (process.env.LIPSYNC_METHOD === "colab") {
+              await supabase.from("job_events").insert({
+                user_id: APP_WORKSPACE_ID,
+                job_id: jobId,
+                event_type: "lip_sync_started",
+                message: "Aguardando sincronização labial manual via Google Colab. Baixe os arquivos e faça o upload do vídeo final."
+              });
+              console.log(`[Pipeline] Pausado para sincronização labial manual (Google Colab) do job ${jobId}`);
+              return;
+            }
+
             let avatarLocalPath = "";
             if (avatar.image_path.startsWith("/")) {
               avatarLocalPath = path.join(process.cwd(), "public", avatar.image_path.replace(/^\//, ""));
@@ -519,6 +530,11 @@ export async function POST(request: Request) {
         // 3. Lip-sync stage (Stub)
         console.log(`[Local Pipeline] Iniciando sincronização labial (lip-sync)...`);
         await updateLocalJob(jobId, { status: "lip_syncing" });
+
+        if (process.env.LIPSYNC_METHOD === "colab") {
+          console.log(`[Local Pipeline] Pausado para sincronização labial manual (Google Colab) do job ${jobId}`);
+          return;
+        }
         const voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
         const lipSyncResult = await createLipSyncVideo({
           avatarPath: avatarDiskPath,
