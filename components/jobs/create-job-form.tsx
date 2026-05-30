@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors, Upload } from "lucide-react";
@@ -216,9 +218,9 @@ export function CreateJobForm({
             throw new Error(data.error || "Não foi possível atualizar o vídeo base da versão.");
           }
         }
-      } catch (err: any) {
+      } catch (err) {
         setIsLoading(false);
-        setMessage(err.message || "Erro ao processar vídeo do avatar.");
+        setMessage(err instanceof Error ? err.message : "Erro ao processar vídeo do avatar.");
         return;
       }
     }

@@ -60,8 +60,8 @@ export function AvatarList({ avatars }: { avatars: Avatar[] }) {
 
       setMessages((prev) => ({ ...prev, [versionId]: "✓ Vídeo atualizado!" }));
       router.refresh();
-    } catch (err: any) {
-      setMessages((prev) => ({ ...prev, [versionId]: `Erro: ${err.message}` }));
+    } catch (err) {
+      setMessages((prev) => ({ ...prev, [versionId]: `Erro: ${err instanceof Error ? err.message : String(err)}` }));
     } finally {
       setUploadingVersionId(null);
     }
@@ -99,8 +99,8 @@ export function AvatarList({ avatars }: { avatars: Avatar[] }) {
       setShowAddVersionId(null);
       setMessages((prev) => ({ ...prev, [`add-${parentId}`]: "✓ Versão criada com sucesso!" }));
       router.refresh();
-    } catch (err: any) {
-      setMessages((prev) => ({ ...prev, [`add-${parentId}`]: `Erro: ${err.message}` }));
+    } catch (err) {
+      setMessages((prev) => ({ ...prev, [`add-${parentId}`]: `Erro: ${err instanceof Error ? err.message : String(err)}` }));
     } finally {
       setIsSubmittingNewVersion(false);
     }

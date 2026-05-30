@@ -61,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Avatar não encontrado." }, { status: 404 });
     }
 
-    const patch: Record<string, any> = {};
+    const patch: Record<string, string> = {};
     if (name) {
       patch.name = name;
     }
