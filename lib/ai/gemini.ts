@@ -83,7 +83,8 @@ export async function analyzeAndGenerateScript(
   console.log(`[Gemini Pipeline] Iniciando extração de mídias para o vídeo: ${videoPath}`);
   const { framePaths, audioPath } = await extractVideoAssets(videoPath, workDir);
 
-  const contents: unknown[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contents: any[] = [];
 
   // Add frames as base64 inlineData
   for (const framePath of framePaths) {

@@ -118,8 +118,15 @@ export async function POST(request: Request) {
               }
             }
 
-            let scriptText = "";
-            if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
+            let scriptText = jobRecord.script_text || "";
+            if (scriptText) {
+              await supabase.from("job_events").insert({
+                user_id: APP_WORKSPACE_ID,
+                job_id: jobId,
+                event_type: "script_reused",
+                message: "Usando roteiro pré-definido pelo usuário."
+              });
+            } else if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
               await supabase.from("job_events").insert({
                 user_id: APP_WORKSPACE_ID,
                 job_id: jobId,
@@ -423,8 +430,10 @@ export async function POST(request: Request) {
           }
         }
 
-        let scriptText = "";
-        if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
+        let scriptText = localJobRecord.script_text || "";
+        if (scriptText) {
+          console.log("[Local Pipeline] Usando roteiro pré-definido pelo usuário.");
+        } else if (downloadedSourcePath && process.env.GEMINI_API_KEY) {
           console.log("[Local Pipeline] Analisando vídeo com Gemini...");
           try {
             const geminiResult = await analyzeAndGenerateScript(

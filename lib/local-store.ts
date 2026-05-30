@@ -28,6 +28,7 @@ type NewLocalJobInput = {
   sourceVideoTranscription?: string | null;
   trimStart?: string | null;
   trimEnd?: string | null;
+  scriptText?: string | null;
 };
 
 
@@ -124,7 +125,8 @@ export async function createLocalJob({
   sourceVideoDescription = null,
   sourceVideoTranscription = null,
   trimStart = null,
-  trimEnd = null
+  trimEnd = null,
+  scriptText = null
 }: NewLocalJobInput): Promise<ReactionJob> {
   const now = new Date().toISOString();
   const job: ReactionJob = {
@@ -138,7 +140,7 @@ export async function createLocalJob({
     expert_background_mode: expertBackgroundMode,
     topic,
     status: "draft",
-    script_text: null,
+    script_text: scriptText,
     voice_provider: null,
     audio_path: null,
     lip_sync_video_path: null,

@@ -48,6 +48,12 @@ export function CreateJobForm({
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // Video analysis and editing states
+  const [scriptText, setScriptText] = useState("");
+  const [sourceVideoDescription, setSourceVideoDescription] = useState("");
+  const [sourceVideoTranscription, setSourceVideoTranscription] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   // Video trimming state
   const [shouldTrim, setShouldTrim] = useState(true);
   const [trimStart, setTrimStart] = useState("00:00");
@@ -66,6 +72,40 @@ export function CreateJobForm({
   const [preprocessPrompt, setPreprocessPrompt] = useState(true);
   const [postprocessOutput, setPostprocessOutput] = useState(true);
   const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
+
+  async function handleAnalyze() {
+    setMessage("");
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch("/api/pipeline/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceVideoUrl: sourceVideoUrl.trim(),
+          trimStart: shouldTrim ? trimStart.trim() || null : null,
+          trimEnd: shouldTrim ? trimEnd.trim() || null : null,
+          topic: topic.trim(),
+          avatarId
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(data.error || "Falha ao analisar o vídeo.");
+        return;
+      }
+
+      setScriptText(data.script || "");
+      setSourceVideoDescription(data.description || "");
+      setSourceVideoTranscription(data.transcription || "");
+      setStep(3); // Avança para a Etapa 3 de revisão do roteiro
+    } catch (err) {
+      console.error(err);
+      setMessage("Erro de conexão ao solicitar análise do vídeo.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,6 +131,9 @@ export function CreateJobForm({
           expertBackgroundMode,
           trimStart: shouldTrim ? trimStart.trim() || null : null,
           trimEnd: shouldTrim ? trimEnd.trim() || null : null,
+          scriptText,
+          sourceVideoDescription,
+          sourceVideoTranscription,
           voiceSettings: {
             inference_steps: inferenceSteps,
             guidance_scale: guidanceScale,
@@ -141,12 +184,16 @@ export function CreateJobForm({
           Etapa 1: Origem
         </span>
         <div style={{ flex: 1, height: "2px", background: "var(--line)" }}></div>
-        <span className={`status-badge ${step === 2 ? "queued" : ""}`} style={{ padding: "4px 10px" }}>
-          Etapa 2: React
+        <span className={`status-badge ${step === 2 ? "queued" : step > 2 ? "completed" : ""}`} style={{ padding: "4px 10px" }}>
+          Etapa 2: Parâmetros
+        </span>
+        <div style={{ flex: 1, height: "2px", background: "var(--line)" }}></div>
+        <span className={`status-badge ${step === 3 ? "queued" : ""}`} style={{ padding: "4px 10px" }}>
+          Etapa 3: Roteiro & Voz
         </span>
       </div>
 
-      {step === 1 ? (
+      {step === 1 && (
         /* STEP 1: Video selection and trimming */
         <div>
           <div className="field" style={{ marginTop: 0 }}>
@@ -263,7 +310,9 @@ export function CreateJobForm({
             </button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {step === 2 && (
         /* STEP 2: React Settings */
         <div>
           {/* Summary Panel */}
@@ -328,6 +377,95 @@ export function CreateJobForm({
               onChange={(event) => setSourceVideoTitle(event.target.value)}
               placeholder="Ex: Receita com frango crocante"
             />
+          </div>
+
+          {message ? <p className="form-message">{message}</p> : null}
+
+          <div className="row-actions">
+            <button className="button secondary" type="button" onClick={() => setStep(1)} disabled={isAnalyzing}>
+              Voltar
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing || !topic.trim() || !avatarId}
+            >
+              {isAnalyzing ? "Analisando com Gemini..." : "Analisar Vídeo com IA"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        /* STEP 3: Script Review & Edits */
+        <div>
+          {/* Summary Panel */}
+          <div
+            style={{
+              padding: "12px 16px",
+              background: "var(--panel-strong)",
+              borderRadius: "8px",
+              marginBottom: "20px",
+              border: "1px solid var(--line)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            <div>
+              <span style={{ fontSize: "0.8rem", color: "var(--muted)", fontWeight: "bold", display: "block" }}>
+                Revisão do Roteiro e Configurações
+              </span>
+              <span style={{ fontSize: "0.9rem", wordBreak: "break-all" }}>
+                Avatar: {avatars.find(a => a.id === avatarId)?.name || "Nenhum"} | Assunto: {topic}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="button secondary"
+              style={{ minHeight: "36px", padding: "0 12px", fontSize: "0.82rem" }}
+              onClick={() => setStep(2)}
+              disabled={isLoading}
+            >
+              Alterar Assunto/Avatar
+            </button>
+          </div>
+
+          <div className="field" style={{ marginTop: 0 }}>
+            <label htmlFor="scriptText">Roteiro da Dublagem (Gerado pela IA - Você pode editar)</label>
+            <textarea
+              id="scriptText"
+              value={scriptText}
+              onChange={(e) => setScriptText(e.target.value)}
+              rows={6}
+              placeholder="Escreva ou edite o roteiro do react..."
+              required
+            />
+            <span className="field-hint">Este texto será falado pelo avatar e usado no Lip-sync.</span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+            <div className="field" style={{ marginTop: 0 }}>
+              <label htmlFor="transcription">Transcrição do Vídeo Original (IA)</label>
+              <textarea
+                id="transcription"
+                value={sourceVideoTranscription || "Sem transcrição de áudio significativa."}
+                readOnly
+                rows={4}
+                style={{ background: "var(--panel-strong)", opacity: 0.8, fontSize: "0.86rem" }}
+              />
+            </div>
+            <div className="field" style={{ marginTop: 0 }}>
+              <label htmlFor="description">Descrição Visual do Vídeo (IA)</label>
+              <textarea
+                id="description"
+                value={sourceVideoDescription || "Sem descrição visual disponível."}
+                readOnly
+                rows={4}
+                style={{ background: "var(--panel-strong)", opacity: 0.8, fontSize: "0.86rem" }}
+              />
+            </div>
           </div>
 
           <div className="field">
@@ -585,11 +723,11 @@ export function CreateJobForm({
           {message ? <p className="form-message">{message}</p> : null}
 
           <div className="row-actions">
-            <button className="button secondary" type="button" onClick={() => setStep(1)} disabled={isLoading}>
+            <button className="button secondary" type="button" onClick={() => setStep(2)} disabled={isLoading}>
               Voltar
             </button>
             <button className="button" type="submit" disabled={isLoading}>
-              <Rocket size={18} /> {isLoading ? "Iniciando" : "Criar e iniciar"}
+              <Rocket size={18} /> {isLoading ? "Criando e Renderizando..." : "Criar e Iniciar Renderização"}
             </button>
           </div>
         </div>
