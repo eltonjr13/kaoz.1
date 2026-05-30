@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     const image = formData.get("image");
     const voiceReference = formData.get("voice_reference");
     const personalityInput = formData.get("personality");
+    const parentId = formData.get("parent_id") ? String(formData.get("parent_id")).trim() : null;
 
     if (!name || !(image instanceof File)) {
       return badRequest("Nome e arquivo de imagem/vídeo são obrigatórios.");
@@ -154,7 +155,8 @@ export async function POST(request: Request) {
               consent_accepted: true,
               consent_accepted_at: new Date().toISOString(),
               status: "ready",
-              personality: personalityJson
+              personality: personalityJson,
+              parent_id: parentId
             })
             .select("*")
             .single();
@@ -168,7 +170,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile, personality: personalityJson });
+    const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile, personality: personalityJson, parentId });
     return NextResponse.json({ avatar, storage: "local" }, { status: 201 });
   } catch (err) {
     console.error("Erro interno ao criar avatar:", err);

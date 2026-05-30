@@ -13,6 +13,7 @@ type NewLocalAvatarInput = {
   file: File;
   voiceFile?: File | null;
   personality?: Record<string, unknown> | null;
+  parentId?: string | null;
 };
 
 type NewLocalJobInput = {
@@ -57,7 +58,7 @@ export async function listLocalAvatars(): Promise<Avatar[]> {
   return avatars.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
-export async function createLocalAvatar({ name, file, voiceFile, personality }: NewLocalAvatarInput): Promise<Avatar> {
+export async function createLocalAvatar({ name, file, voiceFile, personality, parentId }: NewLocalAvatarInput): Promise<Avatar> {
   await mkdir(PUBLIC_AVATAR_DIR, { recursive: true });
 
   const now = new Date().toISOString();
@@ -68,7 +69,18 @@ export async function createLocalAvatar({ name, file, voiceFile, personality }: 
 
   await writeFile(diskPath, buffer);
 
-  let voicePublicPath: string | null = null;
+  let inheritedVoicePath: string | null = null;
+  let inheritedPersonality: Record<string, unknown> | null = null;
+
+  if (parentId) {
+    const parent = await findLocalAvatar(parentId);
+    if (parent) {
+      inheritedVoicePath = parent.voice_reference_path;
+      inheritedPersonality = (parent.personality as Record<string, unknown>) ?? null;
+    }
+  }
+
+  let voicePublicPath: string | null = inheritedVoicePath;
   if (voiceFile) {
     const voiceFileName = `${crypto.randomUUID()}-${safeFileName(voiceFile.name || "voice.wav")}`;
     const voiceDiskPath = path.join(PUBLIC_AVATAR_DIR, voiceFileName);
@@ -87,7 +99,8 @@ export async function createLocalAvatar({ name, file, voiceFile, personality }: 
     consent_accepted: true,
     consent_accepted_at: now,
     status: "ready",
-    personality: personality ?? null,
+    personality: personality ?? inheritedPersonality ?? null,
+    parent_id: parentId ?? null,
     created_at: now,
     updated_at: now
   };
@@ -96,6 +109,26 @@ export async function createLocalAvatar({ name, file, voiceFile, personality }: 
   await writeJsonFile(AVATARS_FILE, [avatar, ...avatars]);
 
   return avatar;
+}
+
+export async function updateLocalAvatar(avatarId: string, patch: Partial<Avatar>): Promise<Avatar | null> {
+  const avatars = await listLocalAvatars();
+  const avatarIndex = avatars.findIndex((avatar) => avatar.id === avatarId);
+
+  if (avatarIndex < 0) {
+    return null;
+  }
+
+  const updatedAvatar = {
+    ...avatars[avatarIndex],
+    ...patch,
+    updated_at: new Date().toISOString()
+  };
+
+  avatars[avatarIndex] = updatedAvatar;
+  await writeJsonFile(AVATARS_FILE, avatars);
+
+  return updatedAvatar;
 }
 
 export async function findLocalAvatar(avatarId: string) {

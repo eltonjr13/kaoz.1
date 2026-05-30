@@ -15,12 +15,14 @@ export default async function AvatarsPage() {
     const supabase = await createClient();
     const { data } = await supabase
       .from("avatars")
-      .select("id, name, image_path, thumbnail_path, consent_accepted, consent_accepted_at, status, created_at, updated_at, user_id")
+      .select("id, name, image_path, thumbnail_path, consent_accepted, consent_accepted_at, status, created_at, updated_at, user_id, parent_id")
       .eq("user_id", APP_WORKSPACE_ID)
       .order("created_at", { ascending: false });
 
     avatars = [...localAvatars, ...((data ?? []) as Avatar[])];
   }
+
+  const mainAvatars = avatars.filter((a) => !a.parent_id);
 
   return (
     <>
@@ -30,7 +32,7 @@ export default async function AvatarsPage() {
       </div>
 
       <div className="split-grid">
-        <AvatarForm />
+        <AvatarForm mainAvatars={mainAvatars} />
         <AvatarList avatars={avatars} />
       </div>
     </>

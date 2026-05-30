@@ -2,12 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors } from "lucide-react";
+import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors, Upload } from "lucide-react";
 import type { Avatar, ExpertBackgroundMode, RenderLayout } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
+function getMediaUrl(filePath: string | null | undefined) {
+  if (!filePath) return "";
+  if (filePath.startsWith("/")) {
+    return filePath;
+  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${supabaseUrl}/storage/v1/object/public/avatars/${filePath}`;
+}
+
+const isVideo = (path: string) => /\.(mp4|mov|webm|mkv|avi)$/i.test(path);
+
 type CreateJobFormProps = {
-  avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status" | "voice_reference_path">[];
+  avatars: Pick<Avatar, "id" | "name" | "image_path" | "consent_accepted" | "status" | "voice_reference_path" | "parent_id">[];
   initialTopic?: string;
   initialSourceVideoUrl?: string;
   initialSourceVideoTitle?: string;
@@ -40,7 +51,26 @@ export function CreateJobForm({
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [topic, setTopic] = useState(initialTopic);
-  const [avatarId, setAvatarId] = useState(avatars[0]?.id ?? "");
+  
+  // Parent and Version Selection states
+  const mainAvatars = avatars.filter((a) => !a.parent_id);
+  const [parentId, setParentId] = useState(mainAvatars[0]?.id ?? "");
+  const [versionId, setVersionId] = useState(mainAvatars[0]?.id ?? "");
+
+  // Video base swapping states
+  const [swappedVideoFile, setSwappedVideoFile] = useState<File | null>(null);
+  const [saveAsNewVersion, setSaveAsNewVersion] = useState(true);
+  const [newVersionName, setNewVersionName] = useState("");
+
+  const avatarId = versionId;
+
+  function handleParentChange(newParentId: string) {
+    setParentId(newParentId);
+    setVersionId(newParentId);
+    setSwappedVideoFile(null);
+    setNewVersionName("");
+  }
+
   const [sourceVideoUrl, setSourceVideoUrl] = useState(initialSourceVideoUrl);
   const [sourceVideoTitle, setSourceVideoTitle] = useState(initialSourceVideoTitle);
   const [renderLayout, setRenderLayout] = useState<RenderLayout>("source_pip");
@@ -117,6 +147,50 @@ export function CreateJobForm({
     }
 
     setIsLoading(true);
+    let finalAvatarId = avatarId;
+
+    if (swappedVideoFile) {
+      setMessage("Processando arquivo de vídeo do avatar...");
+      try {
+        if (saveAsNewVersion) {
+          const formData = new FormData();
+          formData.append("name", newVersionName.trim() || `Versão via Job - ${new Date().toLocaleDateString("pt-BR")}`);
+          formData.append("image", swappedVideoFile);
+          formData.append("parent_id", parentId);
+          formData.append("consentAccepted", "true");
+
+          const response = await fetch("/api/avatars", {
+            method: "POST",
+            body: formData
+          });
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Não foi possível salvar o novo vídeo como versão.");
+          }
+
+          const data = await response.json();
+          finalAvatarId = data.avatar.id;
+        } else {
+          const formData = new FormData();
+          formData.append("image", swappedVideoFile);
+
+          const response = await fetch(`/api/avatars/${versionId}`, {
+            method: "PATCH",
+            body: formData
+          });
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Não foi possível atualizar o vídeo base da versão.");
+          }
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        setMessage(err.message || "Erro ao processar vídeo do avatar.");
+        return;
+      }
+    }
 
     try {
       const createResponse = await fetch("/api/jobs", {
@@ -124,7 +198,7 @@ export function CreateJobForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
-          avatarId,
+          avatarId: finalAvatarId,
           sourceVideoUrl: sourceVideoUrl.trim() || null,
           sourceVideoTitle: sourceVideoTitle.trim() || null,
           renderLayout,
@@ -348,14 +422,125 @@ export function CreateJobForm({
           </div>
 
           <div className="field" style={{ marginTop: 0 }}>
-            <label htmlFor="avatar">Avatar</label>
-            <select id="avatar" value={avatarId} onChange={(event) => setAvatarId(event.target.value)} required>
-              {avatars.map((avatar) => (
+            <label htmlFor="avatar-parent">Avatar Principal</label>
+            <select
+              id="avatar-parent"
+              value={parentId}
+              onChange={(event) => handleParentChange(event.target.value)}
+              required
+            >
+              {mainAvatars.map((avatar) => (
                 <option value={avatar.id} key={avatar.id}>
                   {avatar.name}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="avatar-version">Versão do Avatar</label>
+            <select
+              id="avatar-version"
+              value={versionId}
+              onChange={(event) => {
+                setVersionId(event.target.value);
+                setSwappedVideoFile(null);
+                setNewVersionName("");
+              }}
+              required
+            >
+              {avatars.find((a) => a.id === parentId) && (
+                <option value={parentId}>Padrão (original)</option>
+              )}
+              {avatars
+                .filter((a) => a.parent_id === parentId)
+                .map((version) => (
+                  <option value={version.id} key={version.id}>
+                    {version.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Selected Version Preview */}
+          {versionId && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: 10, background: "var(--bg-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                {avatars.find(a => a.id === versionId)?.image_path ? (
+                  isVideo(avatars.find(a => a.id === versionId)!.image_path) ? (
+                    <video
+                      src={getMediaUrl(avatars.find(a => a.id === versionId)!.image_path)}
+                      muted
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <img
+                      src={getMediaUrl(avatars.find(a => a.id === versionId)!.image_path)}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      alt="Avatar Preview"
+                    />
+                  )
+                ) : null}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: "bold" }}>
+                  {avatars.find(a => a.id === versionId)?.name || "Avatar padrão"}
+                </span>
+                <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                  {avatars.find(a => a.id === versionId)?.parent_id ? "Subversão do avatar" : "Versão principal padrão"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Optional Base Video Swapping */}
+          <div style={{ border: "1px dashed var(--line)", padding: 14, borderRadius: 8, marginTop: 16, background: "var(--panel-strong)" }}>
+            <div className="field" style={{ marginTop: 0 }}>
+              <label htmlFor="swapped-video" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Upload size={16} /> Trocar vídeo base para este job? (Opcional)
+              </label>
+              <input
+                id="swapped-video"
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setSwappedVideoFile(file);
+                  if (file && !newVersionName) {
+                    setNewVersionName(`Versão via Job - ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR").slice(0, 5)}`);
+                  }
+                }}
+              />
+              <span className="field-hint" style={{ fontSize: "0.78rem" }}>
+                Selecione um novo vídeo ou imagem para usar como base para o avatar neste job.
+              </span>
+            </div>
+
+            {swappedVideoFile && (
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={saveAsNewVersion}
+                    onChange={(e) => setSaveAsNewVersion(e.target.checked)}
+                  />
+                  <span>Salvar como uma nova versão do avatar principal?</span>
+                </label>
+
+                {saveAsNewVersion && (
+                  <div className="field" style={{ marginTop: 0 }}>
+                    <label htmlFor="new-version-name">Nome da Nova Versão</label>
+                    <input
+                      id="new-version-name"
+                      value={newVersionName}
+                      onChange={(e) => setNewVersionName(e.target.value)}
+                      placeholder="Ex: João com terno azul"
+                      required={saveAsNewVersion}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="field">

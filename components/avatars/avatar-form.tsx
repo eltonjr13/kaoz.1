@@ -6,10 +6,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 
-export function AvatarForm() {
+import type { Avatar } from "@/types";
+
+export function AvatarForm({ mainAvatars = [] }: { mainAvatars?: Pick<Avatar, "id" | "name">[] }) {
   const router = useRouter();
   const [formKey, setFormKey] = useState(0);
   const [name, setName] = useState("");
+  const [parentId, setParentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
@@ -80,6 +83,9 @@ export function AvatarForm() {
       formData.set("name", name);
       formData.set("image", file);
       formData.set("consentAccepted", String(consentAccepted));
+      if (parentId) {
+        formData.set("parent_id", parentId);
+      }
       if (voiceFile) {
         formData.set("voice_reference", voiceFile);
       }
@@ -107,6 +113,7 @@ export function AvatarForm() {
       }
 
       setName("");
+      setParentId("");
       setFile(null);
       setVoiceFile(null);
       setPersonalityFile(null);
@@ -131,12 +138,31 @@ export function AvatarForm() {
   return (
     <form key={formKey} className="form-panel" onSubmit={handleSubmit}>
       <div className="field" style={{ marginTop: 0 }}>
-        <label htmlFor="avatar-name">Nome</label>
+        <label htmlFor="avatar-parent">Criar como versão de (Opcional)</label>
+        <select
+          id="avatar-parent"
+          value={parentId}
+          onChange={(event) => setParentId(event.target.value)}
+        >
+          <option value="">-- Novo Avatar Principal --</option>
+          {mainAvatars.map((av) => (
+            <option value={av.id} key={av.id}>
+              {av.name}
+            </option>
+          ))}
+        </select>
+        <span className="field-hint" style={{ fontSize: "0.78rem" }}>
+          Selecione se for uma versão de um avatar existente (herdará a voz e personalidade do pai se não enviadas).
+        </span>
+      </div>
+
+      <div className="field">
+        <label htmlFor="avatar-name">Nome da Versão / Avatar</label>
         <input
           id="avatar-name"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Ex: Ana apresentadora"
+          placeholder="Ex: João sem background, João versão formal..."
           required
         />
       </div>
