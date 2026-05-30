@@ -172,3 +172,148 @@ Você DEVE responder rigorosamente em formato JSON com o seguinte formato de obj
     }
   }
 }
+
+export type Step1AnalysisResult = {
+  description: string;
+  transcription: string;
+  topic: string;
+  title: string;
+};
+
+export async function analyzeVideoForStep1(
+  videoPath: string,
+  workDir: string
+): Promise<Step1AnalysisResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY não configurada no .env.local.");
+  }
+
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  console.log(`[Gemini Pipeline Step 1] Iniciando extração de mídias para o vídeo: ${videoPath}`);
+  const { framePaths, audioPath } = await extractVideoAssets(videoPath, workDir);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contents: any[] = [];
+
+  // Add frames as base64 inlineData
+  for (const framePath of framePaths) {
+    const data = await readFile(framePath);
+    contents.push({
+      inlineData: {
+        data: data.toString("base64"),
+        mimeType: "image/jpeg"
+      }
+    });
+  }
+
+  // Add audio if available
+  if (audioPath) {
+    const audioData = await readFile(audioPath);
+    contents.push({
+      inlineData: {
+        data: audioData.toString("base64"),
+        mimeType: "audio/mp3"
+      }
+    });
+  }
+
+  // Add text prompt
+  const textPrompt = `
+Analise o vídeo de origem fornecido através das imagens (frames cronológicos) e do áudio fornecido.
+
+Sua tarefa:
+1. Descreva resumidamente em 1 ou 2 frases o que acontece visualmente no vídeo (campo "description").
+2. Transcreva ou resuma o áudio/falas do vídeo se houver (campo "transcription"). Se for instrumental ou sem falas significativas, informe que não há falas significativas.
+3. Sugira um assunto principal do vídeo curto e conciso de no máximo 5 palavras (campo "topic").
+4. Sugira um título curto, extremamente atraente e adequado para o vídeo (campo "title").
+
+Você DEVE responder rigorosamente em formato JSON com o seguinte formato de objeto:
+{
+  "description": "descrição visual aqui",
+  "transcription": "transcrição do áudio aqui",
+  "topic": "assunto sugerido aqui",
+  "title": "título sugerido aqui"
+}
+`;
+
+  contents.push(textPrompt);
+
+  console.log(`[Gemini Pipeline Step 1] Enviando requisição multimodal para o Gemini usando modelo ${modelName}...`);
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents,
+    config: {
+      responseMimeType: "application/json"
+    }
+  });
+
+  const responseText = response.text || "";
+  console.log(`[Gemini Pipeline Step 1] Resposta recebida: ${responseText}`);
+
+  try {
+    const result = JSON.parse(responseText) as Step1AnalysisResult;
+    if (!result.description || !result.topic || !result.title) {
+      throw new Error("Resposta do Gemini incompleta");
+    }
+    return result;
+  } catch (parseError) {
+    console.error("Falha ao analisar a resposta JSON do Gemini na etapa 1, tentando extração manual:", parseError);
+    const cleanedText = responseText.replace(/```json|```/g, "").trim();
+    try {
+      return JSON.parse(cleanedText) as Step1AnalysisResult;
+    } catch {
+      return {
+        description: "Vídeo analisado",
+        transcription: "Sem transcrição disponível",
+        topic: "Vídeo interessante",
+        title: "Reação ao vídeo"
+      };
+    }
+  }
+}
+
+export async function generateScriptFromAnalysis(
+  topic: string,
+  description: string,
+  transcription: string,
+  avatarPersonality?: Record<string, unknown> | null
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY não configurada no .env.local.");
+  }
+
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  let personalityInstructions = "Você é um criador de conteúdo de react carismático e de alta energia.";
+  if (avatarPersonality) {
+    personalityInstructions = `Você deve simular a seguinte personalidade para a reação do avatar:
+${JSON.stringify(avatarPersonality, null, 2)}
+Adapte o roteiro ("script") usando o tom de voz, jargões/bordões, estilo e instruções contidos nesta personalidade.`;
+  }
+
+  const prompt = `
+${personalityInstructions}
+
+Analise o assunto e as informações extraídas do vídeo para criar um roteiro de react.
+
+Assunto proposto pelo usuário: "${topic}"
+Descrição visual do vídeo original: "${description}"
+Transcrição/Legenda/Falas do vídeo original: "${transcription}"
+
+Sua tarefa:
+Escreva um roteiro de reação curto, de no máximo 15 segundos em português. O roteiro deve reagir diretamente a detalhes específicos (ações ou falas) observados no vídeo original de acordo com as instruções da personalidade acima. Retorne APENAS o texto do roteiro, sem formatação JSON, sem introduções e sem aspas adicionais.
+`;
+
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt
+  });
+
+  return response.text?.trim() ?? "";
+}
+

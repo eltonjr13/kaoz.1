@@ -83,6 +83,7 @@ export function CreateJobForm({
   const [sourceVideoDescription, setSourceVideoDescription] = useState("");
   const [sourceVideoTranscription, setSourceVideoTranscription] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
 
   // Video trimming state
   const [shouldTrim, setShouldTrim] = useState(true);
@@ -103,7 +104,7 @@ export function CreateJobForm({
   const [postprocessOutput, setPostprocessOutput] = useState(true);
   const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
 
-  async function handleAnalyze() {
+  async function handleStep1Analyze() {
     setMessage("");
     setIsAnalyzing(true);
     try {
@@ -113,9 +114,7 @@ export function CreateJobForm({
         body: JSON.stringify({
           sourceVideoUrl: sourceVideoUrl.trim(),
           trimStart: shouldTrim ? trimStart.trim() || null : null,
-          trimEnd: shouldTrim ? trimEnd.trim() || null : null,
-          topic: topic.trim(),
-          avatarId
+          trimEnd: shouldTrim ? trimEnd.trim() || null : null
         })
       });
 
@@ -125,15 +124,47 @@ export function CreateJobForm({
         return;
       }
 
-      setScriptText(data.script || "");
       setSourceVideoDescription(data.description || "");
       setSourceVideoTranscription(data.transcription || "");
-      setStep(3); // Avança para a Etapa 3 de revisão do roteiro
+      if (data.topic) setTopic(data.topic);
+      if (data.title) setSourceVideoTitle(data.title);
+      setStep(2); // Avança para a Etapa 2 de parâmetros
     } catch (err) {
       console.error(err);
       setMessage("Erro de conexão ao solicitar análise do vídeo.");
     } finally {
       setIsAnalyzing(false);
+    }
+  }
+
+  async function handleGenerateScript() {
+    setMessage("");
+    setIsGeneratingScript(true);
+    try {
+      const response = await fetch("/api/pipeline/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          description: sourceVideoDescription,
+          transcription: sourceVideoTranscription,
+          avatarId
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(data.error || "Falha ao gerar roteiro.");
+        return;
+      }
+
+      setScriptText(data.script || "");
+      setStep(3); // Avança para a Etapa 3 de revisão do roteiro
+    } catch (err) {
+      console.error(err);
+      setMessage("Erro de conexão ao solicitar geração do roteiro.");
+    } finally {
+      setIsGeneratingScript(false);
     }
   }
 
@@ -373,16 +404,13 @@ export function CreateJobForm({
             <button
               type="button"
               className="button"
-              disabled={!sourceVideoUrl.trim()}
-              onClick={() => {
-                if (sourceVideoUrl.trim()) {
-                  setStep(2);
-                }
-              }}
+              disabled={isAnalyzing || !sourceVideoUrl.trim()}
+              onClick={handleStep1Analyze}
             >
-              Definir trecho e avançar
+              {isAnalyzing ? "Analisando com Gemini..." : "Analisar vídeo e avançar"}
             </button>
           </div>
+          {message ? <p className="form-message" style={{ marginTop: "12px" }}>{message}</p> : null}
         </div>
       )}
 
@@ -420,6 +448,44 @@ export function CreateJobForm({
               Alterar
             </button>
           </div>
+
+          {/* Video Preview */}
+          {parsedSourceVideo && (
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold", fontSize: "0.9rem" }}>
+                Prévia do Vídeo Original
+              </label>
+              {parsedSourceVideo.platform === "youtube" ? (
+                <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, borderRadius: "8px", overflow: "hidden", border: "1px solid var(--line)", background: "#000" }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${parsedSourceVideo.externalId}`}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    title="YouTube Video Preview"
+                  />
+                </div>
+              ) : parsedSourceVideo.platform === "instagram" ? (
+                <div style={{ position: "relative", width: "100%", paddingBottom: "125%", height: 0, borderRadius: "8px", overflow: "hidden", border: "1px solid var(--line)", background: "#000" }}>
+                  <iframe
+                    src={`https://www.instagram.com/reel/${parsedSourceVideo.externalId}/embed/captioned/`}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+                    frameBorder="0"
+                    scrolling="no"
+                    allowTransparency
+                    title="Instagram Video Preview"
+                  />
+                </div>
+              ) : (
+                <video
+                  src={sourceVideoUrl}
+                  controls
+                  style={{ width: "100%", maxHeight: "360px", borderRadius: "8px", border: "1px solid var(--line)", background: "#000" }}
+                />
+              )}
+            </div>
+          )}
 
           <div className="field" style={{ marginTop: 0 }}>
             <label htmlFor="avatar-parent">Avatar Principal</label>
@@ -567,16 +633,16 @@ export function CreateJobForm({
           {message ? <p className="form-message">{message}</p> : null}
 
           <div className="row-actions">
-            <button className="button secondary" type="button" onClick={() => setStep(1)} disabled={isAnalyzing}>
+            <button className="button secondary" type="button" onClick={() => setStep(1)} disabled={isGeneratingScript}>
               Voltar
             </button>
             <button
               className="button"
               type="button"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing || !topic.trim() || !avatarId}
+              onClick={handleGenerateScript}
+              disabled={isGeneratingScript || !topic.trim() || !avatarId}
             >
-              {isAnalyzing ? "Analisando com Gemini..." : "Analisar Vídeo com IA"}
+              {isGeneratingScript ? "Gerando roteiro..." : "Gerar Roteiro e Avançar"}
             </button>
           </div>
         </div>

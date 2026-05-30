@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { findLocalAvatar } from "@/lib/local-store";
 import { downloadSourceVideo, trimVideo } from "@/lib/videos/render";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { analyzeAndGenerateScript } from "@/lib/ai/gemini";
+import { analyzeAndGenerateScript, analyzeVideoForStep1 } from "@/lib/ai/gemini";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -29,13 +29,10 @@ export async function POST(request: Request) {
     if (!sourceVideoUrl) {
       return jsonError("O link do vídeo de origem é obrigatório.");
     }
-    if (!topic) {
-      return jsonError("O assunto do react é obrigatório.");
-    }
 
-    // 1. Buscar a personalidade do avatar
+    // 1. Buscar a personalidade do avatar (apenas se houver assunto e avatar definidos)
     let avatarPersonality: Record<string, unknown> | null = null;
-    if (avatarId) {
+    if (topic && avatarId) {
       if (hasSupabaseConfig()) {
         try {
           const supabase = await createClient();
@@ -78,6 +75,18 @@ export async function POST(request: Request) {
     // 4. Executar análise com Gemini
     if (!process.env.GEMINI_API_KEY) {
       return jsonError("GEMINI_API_KEY não configurada no servidor.", 500);
+    }
+
+    if (!topic) {
+      console.log("[Analyze Route] Enviando vídeo para análise inicial (Etapa 1) com Gemini...");
+      const geminiResult = await analyzeVideoForStep1(downloadedSourcePath, workDir);
+      return NextResponse.json({
+        success: true,
+        description: geminiResult.description,
+        transcription: geminiResult.transcription,
+        topic: geminiResult.topic,
+        title: geminiResult.title
+      });
     }
 
     console.log("[Analyze Route] Enviando vídeo para análise multimodal com Gemini...");
