@@ -31,8 +31,9 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null);
   const [colabJob, setColabJob] = useState<JobListItem | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [colabMode, setColabMode] = useState<"auto" | "manual">("auto");
 
   async function handleUploadLipsync() {
     if (!colabJob || !uploadFile) return;
@@ -215,87 +216,182 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
           </div>
 
           <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--muted)", lineHeight: 1.5 }}>
-            Siga as etapas abaixo para gerar a sincronização labial do seu avatar gratuitamente usando o processamento em GPU do Google Colab:
+            Selecione como deseja realizar a sincronização labial usando o Google Colab:
           </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {/* Passo 1 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 1: Baixe os arquivos necessários</span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <a 
-                  className="button secondary" 
-                  style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                  href={`/api/jobs/download-asset?path=${encodeURIComponent(colabJob.audio_path || "")}`}
-                  download
-                >
-                  <Download size={14} /> Áudio de Voz
-                </a>
-                {(() => {
-                  const avatar = getRelatedOne(colabJob.avatars);
-                  const avatarPath = avatar?.image_path || "";
-                  return (
-                    <a 
-                      className="button secondary" 
-                      style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                      href={`/api/jobs/download-asset?path=${encodeURIComponent(avatarPath)}&bucket=avatars`}
-                      download
-                    >
-                      <Download size={14} /> Vídeo/Imagem Base
-                    </a>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Passo 2 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 2: Baixe e abra o Notebook no Google Colab</span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <a 
-                  className="button secondary" 
-                  style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                  href="/mrchicken_lipsync_colab.ipynb"
-                  download
-                >
-                  <Download size={14} /> Baixar Notebook (.ipynb)
-                </a>
-                <a 
-                  className="button" 
-                  style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                  href="https://colab.research.google.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ExternalLink size={14} /> Abrir Google Colab
-                </a>
-              </div>
-              <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                Dica: No Google Colab, vá em "Fazer Upload" e envie o arquivo <code>mrchicken_lipsync_colab.ipynb</code> que você acabou de baixar.
-              </span>
-            </div>
-
-            {/* Passo 3 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 3: Envie o vídeo resultante (result.mp4)</span>
-              <input 
-                type="file" 
-                accept="video/mp4"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setUploadFile(file);
-                  setUploadError("");
-                }}
-                style={{ 
-                  border: "1px dashed var(--line)", 
-                  padding: "12px", 
-                  borderRadius: "8px", 
-                  background: "var(--panel-strong)",
-                  fontSize: "0.85rem"
-                }}
-              />
-            </div>
+          <div style={{ display: "flex", borderBottom: "1px solid var(--line)", gap: "4px", margin: "4px 0" }}>
+            <button
+              onClick={() => setColabMode("auto")}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: colabMode === "auto" ? "2px solid var(--brand)" : "2px solid transparent",
+                color: colabMode === "auto" ? "var(--text)" : "var(--muted)",
+                padding: "8px 12px",
+                fontWeight: 800,
+                cursor: "pointer",
+                fontSize: "0.9rem"
+              }}
+            >
+              Fila Automática (Em Massa)
+            </button>
+            <button
+              onClick={() => setColabMode("manual")}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: colabMode === "manual" ? "2px solid var(--brand)" : "2px solid transparent",
+                color: colabMode === "manual" ? "var(--text)" : "var(--muted)",
+                padding: "8px 12px",
+                fontWeight: 800,
+                cursor: "pointer",
+                fontSize: "0.9rem"
+              }}
+            >
+              Processamento Manual (Individual)
+            </button>
           </div>
+
+          {colabMode === "auto" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 1: Baixe e abra o Notebook no Google Colab</span>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <a 
+                    className="button secondary" 
+                    style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                    href="/mrchicken_lipsync_colab.ipynb"
+                    download
+                  >
+                    <Download size={14} /> Baixar Notebook (.ipynb)
+                  </a>
+                  <a 
+                    className="button" 
+                    style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                    href="https://colab.research.google.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={14} /> Abrir Google Colab
+                  </a>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 2: Configure as credenciais no Colab</span>
+                <span style={{ fontSize: "0.78rem", color: "var(--muted)", lineHeight: 1.4 }}>
+                  No Google Colab, vá para o <strong>Passo 6: Modo Fila Automática</strong> e insira as seguintes chaves de acesso:
+                </span>
+                
+                <div style={{ display: "grid", gap: "8px", background: "var(--panel-strong)", padding: "12px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_URL</label>
+                    <input 
+                      readOnly 
+                      value={process.env.NEXT_PUBLIC_SUPABASE_URL || ""} 
+                      style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_KEY (Anon Key)</label>
+                    <input 
+                      readOnly 
+                      value={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""} 
+                      style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 3: Execute o loop do Colab</span>
+                <span style={{ fontSize: "0.78rem", color: "var(--muted)", lineHeight: 1.4 }}>
+                  Execute a célula do Passo 6. Ela ficará ativamente aguardando novos vídeos de reação na fila do painel, gerando o lip-sync e devolvendo a renderização automaticamente a cada 20s.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Passo 1 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 1: Baixe os arquivos necessários</span>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <a 
+                    className="button secondary" 
+                    style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                    href={`/api/jobs/download-asset?path=${encodeURIComponent(colabJob.audio_path || "")}`}
+                    download
+                  >
+                    <Download size={14} /> Áudio de Voz
+                  </a>
+                  {(() => {
+                    const avatar = getRelatedOne(colabJob.avatars);
+                    const avatarPath = avatar?.image_path || "";
+                    return (
+                      <a 
+                        className="button secondary" 
+                        style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                        href={`/api/jobs/download-asset?path=${encodeURIComponent(avatarPath)}&bucket=avatars`}
+                        download
+                      >
+                        <Download size={14} /> Vídeo/Imagem Base
+                      </a>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Passo 2 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 2: Baixe e abra o Notebook no Google Colab</span>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <a 
+                    className="button secondary" 
+                    style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                    href="/mrchicken_lipsync_colab.ipynb"
+                    download
+                  >
+                    <Download size={14} /> Baixar Notebook (.ipynb)
+                  </a>
+                  <a 
+                    className="button" 
+                    style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                    href="https://colab.research.google.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={14} /> Abrir Google Colab
+                  </a>
+                </div>
+                <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                  Dica: No Google Colab, vá em &quot;Fazer Upload&quot; e envie o arquivo <code>mrchicken_lipsync_colab.ipynb</code> que você acabou de baixar.
+                </span>
+              </div>
+
+              {/* Passo 3 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontSize: "0.86rem", fontWeight: 800 }}>Passo 3: Envie o vídeo resultante (result.mp4)</span>
+                <input 
+                  type="file" 
+                  accept="video/mp4"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setUploadFile(file);
+                    setUploadError("");
+                  }}
+                  style={{ 
+                    border: "1px dashed var(--line)", 
+                    padding: "12px", 
+                    borderRadius: "8px", 
+                    background: "var(--panel-strong)",
+                    fontSize: "0.85rem"
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {uploadError && (
             <span style={{ color: "var(--danger)", fontSize: "0.85rem" }}>{uploadError}</span>
