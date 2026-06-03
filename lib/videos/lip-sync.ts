@@ -3,6 +3,7 @@ import { promises as fs, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
 import { runCommand } from "@/lib/videos/render";
+import { Client, handle_file } from "@gradio/client";
 
 export type LipSyncInput = {
   avatarPath: string;
@@ -136,6 +137,47 @@ export async function createLipSyncVideo(input: LipSyncInput): Promise<LipSyncRe
   const isImage = /\.(png|jpe?g|webp)$/i.test(input.avatarPath);
   const ext = isImage ? ".mp4" : (path.extname(input.avatarPath) || ".mp4");
   const outputPath = path.join(workDir, `lipsync-output-${Date.now()}${ext}`);
+
+  const lipSyncApiUrl = process.env.LIPSYNC_API_URL;
+
+  if (lipSyncApiUrl) {
+    console.log(`[Lip-Sync] Conectando à API de Lip-Sync (Gradio): ${lipSyncApiUrl}`);
+    try {
+      const app = await Client.connect(lipSyncApiUrl);
+      console.log("[Lip-Sync] Conectado à API de Lip-Sync Gradio com sucesso!");
+      
+      const faceFile = handle_file(input.avatarPath);
+      const audioFile = handle_file(input.audioPath);
+      
+      console.log("[Lip-Sync] Enviando avatar e áudio para a API do Colab/Gradio...");
+      const gradioResult = await app.predict(0, [
+        faceFile,
+        audioFile
+      ]);
+      
+      try {
+        app.close();
+      } catch (closeErr) {
+        console.error("[Lip-Sync] Erro ao fechar conexão Gradio:", closeErr);
+      }
+
+      const data = gradioResult.data as (string | { url?: string })[];
+      const videoData = data?.[0];
+      const videoUrl = typeof videoData === "string" ? videoData : videoData?.url;
+
+      if (videoUrl) {
+        console.log(`[Lip-Sync] Baixando vídeo resultante de: ${videoUrl}`);
+        await downloadFile(videoUrl, outputPath);
+        return {
+          videoPath: outputPath
+        };
+      } else {
+        throw new Error("API Gradio de Lip-Sync não retornou uma URL válida.");
+      }
+    } catch (gradioError) {
+      console.error("[Lip-Sync] Falha na sincronização labial via API Gradio/Colab. Tentando fallback...", gradioError);
+    }
+  }
 
   const falKey = process.env.FAL_KEY || process.env.LIPSYNC_API_KEY;
 
