@@ -23,7 +23,7 @@ Funcionalidades implementadas:
 Pontos ainda parciais ou dependentes de servico externo:
 
 - A busca viral nao consome APIs externas; ela gera buscas, hooks e formatos a partir de padroes locais.
-- O lip-sync ainda nao chama uma ferramenta real. O modulo atual retorna o avatar original para o render.
+- O lip-sync usa um provider HTTP desacoplado via `lib/ai/lipsync.ts`; a implementação MuseTalk roda em `services/lipsync` e exige `LIPSYNC_API_URL`.
 - A voz depende de uma instancia OmniVoice/Gradio acessivel por `OMNIVOICE_API_URL`.
 - O download de Instagram/YouTube para render depende de `yt-dlp`.
 - A geracao de roteiro usa OpenAI quando `OPENAI_API_KEY` existe; sem chave, usa um texto fallback.
@@ -37,6 +37,7 @@ Pontos ainda parciais ou dependentes de servico externo:
 - Supabase SSR e Supabase JS
 - OpenAI para roteiro
 - Gradio client para OmniVoice
+- Microserviço Python/FastAPI para MuseTalk lip-sync
 - ffmpeg/ffprobe para render
 - yt-dlp para baixar videos fonte remotos
 
@@ -52,12 +53,13 @@ app/
   (dashboard)/                Telas autenticadas na pratica, mas sem login ativo
 components/                   UI, forms, tabelas e layout
 lib/
-  ai/                         Roteiro OpenAI e voz OmniVoice
+  ai/                         Roteiro OpenAI, voz OmniVoice e provider lip-sync
   videos/                     Busca viral, parser de fonte, pipeline e render
   local-store.ts              Fallback local em JSON e uploads publicos
   supabase/                   Cliente Supabase server-side
 supabase/schema.sql           Schema, RLS permissivo para workspace unico e buckets
 types/                        Tipos de dominio
+services/lipsync/              Microserviço MuseTalk para gerar talking avatar
 ```
 
 ## Configuracao
@@ -84,10 +86,12 @@ APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
 OPENAI_API_KEY=
 OMNIVOICE_API_KEY=
 OMNIVOICE_API_URL=http://localhost:8000
+LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
+LIPSYNC_TIMEOUT_MS=900000
 ```
 
-As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`.
+As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk, veja `docs/lipsync-musetalk.md`.
 
 4. Se for usar Supabase, rode `supabase/schema.sql` no projeto Supabase. O schema cria tabelas, enums, triggers, politicas RLS permissivas para o modo workspace unico e buckets `avatars`, `job-assets` e `renders`.
 

@@ -10,6 +10,12 @@ out
 # production
 build
 
+# python
+__pycache__
+*.py[cod]
+.venv
+venv
+
 # env
 .env
 .env*.local

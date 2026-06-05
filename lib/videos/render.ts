@@ -379,7 +379,9 @@ function buildExpertOnlyFilter() {
 
 async function renderWithFfmpeg(args: string[]) {
   try {
-    await runCommand(getFfmpegPath(), args);
+    const ffmpeg = getFfmpegPath();
+    console.log(`[RENDER] FFmpeg: ${ffmpeg} ${args.join(" ")}`);
+    await runCommand(ffmpeg, args);
   } catch (error) {
     if (isMissingCommandError(error)) {
       throw new Error("ffmpeg nao encontrado. Configure FFMPEG_PATH ou instale ffmpeg no worker.");
