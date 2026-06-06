@@ -228,6 +228,30 @@ subprocess.run([sys.executable, '-c', 'from accelerate.utils.memory import clear
 
 Depois rode novamente o smoke test.
 
+### Erro temporário de DNS do `trycloudflare.com`
+
+Logo após o Cloudflare imprimir a URL, pode aparecer:
+
+```txt
+NameResolutionError: Failed to resolve 'xxxx.trycloudflare.com'
+```
+
+Geralmente é só propagação/registro do tunnel. Aguarde 10 a 30 segundos e rode o smoke test de novo. Se quiser confirmar, teste:
+
+```python
+import requests, time
+for i in range(12):
+    try:
+        r = requests.get(f'{PUBLIC_URL}/health', timeout=10)
+        print(r.status_code, r.text[:500])
+        break
+    except Exception as exc:
+        print('aguardando tunnel...', i + 1, repr(exc))
+        time.sleep(5)
+```
+
+A versão atualizada do notebook já adiciona retry automático no `/health` e no download do vídeo.
+
 ### Erro `PUBLIC_URL is not defined` no smoke test
 
 Se aparecer na última célula:
