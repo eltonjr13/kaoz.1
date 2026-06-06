@@ -7,7 +7,7 @@ import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import { generateReactionScript } from "@/lib/ai/script";
 import { generateOmniVoice } from "@/lib/ai/omni-voice";
-import { createLipSyncVideo } from "@/lib/videos/lip-sync";
+import { generateLipSync } from "@/lib/ai/lipsync";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { analyzeAndGenerateScript } from "@/lib/ai/gemini";
@@ -251,6 +251,7 @@ export async function POST(request: Request) {
               }
             }
 
+            console.log(`[VOICE] Job ${jobId}: iniciando geração de voz com OmniVoice.`);
             const voiceResult = await generateOmniVoice({
               script: scriptText,
               voiceId: "default",
@@ -258,6 +259,7 @@ export async function POST(request: Request) {
               refAudioPath,
               settings: jobRecord.voice_settings
             });
+            console.log(`[VOICE] Job ${jobId}: voz gerada em ${voiceResult.audioPath}.`);
 
             // Upload the generated voice to Supabase
             const localVoiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
@@ -308,11 +310,13 @@ export async function POST(request: Request) {
               }
             }
 
-            const lipSyncResult = await createLipSyncVideo({
+            console.log(`[LIPSYNC] Job ${jobId}: iniciando sincronização labial com provider configurado.`);
+            const lipSyncResult = await generateLipSync({
               avatarPath: avatarLocalPath,
               audioPath: localVoiceDiskPath,
               jobId
             });
+            console.log(`[LIPSYNC] Job ${jobId}: vídeo lip-sync gerado em ${lipSyncResult.videoPath}.`);
 
             let supabaseLipSyncPath = avatar.image_path;
             if (lipSyncResult.videoPath !== avatarLocalPath) {
@@ -330,6 +334,7 @@ export async function POST(request: Request) {
             }).eq("id", jobId);
 
             // 4. Rendering stage
+            console.log(`[RENDER] Job ${jobId}: iniciando renderização do vídeo vertical final com FFmpeg.`);
             await supabase.from("reaction_jobs").update({ status: "rendering" }).eq("id", jobId);
             await supabase.from("job_events").insert({
               user_id: APP_WORKSPACE_ID,
@@ -516,7 +521,7 @@ export async function POST(request: Request) {
           }
         }
 
-        console.log(`[Local Pipeline] Iniciando geração de voz (OmniVoice)...`);
+        console.log(`[VOICE] Job ${jobId}: iniciando geração de voz com OmniVoice.`);
         const voiceResult = await generateOmniVoice({
           script: scriptText,
           voiceId: "default",
@@ -525,10 +530,10 @@ export async function POST(request: Request) {
           settings: localJobRecord.voice_settings
         });
         await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
-        console.log(`[Local Pipeline] Geração de voz concluída com sucesso! Áudio salvo em: ${voiceResult.audioPath}`);
+        console.log(`[VOICE] Job ${jobId}: voz gerada em ${voiceResult.audioPath}.`);
 
-        // 3. Lip-sync stage (Stub)
-        console.log(`[Local Pipeline] Iniciando sincronização labial (lip-sync)...`);
+        // 3. Lip-sync stage
+        console.log(`[LIPSYNC] Job ${jobId}: iniciando sincronização labial com provider configurado.`);
         await updateLocalJob(jobId, { status: "lip_syncing" });
 
         if (process.env.LIPSYNC_METHOD === "colab") {
@@ -536,16 +541,16 @@ export async function POST(request: Request) {
           return;
         }
         const voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
-        const lipSyncResult = await createLipSyncVideo({
+        const lipSyncResult = await generateLipSync({
           avatarPath: avatarDiskPath,
           audioPath: voiceDiskPath,
           jobId
         });
         await updateLocalJob(jobId, { lip_sync_video_path: lipSyncResult.videoPath });
-        console.log(`[Local Pipeline] Sincronização labial concluída! Vídeo: ${lipSyncResult.videoPath}`);
+        console.log(`[LIPSYNC] Job ${jobId}: vídeo lip-sync gerado em ${lipSyncResult.videoPath}.`);
 
         // 4. Rendering stage
-        console.log(`[Local Pipeline] Iniciando renderização do vídeo vertical final (FFmpeg)...`);
+        console.log(`[RENDER] Job ${jobId}: iniciando renderização do vídeo vertical final com FFmpeg.`);
         await updateLocalJob(jobId, { status: "rendering" });
         const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
         await renderVerticalVideo({

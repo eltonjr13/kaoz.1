@@ -10,6 +10,12 @@ out
 # production
 build
 
+# python
+__pycache__
+*.py[cod]
+.venv
+venv
+
 # env
 .env
 .env*.local
@@ -28,3 +34,5 @@ public/uploads
 # system
 .DS_Store
 Thumbs.db
+personalidades
+
