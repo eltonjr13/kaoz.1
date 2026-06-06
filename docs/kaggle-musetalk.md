@@ -228,6 +228,27 @@ subprocess.run([sys.executable, '-c', 'from accelerate.utils.memory import clear
 
 Depois rode novamente o smoke test.
 
+#### Erro `No module named 'mmpose'`
+
+Se o pipeline local ou smoke test retornar:
+
+```txt
+ModuleNotFoundError: No module named 'mmpose'
+```
+
+faltou instalar o stack OpenMMLab usado pelo MuseTalk para landmarks/DWPose. Rode no Kaggle:
+
+```python
+import sys, subprocess
+subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '--upgrade', 'openmim>=0.3.9'], check=True)
+for package in ['mmengine', 'mmcv==2.0.1', 'mmdet==3.1.0', 'mmpose==1.1.0']:
+    print('mim install', package)
+    subprocess.run([sys.executable, '-m', 'mim', 'install', package], check=True)
+subprocess.run([sys.executable, '-c', 'import mmengine, mmcv, mmdet, mmpose; from mmpose.apis import inference_topdown, init_model; print("mmlab ok", mmcv.__version__, mmpose.__version__)'], check=True)
+```
+
+Depois rode novamente o smoke test ou reenvie o job no MrChicken. A inferência MuseTalk roda em subprocesso, então normalmente não precisa reiniciar o Uvicorn; se o erro persistir, reinicie a sessão Kaggle e rode as células desde o setup. A célula de dependências do notebook atualizado já instala esses pacotes.
+
 ### Erro temporário de DNS do `trycloudflare.com`
 
 Logo após o Cloudflare imprimir a URL, pode aparecer:
