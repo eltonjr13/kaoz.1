@@ -89,9 +89,11 @@ OMNIVOICE_API_URL=http://localhost:8000
 LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
 LIPSYNC_TIMEOUT_MS=900000
+LIPSYNC_TRANSFER_MODE=path
+LIPSYNC_DOWNLOADS_DIR=
 ```
 
-As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk, veja `docs/lipsync-musetalk.md`.
+As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle, veja `docs/kaggle-musetalk.md`.
 
 4. Se for usar Supabase, rode `supabase/schema.sql` no projeto Supabase. O schema cria tabelas, enums, triggers, politicas RLS permissivas para o modo workspace unico e buckets `avatars`, `job-assets` e `renders`.
 
@@ -151,7 +153,7 @@ npm run typecheck  # TypeScript sem emitir arquivos
 5. O app inicia o pipeline:
    - gera roteiro;
    - gera voz via OmniVoice;
-   - prepara o avatar para lip-sync, hoje ainda como placeholder;
+   - prepara o avatar para lip-sync via provider MuseTalk HTTP;
    - baixa/prepara o video fonte quando informado;
    - renderiza o video vertical final.
 6. Acompanhe o status e baixe o resultado em `/jobs`.

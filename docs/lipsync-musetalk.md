@@ -19,7 +19,7 @@ services/lipsync/outputs/      # saídas por job
 
 ## Contrato REST
 
-`POST /generate`
+`POST /generate` usa paths locais/compartilhados:
 
 Request:
 
@@ -40,7 +40,25 @@ Response:
 }
 ```
 
-Quando LIPSYNC_API_KEY está configurado no microserviço, o Next.js envia os headers Authorization: Bearer <key> e X-API-Key: <key>.
+`POST /generate-upload` usa `multipart/form-data`, recomendado para Kaggle/serviços externos:
+
+```txt
+jobId=<uuid>
+avatar=<arquivo jpg/png/webp/mp4>
+audio=<arquivo wav/mp3/m4a>
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "videoPath": "/kaggle/working/.../musetalk-output.mp4",
+  "videoUrl": "https://xxxx.trycloudflare.com/outputs/<jobId>/musetalk-output.mp4"
+}
+```
+
+Quando LIPSYNC_API_KEY está configurado no microserviço, o Next.js envia os headers Authorization: Bearer *** e X-API-Key: <key>.
 
 ## Variáveis de ambiente do Next.js
 
@@ -48,9 +66,13 @@ Quando LIPSYNC_API_KEY está configurado no microserviço, o Next.js envia os he
 LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
 LIPSYNC_TIMEOUT_MS=900000
+LIPSYNC_TRANSFER_MODE=path
+LIPSYNC_DOWNLOADS_DIR=
 ```
 
-O renderizador FFmpeg recebe `lipSyncResult.videoPath` como `reactionVideoPath`, então o `videoPath` retornado pelo MuseTalk precisa estar acessível no filesystem do worker Next.js. Em ambiente externo, use volume compartilhado, mount de rede ou um path comum dentro do container/VM.
+Use `LIPSYNC_TRANSFER_MODE=path` quando o microserviço e o Next.js compartilham o mesmo filesystem. O renderizador FFmpeg recebe `lipSyncResult.videoPath` como `reactionVideoPath`, então o `videoPath` retornado pelo MuseTalk precisa existir no worker Next.js.
+
+Use `LIPSYNC_TRANSFER_MODE=upload` para Kaggle/ambiente externo. Nesse modo o Next.js envia avatar e áudio para `POST /generate-upload`, recebe `videoUrl`, baixa o MP4 para `.generated/jobs/<jobId>/lipsync/musetalk-output.mp4` e retorna esse path local para o FFmpeg. Veja `docs/kaggle-musetalk.md`.
 
 ## Variáveis do microserviço Python
 

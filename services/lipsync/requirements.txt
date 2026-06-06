@@ -1,5 +1,6 @@
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
 pydantic>=2.8,<3.0
+python-multipart>=0.0.9,<1.0
 # torch is intentionally not pinned here because CUDA wheels depend on the host.
 # Install the CUDA-compatible torch build required by your MuseTalk environment.
