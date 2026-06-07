@@ -23,7 +23,7 @@ Funcionalidades implementadas:
 Pontos ainda parciais ou dependentes de servico externo:
 
 - A busca viral nao consome APIs externas; ela gera buscas, hooks e formatos a partir de padroes locais.
-- O lip-sync usa um provider HTTP desacoplado via `lib/ai/lipsync.ts`; a implementação MuseTalk roda em `services/lipsync` e exige `LIPSYNC_API_URL`.
+- O lip-sync usa um provider HTTP desacoplado via `lib/ai/lipsync.ts`; a implementação MuseTalk 1.5 Oficial roda em `services/lipsync` e exige `LIPSYNC_API_URL`.
 - A voz depende de uma instancia OmniVoice/Gradio acessivel por `OMNIVOICE_API_URL`.
 - O download de Instagram/YouTube para render depende de `yt-dlp`.
 - A geracao de roteiro usa OpenAI quando `OPENAI_API_KEY` existe; sem chave, usa um texto fallback.
@@ -86,14 +86,15 @@ APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
 OPENAI_API_KEY=
 OMNIVOICE_API_KEY=
 OMNIVOICE_API_URL=http://localhost:8000
+LIPSYNC_ENGINE=musetalk-v15
 LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
-LIPSYNC_TIMEOUT_MS=900000
-LIPSYNC_TRANSFER_MODE=path
-LIPSYNC_DOWNLOADS_DIR=
+LIPSYNC_TIMEOUT_MS=1800000
+LIPSYNC_TRANSFER_MODE=upload
+LIPSYNC_DOWNLOADS_DIR=.generated/jobs
 ```
 
-As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle, veja `docs/kaggle-musetalk.md`.
+As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle/Colab, veja `docs/kaggle-musetalk-v15.md`.
 
 4. Se for usar Supabase, rode `supabase/schema.sql` no projeto Supabase. O schema cria tabelas, enums, triggers, politicas RLS permissivas para o modo workspace unico e buckets `avatars`, `job-assets` e `renders`.
 

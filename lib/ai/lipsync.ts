@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export type LipSyncEngine = "musetalk" | "wav2lip" | "hallo" | "omnihuman";
+export type LipSyncEngine = "musetalk" | "musetalk-v15" | "wav2lip" | "hallo" | "omnihuman";
 export type LipSyncTransferMode = "path" | "upload";
 
 export type LipSyncInput = {
@@ -22,6 +22,7 @@ export type LipSyncProviderOptions = {
   transferMode?: LipSyncTransferMode;
   downloadsDir?: string;
   fetchImpl?: typeof fetch;
+  engine?: LipSyncEngine;
 };
 
 export interface LipSyncProvider {
@@ -122,7 +123,7 @@ function errorCodeFromService(code: string | undefined): LipSyncError["code"] {
 }
 
 export class MuseTalkProvider implements LipSyncProvider {
-  readonly name = "musetalk" as const;
+  readonly name: LipSyncEngine;
 
   private readonly apiUrl: string;
   private readonly apiKey?: string;
@@ -132,6 +133,7 @@ export class MuseTalkProvider implements LipSyncProvider {
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: LipSyncProviderOptions = {}) {
+    this.name = options.engine ?? (process.env.LIPSYNC_ENGINE as LipSyncEngine) ?? "musetalk";
     const apiUrl = options.apiUrl ?? process.env.LIPSYNC_API_URL;
     if (!apiUrl) {
       throw new LipSyncError("LIPSYNC_API_URL não configurada para o provider MuseTalk.", "LIPSYNC_CONFIG_MISSING", 500);
@@ -279,13 +281,15 @@ export class MuseTalkProvider implements LipSyncProvider {
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (contentType && !contentType.includes("video") && !contentType.includes("octet-stream")) {
+    if (contentType && !contentType.includes("video") && !contentType.includes("octet-stream") && !contentType.includes("application/octet-stream")) {
       throw new LipSyncError(`Download do lip-sync retornou content-type inesperado: ${contentType}`, "LIPSYNC_INVALID_RESPONSE", response.status);
     }
 
     const outputDir = this.downloadsDir ?? path.join(process.cwd(), ".generated", "jobs", safePathSegment(jobId), "lipsync");
     await mkdir(outputDir, { recursive: true });
-    const outputPath = path.join(outputDir, "musetalk-output.mp4");
+    
+    const filename = this.name === "musetalk-v15" ? "musetalk-v15-output.mp4" : "musetalk-output.mp4";
+    const outputPath = path.join(outputDir, filename);
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -298,16 +302,18 @@ export class MuseTalkProvider implements LipSyncProvider {
   }
 }
 
-export function createLipSyncProvider(engine: LipSyncEngine = "musetalk", options: LipSyncProviderOptions = {}): LipSyncProvider {
-  switch (engine) {
+export function createLipSyncProvider(engine?: LipSyncEngine, options: LipSyncProviderOptions = {}): LipSyncProvider {
+  const finalEngine = engine ?? (process.env.LIPSYNC_ENGINE as LipSyncEngine) ?? "musetalk";
+  switch (finalEngine) {
     case "musetalk":
-      return new MuseTalkProvider(options);
+    case "musetalk-v15":
+      return new MuseTalkProvider({ ...options, engine: finalEngine });
     case "wav2lip":
     case "hallo":
     case "omnihuman":
-      throw new LipSyncError(`Provider de lip-sync ainda não implementado: ${engine}`, "LIPSYNC_CONFIG_MISSING", 501);
+      throw new LipSyncError(`Provider de lip-sync ainda não implementado: ${finalEngine}`, "LIPSYNC_CONFIG_MISSING", 501);
     default: {
-      const exhaustive: never = engine;
+      const exhaustive: never = finalEngine;
       throw new LipSyncError(`Provider de lip-sync desconhecido: ${exhaustive}`, "LIPSYNC_CONFIG_MISSING", 500);
     }
   }

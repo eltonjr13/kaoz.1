@@ -6,6 +6,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from string import Template
@@ -59,7 +60,10 @@ class MuseTalkService:
 
         job_dir = self.outputs_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
-        output_path = job_dir / "musetalk-output.mp4"
+        
+        version = os.getenv("MUSETALK_VERSION", "v15")
+        filename = f"musetalk-{version}-output.mp4" if version else "musetalk-output.mp4"
+        output_path = job_dir / filename
 
         command = self._build_command(
             job_id=job_id,
@@ -68,8 +72,24 @@ class MuseTalkService:
             output_path=output_path,
             job_dir=job_dir,
         )
-        timeout = int(os.getenv("MUSETALK_TIMEOUT_SECONDS", "900"))
+        timeout = int(os.getenv("MUSETALK_TIMEOUT_SECONDS", "1800"))
         cwd = os.getenv("MUSETALK_REPO_PATH") or None
+
+        # Build custom environment to pass FFMPEG_PATH and PYTHONPATH
+        env = os.environ.copy()
+        ffmpeg_path = os.getenv("MUSETALK_FFMPEG_PATH")
+        if ffmpeg_path:
+            env["FFMPEG_PATH"] = ffmpeg_path
+            # Also prepend to system path if needed
+            ffmpeg_dir = str(Path(ffmpeg_path).parent)
+            env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
+
+        if cwd:
+            env["PYTHONPATH"] = f"{cwd}{os.pathsep}{env.get('PYTHONPATH', '')}"
+
+        stdout_file = job_dir / "stdout.log"
+        stderr_file = job_dir / "stderr.log"
+        error_file = job_dir / "error.log"
 
         logger.info("Executando MuseTalk para job %s: %s", job_id, " ".join(command))
         started = time.monotonic()
@@ -77,24 +97,32 @@ class MuseTalkService:
             result = subprocess.run(
                 command,
                 cwd=cwd,
+                env=env,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            error_file.write_text(f"TimeoutExpired: MuseTalk excedeu o timeout de {timeout}s.", encoding="utf-8")
             raise MuseTalkTimeoutError(f"MuseTalk excedeu o timeout de {timeout}s para o job {job_id}.") from exc
 
         elapsed = time.monotonic() - started
+        
+        # Save stdout/stderr logs
+        stdout_file.write_text(result.stdout or "", encoding="utf-8")
+        stderr_file.write_text(result.stderr or "", encoding="utf-8")
+
         if result.stdout:
-            logger.info("MuseTalk stdout job %s:\n%s", job_id, result.stdout[-4000:])
+            logger.info("MuseTalk stdout job %s:\n%s", job_id, result.stdout[-2000:])
         if result.stderr:
-            logger.warning("MuseTalk stderr job %s:\n%s", job_id, result.stderr[-4000:])
+            logger.warning("MuseTalk stderr job %s:\n%s", job_id, result.stderr[-2000:])
 
         if result.returncode != 0:
-            raise MuseTalkExecutionError(
-                f"MuseTalk falhou para o job {job_id} com código {result.returncode}: {result.stderr[-2000:]}"
-            )
+            traceback_snippet = (result.stderr or "")[-2000:]
+            error_msg = f"MuseTalk falhou com código {result.returncode}:\n{traceback_snippet}"
+            error_file.write_text(f"Return code: {result.returncode}\n\nStderr:\n{result.stderr}\n\nStdout:\n{result.stdout}", encoding="utf-8")
+            raise MuseTalkExecutionError(error_msg)
 
         final_path = self._resolve_output(job_dir=job_dir, expected_path=output_path)
         logger.info("MuseTalk finalizou job %s em %.1fs: %s", job_id, elapsed, final_path)
@@ -141,8 +169,20 @@ class MuseTalkService:
             audio_path=audio_path,
             job_dir=job_dir,
         )
-        python = os.getenv("MUSETALK_PYTHON", "python")
-        return [python, str(inference_script), "--inference_config", str(config_path)]
+        
+        python = os.getenv("MUSETALK_PYTHON") or sys.executable
+        version = os.getenv("MUSETALK_VERSION", "v15")
+        unet_model_path = os.getenv("MUSETALK_UNET_MODEL_PATH", "models/musetalkV15/unet.pth")
+        unet_config = os.getenv("MUSETALK_UNET_CONFIG", "models/musetalkV15/musetalk.json")
+        
+        return [
+            python, 
+            str(inference_script), 
+            "--inference_config", str(config_path),
+            "--version", version,
+            "--unet_model_path", unet_model_path,
+            "--unet_config", unet_config
+        ]
 
     def _write_inference_config(self, job_id: str, avatar_path: Path, audio_path: Path, job_dir: Path) -> Path:
         # MuseTalk uses YAML configs shaped as task maps. Keep this file minimal and

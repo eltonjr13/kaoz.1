@@ -53,8 +53,9 @@ Response:
 ```json
 {
   "success": true,
-  "videoPath": "/kaggle/working/.../musetalk-output.mp4",
-  "videoUrl": "https://xxxx.trycloudflare.com/outputs/<jobId>/musetalk-output.mp4"
+  "provider": "musetalk-v15",
+  "videoPath": "/kaggle/working/.../musetalk-v15-output.mp4",
+  "videoUrl": "https://xxxx.trycloudflare.com/outputs/<jobId>/musetalk-v15-output.mp4"
 }
 ```
 
@@ -63,26 +64,30 @@ Quando LIPSYNC_API_KEY está configurado no microserviço, o Next.js envia os he
 ## Variáveis de ambiente do Next.js
 
 ```env
+LIPSYNC_ENGINE=musetalk-v15
 LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
-LIPSYNC_TIMEOUT_MS=900000
-LIPSYNC_TRANSFER_MODE=path
-LIPSYNC_DOWNLOADS_DIR=
+LIPSYNC_TIMEOUT_MS=1800000
+LIPSYNC_TRANSFER_MODE=upload
+LIPSYNC_DOWNLOADS_DIR=.generated/jobs
 ```
 
 Use `LIPSYNC_TRANSFER_MODE=path` quando o microserviço e o Next.js compartilham o mesmo filesystem. O renderizador FFmpeg recebe `lipSyncResult.videoPath` como `reactionVideoPath`, então o `videoPath` retornado pelo MuseTalk precisa existir no worker Next.js.
 
-Use `LIPSYNC_TRANSFER_MODE=upload` para Kaggle/ambiente externo. Nesse modo o Next.js envia avatar e áudio para `POST /generate-upload`, recebe `videoUrl`, baixa o MP4 para `.generated/jobs/<jobId>/lipsync/musetalk-output.mp4` e retorna esse path local para o FFmpeg. Veja `docs/kaggle-musetalk.md`.
+Use `LIPSYNC_TRANSFER_MODE=upload` para Kaggle/ambiente externo. Nesse modo o Next.js envia avatar e áudio para `POST /generate-upload`, recebe `videoUrl`, baixa o MP4 para `.generated/jobs/<jobId>/lipsync/musetalk-v15-output.mp4` e retorna esse path local para o FFmpeg. Veja `docs/kaggle-musetalk-v15.md` ou `docs/colab-musetalk-v15.md`.
 
 ## Variáveis do microserviço Python
 
 ```env
 LIPSYNC_API_KEY=mesma-chave-do-next
-MUSETALK_REPO_PATH=/opt/MuseTalk
-MUSETALK_PYTHON=python
-MUSETALK_TIMEOUT_SECONDS=900
+MUSETALK_REPO_PATH=/kaggle/working/MuseTalk
+MUSETALK_VERSION=v15
+MUSETALK_UNET_MODEL_PATH=models/musetalkV15/unet.pth
+MUSETALK_UNET_CONFIG=models/musetalkV15/musetalk.json
+MUSETALK_OUTPUTS_DIR=/kaggle/working/mrchicken_lipsync_outputs
+MUSETALK_TIMEOUT_SECONDS=1800
 MUSETALK_REQUIRE_GPU=true
-MUSETALK_OUTPUTS_DIR=/shared/mrchicken/lipsync
+MUSETALK_FFMPEG_PATH=
 ```
 
 Alternativa avançada para instalações customizadas:
@@ -103,7 +108,7 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8010
 ```
 
-Instale o MuseTalk e o build CUDA do PyTorch conforme a GPU do host. O `requirements.txt` não fixa `torch` porque wheels CUDA são específicos por ambiente.
+Instale o MuseTalk e o build CUDA do PyTorch conforme a GPU do host. O `requirements.txt` não fixa `torch` ou bibliotecas OpenMMLab (`mmcv`, `mmpose`, etc.) porque dependem de build CUDA específico por ambiente.
 
 ## Tratamento de falhas
 
@@ -135,3 +140,4 @@ export interface LipSyncProvider {
 ```
 
 Para adicionar Wav2Lip, Hallo ou OmniHuman, implemente uma nova classe com `generateTalkingAvatar()` e registre em `createLipSyncProvider()`. O pipeline não precisa mudar.
+
