@@ -1,0 +1,416 @@
+import json
+from pathlib import Path
+
+def make_code_cell(source_str):
+    lines = [line + '\n' for line in source_str.split('\n')]
+    if lines and lines[-1] == '\n':
+        lines.pop()
+    return {
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": lines
+    }
+
+def make_markdown_cell(source_str):
+    lines = [line + '\n' for line in source_str.split('\n')]
+    if lines and lines[-1] == '\n':
+        lines.pop()
+    return {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": lines
+    }
+
+def build_notebook():
+    cells = []
+    
+    # 1. Introduction
+    cells.append(make_markdown_cell(
+        "# Mr. Chicken + LatentSync (ByteDance) no Kaggle\n"
+        "\n"
+        "Este notebook executa o **LatentSync** (sincronização labial baseada em difusão de última geração da ByteDance) como um microserviço REST, compatível com o Mr. Chicken local."
+    ))
+    
+    # 2. Setup Variables
+    setup_code = (
+        "from pathlib import Path\n"
+        "import os, secrets, subprocess, sys, time\n"
+        "\n"
+        "WORK_DIR = Path('/kaggle/working')\n"
+        "REPO_DIR = WORK_DIR / 'LatentSync'\n"
+        "SERVICE_FILE = WORK_DIR / 'mrchicken_lipsync_service.py'\n"
+        "OUTPUTS_DIR = WORK_DIR / 'mrchicken_lipsync_outputs'\n"
+        "PORT = int(os.environ.get('LIPSYNC_PORT', '8010'))\n"
+        "\n"
+        "PYTHON_EXE = '/opt/conda/bin/python' if os.path.exists('/opt/conda/bin/python') else sys.executable\n"
+        "os.environ['PYTHON'] = PYTHON_EXE\n"
+        "API_KEY = \"\"\n"
+        "os.environ['LIPSYNC_API_KEY'] = API_KEY\n"
+        "os.environ['MUSETALK_OUTPUTS_DIR'] = str(OUTPUTS_DIR)\n"
+        "os.environ['MUSETALK_TIMEOUT_SECONDS'] = '1800'\n"
+        "os.environ['HF_HOME'] = str(WORK_DIR / 'hf-cache')\n"
+        "\n"
+        "WORK_DIR.mkdir(parents=True, exist_ok=True)\n"
+        "OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)\n"
+        "print('WORK_DIR=', WORK_DIR)\n"
+        "print('REPO_DIR=', REPO_DIR)\n"
+        "print('OUTPUTS_DIR=', OUTPUTS_DIR)\n"
+        "print('PORT=', PORT)\n"
+        "print('PYTHON_EXE=', PYTHON_EXE)"
+    )
+    cells.append(make_code_cell(setup_code))
+    
+    # 3. Clone and Dependencies
+    deps_code = (
+        "# Clone/update do LatentSync e dependências no ambiente do Kaggle (Python 3.10+)\n"
+        "import shutil, subprocess, sys, os\n"
+        "from pathlib import Path\n"
+        "\n"
+        "giturl = 'https://github.com/bytedance/LatentSync.git'\n"
+        "\n"
+        "if REPO_DIR.exists() and not (REPO_DIR / '.git').exists():\n"
+        "    shutil.rmtree(REPO_DIR)\n"
+        "\n"
+        "if not REPO_DIR.exists():\n"
+        "    print(\"Clonando repositório LatentSync...\")\n"
+        "    subprocess.run(['git', 'clone', giturl, str(REPO_DIR)], check=True)\n"
+        "\n"
+        "# Tenta instalar pacotes de sistema necessários (libgl1)\n"
+        "try:\n"
+        "    print(\"Verificando/instalando libgl1 via apt...\")\n"
+        "    subprocess.run(['sudo', 'apt-get', 'update', '-y'], check=False)\n"
+        "    subprocess.run(['sudo', 'apt-get', 'install', '-y', 'libgl1'], check=False)\n"
+        "except Exception as e:\n"
+        "    print(\"Aviso ao tentar atualizar apt:\", e)\n"
+        "\n"
+        "# Instala dependências do Python\n"
+        "print(\"Instalando pip dependencies...\")\n"
+        "PYTHON_EXE = os.environ.get('PYTHON') or sys.executable\n"
+        "subprocess.run([PYTHON_EXE, '-m', 'pip', 'install', '-q', '--upgrade', 'pip'], check=True)\n"
+        "\n"
+        "packages = [\n"
+        "    'diffusers>=0.32.2',\n"
+        "    'transformers>=4.48.0',\n"
+        "    'decord>=0.6.0',\n"
+        "    'accelerate>=0.26.1',\n"
+        "    'einops>=0.7.0',\n"
+        "    'omegaconf>=2.3.0',\n"
+        "    'opencv-python>=4.9.0.80',\n"
+        "    'mediapipe>=0.10.11',\n"
+        "    'python_speech_features>=0.6',\n"
+        "    'librosa>=0.10.1',\n"
+        "    'scenedetect>=0.6.1',\n"
+        "    'ffmpeg-python>=0.2.0',\n"
+        "    'imageio>=2.31.1',\n"
+        "    'imageio-ffmpeg',\n"
+        "    'fastapi',\n"
+        "    'uvicorn',\n"
+        "    'python-multipart',\n"
+        "    'insightface',\n"
+        "    'onnxruntime-gpu',\n"
+        "    'DeepCache'\n"
+        "]\n"
+        "\n"
+        "subprocess.run([PYTHON_EXE, '-m', 'pip', 'install', '-q'] + packages, check=True)\n"
+        "print(\"Dependências do Python instaladas com sucesso!\")"
+    )
+    cells.append(make_code_cell(deps_code))
+    
+    # 4. Checkpoints Download
+    ckpt_code = (
+        "# Download de checkpoints usando a biblioteca Python huggingface_hub\n"
+        "from pathlib import Path\n"
+        "import sys, subprocess, os\n"
+        "\n"
+        "PYTHON_EXE = os.environ.get('PYTHON') or sys.executable\n"
+        "print(\"Garantindo instalação/atualização do huggingface_hub...\")\n"
+        "subprocess.run([PYTHON_EXE, '-m', 'pip', 'install', '-q', '--upgrade', 'huggingface_hub'], check=True)\n"
+        "\n"
+        "checkpoints_dir = REPO_DIR / 'checkpoints'\n"
+        "checkpoints_dir.mkdir(parents=True, exist_ok=True)\n"
+        "\n"
+        "print(\"Baixando checkpoints de ByteDance/LatentSync programaticamente...\")\n"
+        "from huggingface_hub import snapshot_download\n"
+        "try:\n"
+        "    snapshot_download(\n"
+        "        repo_id='ByteDance/LatentSync',\n"
+        "        local_dir=str(checkpoints_dir),\n"
+        "        ignore_patterns=['*.git*', 'README.md']\n"
+        "    )\n"
+        "    print(\"Checkpoints baixados com sucesso!\")\n"
+        "except Exception as e:\n"
+        "    print(\"Erro ao baixar checkpoints via snapshot_download:\", e)\n"
+        "    raise e"
+    )
+    cells.append(make_code_cell(ckpt_code))
+    
+    # 5. Write FastAPI Service code
+    service_code = (
+        "SERVICE_SOURCE = r'''\n"
+        "import os\n"
+        "import re\n"
+        "import shutil\n"
+        "import subprocess\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "from typing import Optional\n"
+        "from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile\n"
+        "from fastapi.responses import FileResponse\n"
+        "from pydantic import BaseModel, ConfigDict, Field\n"
+        "\n"
+        "app = FastAPI(title=\"MrChicken LatentSync Service\", version=\"1.0.0\")\n"
+        "\n"
+        "WORK_DIR = Path('/kaggle/working')\n"
+        "REPO_DIR = WORK_DIR / 'LatentSync'\n"
+        "OUTPUTS_DIR = WORK_DIR / 'mrchicken_lipsync_outputs'\n"
+        "OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)\n"
+        "\n"
+        "class GenerateResponse(BaseModel):\n"
+        "    model_config = ConfigDict(populate_by_name=True)\n"
+        "    success: bool\n"
+        "    video_path: str = Field(..., alias='videoPath')\n"
+        "    video_url: Optional[str] = Field(default=None, alias='videoUrl')\n"
+        "\n"
+        "def verify_api_key(authorization: Optional[str] = Header(default=None), x_api_key: Optional[str] = Header(default=None)) -> None:\n"
+        "    return  # Keyless\n"
+        "\n"
+        "def safe_path_segment(value: str) -> str:\n"
+        "    return re.sub(r'[^a-zA-Z0-9._-]', '-', value)[:120] or 'job'\n"
+        "\n"
+        "def safe_upload_name(filename: str | None, fallback: str) -> str:\n"
+        "    suffix = Path(filename or fallback).suffix.lower()\n"
+        "    if suffix not in {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.webm', '.wav', '.mp3', '.m4a'}:\n"
+        "        suffix = Path(fallback).suffix\n"
+        "    return f'{Path(fallback).stem}{suffix}'\n"
+        "\n"
+        "def save_upload(upload: UploadFile, destination: Path) -> Path:\n"
+        "    destination.parent.mkdir(parents=True, exist_ok=True)\n"
+        "    with destination.open('wb') as output:\n"
+        "        shutil.copyfileobj(upload.file, output)\n"
+        "    return destination\n"
+        "\n"
+        "def run_latentsync(job_id: str, avatar_path: Path, audio_path: Path) -> Path:\n"
+        "    job_dir = OUTPUTS_DIR / safe_path_segment(job_id)\n"
+        "    job_dir.mkdir(parents=True, exist_ok=True)\n"
+        "    output_path = job_dir / \"latentsync-output.mp4\"\n"
+        "    \n"
+        "    avatar_ext = avatar_path.suffix.lower()\n"
+        "    is_image = avatar_ext in {'.jpg', '.jpeg', '.png', '.webp'}\n"
+        "    temp_video_path = None\n"
+        "    \n"
+        "    if is_image:\n"
+        "        print(f\"Detectada imagem estática: {avatar_path}. Convertendo para vídeo estático com FFmpeg...\")\n"
+        "        temp_video_path = job_dir / \"temp_image_looped.mp4\"\n"
+        "        \n"
+        "        cmd_ffmpeg = [\n"
+        "            'ffmpeg', '-y',\n"
+        "            '-loop', '1',\n"
+        "            '-i', str(avatar_path),\n"
+        "            '-i', str(audio_path),\n"
+        "            '-c:v', 'libx264',\n"
+        "            '-tune', 'stillimage',\n"
+        "            '-c:a', 'aac',\n"
+        "            '-pix_fmt', 'yuv420p',\n"
+        "            '-shortest',\n"
+        "            str(temp_video_path)\n"
+        "        ]\n"
+        "        \n"
+        "        print(f\"Executando FFmpeg: {' '.join(cmd_ffmpeg)}\")\n"
+        "        result_ffmpeg = subprocess.run(cmd_ffmpeg, capture_output=True, text=True, check=False)\n"
+        "        if result_ffmpeg.returncode != 0:\n"
+        "            print(\"Stderr FFmpeg:\", result_ffmpeg.stderr)\n"
+        "            raise RuntimeError(f\"FFmpeg falhou ao criar vídeo estático da imagem. Código {result_ffmpeg.returncode}\")\n"
+        "        \n"
+        "        input_video_path = temp_video_path\n"
+        "        print(f\"Vídeo estático gerado em: {input_video_path}\")\n"
+        "    else:\n"
+        "        input_video_path = avatar_path\n"
+        "        \n"
+        "    config_candidate1 = REPO_DIR / \"configs\" / \"unet\" / \"second_stage.yaml\"\n"
+        "    config_candidate2 = REPO_DIR / \"configs\" / \"unet\" / \"stage2.yaml\"\n"
+        "    \n"
+        "    if config_candidate1.exists():\n"
+        "        config_path = \"configs/unet/second_stage.yaml\"\n"
+        "    elif config_candidate2.exists():\n"
+        "        config_path = \"configs/unet/stage2.yaml\"\n"
+        "    else:\n"
+        "        config_path = \"configs/unet/stage2.yaml\"\n"
+        "        \n"
+        "    cmd = [\n"
+        "        os.environ.get('PYTHON') or 'python',\n"
+        "        '-m', 'scripts.inference',\n"
+        "        '--unet_config_path', config_path,\n"
+        "        '--inference_ckpt_path', 'checkpoints/latentsync_unet.pt',\n"
+        "        '--video_path', str(input_video_path),\n"
+        "        '--audio_path', str(audio_path),\n"
+        "        '--video_out_path', str(output_path),\n"
+        "        '--guidance_scale', '1.5'\n"
+        "    ]\n"
+        "    \n"
+        "    print(f\"Executando LatentSync: {' '.join(cmd)}\")\n"
+        "    env = os.environ.copy()\n"
+        "    env['PYTHONPATH'] = f\"{REPO_DIR}:{env.get('PYTHONPATH', '')}\"\n"
+        "    \n"
+        "    result = subprocess.run(cmd, cwd=str(REPO_DIR), capture_output=True, text=True, env=env, check=False)\n"
+        "    if result.stdout:\n"
+        "        print(result.stdout[-2000:])\n"
+        "    if result.stderr:\n"
+        "        print(result.stderr[-2000:])\n"
+        "        \n"
+        "    if result.returncode != 0:\n"
+        "        error_msg = f\"LatentSync falhou com código {result.returncode}.\"\n"
+        "        if result.stderr:\n"
+        "            error_msg += f\"\\nStderr: {result.stderr[-1500:]}\"\n"
+        "        if result.stdout:\n"
+        "            error_msg += f\"\\nStdout: {result.stdout[-1500:]}\"\n"
+        "        raise RuntimeError(error_msg)\n"
+        "        \n"
+        "    if not output_path.exists():\n"
+        "        raise FileNotFoundError(f\"Vídeo de saída do LatentSync não encontrado em {output_path}\")\n"
+        "        \n"
+        "    if is_image and temp_video_path and temp_video_path.exists():\n"
+        "        try:\n"
+        "            temp_video_path.unlink()\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "            \n"
+        "    return output_path\n"
+        "\n"
+        "@app.get('/health')\n"
+        "def health() -> dict[str, object]:\n"
+        "    import torch\n"
+        "    return {'success': True, 'engine': 'latentsync', 'gpuAvailable': torch.cuda.is_available()}\n"
+        "\n"
+        "@app.post('/generate-upload')\n"
+        "async def generate_upload(request: Request, jobId: str = Form(..., min_length=1), avatar: UploadFile = File(...), audio: UploadFile = File(...)):\n"
+        "    safe_job_id = safe_path_segment(jobId)\n"
+        "    job_dir = OUTPUTS_DIR / safe_job_id\n"
+        "    avatar_path = save_upload(avatar, job_dir / safe_upload_name(avatar.filename, 'avatar.jpg'))\n"
+        "    audio_path = save_upload(audio, job_dir / safe_upload_name(audio.filename, 'audio.wav'))\n"
+        "    import asyncio\n"
+        "    import json\n"
+        "    from fastapi.responses import StreamingResponse\n"
+        "    async def event_generator():\n"
+        "        loop = asyncio.get_running_loop()\n"
+        "        task = loop.run_in_executor(None, run_latentsync, safe_job_id, avatar_path, audio_path)\n"
+        "        while not task.done():\n"
+        "            yield ' '\n"
+        "            await asyncio.sleep(5)\n"
+        "        try:\n"
+        "            video_path = await task\n"
+        "            result = {\n"
+        "                'success': True,\n"
+        "                'videoPath': str(video_path),\n"
+        "                'videoUrl': str(request.url_for('download_output', job_id=safe_job_id, filename=video_path.name))\n"
+        "            }\n"
+        "        except Exception as exc:\n"
+        "            import traceback\n"
+        "            error_text = traceback.format_exc()\n"
+        "            (job_dir / 'error.log').write_text(error_text, encoding='utf-8')\n"
+        "            result = {'success': False, 'error': str(exc), 'code': 'LATENTSYNC_ERROR'}\n"
+        "        yield json.dumps(result)\n"
+        "    return StreamingResponse(event_generator(), media_type='application/json')\n"
+        "\n"
+        "@app.get('/outputs/{job_id}/{filename}', name='download_output')\n"
+        "def download_output(job_id: str, filename: str) -> FileResponse:\n"
+        "    output_path = OUTPUTS_DIR / safe_path_segment(job_id) / Path(filename).name\n"
+        "    if not output_path.exists():\n"
+        "        raise HTTPException(status_code=404, detail={'success': False, 'error': f'Output não encontrado: {filename}', 'code': 'FILE_NOT_FOUND'})\n"
+        "    return FileResponse(output_path, media_type='video/mp4', filename=Path(filename).name)\n"
+        "'''\n"
+        "SERVICE_FILE.write_text(SERVICE_SOURCE, encoding='utf-8')\n"
+        "print('Serviço escrito em', SERVICE_FILE)"
+    )
+    cells.append(make_code_cell(service_code))
+    
+    # 6. Run FastAPI service and tunnel
+    run_code = (
+        "# Inicia FastAPI localmente e expõe com Cloudflare Tunnel temporário.\n"
+        "import os, queue, re, stat, threading, subprocess, time, requests, sys\n"
+        "PYTHON_EXE = os.environ.get('PYTHON') or sys.executable\n"
+        "\n"
+        "cloudflared = WORK_DIR / 'cloudflared'\n"
+        "if not cloudflared.exists():\n"
+        "    subprocess.run(['wget', '-q', 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64', '-O', str(cloudflared)], check=True)\n"
+        "    cloudflared.chmod(cloudflared.stat().st_mode | stat.S_IEXEC)\n"
+        "\n"
+        "for name in ['server_proc', 'tunnel_proc']:\n"
+        "    proc = globals().get(name)\n"
+        "    if proc and proc.poll() is None:\n"
+        "        proc.terminate()\n"
+        "        try:\n"
+        "            proc.wait(timeout=5)\n"
+        "        except Exception:\n"
+        "            proc.kill()\n"
+        "\n"
+        "server_proc = subprocess.Popen([PYTHON_EXE, '-m', 'uvicorn', 'mrchicken_lipsync_service:app', '--host', '0.0.0.0', '--port', str(PORT), '--proxy-headers'], cwd=str(WORK_DIR), env=os.environ.copy(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+        "\n"
+        "def stream_logs(prefix, proc):\n"
+        "    for line in proc.stdout:\n"
+        "        print(prefix, line, end='')\n"
+        "threading.Thread(target=stream_logs, args=('[uvicorn]', server_proc), daemon=True).start()\n"
+        "time.sleep(5)\n"
+        "resp = requests.get(f'http://127.0.0.1:{PORT}/health', timeout=15)\n"
+        "print('Health local:', resp.status_code, resp.text[:500])\n"
+        "\n"
+        "tunnel_proc = subprocess.Popen([str(cloudflared), 'tunnel', '--url', f'http://127.0.0.1:{PORT}', '--no-autoupdate'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+        "q = queue.Queue()\n"
+        "def capture_tunnel():\n"
+        "    for line in tunnel_proc.stdout:\n"
+        "        print('[cloudflared]', line, end='')\n"
+        "        q.put(line)\n"
+        "threading.Thread(target=capture_tunnel, daemon=True).start()\n"
+        "\n"
+        "PUBLIC_URL = None\n"
+        "pattern = re.compile(r'https://[-a-zA-Z0-9.]+\\.trycloudflare\\.com')\n"
+        "deadline = time.time() + 90\n"
+        "while time.time() < deadline and PUBLIC_URL is None:\n"
+        "    try:\n"
+        "        line = q.get(timeout=2)\n"
+        "    except queue.Empty:\n"
+        "        continue\n"
+        "    match = pattern.search(line)\n"
+        "    if match:\n"
+        "        PUBLIC_URL = match.group(0)\n"
+        "if not PUBLIC_URL:\n"
+        "    raise RuntimeError('Não consegui obter URL pública do cloudflared.')\n"
+        "\n"
+        "print('\\n=== CONFIGURE NO .env.local DO MRCHICKEN ===')\n"
+        "print(f'LIPSYNC_API_URL={PUBLIC_URL}')\n"
+        "print('# LIPSYNC_API_KEY não é necessária')\n"
+        "print('LIPSYNC_TRANSFER_MODE=upload')\n"
+        "print('LIPSYNC_TIMEOUT_MS=1800000')\n"
+        "print('Endpoint público:', PUBLIC_URL)"
+    )
+    cells.append(make_code_cell(run_code))
+
+    # Notebook structure
+    nb_dict = {
+        "cells": cells,
+        "metadata": {
+            "accelerator": "GPU",
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3"
+            },
+            "language_info": {
+                "name": "python",
+                "pygments_lexer": "ipython3"
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5
+    }
+    
+    # Save the notebook to the destination path
+    dest_path = Path("d:/apps/mrchicken/notebooks/musetalk-kaggle-service.ipynb")
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest_path, "w", encoding="utf-8") as f:
+        json.dump(nb_dict, f, indent=1, ensure_ascii=False)
+    print(f"Notebook gerado com sucesso em {dest_path}")
+
+if __name__ == "__main__":
+    build_notebook()
