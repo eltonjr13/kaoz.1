@@ -67,13 +67,14 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
     }
   }
 
-  async function handleRestart(jobId: string) {
-    setLoadingJobId(jobId);
+  async function handleRestart(jobId: string, startFrom?: "lipsync") {
+    const loadingKey = startFrom ? `${jobId}-${startFrom}` : jobId;
+    setLoadingJobId(loadingKey);
     try {
       const response = await fetch("/api/pipeline/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId })
+        body: JSON.stringify({ jobId, startFrom })
       });
       if (response.ok) {
         router.refresh();
@@ -129,45 +130,70 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                 </td>
                 <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
                 <td>
-                  {job.final_video_path ? (
-                    <a className="button secondary" href={job.final_video_path}>
-                      <Download size={16} /> Baixar
-                    </a>
-                  ) : job.status === "lip_syncing" ? (
-                    <button
-                      className="button"
-                      style={{ 
-                        display: "inline-flex", 
-                        alignItems: "center", 
-                        gap: "6px",
-                        padding: "6px 12px",
-                        fontSize: "13px",
-                        minHeight: "auto",
-                        background: "var(--brand)",
-                        color: "#fff"
-                      }}
-                      onClick={() => setColabJob(job)}
-                    >
-                      Sincronizar (Colab)
-                    </button>
-                  ) : (
-                    <button
-                      className="button secondary"
-                      style={{ 
-                        display: "inline-flex", 
-                        alignItems: "center", 
-                        gap: "6px",
-                        padding: "6px 12px",
-                        fontSize: "13px",
-                        minHeight: "auto"
-                      }}
-                      onClick={() => handleRestart(job.id)}
-                      disabled={loadingJobId !== null}
-                    >
-                      <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
-                      {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                    {job.final_video_path && (
+                      <a className="button secondary" href={job.final_video_path}>
+                        <Download size={16} /> Baixar
+                      </a>
+                    )}
+
+                    {job.status === "lip_syncing" && (
+                      <button
+                        className="button"
+                        style={{ 
+                          display: "inline-flex", 
+                          alignItems: "center", 
+                          gap: "6px",
+                          padding: "6px 12px",
+                          fontSize: "13px",
+                          minHeight: "auto",
+                          background: "var(--brand)",
+                          color: "#fff"
+                        }}
+                        onClick={() => setColabJob(job)}
+                      >
+                        Sincronizar (Colab)
+                      </button>
+                    )}
+
+                    {!job.final_video_path && job.status !== "lip_syncing" && (
+                      <button
+                        className="button secondary"
+                        style={{ 
+                          display: "inline-flex", 
+                          alignItems: "center", 
+                          gap: "6px",
+                          padding: "6px 12px",
+                          fontSize: "13px",
+                          minHeight: "auto"
+                        }}
+                        onClick={() => handleRestart(job.id)}
+                        disabled={loadingJobId !== null}
+                      >
+                        <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
+                        {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
+                      </button>
+                    )}
+
+                    {job.audio_path && job.status !== "researching" && job.status !== "scripting" && job.status !== "voice_generating" && job.status !== "queued" && (
+                      <button
+                        className="button secondary"
+                        style={{ 
+                          display: "inline-flex", 
+                          alignItems: "center", 
+                          gap: "6px",
+                          padding: "6px 12px",
+                          fontSize: "13px",
+                          minHeight: "auto"
+                        }}
+                        onClick={() => handleRestart(job.id, "lipsync")}
+                        disabled={loadingJobId !== null}
+                      >
+                        <RefreshCw size={14} className={loadingJobId === `${job.id}-lipsync` ? "spin-icon" : ""} />
+                        {loadingJobId === `${job.id}-lipsync` ? "Iniciando..." : "Refazer LipSync"}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );

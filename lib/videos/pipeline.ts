@@ -27,7 +27,12 @@ export async function startReactionPipeline({ supabase, userId, jobId }: StartPi
     throw new PipelineError("Job nao encontrado.", 404);
   }
 
-  if (job.status !== "draft" && job.status !== "failed") {
+  if (
+    job.status !== "draft" &&
+    job.status !== "failed" &&
+    job.status !== "completed" &&
+    job.status !== "lip_syncing"
+  ) {
     return { job, started: false };
   }
 
