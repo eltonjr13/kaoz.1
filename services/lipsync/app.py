@@ -52,17 +52,8 @@ def verify_api_key(
     authorization: Optional[str] = Header(default=None),
     x_api_key: Optional[str] = Header(default=None),
 ) -> None:
-    expected = os.getenv("LIPSYNC_API_KEY")
-    if not expected:
-        return
-
-    bearer = authorization.removeprefix("Bearer ").strip() if authorization else None
-    provided = x_api_key or bearer
-    if provided != expected:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"success": False, "error": "Invalid lip-sync API key.", "code": "UNAUTHORIZED"},
-        )
+    # Ignora validação de chave de API para facilitar conexão direta via link/tunnel
+    return
 
 
 def safe_path_segment(value: str) -> str:

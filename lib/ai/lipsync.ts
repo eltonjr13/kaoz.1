@@ -137,8 +137,8 @@ export class MuseTalkProvider implements LipSyncProvider {
       throw new LipSyncError("LIPSYNC_API_URL não configurada para o provider MuseTalk.", "LIPSYNC_CONFIG_MISSING", 500);
     }
 
-    this.apiUrl = normalizeApiUrl(apiUrl);
-    this.apiKey = options.apiKey ?? process.env.LIPSYNC_API_KEY;
+    this.apiUrl = normalizeApiUrl(apiUrl.trim());
+    this.apiKey = (options.apiKey ?? process.env.LIPSYNC_API_KEY)?.trim();
     this.timeoutMs = options.timeoutMs ?? getTimeoutMs(process.env.LIPSYNC_TIMEOUT_MS);
     this.transferMode = options.transferMode ?? getTransferMode(process.env.LIPSYNC_TRANSFER_MODE);
     this.downloadsDir = options.downloadsDir ?? process.env.LIPSYNC_DOWNLOADS_DIR;
@@ -152,7 +152,8 @@ export class MuseTalkProvider implements LipSyncProvider {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    console.log(`[LIPSYNC] Enviando job ${input.jobId} para MuseTalk em ${this.apiUrl} (${this.transferMode}).`);
+    const maskedKey = this.apiKey ? `${this.apiKey.slice(0, 3)}...${this.apiKey.slice(-3)}` : "undefined";
+    console.log(`[LIPSYNC] Enviando job ${input.jobId} para MuseTalk em ${this.apiUrl} (${this.transferMode}) com API Key: ${maskedKey}.`);
 
     try {
       const parsed = this.transferMode === "upload"
