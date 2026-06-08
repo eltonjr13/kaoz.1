@@ -77,6 +77,7 @@ class MuseTalkService:
 
         # Build custom environment to pass FFMPEG_PATH and PYTHONPATH
         env = os.environ.copy()
+        env["MPLBACKEND"] = "Agg"
         ffmpeg_path = os.getenv("MUSETALK_FFMPEG_PATH")
         if ffmpeg_path:
             env["FFMPEG_PATH"] = ffmpeg_path
@@ -193,7 +194,7 @@ class MuseTalkService:
             f"  video_path: '{avatar_path.as_posix()}'\n"
             f"  audio_path: '{audio_path.as_posix()}'\n"
             f"  result_dir: '{job_dir.as_posix()}'\n"
-            f"  result_name: '{job_id}'\n",
+            f"  result_name: '{job_id}.mp4'\n",
             encoding="utf-8",
         )
         return config_path
@@ -212,7 +213,10 @@ class MuseTalkService:
         if not existing:
             raise MuseTalkExecutionError("MuseTalk terminou, mas nenhum arquivo .mp4 de saída foi encontrado.")
 
-        latest = max(existing, key=lambda path: path.stat().st_mtime)
+        preferred = [candidate for candidate in existing if candidate.name == f"{expected_path.parent.name}.mp4"]
+        non_temp = [candidate for candidate in existing if not candidate.name.startswith("temp_")]
+        pool = preferred or non_temp or existing
+        latest = max(pool, key=lambda path: path.stat().st_mtime)
         if latest != expected_path:
             shutil.copy2(latest, expected_path)
         return expected_path

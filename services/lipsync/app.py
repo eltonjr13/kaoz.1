@@ -1,6 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
+import asyncio
+import json
 import os
 import re
 import shutil
@@ -8,8 +10,10 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+
+os.environ["MPLBACKEND"] = "Agg"
 
 from musetalk_service import (
     GPUUnavailableError,
@@ -72,7 +76,7 @@ def verify_api_key(
             detail={
                 "success": False,
                 "provider": "musetalk-v15",
-                "error": "Chave de API inválida ou ausente.",
+                "error": "Chave de API invÃ¡lida ou ausente.",
                 "code": "UNAUTHORIZED"
             }
         )
@@ -184,30 +188,60 @@ def health() -> dict[str, object]:
 })
 def generate(request: GenerateRequest, _: None = Depends(verify_api_key)) -> GenerateResponse:
     logger.info("Job %s recebido: avatar=%s audio=%s", request.job_id, request.avatar_path, request.audio_path)
-    video_path = run_generation(
-        job_id=request.job_id,
-        avatar_path=Path(request.avatar_path),
-        audio_path=Path(request.audio_path),
-    )
-    logger.info("Job %s concluído: %s", request.job_id, video_path)
-    return GenerateResponse(success=True, provider="musetalk-v15", video_path=str(video_path))
+    async def event_generator():
+        loop = asyncio.get_running_loop()
+        task = loop.run_in_executor(None, run_generation, safe_job_id, avatar_path, audio_path)
+
+        while not task.done():
+            yield " "
+            await asyncio.sleep(5)
+
+        try:
+            video_path = await task
+            video_url = str(request.url_for("download_output", job_id=safe_job_id, filename=video_path.name))
+            logger.info("Job %s concluído via upload: %s", jobId, video_path)
+            yield json.dumps({
+                "success": True,
+                "provider": "musetalk-v15",
+                "videoPath": str(video_path),
+                "videoUrl": video_url,
+            })
+        except HTTPException as exc:
+            if isinstance(exc.detail, dict):
+                yield json.dumps(exc.detail)
+            else:
+                yield json.dumps({
+                    "success": False,
+                    "provider": "musetalk-v15",
+                    "error": str(exc.detail),
+                    "code": "MUSETALK_ERROR",
+                })
+        except Exception as exc:
+            yield json.dumps({
+                "success": False,
+                "provider": "musetalk-v15",
+                "error": str(exc),
+                "code": "MUSETALK_ERROR",
+            })
+
+    return StreamingResponse(event_generator(), media_type="application/json")
 
 
-@app.post("/generate-upload", response_model=GenerateResponse, responses={
+@app.post("/generate-upload", responses={
     401: {"model": ErrorResponse},
     404: {"model": ErrorResponse},
     500: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
     504: {"model": ErrorResponse},
 })
-def generate_upload(
+async def generate_upload(
     request: Request,
     jobId: str = Form(..., min_length=1),
     avatar: Optional[UploadFile] = File(default=None),
     video: Optional[UploadFile] = File(default=None),
     audio: UploadFile = File(...),
     _: None = Depends(verify_api_key),
-) -> GenerateResponse:
+) -> StreamingResponse:
     safe_job_id = safe_path_segment(jobId)
     job_dir = service.outputs_dir / safe_job_id
     
@@ -215,7 +249,7 @@ def generate_upload(
     if not upload_file:
         raise error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
-            error="Avatar ou video é obrigatório.",
+            error="Avatar ou video Ã© obrigatÃ³rio.",
             code="FILE_NOT_FOUND"
         )
         
@@ -229,7 +263,7 @@ def generate_upload(
         audio_path=audio_path,
     )
     video_url = str(request.url_for("download_output", job_id=safe_job_id, filename=video_path.name))
-    logger.info("Job %s concluído via upload: %s", jobId, video_path)
+    logger.info("Job %s concluÃ­do via upload: %s", jobId, video_path)
     return GenerateResponse(success=True, provider="musetalk-v15", video_path=str(video_path), video_url=video_url)
 
 
@@ -244,7 +278,7 @@ def download_output(job_id: str, filename: str, _: None = Depends(verify_api_key
             detail={
                 "success": False,
                 "provider": "musetalk-v15",
-                "error": f"Output não encontrado: {safe_filename}",
+                "error": f"Output nÃ£o encontrado: {safe_filename}",
                 "code": "FILE_NOT_FOUND"
             },
         )

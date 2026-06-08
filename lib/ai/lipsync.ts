@@ -183,6 +183,15 @@ export class MuseTalkProvider implements LipSyncProvider {
         provider: this.name
       };
     } catch (error) {
+      if (error instanceof LipSyncError && this.transferMode === "upload" && error.status === 524) {
+        const downloadedPath = await this.waitForExpectedRemoteOutput(input.jobId, controller.signal);
+        console.log(`[LIPSYNC] Job ${input.jobId} recuperado após timeout do túnel: ${downloadedPath}`);
+        return {
+          videoPath: downloadedPath,
+          provider: this.name
+        };
+      }
+
       if (error instanceof LipSyncError) {
         throw error;
       }
@@ -254,7 +263,18 @@ export class MuseTalkProvider implements LipSyncProvider {
 
   private async parseServiceResponse(response: Response): Promise<MuseTalkGenerateResponse> {
     const rawBody = await response.text();
-    const parsed = rawBody ? parseMuseTalkResponse(JSON.parse(rawBody) as unknown) : {};
+    let parsed: MuseTalkGenerateResponse = {};
+    try {
+      parsed = rawBody ? parseMuseTalkResponse(JSON.parse(rawBody) as unknown) : {};
+    } catch (error) {
+      const contentType = response.headers.get("content-type") ?? "unknown";
+      const snippet = rawBody.replace(/\s+/g, " ").slice(0, 300);
+      throw new LipSyncError(
+        `Resposta não-JSON do MuseTalk (${response.status}, ${contentType}): ${snippet}`,
+        "LIPSYNC_INVALID_RESPONSE",
+        response.status
+      );
+    }
 
     if (!response.ok || parsed.success === false) {
       const code = errorCodeFromService(parsed.code);
@@ -299,6 +319,43 @@ export class MuseTalkProvider implements LipSyncProvider {
 
     await writeFile(outputPath, buffer);
     return outputPath;
+  }
+
+  private async waitForExpectedRemoteOutput(jobId: string, signal: AbortSignal): Promise<string> {
+    const safeJobId = safePathSegment(jobId);
+    const filenames = this.name === "musetalk-v15"
+      ? ["musetalk-v15-output.mp4", `${safeJobId}.mp4`]
+      : ["musetalk-output.mp4", `${safeJobId}.mp4`];
+    const started = Date.now();
+    const deadline = started + this.timeoutMs;
+    let lastError: unknown = null;
+
+    while (Date.now() < deadline) {
+      if (signal.aborted) {
+        throw new LipSyncError(`Timeout ao aguardar saída do MuseTalk após ${this.timeoutMs}ms.`, "LIPSYNC_TIMEOUT", 504);
+      }
+
+      for (const filename of filenames) {
+        try {
+          return await this.downloadRemoteVideo(jobId, `/outputs/${safeJobId}/${filename}`, signal);
+        } catch (error) {
+          lastError = error;
+          if (error instanceof LipSyncError && error.status && ![404, 500, 502, 503, 504, 524].includes(error.status)) {
+            throw error;
+          }
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+
+    throw new LipSyncError(
+      lastError instanceof Error
+        ? `MuseTalk excedeu o tempo aguardando arquivo de saída após 524: ${lastError.message}`
+        : "MuseTalk excedeu o tempo aguardando arquivo de saída após 524.",
+      "LIPSYNC_TIMEOUT",
+      504
+    );
   }
 }
 
