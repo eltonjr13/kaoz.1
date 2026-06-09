@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, ExternalLink, RefreshCw, X } from "lucide-react";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
@@ -26,6 +26,56 @@ function getPlatformLabel(platform: string) {
   return "Video";
 }
 
+function formatRelativeTime(iso?: string | null) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffSeconds = Math.max(1, Math.floor(diffMs / 1000));
+  if (diffSeconds < 60) {
+    return `há ${diffSeconds}s`;
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `há ${diffMinutes}m`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `há ${diffHours}h`;
+  }
+
+  return `há ${Math.floor(diffHours / 24)}d`;
+}
+
+function getStatusHint(status: JobListItem["status"]) {
+  switch (status) {
+    case "queued":
+      return "Na fila aguardando processamento.";
+    case "researching":
+      return "Baixando e preparando a fonte.";
+    case "scripting":
+      return "Gerando roteiro.";
+    case "voice_generating":
+      return "Gerando a voz.";
+    case "lip_syncing":
+      return "Sincronizando boca em tempo real.";
+    case "rendering":
+      return "Montando o vídeo final.";
+    case "review":
+      return "Pronto para revisão.";
+    case "completed":
+      return "Finalizado com sucesso.";
+    case "failed":
+      return "Falhou e precisa de atenção.";
+    default:
+      return "Job em andamento.";
+  }
+}
+
 export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const router = useRouter();
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null);
@@ -34,6 +84,22 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [colabMode, setColabMode] = useState<"auto" | "manual">("auto");
+  const hasActiveJobs = useMemo(
+    () => jobs.some((job) => ["queued", "researching", "scripting", "voice_generating", "lip_syncing", "rendering"].includes(job.status)),
+    [jobs]
+  );
+
+  useEffect(() => {
+    if (!hasActiveJobs) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      router.refresh();
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, [hasActiveJobs, router]);
 
   async function handleUploadLipsync() {
     if (!colabJob || !uploadFile) return;
@@ -93,6 +159,19 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
   return (
     <>
       <div className="table-wrap">
+        {hasActiveJobs && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+            fontSize: 12,
+            color: "var(--muted)"
+          }}>
+            <RefreshCw size={14} className="spin-icon" />
+            Atualização automática ativa enquanto houver jobs em processamento.
+          </div>
+        )}
       <table className="data-table">
         <thead>
           <tr>
@@ -126,7 +205,15 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                   )}
                 </td>
                 <td>
-                  <JobStatusBadge status={job.status} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <JobStatusBadge status={job.status} />
+                    <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.35 }}>
+                      {job.latest_event_message || getStatusHint(job.status)}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {job.latest_event_at ? `Último pulso ${formatRelativeTime(job.latest_event_at)}` : `Atualizado ${formatRelativeTime(job.updated_at)}`}
+                    </span>
+                  </div>
                 </td>
                 <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
                 <td>

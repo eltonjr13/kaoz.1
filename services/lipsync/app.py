@@ -1,8 +1,6 @@
 ﻿from __future__ import annotations
 
 import logging
-import asyncio
-import json
 import os
 import re
 import shutil
@@ -10,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 os.environ["MPLBACKEND"] = "Agg"
@@ -166,6 +164,7 @@ def health() -> dict[str, object]:
         "unet_config": os.getenv("MUSETALK_UNET_CONFIG", "models/musetalkV15/musetalk.json"),
         "require_gpu": os.getenv("MUSETALK_REQUIRE_GPU", "true"),
         "timeout_seconds": os.getenv("MUSETALK_TIMEOUT_SECONDS", "1800"),
+        "cuda_visible_devices": os.getenv("MUSETALK_CUDA_VISIBLE_DEVICES") or os.getenv("MUSETALK_GPU_DEVICE") or "",
     }
     
     return {
@@ -188,43 +187,17 @@ def health() -> dict[str, object]:
 })
 def generate(request: GenerateRequest, _: None = Depends(verify_api_key)) -> GenerateResponse:
     logger.info("Job %s recebido: avatar=%s audio=%s", request.job_id, request.avatar_path, request.audio_path)
-    async def event_generator():
-        loop = asyncio.get_running_loop()
-        task = loop.run_in_executor(None, run_generation, safe_job_id, avatar_path, audio_path)
-
-        while not task.done():
-            yield " "
-            await asyncio.sleep(5)
-
-        try:
-            video_path = await task
-            video_url = str(request.url_for("download_output", job_id=safe_job_id, filename=video_path.name))
-            logger.info("Job %s concluído via upload: %s", jobId, video_path)
-            yield json.dumps({
-                "success": True,
-                "provider": "musetalk-v15",
-                "videoPath": str(video_path),
-                "videoUrl": video_url,
-            })
-        except HTTPException as exc:
-            if isinstance(exc.detail, dict):
-                yield json.dumps(exc.detail)
-            else:
-                yield json.dumps({
-                    "success": False,
-                    "provider": "musetalk-v15",
-                    "error": str(exc.detail),
-                    "code": "MUSETALK_ERROR",
-                })
-        except Exception as exc:
-            yield json.dumps({
-                "success": False,
-                "provider": "musetalk-v15",
-                "error": str(exc),
-                "code": "MUSETALK_ERROR",
-            })
-
-    return StreamingResponse(event_generator(), media_type="application/json")
+    safe_job_id = safe_path_segment(request.job_id)
+    avatar_path = Path(request.avatar_path)
+    audio_path = Path(request.audio_path)
+    video_path = run_generation(
+        job_id=safe_job_id,
+        avatar_path=avatar_path,
+        audio_path=audio_path,
+    )
+    video_url = str(request.url_for("download_output", job_id=safe_job_id, filename=video_path.name))
+    logger.info("Job %s concluído via geração por caminho: %s", request.job_id, video_path)
+    return GenerateResponse(success=True, provider="musetalk-v15", video_path=str(video_path), video_url=video_url)
 
 
 @app.post("/generate-upload", responses={

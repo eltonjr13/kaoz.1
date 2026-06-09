@@ -43,6 +43,45 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function formatHeartbeatElapsed(startedAt: number) {
+  const elapsedSeconds = Math.max(1, Math.floor((Date.now() - startedAt) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+async function runWithHeartbeat<T>(input: {
+  heartbeatMessage: (elapsed: string) => string;
+  heartbeatIntervalMs?: number;
+  action: () => Promise<T>;
+  onHeartbeat: (message: string) => Promise<void> | void;
+}): Promise<T> {
+  const startedAt = Date.now();
+  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? Number(process.env.JOB_HEARTBEAT_INTERVAL_MS || "30000");
+  let active = true;
+
+  const tick = async () => {
+    if (!active) return;
+    await input.onHeartbeat(input.heartbeatMessage(formatHeartbeatElapsed(startedAt)));
+  };
+
+  const timer = setInterval(() => {
+    void tick();
+  }, heartbeatIntervalMs);
+
+  try {
+    await tick();
+    return await input.action();
+  } finally {
+    active = false;
+    clearInterval(timer);
+  }
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { jobId?: unknown; startFrom?: unknown } | null;
   const jobId = typeof body?.jobId === "string" ? body.jobId.trim() : "";
@@ -361,10 +400,21 @@ export async function POST(request: Request) {
             }
 
             console.log(`[LIPSYNC] Job ${jobId}: iniciando sincronização labial com provider configurado.`);
-            const lipSyncResult = await generateLipSync({
-              avatarPath: avatarLocalPath,
-              audioPath: localVoiceDiskPath,
-              jobId
+            const lipSyncResult = await runWithHeartbeat({
+              heartbeatMessage: (elapsed) => `Sincronização labial em andamento há ${elapsed}.`,
+              onHeartbeat: async (message) => {
+                await supabase.from("job_events").insert({
+                  user_id: APP_WORKSPACE_ID,
+                  job_id: jobId,
+                  event_type: "lip_sync_heartbeat",
+                  message
+                });
+              },
+              action: async () => generateLipSync({
+                avatarPath: avatarLocalPath,
+                audioPath: localVoiceDiskPath,
+                jobId
+              })
             });
             console.log(`[LIPSYNC] Job ${jobId}: vídeo lip-sync gerado em ${lipSyncResult.videoPath}.`);
 
@@ -396,19 +446,28 @@ export async function POST(request: Request) {
             const localOutputPath = path.join(process.cwd(), ".generated", "jobs", jobId, "final-reaction.mp4");
             const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
 
-
-
-            await renderVerticalVideo({
-              jobId,
-              reactionVideoPath: lipSyncResult.videoPath,
-              reactionIsImage,
-              sourceVideoUrl: sourceUrl ?? null,
-              sourceVideoPath: downloadedSourcePath,
-              voiceAudioPath: localVoiceDiskPath,
-              layout: jobRecord.render_layout ?? "source_pip",
-              expertBackgroundMode: jobRecord.expert_background_mode ?? "original",
-              outputPath: localOutputPath,
-              workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
+            await runWithHeartbeat({
+              heartbeatMessage: (elapsed) => `Renderização do vídeo final em andamento há ${elapsed}.`,
+              onHeartbeat: async (message) => {
+                await supabase.from("job_events").insert({
+                  user_id: APP_WORKSPACE_ID,
+                  job_id: jobId,
+                  event_type: "rendering_heartbeat",
+                  message
+                });
+              },
+              action: async () => renderVerticalVideo({
+                jobId,
+                reactionVideoPath: lipSyncResult.videoPath,
+                reactionIsImage,
+                sourceVideoUrl: sourceUrl ?? null,
+                sourceVideoPath: downloadedSourcePath,
+                voiceAudioPath: localVoiceDiskPath,
+                layout: jobRecord.render_layout ?? "source_pip",
+                expertBackgroundMode: jobRecord.expert_background_mode ?? "original",
+                outputPath: localOutputPath,
+                workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
+              })
             });
 
             // Upload final video to Supabase renders bucket
@@ -624,10 +683,16 @@ export async function POST(request: Request) {
           console.log(`[Local Pipeline] Pausado para sincronização labial manual (Google Colab) do job ${jobId}`);
           return;
         }
-        const lipSyncResult = await generateLipSync({
-          avatarPath: avatarDiskPath,
-          audioPath: voiceDiskPath,
-          jobId
+        const lipSyncResult = await runWithHeartbeat({
+          heartbeatMessage: (elapsed) => `Sincronização labial em andamento há ${elapsed}.`,
+          onHeartbeat: async () => {
+            await updateLocalJob(jobId, { status: "lip_syncing" });
+          },
+          action: async () => generateLipSync({
+            avatarPath: avatarDiskPath,
+            audioPath: voiceDiskPath,
+            jobId
+          })
         });
         await updateLocalJob(jobId, { lip_sync_video_path: lipSyncResult.videoPath });
         console.log(`[LIPSYNC] Job ${jobId}: vídeo lip-sync gerado em ${lipSyncResult.videoPath}.`);
@@ -636,17 +701,23 @@ export async function POST(request: Request) {
         console.log(`[RENDER] Job ${jobId}: iniciando renderização do vídeo vertical final com FFmpeg.`);
         await updateLocalJob(jobId, { status: "rendering" });
         const reactionIsImage = !/\.(mp4|mov|webm|mkv|avi)$/i.test(lipSyncResult.videoPath);
-        await renderVerticalVideo({
-          jobId,
-          reactionVideoPath: lipSyncResult.videoPath,
-          reactionIsImage,
-          sourceVideoUrl: localJobRecord.source_video_url ?? null,
-          sourceVideoPath: downloadedSourcePath,
-          voiceAudioPath: voiceDiskPath,
-          layout: localJobRecord.render_layout ?? "source_pip",
-          expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",
-          outputPath,
-          workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
+        await runWithHeartbeat({
+          heartbeatMessage: (elapsed) => `Renderização do vídeo final em andamento há ${elapsed}.`,
+          onHeartbeat: async () => {
+            await updateLocalJob(jobId, { status: "rendering" });
+          },
+          action: async () => renderVerticalVideo({
+            jobId,
+            reactionVideoPath: lipSyncResult.videoPath,
+            reactionIsImage,
+            sourceVideoUrl: localJobRecord.source_video_url ?? null,
+            sourceVideoPath: downloadedSourcePath,
+            voiceAudioPath: voiceDiskPath,
+            layout: localJobRecord.render_layout ?? "source_pip",
+            expertBackgroundMode: localJobRecord.expert_background_mode ?? "original",
+            outputPath,
+            workDir: path.join(process.cwd(), ".generated", "jobs", jobId)
+          })
         });
         console.log(`[Local Pipeline] Renderização de vídeo concluída! Vídeo salvo em: ${outputPath}`);
 

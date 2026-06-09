@@ -61,6 +61,34 @@ function normalizeApiUrl(apiUrl: string): string {
   return apiUrl.replace(/\/+$/, "");
 }
 
+function parseApiUrlList(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((entry) => normalizeApiUrl(entry.trim()))
+    .filter((entry) => Boolean(entry));
+}
+
+function selectApiUrl(jobId: string, urls: string[]): string {
+  if (urls.length === 0) {
+    throw new LipSyncError("LIPSYNC_API_URL não configurada para o provider MuseTalk.", "LIPSYNC_CONFIG_MISSING", 500);
+  }
+
+  if (urls.length === 1) {
+    return urls[0];
+  }
+
+  let hash = 0;
+  for (let index = 0; index < jobId.length; index += 1) {
+    hash = (hash * 31 + jobId.charCodeAt(index)) >>> 0;
+  }
+
+  return urls[hash % urls.length];
+}
+
 function getTimeoutMs(value: string | undefined): number {
   if (!value) {
     return DEFAULT_TIMEOUT_MS;
@@ -125,7 +153,7 @@ function errorCodeFromService(code: string | undefined): LipSyncError["code"] {
 export class MuseTalkProvider implements LipSyncProvider {
   readonly name: LipSyncEngine;
 
-  private readonly apiUrl: string;
+  private readonly apiUrls: string[];
   private readonly apiKey?: string;
   private readonly timeoutMs: number;
   private readonly transferMode: LipSyncTransferMode;
@@ -134,12 +162,13 @@ export class MuseTalkProvider implements LipSyncProvider {
 
   constructor(options: LipSyncProviderOptions = {}) {
     this.name = options.engine ?? (process.env.LIPSYNC_ENGINE as LipSyncEngine) ?? "musetalk";
-    const apiUrl = options.apiUrl ?? process.env.LIPSYNC_API_URL;
-    if (!apiUrl) {
+    const apiUrlList = parseApiUrlList(process.env.LIPSYNC_API_URLS);
+    const singleApiUrl = options.apiUrl ?? process.env.LIPSYNC_API_URL;
+    const normalizedSingle = singleApiUrl ? normalizeApiUrl(singleApiUrl.trim()) : "";
+    this.apiUrls = apiUrlList.length > 0 ? apiUrlList : normalizedSingle ? [normalizedSingle] : [];
+    if (this.apiUrls.length === 0) {
       throw new LipSyncError("LIPSYNC_API_URL não configurada para o provider MuseTalk.", "LIPSYNC_CONFIG_MISSING", 500);
     }
-
-    this.apiUrl = normalizeApiUrl(apiUrl.trim());
     this.apiKey = (options.apiKey ?? process.env.LIPSYNC_API_KEY)?.trim();
     this.timeoutMs = options.timeoutMs ?? getTimeoutMs(process.env.LIPSYNC_TIMEOUT_MS);
     this.transferMode = options.transferMode ?? getTransferMode(process.env.LIPSYNC_TRANSFER_MODE);
@@ -151,19 +180,21 @@ export class MuseTalkProvider implements LipSyncProvider {
     await assertReadableFile(input.avatarPath, "avatar");
     await assertReadableFile(input.audioPath, "audio");
 
+    const apiUrl = selectApiUrl(input.jobId, this.apiUrls);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     const maskedKey = this.apiKey ? `${this.apiKey.slice(0, 3)}...${this.apiKey.slice(-3)}` : "undefined";
-    console.log(`[LIPSYNC] Enviando job ${input.jobId} para MuseTalk em ${this.apiUrl} (${this.transferMode}) com API Key: ${maskedKey}.`);
+    console.log(`[LIPSYNC] Enviando job ${input.jobId} para MuseTalk em ${apiUrl} (${this.transferMode}) com API Key: ${maskedKey}.`);
 
     try {
       const parsed = this.transferMode === "upload"
-        ? await this.callUploadEndpoint(input, controller.signal)
-        : await this.callPathEndpoint(input, controller.signal);
+        ? await this.callUploadEndpoint(input, controller.signal, apiUrl)
+        : await this.callPathEndpoint(input, controller.signal, apiUrl);
 
       if (parsed.videoUrl) {
-        const downloadedPath = await this.downloadRemoteVideo(input.jobId, parsed.videoUrl, controller.signal);
+        const downloadedPath = await this.downloadRemoteVideo(input.jobId, parsed.videoUrl, controller.signal, apiUrl);
         console.log(`[LIPSYNC] Job ${input.jobId} concluído via MuseTalk: ${downloadedPath}`);
         return {
           videoPath: downloadedPath,
@@ -184,7 +215,7 @@ export class MuseTalkProvider implements LipSyncProvider {
       };
     } catch (error) {
       if (error instanceof LipSyncError && this.transferMode === "upload" && error.status === 524) {
-        const downloadedPath = await this.waitForExpectedRemoteOutput(input.jobId, controller.signal);
+        const downloadedPath = await this.waitForExpectedRemoteOutput(input.jobId, controller.signal, apiUrl);
         console.log(`[LIPSYNC] Job ${input.jobId} recuperado após timeout do túnel: ${downloadedPath}`);
         return {
           videoPath: downloadedPath,
@@ -224,8 +255,8 @@ export class MuseTalkProvider implements LipSyncProvider {
     };
   }
 
-  private async callPathEndpoint(input: LipSyncInput, signal: AbortSignal): Promise<MuseTalkGenerateResponse> {
-    const response = await this.fetchImpl(`${this.apiUrl}/generate`, {
+  private async callPathEndpoint(input: LipSyncInput, signal: AbortSignal, apiUrl: string): Promise<MuseTalkGenerateResponse> {
+    const response = await this.fetchImpl(`${apiUrl}/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -242,7 +273,7 @@ export class MuseTalkProvider implements LipSyncProvider {
     return this.parseServiceResponse(response);
   }
 
-  private async callUploadEndpoint(input: LipSyncInput, signal: AbortSignal): Promise<MuseTalkGenerateResponse> {
+  private async callUploadEndpoint(input: LipSyncInput, signal: AbortSignal, apiUrl: string): Promise<MuseTalkGenerateResponse> {
     const formData = new FormData();
     const avatarBuffer = await readFile(input.avatarPath);
     const audioBuffer = await readFile(input.audioPath);
@@ -251,7 +282,7 @@ export class MuseTalkProvider implements LipSyncProvider {
     formData.append("avatar", new Blob([new Uint8Array(avatarBuffer)]), path.basename(input.avatarPath));
     formData.append("audio", new Blob([new Uint8Array(audioBuffer)]), path.basename(input.audioPath));
 
-    const response = await this.fetchImpl(`${this.apiUrl}/generate-upload`, {
+    const response = await this.fetchImpl(`${apiUrl}/generate-upload`, {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: formData,
@@ -288,8 +319,8 @@ export class MuseTalkProvider implements LipSyncProvider {
     return parsed;
   }
 
-  private async downloadRemoteVideo(jobId: string, videoUrl: string, signal: AbortSignal): Promise<string> {
-    const absoluteUrl = new URL(videoUrl, `${this.apiUrl}/`).toString();
+  private async downloadRemoteVideo(jobId: string, videoUrl: string, signal: AbortSignal, apiUrl: string): Promise<string> {
+    const absoluteUrl = new URL(videoUrl, `${apiUrl}/`).toString();
     const response = await this.fetchImpl(absoluteUrl, {
       method: "GET",
       headers: this.getAuthHeaders(),
@@ -321,7 +352,7 @@ export class MuseTalkProvider implements LipSyncProvider {
     return outputPath;
   }
 
-  private async waitForExpectedRemoteOutput(jobId: string, signal: AbortSignal): Promise<string> {
+  private async waitForExpectedRemoteOutput(jobId: string, signal: AbortSignal, apiUrl: string): Promise<string> {
     const safeJobId = safePathSegment(jobId);
     const filenames = this.name === "musetalk-v15"
       ? ["musetalk-v15-output.mp4", `${safeJobId}.mp4`]
@@ -337,7 +368,7 @@ export class MuseTalkProvider implements LipSyncProvider {
 
       for (const filename of filenames) {
         try {
-          return await this.downloadRemoteVideo(jobId, `/outputs/${safeJobId}/${filename}`, signal);
+          return await this.downloadRemoteVideo(jobId, `/outputs/${safeJobId}/${filename}`, signal, apiUrl);
         } catch (error) {
           lastError = error;
           if (error instanceof LipSyncError && error.status && ![404, 500, 502, 503, 504, 524].includes(error.status)) {

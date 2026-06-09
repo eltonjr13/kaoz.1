@@ -78,6 +78,9 @@ class MuseTalkService:
         # Build custom environment to pass FFMPEG_PATH and PYTHONPATH
         env = os.environ.copy()
         env["MPLBACKEND"] = "Agg"
+        cuda_visible_devices = os.getenv("MUSETALK_CUDA_VISIBLE_DEVICES") or os.getenv("MUSETALK_GPU_DEVICE")
+        if cuda_visible_devices:
+            env["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
         ffmpeg_path = os.getenv("MUSETALK_FFMPEG_PATH")
         if ffmpeg_path:
             env["FFMPEG_PATH"] = ffmpeg_path
