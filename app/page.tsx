@@ -24,7 +24,7 @@ export default function HomePage() {
             <p>
               Crie jobs de react vertical com avatar real autorizado, roteiro curto, voz OmniVoice,
               lip-sync e render final pronto para revisao e download. Agora o foco esta na pesquisa
-              de videos virais por nicho para TikTok e Instagram.
+              de videos virais por nicho para TikTok, Instagram e YouTube.
             </p>
             <div className="hero-actions">
               <Link className="button" href="/viral-search">

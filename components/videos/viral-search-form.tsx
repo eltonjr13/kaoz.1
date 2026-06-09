@@ -1,8 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Camera, Copy, ExternalLink, Hash, Loader2, Music2, Play, Plus, Search, TrendingUp } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import {
+  Camera,
+  Copy,
+  ExternalLink,
+  Hash,
+  Loader2,
+  Music2,
+  Play,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  TrendingUp
+} from "lucide-react";
 import type { ViralSearchPlatform, ViralSearchResult } from "@/lib/videos/viral-search";
 
 type ViralSearchFormProps = {
@@ -16,7 +28,7 @@ const platformOptions: { value: ViralSearchPlatform; label: string; icon: typeof
   { value: "youtube", label: "YouTube", icon: Play }
 ];
 
-const collagePlatforms = new Set<ViralSearchPlatform>(["instagram", "youtube"]);
+const defaultPlatforms: ViralSearchPlatform[] = ["tiktok", "instagram", "youtube"];
 
 function getPlatformMeta(platform: ViralSearchPlatform) {
   if (platform === "tiktok") {
@@ -39,12 +51,28 @@ function buildJobHref(result: ViralSearchResult) {
   return `/jobs/new?${params.toString()}`;
 }
 
+function buildSearchPack(result: ViralSearchResult) {
+  const lines = [
+    `Nicho: ${result.niche}`,
+    `Ideia: ${result.title}`,
+    `Hook: ${result.hook}`,
+    `Formato: ${result.format}`,
+    `Angle: ${result.angle}`,
+    "",
+    ...result.platformSearches.map((entry) => `${entry.label}: ${entry.query} | ${entry.url}`)
+  ];
+
+  return lines.join("\n");
+}
+
 export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFormProps) {
   const [niche, setNiche] = useState(initialNiche);
-  const [platforms, setPlatforms] = useState<ViralSearchPlatform[]>(["instagram", "youtube"]);
+  const [platforms, setPlatforms] = useState<ViralSearchPlatform[]>(defaultPlatforms);
+  const [limit, setLimit] = useState(9);
   const [results, setResults] = useState(initialResults);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   function togglePlatform(platform: ViralSearchPlatform) {
     setPlatforms((current) => {
@@ -56,7 +84,7 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
     });
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     setIsLoading(true);
@@ -64,7 +92,7 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
     const response = await fetch("/api/viral-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ niche, platforms, limit: 10 })
+      body: JSON.stringify({ niche, platforms, limit })
     });
 
     const payload = (await response.json()) as { results?: ViralSearchResult[]; error?: string };
@@ -82,10 +110,26 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
     await navigator.clipboard.writeText(hook);
   }
 
+  async function copySearchPack(result: ViralSearchResult) {
+    await navigator.clipboard.writeText(buildSearchPack(result));
+    setCopiedId(result.id);
+    window.setTimeout(() => setCopiedId((current) => (current === result.id ? null : current)), 1600);
+  }
+
+  const platformSummary = platforms.map((platform) => getPlatformMeta(platform).label).join(" + ");
+
   return (
     <div className="search-layout">
       <form className="form-panel viral-form" onSubmit={handleSubmit}>
-        <div className="field" style={{ marginTop: 0 }}>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>
+          Descoberta de virais
+        </div>
+        <h2 style={{ margin: "0 0 8px 0" }}>Busque oportunidades para react</h2>
+        <p className="field-hint" style={{ marginTop: 0 }}>
+          Coloque um nicho e gere buscas prontas para YouTube, TikTok e Instagram.
+        </p>
+
+        <div className="field" style={{ marginTop: 20 }}>
           <label htmlFor="niche">Nicho</label>
           <input
             id="niche"
@@ -94,6 +138,23 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
             placeholder="Ex: frango frito delivery, moda fitness, maquiagem..."
             required
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="limit">Quantidade de ideias</label>
+          <div className="limit-row">
+            <input
+              id="limit"
+              type="range"
+              min={3}
+              max={12}
+              step={1}
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+            />
+            <strong>{limit}</strong>
+          </div>
+          <span className="field-hint">Mais alto para explorar, mais baixo para decidir rapido.</span>
         </div>
 
         <div className="field">
@@ -116,6 +177,7 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
               );
             })}
           </div>
+          <span className="field-hint">Ativo: {platformSummary}</span>
         </div>
 
         {message ? <p className="form-message">{message}</p> : null}
@@ -128,75 +190,103 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
         </div>
       </form>
 
-      <section className="results-grid" aria-label="Resultados de busca viral">
-        {results.map((result) => {
-          const platform = getPlatformMeta(result.platform);
-          const PlatformIcon = platform.icon;
+      <section className="results-panel" aria-label="Resultados de busca viral">
+        <div className="results-header">
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>
+              Resultado da busca
+            </div>
+            <h2 style={{ margin: 0 }}>Oportunidades prontas para react</h2>
+          </div>
+          <div className="results-chip">
+            <SlidersHorizontal size={16} />
+            {results.length} ideias
+          </div>
+        </div>
 
-          return (
-            <article className="result-card" key={result.id}>
-              <div className="result-card-head">
-                <span className={`platform-badge ${result.platform}`}>
-                  <PlatformIcon size={15} />
-                  {platform.label}
-                </span>
-                <span className="score-pill">
-                  <TrendingUp size={15} />
-                  {result.viralScore}
-                </span>
-              </div>
+        <div className="results-grid">
+          {results.map((result) => {
+            const platform = getPlatformMeta(result.platform);
+            const PlatformIcon = platform.icon;
 
-              <h2>{result.title}</h2>
-              <p className="result-hook">{result.hook}</p>
-
-              <div className="result-meta">
-                <div>
-                  <span>Formato</span>
-                  <strong>{result.format}</strong>
-                </div>
-                <div>
-                  <span>Velocidade</span>
-                  <strong>{result.metrics.velocity}</strong>
-                </div>
-                <div>
-                  <span>Remix</span>
-                  <strong>{result.metrics.remixPotential}</strong>
-                </div>
-              </div>
-
-              <p className="muted">{result.whyItWorks}</p>
-
-              <div className="tag-list" aria-label="Hashtags sugeridas">
-                {result.hashtags.map((tag) => (
-                  <span key={tag}>
-                    <Hash size={13} />
-                    {tag.replace("#", "")}
+            return (
+              <article className="result-card" key={result.id}>
+                <div className="result-card-head">
+                  <span className={`platform-badge ${result.platform}`}>
+                    <PlatformIcon size={15} />
+                    {platform.label}
                   </span>
-                ))}
-              </div>
+                  <span className="score-pill">
+                    <TrendingUp size={15} />
+                    {result.viralScore}
+                  </span>
+                </div>
 
-              <div className="signal-list">
-                {result.signals.map((signal) => (
-                  <span key={signal}>{signal}</span>
-                ))}
-              </div>
+                <h3>{result.title}</h3>
+                <p className="result-hook">{result.hook}</p>
 
-              <div className="row-actions result-actions">
-                <a className="button secondary" href={result.url} target="_blank" rel="noreferrer">
-                  <ExternalLink size={16} /> Abrir busca
-                </a>
-                {collagePlatforms.has(result.platform) ? (
+                <div className="result-meta">
+                  <div>
+                    <span>Formato</span>
+                    <strong>{result.format}</strong>
+                  </div>
+                  <div>
+                    <span>Velocidade</span>
+                    <strong>{result.metrics.velocity}</strong>
+                  </div>
+                  <div>
+                    <span>Remix</span>
+                    <strong>{result.metrics.remixPotential}</strong>
+                  </div>
+                </div>
+
+                <div className="result-notes">
+                  <p className="muted">{result.whyItWorks}</p>
+                  <p className="muted">{result.reactAngle}</p>
+                </div>
+
+                <div className="search-links" aria-label="Buscas por plataforma">
+                  {result.platformSearches.map((entry) => (
+                    <a key={entry.platform} className="search-link" href={entry.url} target="_blank" rel="noreferrer">
+                      {entry.label}
+                      <ExternalLink size={14} />
+                    </a>
+                  ))}
+                </div>
+
+                <div className="tag-list" aria-label="Hashtags sugeridas">
+                  {result.hashtags.map((tag) => (
+                    <span key={tag}>
+                      <Hash size={13} />
+                      {tag.replace("#", "")}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="signal-list">
+                  {result.signals.map((signal) => (
+                    <span key={signal}>{signal}</span>
+                  ))}
+                </div>
+
+                <div className="row-actions result-actions">
+                  <a className="button secondary" href={result.url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={16} /> Abrir busca
+                  </a>
                   <Link className="button secondary" href={buildJobHref(result)}>
                     <Plus size={16} /> Usar no job
                   </Link>
-                ) : null}
-                <button className="button secondary" type="button" onClick={() => copyHook(result.hook)}>
-                  <Copy size={16} /> Copiar hook
-                </button>
-              </div>
-            </article>
-          );
-        })}
+                  <button className="button secondary" type="button" onClick={() => copyHook(result.hook)}>
+                    <Copy size={16} /> Copiar hook
+                  </button>
+                  <button className="button secondary" type="button" onClick={() => copySearchPack(result)}>
+                    <Copy size={16} /> {copiedId === result.id ? "Copiado" : "Copiar buscas"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </section>
     </div>
   );

@@ -51,7 +51,7 @@ export default async function JobsPage() {
 
     const supabaseJobs = ((data ?? []) as unknown as JobListItem[]);
     const jobIds = supabaseJobs.map((job) => job.id);
-    let latestEvents = new Map<string, { message: string; created_at: string }>();
+    const latestEvents = new Map<string, { message: string; created_at: string }>();
 
     if (jobIds.length > 0) {
       const { data: eventsData } = await supabase

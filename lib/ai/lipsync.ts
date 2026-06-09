@@ -297,7 +297,7 @@ export class MuseTalkProvider implements LipSyncProvider {
     let parsed: MuseTalkGenerateResponse = {};
     try {
       parsed = rawBody ? parseMuseTalkResponse(JSON.parse(rawBody) as unknown) : {};
-    } catch (error) {
+    } catch {
       const contentType = response.headers.get("content-type") ?? "unknown";
       const snippet = rawBody.replace(/\s+/g, " ").slice(0, 300);
       throw new LipSyncError(

@@ -96,7 +96,7 @@ export default async function DashboardPage() {
         {recentJobs.length === 0 ? (
           <EmptyState
             title="Comece pela busca viral"
-            description="Encontre referencias por nicho no TikTok e Instagram antes de criar o react."
+            description="Encontre referencias por nicho no TikTok, Instagram e YouTube antes de criar o react."
             actionHref="/viral-search"
             actionLabel="Buscar virais"
           />
