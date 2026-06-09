@@ -1,38 +1,58 @@
+@import "tailwindcss";
+
 :root {
   color-scheme: light;
-  --bg: #ffffff;
-  --bg-soft: #f9f9f9;
+  --bg: #f5f5f3;
+  --bg-soft: #ffffff;
   --panel: #ffffff;
-  --panel-strong: #f5f5f5;
-  --text: #111111;
-  --muted: #666666;
-  --line: #dddddd;
-  --brand: #0066cc;
-  --brand-strong: #0044aa;
-  --accent: #ff4444;
-  --warning: #b36b00;
-  --success: #008800;
-  --danger: #cc0000;
+  --panel-strong: #eeeeec;
+  --text: #000000;
+  --muted: #71717a;
+  --line: #e4e4e7;
+  --brand: #09090b;
+  --brand-strong: #27272a;
+  --accent: #2563eb;
+  --warning: #ca8a04;
+  --success: #16a34a;
+  --danger: #dc2626;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg: #0c0c0e;
+  --bg-soft: #121214;
+  --panel: #161619;
+  --panel-strong: #1e1e22;
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --line: #27272a;
+  --brand: #ffffff;
+  --brand-strong: #e4e4e7;
+  --accent: #3b82f6;
+  --warning: #eab308;
+  --success: #22c55e;
+  --danger: #ef4444;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     color-scheme: dark;
-    --bg: #121212;
-    --bg-soft: #1a1a1a;
-    --panel: #121212;
-    --panel-strong: #1e1e1e;
-    --text: #eeeeee;
-    --muted: #999999;
-    --line: #333333;
-    --brand: #3399ff;
-    --brand-strong: #66b2ff;
-    --accent: #ff6666;
-    --warning: #ffaa00;
-    --success: #33cc33;
-    --danger: #ff3333;
+    --bg: #0c0c0e;
+    --bg-soft: #121214;
+    --panel: #161619;
+    --panel-strong: #1e1e22;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --line: #27272a;
+    --brand: #ffffff;
+    --brand-strong: #e4e4e7;
+    --accent: #3b82f6;
+    --warning: #eab308;
+    --success: #22c55e;
+    --danger: #ef4444;
   }
 }
+
 
 * {
   box-sizing: border-box;
