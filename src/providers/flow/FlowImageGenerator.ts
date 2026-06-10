@@ -1,31 +1,62 @@
 import { Page, Locator } from 'playwright';
-import { ImageGenerationResult } from './FlowTypes';
+import { ImageGenerationResult, FlowConfig } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 
 export class FlowImageGenerator {
-  constructor(private downloader: FlowDownloader) {}
+  constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
    * Generates an image using Google Flow / ImageFX.
    */
   async generate(page: Page, prompt: string, timeoutMs: number): Promise<ImageGenerationResult> {
+    const targetUrl = this.config.imageUrl || 'https://labs.google/fx/tools/image-fx';
     logger.info('Abrindo Flow.');
     
     // Check if we need to navigate specifically to the image tool
-    // We assume the page is already open, but we check if we should go to an ImageFX sub-path if needed.
     const currentUrl = page.url();
     if (!currentUrl.includes('/image') && !currentUrl.includes('/fx/tools/image')) {
-      // If the main URL has tabs or buttons, we can try to find them, or navigate to a specific URL
-      // If we are at labs.google/fx/tools/flow, we can attempt to access the tool
-      logger.info('Navegando para ferramenta de imagem.');
-      // If the user config flowUrl is the base, we can go to the image tool. 
-      // We'll fall back to searching for image generation controls on the page.
+      logger.info('Navegando para ferramenta de imagem:', { targetUrl });
+      await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
     }
 
     try {
       // 1. Wait for page load state
       await page.waitForLoadState('domcontentloaded');
+
+      // Check if we are on a landing page/lobby and need to enter or switch to Image mode
+      const currentUrl = page.url();
+      if (!currentUrl.includes('/image') && !currentUrl.includes('/fx/tools/image') && !currentUrl.includes('#image')) {
+        logger.info('Tentando localizar entrada ou aba para o modo de Imagem...');
+        const enterSelectors = [
+          'a[href*="image-fx"]',
+          'a[href*="image_fx"]',
+          'button:has-text("Image")',
+          'button:has-text("Imagem")',
+          'button:has-text("Nano Banana")',
+          'role=tab[name*="image" i]',
+          'role=tab[name*="imagem" i]',
+          'button:has-text("ImageFX")',
+          'button:has-text("Image FX")',
+          'a:has-text("ImageFX")',
+          'a:has-text("Image FX")',
+          '[aria-label*="image" i]',
+          '[aria-label*="imagem" i]',
+          'text=ImageFX',
+          'text=Image FX'
+        ];
+
+        for (const selector of enterSelectors) {
+          const locator = page.locator(selector);
+          if (await locator.count() > 0 && await locator.first().isVisible()) {
+            logger.info(`Entrada/Aba de imagem localizada com seletor "${selector}". Clicando...`);
+            await locator.first().click();
+            await page.waitForTimeout(1500); // brief settling time
+            await page.waitForLoadState('load').catch(() => {});
+            break;
+          }
+        }
+      }
 
       // 2. Find prompt input area
       logger.info('Inserindo prompt.');

@@ -1,28 +1,63 @@
 import { Page, Locator } from 'playwright';
-import { VideoGenerationResult } from './FlowTypes';
+import { VideoGenerationResult, FlowConfig } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { probeMediaInfo } from '@/lib/videos/render';
 
 export class FlowVideoGenerator {
-  constructor(private downloader: FlowDownloader) {}
+  constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
    * Generates a video using Google Flow / VideoFX.
    */
   async generate(page: Page, prompt: string, timeoutMs: number): Promise<VideoGenerationResult> {
+    const targetUrl = this.config.videoUrl || 'https://labs.google/fx/tools/video-fx';
     logger.info('Abrindo Flow.');
     
     // Check if we need to navigate specifically to the video tool
     const currentUrl = page.url();
     if (!currentUrl.includes('/video') && !currentUrl.includes('/fx/tools/video')) {
-      logger.info('Navegando para ferramenta de vídeo.');
-      // Navigation would occur here if specialized sub-urls are configured.
+      logger.info('Navegando para ferramenta de vídeo:', { targetUrl });
+      await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
     }
 
     try {
       // 1. Wait for page load state
       await page.waitForLoadState('domcontentloaded');
+
+      // Check if we are on a landing page/lobby and need to enter or switch to Video mode
+      const currentUrl = page.url();
+      if (!currentUrl.includes('/video') && !currentUrl.includes('/fx/tools/video') && !currentUrl.includes('#video')) {
+        logger.info('Tentando localizar entrada ou aba para o modo de Vídeo...');
+        const enterSelectors = [
+          'a[href*="video-fx"]',
+          'a[href*="video_fx"]',
+          'button:has-text("Video")',
+          'button:has-text("Vídeo")',
+          'button:has-text("Veo")',
+          'role=tab[name*="video" i]',
+          'role=tab[name*="vídeo" i]',
+          'button:has-text("VideoFX")',
+          'button:has-text("Video FX")',
+          'a:has-text("VideoFX")',
+          'a:has-text("Video FX")',
+          '[aria-label*="video" i]',
+          '[aria-label*="vídeo" i]',
+          'text=VideoFX',
+          'text=Video FX'
+        ];
+
+        for (const selector of enterSelectors) {
+          const locator = page.locator(selector);
+          if (await locator.count() > 0 && await locator.first().isVisible()) {
+            logger.info(`Entrada/Aba de vídeo localizada com seletor "${selector}". Clicando...`);
+            await locator.first().click();
+            await page.waitForTimeout(1500); // brief settling time
+            await page.waitForLoadState('load').catch(() => {});
+            break;
+          }
+        }
+      }
 
       // 2. Inserir prompt
       logger.info('Inserindo prompt.');

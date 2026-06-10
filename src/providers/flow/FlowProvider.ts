@@ -22,15 +22,17 @@ export class FlowProvider {
       timeout: process.env.FLOW_TIMEOUT ? parseInt(process.env.FLOW_TIMEOUT, 10) : 300000,
       downloadPath: process.env.FLOW_DOWNLOAD_PATH || 'storage/generated/',
       profilePath: process.env.FLOW_PROFILE_PATH || 'storage/browser-profile/',
-      flowUrl: process.env.FLOW_URL || 'https://labs.google/fx/tools/flow',
+      flowUrl: process.env.FLOW_URL || 'https://flow.google',
+      imageUrl: process.env.FLOW_IMAGE_URL || 'https://flow.google',
+      videoUrl: process.env.FLOW_VIDEO_URL || 'https://flow.google',
       ...customConfig
     };
 
     // 2. Initialize sub-providers
     this.session = new FlowSession(this.config);
     this.downloader = new FlowDownloader(this.config.downloadPath);
-    this.imageGenerator = new FlowImageGenerator(this.downloader);
-    this.videoGenerator = new FlowVideoGenerator(this.downloader);
+    this.imageGenerator = new FlowImageGenerator(this.downloader, this.config);
+    this.videoGenerator = new FlowVideoGenerator(this.downloader, this.config);
   }
 
   /**

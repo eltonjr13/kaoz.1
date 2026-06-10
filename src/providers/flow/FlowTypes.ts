@@ -4,6 +4,8 @@ export interface FlowConfig {
   downloadPath: string;
   profilePath: string;
   flowUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
 }
 
 export interface ImageGenerationResult {
