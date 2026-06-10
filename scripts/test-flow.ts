@@ -1,4 +1,6 @@
 import { FlowProvider } from '../src/providers/flow/FlowProvider';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function main() {
   console.log('[TEST] Inicializando FlowProvider...');
@@ -18,8 +20,6 @@ async function main() {
     console.log('[TEST] Status obtido com sucesso:', JSON.stringify(status, null, 2));
 
     console.log('[TEST] Verificando se os diretórios necessários foram criados...');
-    const fs = require('fs');
-    const path = require('path');
     const profileExists = fs.existsSync(path.resolve('storage/browser-profile-test/'));
     const downloadDirExists = fs.existsSync(path.resolve('storage/generated/'));
 

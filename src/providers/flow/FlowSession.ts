@@ -83,13 +83,23 @@ export class FlowSession {
     this.context = await chromium.launchPersistentContext(absoluteProfilePath, {
       headless: headless,
       viewport: { width: 1280, height: 720 },
+      ignoreDefaultArgs: ['--enable-automation'],
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-web-security'
+        '--disable-web-security',
+        '--disable-blink-features=AutomationControlled'
       ],
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       acceptDownloads: true
+    });
+
+    // Mask the navigator.webdriver property to bypass anti-bot detections
+    await this.context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
     });
 
     // Handle context-level errors

@@ -34,6 +34,25 @@ export class FlowProvider {
   }
 
   /**
+   * Forces initialization of the browser session and triggers manual login fallback if needed.
+   */
+  async initialize(): Promise<FlowStatus> {
+    this.activeTasksCount++;
+    try {
+      const page = await this.session.getPage();
+      const authenticated = await this.session.checkAuthenticated(page);
+      return {
+        initialized: true,
+        authenticated,
+        activeTasks: this.activeTasksCount,
+        profilePath: this.config.profilePath
+      };
+    } finally {
+      this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
+    }
+  }
+
+  /**
    * Generates an image using Google Flow / ImageFX.
    * 
    * @param prompt Textual prompt describing the image.

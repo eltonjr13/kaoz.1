@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Briefcase,
+  Globe,
   Compass,
   Cpu,
   Database,
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/jobs", label: "Projects", icon: Briefcase },
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
+  { href: "/flow", label: "Google Flow", icon: Globe },
   { href: "#library", label: "Library", icon: Database },
   { href: "#analytics", label: "Analytics", icon: LineChart },
   { href: "#settings", label: "Settings", icon: Settings },
