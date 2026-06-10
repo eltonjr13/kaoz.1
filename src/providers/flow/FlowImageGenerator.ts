@@ -7,96 +7,127 @@ export class FlowImageGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
-   * Generates an image using Google Flow / ImageFX.
+   * Generates an image using Google Flow.
    */
   async generate(page: Page, prompt: string, timeoutMs: number): Promise<ImageGenerationResult> {
-    const targetUrl = this.config.imageUrl || 'https://labs.google/fx/tools/image-fx';
+    const targetUrl = this.config.imageUrl || 'https://flow.google';
     logger.info('Abrindo Flow.');
     
-    // Check if we need to navigate specifically to the image tool
     const currentUrl = page.url();
-    if (!currentUrl.includes('/image') && !currentUrl.includes('/fx/tools/image')) {
-      logger.info('Navegando para ferramenta de imagem:', { targetUrl });
+    if (!currentUrl.includes('/project/') && !currentUrl.includes('/tools/flow')) {
+      logger.info('Navegando para Google Flow:', { targetUrl });
       await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
     }
 
     try {
-      // 1. Wait for page load state
+      // 1. Wait for page load state and settle
       await page.waitForLoadState('domcontentloaded');
 
-      // Check if we are on a landing page/lobby and need to enter or switch to Image mode
-      const currentUrl = page.url();
-      if (!currentUrl.includes('/image') && !currentUrl.includes('/fx/tools/image') && !currentUrl.includes('#image')) {
-        logger.info('Tentando localizar entrada ou aba para o modo de Imagem...');
-        const enterSelectors = [
-          'a[href*="image-fx"]',
-          'a[href*="image_fx"]',
-          'button:has-text("Image")',
-          'button:has-text("Imagem")',
-          'button:has-text("Nano Banana")',
-          'role=tab[name*="image" i]',
-          'role=tab[name*="imagem" i]',
-          'button:has-text("ImageFX")',
-          'button:has-text("Image FX")',
-          'a:has-text("ImageFX")',
-          'a:has-text("Image FX")',
-          '[aria-label*="image" i]',
-          '[aria-label*="imagem" i]',
-          'text=ImageFX',
-          'text=Image FX'
-        ];
+      logger.info('Aguardando carregamento da interface (lobby ou workspace)...');
+      const lobbyBtn = page.locator('button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2")').first();
+      const workspaceTextbox = page.locator('[role="textbox"], div[contenteditable="true"]').first();
+      
+      await Promise.any([
+        lobbyBtn.waitFor({ state: 'visible', timeout: 15000 }),
+        workspaceTextbox.waitFor({ state: 'visible', timeout: 15000 })
+      ]).catch((err) => {
+        logger.warn('Aviso: Timeout aguardando os elementos principais da página.', err);
+      });
 
-        for (const selector of enterSelectors) {
-          const locator = page.locator(selector);
-          if (await locator.count() > 0 && await locator.first().isVisible()) {
-            logger.info(`Entrada/Aba de imagem localizada com seletor "${selector}". Clicando...`);
-            await locator.first().click();
-            await page.waitForTimeout(1500); // brief settling time
-            await page.waitForLoadState('load').catch(() => {});
-            break;
-          }
+      // 2. Click "Novo projeto" if on lobby page
+      const checkUrl = page.url();
+      if (!checkUrl.includes('/project/')) {
+        logger.info('Lobby do Google Flow detectado. Tentando criar um novo projeto...');
+        if (await lobbyBtn.isVisible()) {
+          logger.info('Botão "Novo projeto" localizado. Clicando...');
+          await lobbyBtn.click();
+          // Wait for workspace textbox to load
+          await workspaceTextbox.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {
+            logger.warn('Aviso: Timeout aguardando o workspace carregar após clicar em Novo Projeto.');
+          });
+        } else {
+          logger.warn('Botão "Novo projeto" não está visível na página inicial.');
         }
       }
 
-      // 2. Find prompt input area
+      // 3. Switch model mode to Image (Nano Banana) if Video (Veo) is active
+      const modelBtn = page.locator('button').filter({ hasText: /Veo|Banana/ }).first();
+      if (await modelBtn.count() > 0 && await modelBtn.isVisible()) {
+        const buttonText = await modelBtn.innerText();
+        if (buttonText.includes('Veo')) {
+          logger.info('Modo Vídeo (Veo) ativo no workspace. Alternando para modo Imagem...');
+          await modelBtn.click();
+          await page.waitForTimeout(1000); // Wait for popup to open
+
+          // Click Image tab inside the radix model popover
+          const imageTab = page.locator('button[role="tab"]').filter({ hasText: /Imagem|Image/ }).first();
+          if (await imageTab.count() > 0 && await imageTab.isVisible()) {
+            await imageTab.click();
+            logger.info('Aba de Imagem selecionada com sucesso.');
+            await page.waitForTimeout(1000);
+          } else {
+            logger.warn('Aba de Imagem não localizada no menu de modelos.');
+          }
+
+          // Press Escape to ensure the popover is closed
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+        } else {
+          logger.info('Modo Imagem (Nano Banana) já está ativo no workspace.');
+        }
+      }
+
+      // 4. Count initial generated items (to detect when a new one is finished)
+      const getMediaCount = async () => {
+        const imgCount = await page.locator('img[src*="getMediaUrlRedirect"]').count();
+        const videoCount = await page.locator('video').count();
+        return imgCount + videoCount;
+      };
+      
+      const initialMediaCount = await getMediaCount();
+      logger.info(`Itens de mídia existentes no workspace: ${initialMediaCount}`);
+
+      // 5. Find prompt input area
       logger.info('Inserindo prompt.');
       const promptQueries: ElementQuery[] = [
-        { selector: 'textarea' },
+        { selector: 'div[role="textbox"]' },
+        { selector: 'div[contenteditable="true"]' },
+        { role: 'textbox' },
         { selector: '[contenteditable="true"]' },
+        { selector: 'textarea' },
         { placeholder: 'descreva' },
-        { placeholder: 'describe' },
-        { placeholder: 'prompt' },
-        { role: 'textbox', placeholder: 'what would you like' },
-        { role: 'textbox' }
+        { placeholder: 'describe' }
       ];
 
       const promptInput = await findSmartElement(page, promptQueries, 15000);
+      const tagName = await promptInput.evaluate(el => el.tagName.toLowerCase());
+      const className = await promptInput.evaluate(el => el.className);
+      logger.info(`Textbox de prompt localizado: tag=${tagName}, class=${className}`);
       await promptInput.focus();
       
-      // Clear current content
-      await promptInput.fill('');
-      // Type prompt
-      await promptInput.fill(prompt);
+      // Clear current content and type prompt
+      try {
+        await promptInput.click();
+        await page.keyboard.press('Control+A');
+        await page.keyboard.press('Backspace');
+        await page.keyboard.type(prompt, { delay: 10 });
+      } catch (err) {
+        logger.warn('Falha ao usar teclado virtual para digitar. Usando preenchimento padrão (fill).', err);
+        await promptInput.fill('');
+        await promptInput.fill(prompt);
+      }
 
-      // 3. Executar geração
+      // 6. Execute generation
       logger.info('Iniciando geração.');
-      const submitQueries: ElementQuery[] = [
-        { role: 'button', text: 'Generate' },
-        { role: 'button', text: 'Create' },
-        { role: 'button', text: 'Gerar' },
-        { role: 'button', text: 'Submit' },
-        { selector: 'button[type="submit"]' },
-        { selector: 'button:has(svg)' },
-        { role: 'button', ariaLabel: 'Generate' }
-      ];
-
-      const submitBtn = await findSmartElement(page, submitQueries, 10000);
+      // Locate the button containing the arrow_forward icon
+      const submitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
+      await submitBtn.waitFor({ state: 'visible', timeout: 15000 });
       await submitBtn.click();
 
-      // 4. Aguardar finalização
-      logger.info('Aguardando.');
+      // 7. Monitor generation progress and wait for finish
+      logger.info('Aguardando conclusão da geração...');
 
-      // Check for content policy errors or invalid prompts immediately or during wait
+      // Check for content policy errors or invalid prompts
       const errorQueries = [
         'text=unsafe',
         'text=content policy',
@@ -107,17 +138,7 @@ export class FlowImageGenerator {
         'text=prompt inválido'
       ];
 
-      // Poll until generation finishes (download button is visible) or error is found
-      const downloadQueries: ElementQuery[] = [
-        { role: 'button', text: 'Download' },
-        { role: 'button', text: 'Baixar' },
-        { selector: 'button[aria-label*="download"]' },
-        { selector: 'a[download]' },
-        { selector: '[aria-label*="Download"]' }
-      ];
-
-      let downloadButton: Locator | null = null;
-
+      // Poll until generation finishes (new media item is added to the count)
       await pollCondition(
         page,
         async () => {
@@ -130,43 +151,39 @@ export class FlowImageGenerator {
             }
           }
 
-          // Check if generation completed by looking for download button
-          for (const query of downloadQueries) {
-            try {
-              let locator = null;
-              if (query.selector) {
-                locator = page.locator(query.selector);
-              } else if (query.text) {
-                locator = page.getByRole(query.role || 'button', { name: query.text, exact: false });
-              }
-              if (locator && await locator.count() > 0 && await locator.first().isVisible()) {
-                downloadButton = locator.first();
-                return true;
-              }
-            } catch {
-              // ignore locator errors
-            }
-          }
-          return false;
+          const currentCount = await getMediaCount();
+          return currentCount > initialMediaCount;
         },
         'A geração da imagem falhou ou excedeu o tempo limite.',
         timeoutMs,
         3000
       );
 
-      if (!downloadButton) {
-        throw new Error('Botão de download não pôde ser localizado após a geração.');
-      }
+      // 8. Open the generated media card preview
+      logger.info('Geração concluída. Abrindo visualização da mídia...');
+      const newMediaCard = page.locator('img[src*="getMediaUrlRedirect"], video').first();
+      await newMediaCard.waitFor({ state: 'visible', timeout: 10000 });
+      await newMediaCard.click();
+      await page.waitForTimeout(2000); // Settling time for preview overlay
 
-      // 5. Baixar o arquivo gerado
+      // 9. Find download button in preview drawer/overlay
+      const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
+      await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
+
+      // 10. Download file
       logger.info('Download iniciado.');
       const downloadResult = await this.downloader.downloadFile(
         page,
-        downloadButton,
+        downloadBtn,
         'image',
         'images',
         '.png'
       );
+
+      // 11. Close preview overlay
+      logger.info('Fechando painel de visualização.');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
 
       return {
         success: true,
@@ -178,6 +195,10 @@ export class FlowImageGenerator {
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.error('Erro encontrado durante a geração da imagem:', error);
+      
+      // Attempt to close preview modal in case of error
+      await page.keyboard.press('Escape').catch(() => {});
+      
       return {
         success: false,
         path: '',

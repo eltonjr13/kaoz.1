@@ -27,11 +27,21 @@ export class FlowDownloader {
     logger.info('Download iniciado.');
 
     try {
-      // Set up the download listener before clicking
+      // Set up the download listener before clicking any buttons
       const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
       
-      // Click the download button
+      // Click the download dropdown button
       await triggerLocator.click();
+
+      // Check if a resolution dropdown appears (e.g. 1K, 720p, etc.)
+      const resolutionOption = page.locator('button, [role="menuitem"], div').filter({ hasText: /1K|Tamanho original|720p|1080p/i }).first();
+      try {
+        await resolutionOption.waitFor({ state: 'visible', timeout: 4000 });
+        logger.info('Menu de resoluções detectado. Clicando na opção de download...');
+        await resolutionOption.click();
+      } catch (err) {
+        logger.info('Nenhum menu de resoluções detectado. Aguardando download direto...');
+      }
 
       // Wait for the download process to complete
       const download = await downloadPromise;
