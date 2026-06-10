@@ -130,3 +130,35 @@ export async function pollCondition(
   }
   throw new Error(`Timeout: ${errorMessage} after ${timeoutMs}ms`);
 }
+
+/**
+ * Gets the saved project URL if it exists.
+ */
+export function getSavedProjectUrl(): string | null {
+  const filePath = 'storage/flow_project_url.txt';
+  if (fs.existsSync(filePath)) {
+    try {
+      const url = fs.readFileSync(filePath, 'utf-8').trim();
+      if (url.startsWith('https://') && url.includes('/project/')) {
+        return url;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return null;
+}
+
+/**
+ * Saves the project URL to disk.
+ */
+export function saveProjectUrl(url: string): void {
+  const filePath = 'storage/flow_project_url.txt';
+  try {
+    ensureDirExists('storage/');
+    fs.writeFileSync(filePath, url, 'utf-8');
+    logger.info(`Workspace URL salvo: ${url}`);
+  } catch (err) {
+    logger.warn('Falha ao salvar URL do projeto workspace.', err);
+  }
+}

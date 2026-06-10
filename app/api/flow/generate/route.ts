@@ -10,6 +10,9 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => null)) as {
       type?: unknown;
       prompt?: unknown;
+      aspectRatio?: unknown;
+      quantity?: unknown;
+      model?: unknown;
     } | null;
 
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -23,18 +26,42 @@ export async function POST(request: Request) {
       return jsonError("Informe um prompt para a geração.");
     }
 
-    console.log(`[API FLOW] Iniciando geração de ${type} para o prompt: "${prompt}"`);
+    // Parse and validate options
+    const aspectRatio = typeof body?.aspectRatio === "string" ? body.aspectRatio.trim() : undefined;
+    const quantity = typeof body?.quantity === "number" || typeof body?.quantity === "string" ? body.quantity : undefined;
+    const model = typeof body?.model === "string" ? body.model.trim() : undefined;
+
+    let validatedAspectRatio: '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | undefined = undefined;
+    if (aspectRatio && ["16:9", "4:3", "1:1", "3:4", "9:16"].includes(aspectRatio)) {
+      validatedAspectRatio = aspectRatio as '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+    }
+
+    let validatedQuantity: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4' | undefined = undefined;
+    if (quantity !== undefined) {
+      const qStr = String(quantity);
+      if (["1", "2", "3", "4", "1x", "x2", "x3", "x4"].includes(qStr)) {
+        validatedQuantity = (/^\d+$/.test(qStr) ? parseInt(qStr, 10) : qStr) as 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+      }
+    }
+
+    const options = {
+      aspectRatio: validatedAspectRatio,
+      quantity: validatedQuantity,
+      model: model || undefined
+    };
+
+    console.log(`[API FLOW] Iniciando geração de ${type} para o prompt: "${prompt}" com opções:`, options);
     const provider = new FlowProvider();
     
     try {
       if (type === "image") {
-        const result = await provider.generateImage(prompt);
+        const result = await provider.generateImage(prompt, options);
         if (!result.success) {
           return NextResponse.json({ success: false, error: result.error }, { status: 500 });
         }
         return NextResponse.json(result);
       } else {
-        const result = await provider.generateVideo(prompt);
+        const result = await provider.generateVideo(prompt, options);
         if (!result.success) {
           return NextResponse.json({ success: false, error: result.error }, { status: 500 });
         }

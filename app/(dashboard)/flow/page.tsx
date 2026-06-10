@@ -26,6 +26,8 @@ interface GenerationResult {
   success: boolean;
   path: string;
   filename: string;
+  paths?: string[];
+  filenames?: string[];
   createdAt: string;
   duration?: string;
   error?: string;
@@ -42,10 +44,18 @@ export default function FlowDashboardPage() {
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageLoading, setImageLoading] = useState(false);
   const [imageResult, setImageResult] = useState<GenerationResult | null>(null);
+  const [imageRatio, setImageRatio] = useState("16:9");
+  const [imageQty, setImageQty] = useState("x2");
+  const [imageModel, setImageModel] = useState("Nano Banana 2");
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoResult, setVideoResult] = useState<GenerationResult | null>(null);
+  const [videoRatio, setVideoRatio] = useState("16:9");
+  const [videoQty, setVideoQty] = useState("1x");
+  const [videoModel, setVideoModel] = useState("Veo 3.1");
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0);
 
   // 3. Logger Console State
   const [logs, setLogs] = useState<string[]>([]);
@@ -161,13 +171,20 @@ export default function FlowDashboardPage() {
     }
     setImageLoading(true);
     setImageResult(null);
+    setActiveImageIndex(0);
     appendLog(`Gerando imagem para: "${imagePrompt}"...`);
     
     try {
       const res = await fetch("/api/flow/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "image", prompt: imagePrompt }),
+        body: JSON.stringify({
+          type: "image",
+          prompt: imagePrompt,
+          aspectRatio: imageRatio,
+          quantity: imageQty,
+          model: imageModel,
+        }),
       });
       const data: GenerationResult = await res.json();
       
@@ -201,13 +218,20 @@ export default function FlowDashboardPage() {
     }
     setVideoLoading(true);
     setVideoResult(null);
+    setActiveVideoIndex(0);
     appendLog(`Gerando vídeo para: "${videoPrompt}"...`);
 
     try {
       const res = await fetch("/api/flow/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "video", prompt: videoPrompt }),
+        body: JSON.stringify({
+          type: "video",
+          prompt: videoPrompt,
+          aspectRatio: videoRatio,
+          quantity: videoQty,
+          model: videoModel,
+        }),
       });
       const data: GenerationResult = await res.json();
       
@@ -403,27 +427,110 @@ export default function FlowDashboardPage() {
               />
             </div>
 
+            {/* Configs Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-zinc-100 dark:border-zinc-900 py-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Modelo</label>
+                <select
+                  value={imageModel}
+                  onChange={(e) => setImageModel(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="Nano Banana 2">🍌 Nano Banana 2</option>
+                  <option value="Nano Banana Pro">🍌 Nano Banana Pro</option>
+                  <option value="Imagen 4 (Leaving 6/16)">Imagen 4</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Formato</label>
+                <select
+                  value={imageRatio}
+                  onChange={(e) => setImageRatio(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="16:9">16:9 (Horizontal)</option>
+                  <option value="4:3">4:3 (Clássico)</option>
+                  <option value="1:1">1:1 (Quadrado)</option>
+                  <option value="3:4">3:4 (Retrato)</option>
+                  <option value="9:16">9:16 (Vertical)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Quantidade</label>
+                <select
+                  value={imageQty}
+                  onChange={(e) => setImageQty(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="1x">1 Imagem</option>
+                  <option value="x2">2 Imagens (Padrão)</option>
+                  <option value="x3">3 Imagens</option>
+                  <option value="x4">4 Imagens</option>
+                </select>
+              </div>
+            </div>
+
             {/* Image Result Display Area */}
             {imageResult && (
               <div className="border border-zinc-200 dark:border-zinc-850 rounded-lg p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-3">
                 {imageResult.success ? (
                   <>
                     <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle size={12} /> Imagem gerada com sucesso!
+                      <CheckCircle size={12} /> Imagens geradas com sucesso!
                     </span>
-                    <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
-                      {/* Using secure server-side file streaming route to preview */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/api/flow/media?path=${encodeURIComponent(imageResult.path)}`}
-                        alt="Resultado ImageFX"
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="text-[10px] space-y-1 font-mono text-zinc-500 dark:text-zinc-400">
-                      <div><strong className="text-zinc-700 dark:text-zinc-300">Caminho:</strong> {imageResult.path}</div>
-                      <div><strong className="text-zinc-700 dark:text-zinc-300">Arquivo:</strong> {imageResult.filename}</div>
-                    </div>
+                    {(() => {
+                      const activePath = imageResult.paths && imageResult.paths[activeImageIndex] 
+                        ? imageResult.paths[activeImageIndex] 
+                        : imageResult.path;
+                      const activeFilename = imageResult.filenames && imageResult.filenames[activeImageIndex] 
+                        ? imageResult.filenames[activeImageIndex] 
+                        : imageResult.filename;
+
+                      return (
+                        <>
+                          <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
+                            {/* Using secure server-side file streaming route to preview */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/flow/media?path=${encodeURIComponent(activePath)}`}
+                              alt="Resultado ImageFX"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+
+                          {/* Thumbnails Row */}
+                          {imageResult.paths && imageResult.paths.length > 1 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1 pt-1 scrollbar-thin scrollbar-thumb-zinc-800">
+                              {imageResult.paths.map((p, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => setActiveImageIndex(idx)}
+                                  className={`relative w-16 h-12 rounded overflow-hidden border-2 flex-shrink-0 cursor-pointer transition-all ${
+                                    idx === activeImageIndex 
+                                      ? "border-indigo-600 scale-95" 
+                                      : "border-zinc-350 dark:border-zinc-800 hover:border-zinc-400"
+                                  }`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={`/api/flow/media?path=${encodeURIComponent(p)}`}
+                                    alt={`Miniatura ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="text-[10px] space-y-1 font-mono text-zinc-500 dark:text-zinc-400">
+                            <div><strong className="text-zinc-700 dark:text-zinc-300">Caminho:</strong> {activePath}</div>
+                            <div><strong className="text-zinc-700 dark:text-zinc-300">Arquivo:</strong> {activeFilename}</div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   <span className="text-xs font-bold text-rose-600 dark:text-rose-455 flex items-start gap-1.5">
@@ -472,27 +579,107 @@ export default function FlowDashboardPage() {
               />
             </div>
 
+            {/* Configs Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-zinc-100 dark:border-zinc-900 py-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Modelo</label>
+                <select
+                  value={videoModel}
+                  onChange={(e) => setVideoModel(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="Veo 3.1">🎬 Veo 3.1</option>
+                  <option value="Veo">🎬 Veo</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Formato</label>
+                <select
+                  value={videoRatio}
+                  onChange={(e) => setVideoRatio(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="16:9">16:9 (Horizontal)</option>
+                  <option value="4:3">4:3 (Clássico)</option>
+                  <option value="1:1">1:1 (Quadrado)</option>
+                  <option value="3:4">3:4 (Retrato)</option>
+                  <option value="9:16">9:16 (Vertical)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Quantidade</label>
+                <select
+                  value={videoQty}
+                  onChange={(e) => setVideoQty(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                >
+                  <option value="1x">1 Vídeo (Padrão)</option>
+                  <option value="x2">2 Vídeos</option>
+                </select>
+              </div>
+            </div>
+
             {/* Video Result Display Area */}
             {videoResult && (
               <div className="border border-zinc-200 dark:border-zinc-850 rounded-lg p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-3">
                 {videoResult.success ? (
                   <>
                     <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle size={12} /> Vídeo gerado com sucesso!
+                      <CheckCircle size={12} /> Vídeos gerados com sucesso!
                     </span>
-                    <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
-                      {/* Using secure server-side file streaming route to play video */}
-                      <video
-                        src={`/api/flow/media?path=${encodeURIComponent(videoResult.path)}`}
-                        controls
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="text-[10px] space-y-1 font-mono text-zinc-500 dark:text-zinc-400">
-                      <div><strong className="text-zinc-700 dark:text-zinc-300">Caminho:</strong> {videoResult.path}</div>
-                      <div><strong className="text-zinc-700 dark:text-zinc-300">Arquivo:</strong> {videoResult.filename}</div>
-                      <div><strong className="text-zinc-700 dark:text-zinc-300">Duração:</strong> {videoResult.duration}s</div>
-                    </div>
+                    {(() => {
+                      const activePath = videoResult.paths && videoResult.paths[activeVideoIndex] 
+                        ? videoResult.paths[activeVideoIndex] 
+                        : videoResult.path;
+                      const activeFilename = videoResult.filenames && videoResult.filenames[activeVideoIndex] 
+                        ? videoResult.filenames[activeVideoIndex] 
+                        : videoResult.filename;
+
+                      return (
+                        <>
+                          <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
+                            {/* Using secure server-side file streaming route to play video */}
+                            <video
+                              key={activePath}
+                              src={`/api/flow/media?path=${encodeURIComponent(activePath)}`}
+                              controls
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+
+                          {/* Thumbnails Row */}
+                          {videoResult.paths && videoResult.paths.length > 1 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1 pt-1 scrollbar-thin scrollbar-thumb-zinc-800">
+                              {videoResult.paths.map((p, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => setActiveVideoIndex(idx)}
+                                  className={`relative w-16 h-12 rounded overflow-hidden border-2 flex-shrink-0 cursor-pointer transition-all ${
+                                    idx === activeVideoIndex 
+                                      ? "border-indigo-600 scale-95" 
+                                      : "border-zinc-350 dark:border-zinc-800 hover:border-zinc-400"
+                                  }`}
+                                >
+                                  <video
+                                    src={`/api/flow/media?path=${encodeURIComponent(p)}`}
+                                    className="w-full h-full object-cover pointer-events-none"
+                                    muted
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="text-[10px] space-y-1 font-mono text-zinc-500 dark:text-zinc-400">
+                            <div><strong className="text-zinc-700 dark:text-zinc-300">Caminho:</strong> {activePath}</div>
+                            <div><strong className="text-zinc-700 dark:text-zinc-300">Arquivo:</strong> {activeFilename}</div>
+                            <div><strong className="text-zinc-700 dark:text-zinc-300">Duração:</strong> {videoResult.duration}s</div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   <span className="text-xs font-bold text-rose-600 dark:text-rose-455 flex items-start gap-1.5">

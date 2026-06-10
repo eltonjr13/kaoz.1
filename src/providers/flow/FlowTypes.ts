@@ -12,6 +12,8 @@ export interface ImageGenerationResult {
   success: boolean;
   path: string;
   filename: string;
+  paths?: string[];
+  filenames?: string[];
   createdAt: string;
   error?: string;
 }
@@ -20,6 +22,8 @@ export interface VideoGenerationResult {
   success: boolean;
   path: string;
   filename: string;
+  paths?: string[];
+  filenames?: string[];
   duration: string; // duration of video if available, or generated metadata
   createdAt: string;
   error?: string;
@@ -63,4 +67,16 @@ export interface AvatarGenerationResult {
   filename: string;
   createdAt: string;
   error?: string;
+}
+
+export interface ImageGenerationOptions {
+  aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+  model?: string;
+}
+
+export interface VideoGenerationOptions {
+  aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+  model?: string;
 }

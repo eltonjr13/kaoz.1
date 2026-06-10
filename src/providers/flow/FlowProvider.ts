@@ -1,4 +1,4 @@
-import { FlowConfig, ImageGenerationResult, VideoGenerationResult, FlowStatus } from './FlowTypes';
+import { FlowConfig, ImageGenerationResult, VideoGenerationResult, FlowStatus, ImageGenerationOptions, VideoGenerationOptions } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
@@ -59,11 +59,11 @@ export class FlowProvider {
    * 
    * @param prompt Textual prompt describing the image.
    */
-  async generateImage(prompt: string): Promise<ImageGenerationResult> {
+  async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
     this.activeTasksCount++;
     try {
       const page = await this.session.getPage();
-      return await this.imageGenerator.generate(page, prompt, this.config.timeout);
+      return await this.imageGenerator.generate(page, prompt, this.config.timeout, options);
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -74,11 +74,11 @@ export class FlowProvider {
    * 
    * @param prompt Textual prompt describing the video.
    */
-  async generateVideo(prompt: string): Promise<VideoGenerationResult> {
+  async generateVideo(prompt: string, options?: VideoGenerationOptions): Promise<VideoGenerationResult> {
     this.activeTasksCount++;
     try {
       const page = await this.session.getPage();
-      return await this.videoGenerator.generate(page, prompt, this.config.timeout);
+      return await this.videoGenerator.generate(page, prompt, this.config.timeout, options);
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }

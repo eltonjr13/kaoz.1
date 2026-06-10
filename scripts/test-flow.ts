@@ -1,6 +1,5 @@
 import { FlowProvider } from '../src/providers/flow/FlowProvider';
 import * as fs from 'fs';
-import * as path from 'path';
 
 async function main() {
   console.log('[TEST] Inicializando FlowProvider...');
@@ -23,9 +22,13 @@ async function main() {
       console.warn('[TEST] AVISO: A sessão não está autenticada. Certifique-se de fazer login pela interface ou rodar em modo headful.');
     }
 
-    console.log('[TEST] Iniciando geração de imagem...');
+    console.log('[TEST] Iniciando geração de imagem com opções customizadas (9:16, Nano Banana Pro, quantity: 2)...');
     const prompt = 'um pato de borracha amarelo na banheira, fofo, render 3d';
-    const result = await provider.generateImage(prompt);
+    const result = await provider.generateImage(prompt, {
+      aspectRatio: '9:16',
+      quantity: 2,
+      model: 'Nano Banana Pro'
+    });
     
     console.log('[TEST] Resultado da geração:', JSON.stringify(result, null, 2));
 

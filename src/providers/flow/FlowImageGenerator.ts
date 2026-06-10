@@ -1,6 +1,6 @@
-import { Page, Locator } from 'playwright';
-import { ImageGenerationResult, FlowConfig } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
+import { Page } from 'playwright';
+import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 
 export class FlowImageGenerator {
@@ -9,12 +9,15 @@ export class FlowImageGenerator {
   /**
    * Generates an image using Google Flow.
    */
-  async generate(page: Page, prompt: string, timeoutMs: number): Promise<ImageGenerationResult> {
-    const targetUrl = this.config.imageUrl || 'https://flow.google';
-    logger.info('Abrindo Flow.');
+  async generate(page: Page, prompt: string, timeoutMs: number, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
+    const savedUrl = getSavedProjectUrl();
+    const defaultUrl = this.config.imageUrl || 'https://flow.google';
+    const targetUrl = savedUrl || defaultUrl;
+    logger.info('Abrindo Flow.', { targetUrl });
     
     const currentUrl = page.url();
-    if (!currentUrl.includes('/project/') && !currentUrl.includes('/tools/flow')) {
+    const isCurrentUrlProject = currentUrl.includes('/project/');
+    if (!isCurrentUrlProject || (savedUrl && !currentUrl.includes(savedUrl))) {
       logger.info('Navegando para Google Flow:', { targetUrl });
       await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
     }
@@ -34,46 +37,119 @@ export class FlowImageGenerator {
         logger.warn('Aviso: Timeout aguardando os elementos principais da página.', err);
       });
 
-      // 2. Click "Novo projeto" if on lobby page
-      const checkUrl = page.url();
+      // 2. Fallback check: If we targeted a saved project URL but ended up redirecting or not landing on a project workspace, navigate to default lobby and create one
+      let checkUrl = page.url();
       if (!checkUrl.includes('/project/')) {
-        logger.info('Lobby do Google Flow detectado. Tentando criar um novo projeto...');
-        if (await lobbyBtn.isVisible()) {
-          logger.info('Botão "Novo projeto" localizado. Clicando...');
-          await lobbyBtn.click();
-          // Wait for workspace textbox to load
-          await workspaceTextbox.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {
-            logger.warn('Aviso: Timeout aguardando o workspace carregar após clicar em Novo Projeto.');
-          });
-        } else {
-          logger.warn('Botão "Novo projeto" não está visível na página inicial.');
+        if (savedUrl) {
+          logger.warn(`URL salva não carregou um workspace válido (${checkUrl}). Navegando para URL padrão...`);
+          await page.goto(defaultUrl, { waitUntil: 'load', timeout: 60000 });
+          await page.waitForLoadState('domcontentloaded');
+          await Promise.any([
+            lobbyBtn.waitFor({ state: 'visible', timeout: 15000 }),
+            workspaceTextbox.waitFor({ state: 'visible', timeout: 15000 })
+          ]).catch(() => {});
+          checkUrl = page.url();
+        }
+
+        if (!checkUrl.includes('/project/')) {
+          logger.info('Lobby do Google Flow detectado. Tentando criar um novo projeto...');
+          if (await lobbyBtn.isVisible()) {
+            logger.info('Botão "Novo projeto" localizado. Clicando...');
+            await lobbyBtn.click();
+            // Wait for workspace textbox to load
+            await workspaceTextbox.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {
+              logger.warn('Aviso: Timeout aguardando o workspace carregar após clicar em Novo Projeto.');
+            });
+          } else {
+            logger.warn('Botão "Novo projeto" não está visível na página inicial.');
+          }
         }
       }
 
-      // 3. Switch model mode to Image (Nano Banana) if Video (Veo) is active
-      const modelBtn = page.locator('button').filter({ hasText: /Veo|Banana/ }).first();
+      // Save the active workspace URL for subsequent runs
+      const activeUrl = page.url();
+      if (activeUrl.includes('/project/')) {
+        saveProjectUrl(activeUrl);
+      }
+
+      // 3. Switch model mode to Image (Nano Banana) or configure popover options
+      const modelBtn = page.locator('button').filter({ hasText: /Veo|Banana|Imagen/ }).first();
       if (await modelBtn.count() > 0 && await modelBtn.isVisible()) {
         const buttonText = await modelBtn.innerText();
-        if (buttonText.includes('Veo')) {
-          logger.info('Modo Vídeo (Veo) ativo no workspace. Alternando para modo Imagem...');
-          await modelBtn.click();
-          await page.waitForTimeout(1000); // Wait for popup to open
+        const isVideoActive = buttonText.includes('Veo');
+        const needsPopoverConfig = isVideoActive || options?.aspectRatio || options?.quantity || options?.model;
 
-          // Click Image tab inside the radix model popover
-          const imageTab = page.locator('button[role="tab"]').filter({ hasText: /Imagem|Image/ }).first();
-          if (await imageTab.count() > 0 && await imageTab.isVisible()) {
-            await imageTab.click();
-            logger.info('Aba de Imagem selecionada com sucesso.');
-            await page.waitForTimeout(1000);
-          } else {
-            logger.warn('Aba de Imagem não localizada no menu de modelos.');
+        if (needsPopoverConfig) {
+          logger.info('Abrindo menu de configurações do modelo...');
+          await modelBtn.click();
+          await page.waitForTimeout(1000); // Wait for popover to open
+
+          // Select Image tab inside the radix model popover if Video was active
+          if (isVideoActive) {
+            logger.info('Alternando de modo Vídeo para modo Imagem...');
+            const imageTab = page.locator('button[role="tab"]').filter({ hasText: /Imagem|Image/ }).first();
+            if (await imageTab.count() > 0 && await imageTab.isVisible()) {
+              await imageTab.click();
+              await page.waitForTimeout(1000);
+            }
           }
 
-          // Press Escape to ensure the popover is closed
+          // Select Aspect Ratio if specified
+          if (options?.aspectRatio) {
+            const ratioStr = options.aspectRatio; // e.g. '16:9'
+            const ratioBtn = page.locator('button[role="tab"]').filter({ hasText: ratioStr }).first();
+            if (await ratioBtn.count() > 0 && await ratioBtn.isVisible()) {
+              await ratioBtn.click();
+              logger.info(`Aspect ratio selecionado: ${ratioStr}`);
+              await page.waitForTimeout(500);
+            } else {
+              logger.warn(`Botão para aspect ratio "${ratioStr}" não encontrado ou não visível.`);
+            }
+          }
+
+          // Select Quantity if specified
+          if (options?.quantity) {
+            let qtyStr = String(options.quantity); // e.g. '2' or 'x2'
+            if (!qtyStr.startsWith('x') && !qtyStr.endsWith('x')) {
+              qtyStr = qtyStr === '1' ? '1x' : `x${qtyStr}`;
+            }
+            const qtyBtn = page.locator('button[role="tab"]').filter({ hasText: qtyStr }).first();
+            if (await qtyBtn.count() > 0 && await qtyBtn.isVisible()) {
+              await qtyBtn.click();
+              logger.info(`Quantidade de imagens selecionada: ${qtyStr}`);
+              await page.waitForTimeout(500);
+            } else {
+              logger.warn(`Botão para quantidade "${qtyStr}" não encontrado ou não visível.`);
+            }
+          }
+
+          // Select Specific Model if specified
+          if (options?.model) {
+            const modelName = options.model; // e.g. 'Nano Banana Pro'
+            const dropdownSelect = page.locator('[role="dialog"], div[data-radix-popper-content-wrapper]').locator('button').filter({ hasText: /Banana|Veo|Imagen/ }).first();
+            if (await dropdownSelect.count() > 0 && await dropdownSelect.isVisible()) {
+              await dropdownSelect.click();
+              await page.waitForTimeout(1000);
+
+              const modelOption = page.locator('[role="menuitem"], [role="option"], [role="menuitemradio"], button:not([aria-haspopup])').filter({ hasText: modelName }).first();
+              if (await modelOption.count() > 0 && await modelOption.isVisible()) {
+                await modelOption.click();
+                logger.info(`Modelo selecionado no dropdown: ${modelName}`);
+                await page.waitForTimeout(1000);
+              } else {
+                logger.warn(`Opção de modelo "${modelName}" não encontrada no dropdown.`);
+                // Press escape to close the dropdown menu
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(500);
+              }
+            }
+          }
+
+          // Press Escape to ensure the settings popover is closed
           await page.keyboard.press('Escape');
           await page.waitForTimeout(500);
         } else {
-          logger.info('Modo Imagem (Nano Banana) já está ativo no workspace.');
+          logger.info('Modo Imagem já ativo e nenhuma configuração customizada solicitada.');
         }
       }
 
@@ -86,6 +162,16 @@ export class FlowImageGenerator {
       
       const initialMediaCount = await getMediaCount();
       logger.info(`Itens de mídia existentes no workspace: ${initialMediaCount}`);
+
+      let expectedNewItemsCount = 2; // Default for ImageFX
+      if (options?.quantity) {
+        const qtyStr = String(options.quantity).replace('x', '').replace('1x', '1');
+        const parsed = parseInt(qtyStr, 10);
+        if (!isNaN(parsed)) {
+          expectedNewItemsCount = parsed;
+        }
+      }
+      logger.info(`Esperando gerar ${expectedNewItemsCount} itens.`);
 
       // 5. Find prompt input area
       logger.info('Inserindo prompt.');
@@ -139,6 +225,9 @@ export class FlowImageGenerator {
       ];
 
       // Poll until generation finishes (new media item is added to the count)
+      let lastCount = initialMediaCount;
+      let lastChangeTime = Date.now();
+
       await pollCondition(
         page,
         async () => {
@@ -152,44 +241,97 @@ export class FlowImageGenerator {
           }
 
           const currentCount = await getMediaCount();
-          return currentCount > initialMediaCount;
+          if (currentCount > lastCount) {
+            lastCount = currentCount;
+            lastChangeTime = Date.now();
+            logger.info(`Nova mídia detectada. Contagem parcial: ${currentCount}`);
+          }
+
+          // If we reached the expected count, we are done!
+          if (currentCount >= initialMediaCount + expectedNewItemsCount) {
+            logger.info(`Alcançou a quantidade esperada de itens: ${currentCount}`);
+            return true;
+          }
+
+          // If we have at least one new item, and it's been 12 seconds since the count last changed, we assume generation is complete.
+          if (currentCount > initialMediaCount && Date.now() - lastChangeTime > 12000) {
+            logger.info(`Geração estabilizada em ${currentCount} itens após timeout de estabilização.`);
+            return true;
+          }
+
+          return false;
         },
         'A geração da imagem falhou ou excedeu o tempo limite.',
         timeoutMs,
-        3000
+        2000
       );
 
-      // 8. Open the generated media card preview
-      logger.info('Geração concluída. Abrindo visualização da mídia...');
-      const newMediaCard = page.locator('img[src*="getMediaUrlRedirect"], video').first();
-      await newMediaCard.waitFor({ state: 'visible', timeout: 10000 });
-      await newMediaCard.click();
-      await page.waitForTimeout(2000); // Settling time for preview overlay
+      // 8. Open and download the generated media cards
+      logger.info('Geração concluída. Iniciando download de todos os novos itens...');
+      const mediaCards = page.locator('img[src*="getMediaUrlRedirect"], video');
+      
+      // Calculate how many items were generated in this run
+      const finalMediaCount = await getMediaCount();
+      const newItemsCount = Math.max(1, finalMediaCount - initialMediaCount);
+      logger.info(`Total de novas mídias detectadas: ${newItemsCount} (Contagem: ${initialMediaCount} -> ${finalMediaCount})`);
 
-      // 9. Find download button in preview drawer/overlay
-      const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
-      await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
+      const downloadedPaths: string[] = [];
+      const downloadedFilenames: string[] = [];
+      let primaryPath = '';
+      let primaryFilename = '';
 
-      // 10. Download file
-      logger.info('Download iniciado.');
-      const downloadResult = await this.downloader.downloadFile(
-        page,
-        downloadBtn,
-        'image',
-        'images',
-        '.png'
-      );
+      // Loop and download each item
+      for (let i = 0; i < newItemsCount; i++) {
+        const index = i;
+        logger.info(`Abrindo visualização da mídia ${i + 1} de ${newItemsCount}...`);
+        
+        const card = mediaCards.nth(index);
+        await card.waitFor({ state: 'visible', timeout: 15000 });
+        await card.click();
+        await page.waitForTimeout(2000); // Settling time for preview overlay
 
-      // 11. Close preview overlay
-      logger.info('Fechando painel de visualização.');
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(500);
+        // Find download button in preview drawer/overlay
+        const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
+        await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
+
+        logger.info(`Iniciando download do item ${i + 1}...`);
+        const downloadResult = await this.downloader.downloadFile(
+          page,
+          downloadBtn,
+          'image',
+          'images',
+          '.png'
+        );
+
+        if (downloadResult.success) {
+          downloadedPaths.push(downloadResult.path);
+          downloadedFilenames.push(downloadResult.filename);
+          if (i === 0) {
+            primaryPath = downloadResult.path;
+            primaryFilename = downloadResult.filename;
+          }
+          logger.info(`Download do item ${i + 1} concluído: ${downloadResult.filename}`);
+        } else {
+          logger.warn(`Falha ao realizar download do item ${i + 1}`);
+        }
+
+        // Close preview overlay
+        logger.info(`Fechando painel de visualização do item ${i + 1}.`);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(1000); // Wait for transition
+      }
+
+      if (downloadedPaths.length === 0) {
+        throw new Error('Nenhuma mídia foi baixada com sucesso.');
+      }
 
       return {
         success: true,
-        path: downloadResult.path,
-        filename: downloadResult.filename,
-        createdAt: downloadResult.createdAt
+        path: primaryPath,
+        filename: primaryFilename,
+        paths: downloadedPaths,
+        filenames: downloadedFilenames,
+        createdAt: new Date().toISOString()
       };
 
     } catch (error: unknown) {
