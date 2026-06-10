@@ -23,7 +23,7 @@ async function main() {
     }
 
     console.log('[TEST] Iniciando geração de imagem com opções customizadas (9:16, Nano Banana Pro, quantity: 2)...');
-    const prompt = 'um pato de borracha amarelo na banheira, fofo, render 3d';
+    const prompt = `um pato de borracha amarelo na banheira, fofo, render 3d - ${Date.now()}`;
     const result = await provider.generateImage(prompt, {
       aspectRatio: '9:16',
       quantity: 2,

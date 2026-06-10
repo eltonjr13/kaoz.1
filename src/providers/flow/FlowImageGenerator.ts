@@ -1,6 +1,6 @@
 import { Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl } from './FlowUtils';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 
 export class FlowImageGenerator {
@@ -19,7 +19,16 @@ export class FlowImageGenerator {
     const isCurrentUrlProject = currentUrl.includes('/project/');
     if (!isCurrentUrlProject || (savedUrl && !currentUrl.includes(savedUrl))) {
       logger.info('Navegando para Google Flow:', { targetUrl });
-      await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
+      try {
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
+      } catch (navErr) {
+        logger.warn(`Falha ao navegar para ${targetUrl}. Tentando URL padrão...`, navErr);
+        if (targetUrl !== defaultUrl) {
+          await page.goto(defaultUrl, { waitUntil: 'load', timeout: 60000 });
+        } else {
+          throw navErr;
+        }
+      }
     }
 
     try {
@@ -193,14 +202,15 @@ export class FlowImageGenerator {
       
       // Clear current content and type prompt
       try {
+        logger.info('Preenchendo prompt via locator.fill...');
+        await promptInput.fill('');
+        await promptInput.fill(prompt);
+      } catch (err) {
+        logger.warn('Falha ao usar fill. Usando click e teclado virtual...', err);
         await promptInput.click();
         await page.keyboard.press('Control+A');
         await page.keyboard.press('Backspace');
         await page.keyboard.type(prompt, { delay: 10 });
-      } catch (err) {
-        logger.warn('Falha ao usar teclado virtual para digitar. Usando preenchimento padrão (fill).', err);
-        await promptInput.fill('');
-        await promptInput.fill(prompt);
       }
 
       // 6. Execute generation
@@ -338,6 +348,16 @@ export class FlowImageGenerator {
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.error('Erro encontrado durante a geração da imagem:', error);
       
+      // Capture error screenshot for debugging
+      try {
+        ensureDirExists('storage/generated/');
+        const screenshotPath = 'storage/generated/error_image_generator.png';
+        await page.screenshot({ path: screenshotPath });
+        logger.info(`Screenshot de erro salvo em: ${screenshotPath}`);
+      } catch (screenshotErr) {
+        logger.warn('Falha ao capturar screenshot de erro.', screenshotErr);
+      }
+
       // Attempt to close preview modal in case of error
       await page.keyboard.press('Escape').catch(() => {});
       
