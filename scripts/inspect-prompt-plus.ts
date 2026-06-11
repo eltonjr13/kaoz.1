@@ -49,7 +49,7 @@ async function main() {
       // List all text contents of overlays
       const overlayText = await page.evaluate(() => {
         const dialogs = Array.from(document.querySelectorAll('[role="menu"], [role="dialog"], [role="listbox"], div[data-radix-menu-content], [role="menuitem"]'));
-        return dialogs.map(d => d.innerText || d.textContent || '');
+        return dialogs.map(d => (d as HTMLElement).innerText || d.textContent || '');
       });
       console.log('[INSPECT] Overlays abertos:', overlayText);
     } else {

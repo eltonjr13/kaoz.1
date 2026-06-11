@@ -2,7 +2,6 @@ import { Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
-import * as path from 'path';
 export class FlowImageGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
@@ -26,28 +25,27 @@ export class FlowImageGenerator {
       await page.waitForTimeout(2000);
 
       logger.info('Localizando caixa de diálogo de recursos...');
-      const dialog = page.locator('[role="dialog"], [role="menu"], [data-state="open"]').first();
-      await dialog.waitFor({ state: 'visible', timeout: 10000 });
+      const dialog = page.locator('[role="dialog"], [role="menu"], [data-state="open"]').filter({ hasText: 'Incluir no comando' }).first();
+      await dialog.waitFor({ state: 'visible', timeout: 15000 });
 
-      const filename = path.basename(referenceImage);
-      logger.info(`Filtrando recursos por nome: ${filename}`);
-      
-      const searchInput = dialog.locator('input[data-testid="search-input"]').first();
-      if (await searchInput.isVisible()) {
-        await searchInput.fill(filename);
-        await page.waitForTimeout(2000);
-      }
-
-      logger.info('Selecionando recurso na lista...');
-      const item = dialog.locator(`text=${filename}`).first();
-      await item.waitFor({ state: 'visible', timeout: 10000 });
+      // We do not fill the searchInput to avoid search behavior or issues since Google Flow
+      // truncates long filenames with an ellipsis in the UI list items.
+      // Since the uploaded file is the most recent, it sits at the top under "Recentes".
+      // We directly locate the item containing the prefix "ref_image_".
+      logger.info('Selecionando o recurso mais recente na lista...');
+      const item = dialog.locator('text=ref_image_').filter({ visible: true }).first();
+      await item.waitFor({ state: 'visible', timeout: 15000 });
       await item.click();
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');
       const includeBtn = dialog.locator('button:has-text("Incluir no comando"), button:has-text("Include in prompt"), button:has-text("Incluir")').first();
-      await includeBtn.waitFor({ state: 'visible', timeout: 5000 });
-      await includeBtn.click();
+      if (await includeBtn.isVisible()) {
+        await includeBtn.click();
+        logger.info('Botão de inclusão clicado.');
+      } else {
+        logger.info('Botão de inclusão não visível (imagem anexada automaticamente).');
+      }
       
       logger.info('Imagem de referência anexada com sucesso ao prompt.');
       await page.waitForTimeout(1500);
@@ -294,6 +292,7 @@ export class FlowImageGenerator {
       // Poll until generation finishes (new media item is added to the count)
       let lastCount = initialMediaCount;
       let lastChangeTime = Date.now();
+      const generationStartTime = Date.now();
 
       await pollCondition(
         page,
@@ -323,6 +322,15 @@ export class FlowImageGenerator {
           // If we have at least one new item, and it's been 12 seconds since the count last changed, we assume generation is complete.
           if (currentCount > initialMediaCount && Date.now() - lastChangeTime > 12000) {
             logger.info(`Geração estabilizada em ${currentCount} itens após timeout de estabilização.`);
+            return true;
+          }
+
+          // Fallback / Virtual scroll check:
+          // If the submit button containing 'arrow_forward' is visible and enabled again,
+          // and we have waited at least 15 seconds since generation started, we assume generation finished.
+          const currentSubmitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
+          if (await currentSubmitBtn.isVisible() && await currentSubmitBtn.isEnabled() && Date.now() - generationStartTime > 15000) {
+            logger.info('Botão de envio ("arrow_forward") está visível e habilitado novamente. Geração terminada.');
             return true;
           }
 

@@ -55,6 +55,7 @@ export interface ElementQuery {
  * Smart locator function that tries multiple query strategies to locate an element.
  * Tries strategies in sequence, falling back to next options if not found or visible.
  */
+// eslint-disable-next-line complexity
 export async function findSmartElement(
   page: Page,
   queries: ElementQuery[],
