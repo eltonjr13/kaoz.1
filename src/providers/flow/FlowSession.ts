@@ -119,43 +119,41 @@ export class FlowSession {
    */
   async checkAuthenticated(page: Page): Promise<boolean> {
     try {
-      // 1. Check if we are redirected to a Google accounts sign-in URL
-      const currentUrl = page.url();
-      if (currentUrl.includes('accounts.google.com')) {
-        return false;
-      }
+      const loggedInLocator = page.locator(
+        'button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2"), [role="textbox"], textarea'
+      ).first();
+      
+      const loggedOutLocator = page.locator(
+        'button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login")'
+      ).first();
 
-      // 2. Check for explicit Sign In buttons on the page
-      const signInBtn = page.locator('button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login"), [aria-label*="Sign in"], [aria-label*="Fazer login"]');
-      const count = await signInBtn.count();
-      for (let i = 0; i < count; i++) {
-        if (await signInBtn.nth(i).isVisible()) {
+      // Poll up to 10 seconds for page to settle into one of the states
+      for (let i = 0; i < 5; i++) {
+        const url = page.url();
+        if (url.includes('accounts.google.com')) {
+          logger.info('Redirecionamento para contas do Google detectado. Não autenticado.');
           return false;
         }
+        if (await loggedInLocator.isVisible()) {
+          logger.info('Elemento de workspace ou criação detectado. Autenticado.');
+          return true;
+        }
+        if (await loggedOutLocator.isVisible()) {
+          logger.info('Botão de login detectado. Não autenticado.');
+          return false;
+        }
+        await page.waitForTimeout(2000);
       }
 
-      // 3. Check for typical profile indicators or logged-in markers
-      const profileIndicators = [
-        'img[src*="googleusercontent"]',
-        '[aria-label*="Google Account"]',
-        '[aria-label*="Conta do Google"]',
-        'button[aria-label*="profile"]',
-        '.profile-photo',
-        // Also if we see creation/prompt elements, we are logged in
-        'textarea',
-        '[placeholder*="prompt"]',
-        '[placeholder*="descreva"]',
-        '[placeholder*="describe"]'
-      ];
-
-      for (const selector of profileIndicators) {
-        const locator = page.locator(selector);
-        const locCount = await locator.count();
-        for (let i = 0; i < locCount; i++) {
-          if (await locator.nth(i).isVisible()) {
-            return true;
-          }
-        }
+      // Fallback check if nothing settled
+      const url = page.url();
+      if (url.includes('accounts.google.com')) {
+        return false;
+      }
+      
+      // If we see the workspace URL pattern, we are authenticated
+      if (url.includes('/project/') || url.includes('/tools/flow')) {
+        return true;
       }
 
       return false;
