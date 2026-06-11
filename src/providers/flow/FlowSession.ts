@@ -32,7 +32,7 @@ export class FlowSession {
     let page = await this.launchContext(this.config.headless);
     
     logger.info('Abrindo Flow.');
-    await page.goto(this.config.flowUrl, { waitUntil: 'load', timeout: 60000 });
+    await page.goto(this.config.flowUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     const authenticated = await this.checkAuthenticated(page);
     if (authenticated) {
@@ -50,7 +50,7 @@ export class FlowSession {
 
       logger.info('Abrindo navegador headful (visível) para login manual. Por favor, faça login na sua Conta Google.');
       page = await this.launchContext(false);
-      await page.goto(this.config.flowUrl, { waitUntil: 'load', timeout: 60000 });
+      await page.goto(this.config.flowUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     }
 
     // Wait for manual login to complete
@@ -67,7 +67,7 @@ export class FlowSession {
       logger.info('Re-iniciando em modo headless...');
       await this.close();
       page = await this.launchContext(true);
-      await page.goto(this.config.flowUrl, { waitUntil: 'load', timeout: 60000 });
+      await page.goto(this.config.flowUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     }
 
     this.activePage = page;
@@ -119,48 +119,48 @@ export class FlowSession {
    */
   async checkAuthenticated(page: Page): Promise<boolean> {
     try {
-      const loggedInLocator = page.locator(
-        'button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2"), [role="textbox"], textarea'
-      ).first();
-      
-      const loggedOutLocator = page.locator(
-        'button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login")'
-      ).first();
-
-      // Poll up to 10 seconds for page to settle into one of the states
-      for (let i = 0; i < 5; i++) {
-        const url = page.url();
-        if (url.includes('accounts.google.com')) {
-          logger.info('Redirecionamento para contas do Google detectado. Não autenticado.');
-          return false;
-        }
-        if (await loggedInLocator.isVisible()) {
-          logger.info('Elemento de workspace ou criação detectado. Autenticado.');
-          return true;
-        }
-        if (await loggedOutLocator.isVisible()) {
-          logger.info('Botão de login detectado. Não autenticado.');
-          return false;
-        }
-        await page.waitForTimeout(2000);
-      }
-
-      // Fallback check if nothing settled
       const url = page.url();
-      if (url.includes('accounts.google.com')) {
+      if (url.includes('accounts.google.com') || url.includes('signin')) {
+        logger.info('URL de login do Google detectada. Não autenticado.');
         return false;
       }
-      
-      // If we see the workspace URL pattern, we are authenticated
-      if (url.includes('/project/') || url.includes('/tools/flow')) {
-        return true;
-      }
-
-      return false;
+      return await this.pollAuthStatus(page);
     } catch (error) {
       logger.error('Erro ao verificar autenticação:', error);
       return false;
     }
+  }
+
+  /**
+   * Helper method to poll for authentication status elements on the page.
+   */
+  private async pollAuthStatus(page: Page): Promise<boolean> {
+    const loggedInLocator = page.locator(
+      'button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2"), div[contenteditable="true"]'
+    ).first();
+    
+    const loggedOutLocator = page.locator(
+      'button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login")'
+    ).first();
+
+    for (let i = 0; i < 5; i++) {
+      const currentUrl = page.url();
+      if (currentUrl.includes('accounts.google.com') || currentUrl.includes('signin')) {
+        return false;
+      }
+      if (await loggedInLocator.isVisible()) {
+        logger.info('Elemento de workspace ou criação detectado. Autenticado.');
+        return true;
+      }
+      if (await loggedOutLocator.isVisible()) {
+        logger.info('Botão de login detectado. Não autenticado.');
+        return false;
+      }
+      await page.waitForTimeout(2000);
+    }
+
+    const finalUrl = page.url();
+    return finalUrl.includes('/project/');
   }
 
   /**

@@ -2,13 +2,65 @@ import { Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
-
+import * as path from 'path';
 export class FlowImageGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
+   * Uploads a reference image to the workspace.
+   */
+  private async uploadReferenceImage(page: Page, referenceImage: string): Promise<void> {
+    logger.info(`Upload de imagem de referência solicitado: ${referenceImage}`);
+    const fileInput = page.locator('input[type="file"]').first();
+    try {
+      await fileInput.waitFor({ state: 'attached', timeout: 15000 });
+      logger.info('Input de arquivo de referência localizado. Fazendo upload...');
+      await fileInput.setInputFiles(referenceImage);
+      logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
+      await page.waitForTimeout(5000);
+
+      logger.info('Abrindo menu de mídia do prompt...');
+      const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
+      await promptPlusBtn.waitFor({ state: 'visible', timeout: 10000 });
+      await promptPlusBtn.click();
+      await page.waitForTimeout(2000);
+
+      logger.info('Localizando caixa de diálogo de recursos...');
+      const dialog = page.locator('[role="dialog"], [role="menu"], [data-state="open"]').first();
+      await dialog.waitFor({ state: 'visible', timeout: 10000 });
+
+      const filename = path.basename(referenceImage);
+      logger.info(`Filtrando recursos por nome: ${filename}`);
+      
+      const searchInput = dialog.locator('input[data-testid="search-input"]').first();
+      if (await searchInput.isVisible()) {
+        await searchInput.fill(filename);
+        await page.waitForTimeout(2000);
+      }
+
+      logger.info('Selecionando recurso na lista...');
+      const item = dialog.locator(`text=${filename}`).first();
+      await item.waitFor({ state: 'visible', timeout: 10000 });
+      await item.click();
+      await page.waitForTimeout(1000);
+
+      logger.info('Confirmando inclusão da imagem no comando...');
+      const includeBtn = dialog.locator('button:has-text("Incluir no comando"), button:has-text("Include in prompt"), button:has-text("Incluir")').first();
+      await includeBtn.waitFor({ state: 'visible', timeout: 5000 });
+      await includeBtn.click();
+      
+      logger.info('Imagem de referência anexada com sucesso ao prompt.');
+      await page.waitForTimeout(1500);
+    } catch (uploadErr) {
+      logger.error('Falha ao enviar e anexar imagem de referência:', uploadErr);
+      throw new Error(`Erro ao enviar imagem de referência: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
+    }
+  }
+
+  /**
    * Generates an image using Google Flow.
    */
+  // eslint-disable-next-line complexity
   async generate(page: Page, prompt: string, timeoutMs: number, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
     const savedUrl = getSavedProjectUrl();
     const defaultUrl = this.config.imageUrl || 'https://flow.google';
@@ -20,11 +72,11 @@ export class FlowImageGenerator {
     if (!isCurrentUrlProject || (savedUrl && !currentUrl.includes(savedUrl))) {
       logger.info('Navegando para Google Flow:', { targetUrl });
       try {
-        await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       } catch (navErr) {
         logger.warn(`Falha ao navegar para ${targetUrl}. Tentando URL padrão...`, navErr);
         if (targetUrl !== defaultUrl) {
-          await page.goto(defaultUrl, { waitUntil: 'load', timeout: 60000 });
+          await page.goto(defaultUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
         } else {
           throw navErr;
         }
@@ -182,6 +234,11 @@ export class FlowImageGenerator {
       }
       logger.info(`Esperando gerar ${expectedNewItemsCount} itens.`);
 
+      // 4.5. Upload reference image if provided
+      if (options?.referenceImage) {
+        await this.uploadReferenceImage(page, options.referenceImage);
+      }
+
       // 5. Find prompt input area
       logger.info('Inserindo prompt.');
       const promptQueries: ElementQuery[] = [
@@ -297,7 +354,7 @@ export class FlowImageGenerator {
         
         const card = mediaCards.nth(index);
         await card.waitFor({ state: 'visible', timeout: 15000 });
-        await card.click();
+        await card.click({ force: true });
         await page.waitForTimeout(2000); // Settling time for preview overlay
 
         // Find download button in preview drawer/overlay

@@ -33,6 +33,7 @@ interface GenerationResult {
   error?: string;
 }
 
+// eslint-disable-next-line complexity
 export default function FlowDashboardPage() {
   // 1. Status States
   const [status, setStatus] = useState<FlowStatus | null>(null);
@@ -48,6 +49,7 @@ export default function FlowDashboardPage() {
   const [imageQty, setImageQty] = useState("x2");
   const [imageModel, setImageModel] = useState("Nano Banana 2");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageReference, setImageReference] = useState<string | null>(null);
 
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoLoading, setVideoLoading] = useState(false);
@@ -56,6 +58,22 @@ export default function FlowDashboardPage() {
   const [videoQty, setVideoQty] = useState("1x");
   const [videoModel, setVideoModel] = useState("Veo 3.1");
   const [activeVideoIndex, setActiveVideoIndex] = useState(0);
+  const [videoReference, setVideoReference] = useState<string | null>(null);
+
+  // Convert selected reference image to base64
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setRef: (val: string | null) => void) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (typeof event.target?.result === "string") {
+        setRef(event.target.result);
+        appendLog(`Imagem de referência selecionada (${(file.size / 1024).toFixed(1)} KB).`);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // 3. Logger Console State
   const [logs, setLogs] = useState<string[]>([]);
@@ -184,6 +202,7 @@ export default function FlowDashboardPage() {
           aspectRatio: imageRatio,
           quantity: imageQty,
           model: imageModel,
+          referenceImage: imageReference || undefined,
         }),
       });
       const data: GenerationResult = await res.json();
@@ -231,6 +250,7 @@ export default function FlowDashboardPage() {
           aspectRatio: videoRatio,
           quantity: videoQty,
           model: videoModel,
+          referenceImage: videoReference || undefined,
         }),
       });
       const data: GenerationResult = await res.json();
@@ -427,6 +447,59 @@ export default function FlowDashboardPage() {
               />
             </div>
 
+            {/* Upload Imagem de Referência */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                <ImageIcon size={14} className="text-zinc-400" />
+                <span>Imagem de Referência (Opcional):</span>
+              </label>
+              
+              {!imageReference ? (
+                <div className="border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center hover:border-violet-500 dark:hover:border-violet-500 transition-colors duration-150 relative bg-zinc-50 dark:bg-zinc-900/30">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, setImageReference)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1">
+                    <Sparkles className="text-zinc-400 dark:text-zinc-500 animate-pulse" size={20} />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-semibold">
+                      Arraste ou clique para selecionar imagem
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      Formatos aceitos: PNG, JPG, WebP
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative border border-zinc-200 dark:border-zinc-850 rounded-lg p-2 bg-zinc-50 dark:bg-zinc-900/50 flex items-center gap-3">
+                  <div className="w-14 h-14 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-950 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imageReference}
+                      alt="Referência"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block truncate">
+                      Imagem de referência anexada
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      Será usada como base para a geração
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setImageReference(null)}
+                    className="p-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Configs Row */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-zinc-100 dark:border-zinc-900 py-3 text-xs">
               <div className="space-y-1">
@@ -577,6 +650,59 @@ export default function FlowDashboardPage() {
                 placeholder="Ex: A golden retriever playing in a park on a sunny afternoon, cinematic panning shot..."
                 className="w-full h-24 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-500 transition-colors duration-150 resize-none font-sans"
               />
+            </div>
+
+            {/* Upload Imagem de Referência para Vídeo */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                <ImageIcon size={14} className="text-zinc-400" />
+                <span>Imagem de Referência (Opcional):</span>
+              </label>
+              
+              {!videoReference ? (
+                <div className="border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center hover:border-blue-500 dark:hover:border-blue-500 transition-colors duration-150 relative bg-zinc-50 dark:bg-zinc-900/30">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, setVideoReference)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1">
+                    <Sparkles className="text-zinc-400 dark:text-zinc-500 animate-pulse" size={20} />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-semibold">
+                      Arraste ou clique para selecionar imagem
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      Formatos aceitos: PNG, JPG, WebP
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative border border-zinc-200 dark:border-zinc-850 rounded-lg p-2 bg-zinc-50 dark:bg-zinc-900/50 flex items-center gap-3">
+                  <div className="w-14 h-14 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-950 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={videoReference}
+                      alt="Referência"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block truncate">
+                      Imagem de referência anexada
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                      Será usada como base para a geração
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setVideoReference(null)}
+                    className="p-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Configs Row */}

@@ -1,10 +1,45 @@
 import { NextResponse } from "next/server";
 import { FlowProvider } from "@/src/providers/flow/FlowProvider";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function saveBase64Image(base64Data: string): { filePath: string; extension: string } {
+  const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  let buffer: Buffer;
+  let extension = ".png";
+
+  if (matches && matches.length === 3) {
+    const mimeType = matches[1];
+    const base64Str = matches[2];
+    buffer = Buffer.from(base64Str, 'base64');
+    
+    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
+      extension = ".jpg";
+    } else if (mimeType.includes("webp")) {
+      extension = ".webp";
+    }
+  } else {
+    buffer = Buffer.from(base64Data, 'base64');
+  }
+
+  const tempDir = path.resolve("storage/temp_uploads");
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const filename = `ref_image_${crypto.randomUUID()}${extension}`;
+  const filePath = path.join(tempDir, filename);
+  fs.writeFileSync(filePath, buffer);
+
+  return { filePath, extension };
+}
+
+// eslint-disable-next-line complexity
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as {
@@ -13,6 +48,7 @@ export async function POST(request: Request) {
       aspectRatio?: unknown;
       quantity?: unknown;
       model?: unknown;
+      referenceImage?: unknown;
     } | null;
 
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -44,10 +80,25 @@ export async function POST(request: Request) {
       }
     }
 
+    const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
+    let tempFilePath: string | undefined = undefined;
+
+    if (referenceImageBase64) {
+      try {
+        const saved = saveBase64Image(referenceImageBase64);
+        tempFilePath = saved.filePath;
+        console.log(`[API FLOW] Imagem de referência salva temporariamente em: ${tempFilePath}`);
+      } catch (saveErr) {
+        console.error("[API FLOW] Erro ao salvar imagem de referência temporária:", saveErr);
+        return jsonError("Falha ao processar a imagem de referência fornecida.");
+      }
+    }
+
     const options = {
       aspectRatio: validatedAspectRatio,
       quantity: validatedQuantity,
-      model: model || undefined
+      model: model || undefined,
+      referenceImage: tempFilePath
     };
 
     console.log(`[API FLOW] Iniciando geração de ${type} para o prompt: "${prompt}" com opções:`, options);
@@ -69,6 +120,14 @@ export async function POST(request: Request) {
       }
     } finally {
       await provider.close();
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+          console.log(`[API FLOW] Arquivo de referência temporário removido: ${tempFilePath}`);
+        } catch (unlinkErr) {
+          console.error(`[API FLOW] Erro ao remover arquivo temporário ${tempFilePath}:`, unlinkErr);
+        }
+      }
     }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
