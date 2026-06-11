@@ -326,11 +326,11 @@ export class FlowImageGenerator {
           }
 
           // Fallback / Virtual scroll check:
-          // If the submit button containing 'arrow_forward' is visible and enabled again,
+          // If the submit button containing 'arrow_forward' is visible again,
           // and we have waited at least 15 seconds since generation started, we assume generation finished.
           const currentSubmitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
-          if (await currentSubmitBtn.isVisible() && await currentSubmitBtn.isEnabled() && Date.now() - generationStartTime > 15000) {
-            logger.info('Botão de envio ("arrow_forward") está visível e habilitado novamente. Geração terminada.');
+          if (await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > 15000) {
+            logger.info('Botão de envio ("arrow_forward") está visível novamente. Geração terminada.');
             return true;
           }
 
