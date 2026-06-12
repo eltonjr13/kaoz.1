@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FlowProvider } from "@/src/providers/flow/FlowProvider";
+import { flowProvider } from "@/src/providers/flow/FlowProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +37,7 @@ export async function POST(request: Request) {
     }
 
     console.log(`[API AGENT] Otimizando prompt via Playwright com o modelo: ${model} para ${type}...`);
-    const provider = new FlowProvider();
-    const optimizedPrompt = await provider.optimizePrompt(
+    const optimizedPrompt = await flowProvider.optimizePrompt(
       model as 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
       prompt,
       type as 'image' | 'video'

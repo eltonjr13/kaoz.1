@@ -139,17 +139,14 @@ export class FlowSession {
       'button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2"), div[contenteditable="true"]'
     ).first();
     
-    const loggedOutLocator = page.locator(
-      'button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login")'
-    ).first();
+    const loggedOutLocator = page.getByText(/Sign in|Fazer login/i).first();
 
-    const entryButton = page.locator(
-      'a:has-text("Create with Google Flow"), button:has-text("Create with Google Flow"), a:has-text("Criar com o Google Flow"), button:has-text("Criar com o Google Flow"), a:has-text("Create with"), button:has-text("Create with"), a:has-text("Criar com"), button:has-text("Criar com")'
-    ).first();
+    const entryButton = page.getByText(/Create with Google Flow|Criar com o Google Flow|Create with Flow|Criar com o Flow/i).first();
 
     for (let i = 0; i < 5; i++) {
       const currentUrl = page.url();
       if (currentUrl.includes('accounts.google.com') || currentUrl.includes('signin')) {
+        logger.info('URL de login ou contas do Google detectada.');
         return false;
       }
       
@@ -161,7 +158,7 @@ export class FlowSession {
         continue;
       }
 
-      if (await loggedInLocator.isVisible()) {
+      if (await loggedInLocator.isVisible() || currentUrl.includes('/project/')) {
         logger.info('Elemento de workspace ou criação detectado. Autenticado.');
         return true;
       }
@@ -214,6 +211,155 @@ export class FlowSession {
       authenticated,
       activeTasks: 0 // Will be managed by the main provider
     };
+  }
+
+  /**
+   * Launches a headful browser session for manual login to the specified portal,
+   * keeping it open until the user closes the window.
+   */
+  /**
+   * Launches a headful browser session for manual login to the specified portal,
+   * keeping it open until either successful authentication is detected, or the user closes the window.
+   */
+  async openLoginSession(portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'): Promise<void> {
+    logger.info(`Abrindo sessão de login visível para: ${portal}`);
+    
+    // 1. Close any existing context to release the lock on the profile
+    await this.close();
+
+    // 2. Resolve target portal URL
+    let targetUrl = 'https://labs.google/fx/pt/tools/flow/';
+    if (portal === 'gemini') {
+      targetUrl = 'https://gemini.google.com';
+    } else if (portal === 'chatgpt') {
+      targetUrl = 'https://chatgpt.com';
+    } else if (portal === 'claude') {
+      targetUrl = 'https://claude.ai';
+    } else if (portal === 'deepseek') {
+      targetUrl = 'https://chat.deepseek.com';
+    }
+
+    // 3. Launch headful browser context
+    const page = await this.launchContext(false);
+    logger.info(`Navegando para o portal de login: ${targetUrl}`);
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    // 4. Wait for the browser context to be closed by the user or authentication to be detected
+    return new Promise<void>((resolve) => {
+      let resolved = false;
+
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        clearInterval(checkInterval);
+        resolve();
+      };
+
+      if (!this.context) {
+        resolve();
+        return;
+      }
+
+      this.context.once('close', () => {
+        logger.info(`Sessão de login para ${portal} concluída (Browser Context fechado).`);
+        finish();
+      });
+
+      page.once('close', async () => {
+        logger.info(`Página de login para ${portal} fechada pelo usuário.`);
+        await this.close();
+        finish();
+      });
+
+      // Poll every 2 seconds to check if authenticated
+      const checkInterval = setInterval(async () => {
+        if (resolved || page.isClosed()) {
+          clearInterval(checkInterval);
+          return;
+        }
+
+        try {
+          const authenticated = await this.checkPortalAuthenticated(page, portal);
+          if (authenticated) {
+            logger.info(`Login detectado para o portal ${portal}! Fechando navegador automaticamente.`);
+            clearInterval(checkInterval);
+            await this.close();
+            finish();
+          }
+        } catch (err) {
+          // Ignore errors during polling (e.g. navigation or closed page)
+        }
+      }, 2000);
+    });
+  }
+
+  /**
+   * Helper method to verify authentication for a specific portal during the login session.
+   */
+  private async checkPortalAuthenticated(
+    page: Page,
+    portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'
+  ): Promise<boolean> {
+    try {
+      const url = page.url();
+
+      if (
+        url.includes('accounts.google.com') ||
+        url.includes('signin') ||
+        url.includes('/login') ||
+        url.includes('/auth') ||
+        url.includes('/signup') ||
+        url.includes('/sign-up')
+      ) {
+        return false;
+      }
+
+      if (portal === 'google') {
+        const loggedInLocator = page.locator('button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2")').first();
+        if (await loggedInLocator.isVisible() || url.includes('/project/')) {
+          return true;
+        }
+        
+        // Also handle the landing page entry button
+        const entryButton = page.getByText(/Create with Google Flow|Criar com o Google Flow|Create with Flow|Criar com o Flow/i).first();
+        if (await entryButton.isVisible()) {
+          logger.info('Botão de entrada "Create with Google Flow" localizado durante o login. Clicando...');
+          await entryButton.click();
+          await page.waitForTimeout(3000);
+        }
+        return false;
+      }
+
+      if (portal === 'gemini') {
+        if (!url.includes('/app')) {
+          return false;
+        }
+        const promptArea = page.locator('div[contenteditable="true"], textarea[placeholder*="Gemini"], chat-input').first();
+        return await promptArea.isVisible();
+      }
+
+      if (portal === 'chatgpt') {
+        const promptArea = page.locator('#prompt-textarea').first();
+        return await promptArea.isVisible();
+      }
+
+      if (portal === 'claude') {
+        if (!url.includes('/chats') && !url.includes('/chat')) {
+          return false;
+        }
+        const promptArea = page.locator('div[contenteditable="true"].ProseMirror, textarea[placeholder*="Claude"]').first();
+        return await promptArea.isVisible();
+      }
+
+      if (portal === 'deepseek') {
+        const promptArea = page.locator('#chat-input, textarea[placeholder*="DeepSeek"]').first();
+        return await promptArea.isVisible();
+      }
+
+      return false;
+    } catch (err) {
+      return false;
+    }
   }
 
   /**

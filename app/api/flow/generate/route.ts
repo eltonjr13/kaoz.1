@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FlowProvider } from "@/src/providers/flow/FlowProvider";
+import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -102,24 +102,22 @@ export async function POST(request: Request) {
     };
 
     console.log(`[API FLOW] Iniciando geração de ${type} para o prompt: "${prompt}" com opções:`, options);
-    const provider = new FlowProvider();
     
     try {
       if (type === "image") {
-        const result = await provider.generateImage(prompt, options);
+        const result = await flowProvider.generateImage(prompt, options);
         if (!result.success) {
           return NextResponse.json({ success: false, error: result.error }, { status: 500 });
         }
         return NextResponse.json(result);
       } else {
-        const result = await provider.generateVideo(prompt, options);
+        const result = await flowProvider.generateVideo(prompt, options);
         if (!result.success) {
           return NextResponse.json({ success: false, error: result.error }, { status: 500 });
         }
         return NextResponse.json(result);
       }
     } finally {
-      await provider.close();
       if (tempFilePath && fs.existsSync(tempFilePath)) {
         try {
           fs.unlinkSync(tempFilePath);
@@ -138,13 +136,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const provider = new FlowProvider();
-    let status;
-    try {
-      status = await provider.getStatus();
-    } finally {
-      await provider.close();
-    }
+    const status = await flowProvider.getStatus();
 
     return NextResponse.json({
       message: "FlowProvider API. Utilize o método POST para iniciar gerações.",

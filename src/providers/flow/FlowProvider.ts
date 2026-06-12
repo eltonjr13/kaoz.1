@@ -130,6 +130,13 @@ export class FlowProvider {
   }
 
   /**
+   * Opens a visible, headful browser session for manual login to the specified portal.
+   */
+  async openLoginSession(portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'): Promise<void> {
+    await this.session.openLoginSession(portal);
+  }
+
+  /**
    * Closes the active browser session. Highly recommended to invoke when finishing operations.
    */
   async close(): Promise<void> {
@@ -170,3 +177,33 @@ export class FlowProvider {
     throw new Error('batchGenerate() não implementado.');
   }
 }
+
+// Singleton support for Next.js hot-reloads and concurrent API requests
+const globalForFlow = globalThis as unknown as {
+  flowProviderInstance?: FlowProvider;
+};
+
+export const flowProvider = globalForFlow.flowProviderInstance ?? new FlowProvider();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForFlow.flowProviderInstance = flowProvider;
+  
+  // Update prototypes of the existing singleton instance and its sub-providers to support hot-reloaded methods
+  Object.setPrototypeOf(flowProvider, FlowProvider.prototype);
+  if ((flowProvider as any).session) {
+    Object.setPrototypeOf((flowProvider as any).session, FlowSession.prototype);
+  }
+  if ((flowProvider as any).downloader) {
+    Object.setPrototypeOf((flowProvider as any).downloader, FlowDownloader.prototype);
+  }
+  if ((flowProvider as any).imageGenerator) {
+    Object.setPrototypeOf((flowProvider as any).imageGenerator, FlowImageGenerator.prototype);
+  }
+  if ((flowProvider as any).videoGenerator) {
+    Object.setPrototypeOf((flowProvider as any).videoGenerator, FlowVideoGenerator.prototype);
+  }
+  if ((flowProvider as any).llmAutomation) {
+    Object.setPrototypeOf((flowProvider as any).llmAutomation, FlowLLMAutomation.prototype);
+  }
+}
+

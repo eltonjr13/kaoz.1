@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FlowProvider } from "@/src/providers/flow/FlowProvider";
+import { flowProvider } from "@/src/providers/flow/FlowProvider";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -9,27 +9,42 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as {
       action?: unknown;
+      portal?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "initialize";
-    const provider = new FlowProvider();
+    const portal = typeof body?.portal === "string" ? body.portal.trim() : "google";
 
     if (action === "close") {
       console.log("[API FLOW AUTH] Encerrando sessão do Google Flow...");
-      await provider.close();
+      await flowProvider.close();
       return NextResponse.json({
         success: true,
         message: "Sessão encerrada com sucesso."
       });
     }
 
-    console.log("[API FLOW AUTH] Inicializando sessão do Google Flow...");
-    let status;
-    try {
-      status = await provider.initialize();
-    } finally {
-      await provider.close();
+    if (action === "login-session") {
+      if (
+        portal !== "google" &&
+        portal !== "gemini" &&
+        portal !== "chatgpt" &&
+        portal !== "claude" &&
+        portal !== "deepseek"
+      ) {
+        return jsonError("Portal de login não suportado.", 400);
+      }
+
+      console.log(`[API FLOW AUTH] Abrindo sessão de login para o portal: ${portal}...`);
+      await flowProvider.openLoginSession(portal as 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek');
+      return NextResponse.json({
+        success: true,
+        message: `Sessão de login para ${portal} concluída.`
+      });
     }
+
+    console.log("[API FLOW AUTH] Inicializando sessão do Google Flow...");
+    const status = await flowProvider.initialize();
 
     return NextResponse.json({
       success: true,

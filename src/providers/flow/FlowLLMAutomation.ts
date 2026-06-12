@@ -116,6 +116,12 @@ export class FlowLLMAutomation {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
 
+    // Verify if logged in
+    const currentUrl = page.url();
+    if (currentUrl.includes('/login') || currentUrl.includes('/auth') || currentUrl.includes('/signup')) {
+      throw new Error('Sessão expirada no ChatGPT.');
+    }
+
     const queries: ElementQuery[] = [
       { selector: '#prompt-textarea' },
       { selector: 'textarea' },
@@ -170,6 +176,12 @@ export class FlowLLMAutomation {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
 
+    // Verify if logged in
+    const currentUrl = page.url();
+    if (currentUrl.includes('/login') || currentUrl.includes('/sign-up')) {
+      throw new Error('Sessão expirada no DeepSeek.');
+    }
+
     const queries: ElementQuery[] = [
       { selector: 'textarea' },
       { selector: '#chat-input' },
@@ -221,6 +233,12 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Navegando para Claude: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
+
+    // Verify if logged in
+    const currentUrl = page.url();
+    if (currentUrl.includes('/login') || currentUrl.includes('/auth') || !currentUrl.includes('/chat')) {
+      throw new Error('Sessão expirada no Claude.');
+    }
 
     const queries: ElementQuery[] = [
       { selector: 'div[contenteditable="true"]' },

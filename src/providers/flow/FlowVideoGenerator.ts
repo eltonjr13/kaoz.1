@@ -84,9 +84,7 @@ export class FlowVideoGenerator {
       await page.waitForLoadState('domcontentloaded');
 
       // Detect if we are on the landing page and click "Create with Google Flow" to enter the workspace
-      const entryButton = page.locator(
-        'a:has-text("Create with Google Flow"), button:has-text("Create with Google Flow"), a:has-text("Criar com o Google Flow"), button:has-text("Criar com o Google Flow"), a:has-text("Create with"), button:has-text("Create with"), a:has-text("Criar com"), button:has-text("Criar com")'
-      ).first();
+      const entryButton = page.getByText(/Create with Google Flow|Criar com o Google Flow|Create with Flow|Criar com o Flow/i).first();
 
       if (await entryButton.isVisible()) {
         logger.info('Botão "Create with Google Flow" detectado na landing page. Clicando para acessar o workspace...');

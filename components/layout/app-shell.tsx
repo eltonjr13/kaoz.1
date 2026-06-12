@@ -28,7 +28,7 @@ const navItems = [
   { href: "/flow", label: "Agente MrChicken", icon: Globe },
   { href: "#library", label: "Library", icon: Database },
   { href: "#analytics", label: "Analytics", icon: LineChart },
-  { href: "#settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({
