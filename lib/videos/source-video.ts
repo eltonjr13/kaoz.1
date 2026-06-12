@@ -79,6 +79,16 @@ function getInstagramExternalId(url: URL) {
   return null;
 }
 
+function getExternalId(platform: string, url: URL): string | null {
+  if (platform === "youtube") {
+    return getYoutubeExternalId(url);
+  }
+  if (platform === "instagram") {
+    return getInstagramExternalId(url);
+  }
+  return url.toString();
+}
+
 export function parseSourceVideoUrl(rawUrl: string): ParsedSourceVideo | null {
   try {
     const url = new URL(withProtocol(rawUrl));
@@ -89,17 +99,7 @@ export function parseSourceVideoUrl(rawUrl: string): ParsedSourceVideo | null {
     url.hash = "";
 
     const platform = detectPlatform(url) ?? "other";
-
-    const externalId =
-      platform === "youtube"
-        ? getYoutubeExternalId(url)
-        : platform === "instagram"
-          ? getInstagramExternalId(url)
-          : url.toString();
-
-    if ((platform === "youtube" || platform === "instagram") && !externalId) {
-      return null;
-    }
+    const externalId = getExternalId(platform, url);
 
     if (!externalId) {
       return null;

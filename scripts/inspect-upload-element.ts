@@ -67,23 +67,11 @@ async function main() {
         const ariaLabel = btn.getAttribute('aria-label') || '';
         const id = btn.id || '';
         const innerHTML = btn.innerHTML;
-        if (
-          text.toLowerCase().includes('upload') ||
-          text.toLowerCase().includes('imagem') ||
-          text.toLowerCase().includes('image') ||
-          text.toLowerCase().includes('referencia') ||
-          text.toLowerCase().includes('referência') ||
-          text.toLowerCase().includes('add') ||
-          text.toLowerCase().includes('upload_file') ||
-          text.toLowerCase().includes('attach') ||
-          ariaLabel.toLowerCase().includes('upload') ||
-          ariaLabel.toLowerCase().includes('image') ||
-          ariaLabel.toLowerCase().includes('referencia') ||
-          ariaLabel.toLowerCase().includes('referência') ||
-          ariaLabel.toLowerCase().includes('add') ||
-          innerHTML.includes('upload_file') ||
-          innerHTML.includes('attach')
-        ) {
+        const searchStr = `${text} ${ariaLabel} ${innerHTML}`.toLowerCase();
+        const keywords = ['upload', 'imagem', 'image', 'referencia', 'referência', 'add', 'upload_file', 'attach'];
+        const isMatch = keywords.some(kw => searchStr.includes(kw));
+
+        if (isMatch) {
           return {
             index: idx,
             text,

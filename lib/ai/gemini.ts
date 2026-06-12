@@ -67,6 +67,55 @@ async function extractVideoAssets(videoPath: string, workDir: string) {
   return { framePaths, audioPath: hasAudio ? audioPath : null };
 }
 
+interface GeminiContentPart {
+  inlineData: {
+    data: string;
+    mimeType: string;
+  };
+}
+
+async function prepareContents(
+  framePaths: string[],
+  audioPath: string | null
+): Promise<Array<string | GeminiContentPart>> {
+  const contents: Array<string | GeminiContentPart> = [];
+  for (const framePath of framePaths) {
+    const data = await readFile(framePath);
+    contents.push({
+      inlineData: {
+        data: data.toString("base64"),
+        mimeType: "image/jpeg"
+      }
+    });
+  }
+
+  if (audioPath) {
+    const audioData = await readFile(audioPath);
+    contents.push({
+      inlineData: {
+        data: audioData.toString("base64"),
+        mimeType: "audio/mp3"
+      }
+    });
+  }
+  return contents;
+}
+
+function parseGeminiResponse<T>(responseText: string, fallback: T): T {
+  try {
+    const result = JSON.parse(responseText);
+    return result;
+  } catch (parseError) {
+    console.error("Falha ao analisar a resposta JSON do Gemini, tentando extração manual:", parseError);
+    const cleanedText = responseText.replace(/```json|```/g, "").trim();
+    try {
+      return JSON.parse(cleanedText) as T;
+    } catch {
+      return fallback;
+    }
+  }
+}
+
 export async function analyzeAndGenerateScript(
   videoPath: string,
   topic: string,
@@ -83,30 +132,7 @@ export async function analyzeAndGenerateScript(
   console.log(`[Gemini Pipeline] Iniciando extração de mídias para o vídeo: ${videoPath}`);
   const { framePaths, audioPath } = await extractVideoAssets(videoPath, workDir);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contents: any[] = [];
-
-  // Add frames as base64 inlineData
-  for (const framePath of framePaths) {
-    const data = await readFile(framePath);
-    contents.push({
-      inlineData: {
-        data: data.toString("base64"),
-        mimeType: "image/jpeg"
-      }
-    });
-  }
-
-  // Add audio if available
-  if (audioPath) {
-    const audioData = await readFile(audioPath);
-    contents.push({
-      inlineData: {
-        data: audioData.toString("base64"),
-        mimeType: "audio/mp3"
-      }
-    });
-  }
+  const contents = await prepareContents(framePaths, audioPath);
 
   let personalityInstructions = "Você é um criador de conteúdo de react carismático e de alta energia.";
   if (avatarPersonality) {
@@ -151,26 +177,17 @@ Você DEVE responder rigorosamente em formato JSON com o seguinte formato de obj
   const responseText = response.text || "";
   console.log(`[Gemini Pipeline] Resposta recebida: ${responseText}`);
 
-  try {
-    const result = JSON.parse(responseText) as GeminiAnalysisResult;
-    if (!result.script || !result.description) {
-      throw new Error("Resposta do Gemini incompleta");
-    }
-    return result;
-  } catch (parseError) {
-    console.error("Falha ao analisar a resposta JSON do Gemini, tentando extração manual:", parseError);
-    // Safe extraction fallback if JSON parsing fails
-    const cleanedText = responseText.replace(/```json|```/g, "").trim();
-    try {
-      return JSON.parse(cleanedText) as GeminiAnalysisResult;
-    } catch {
-      return {
-        description: `Vídeo sobre: ${topic}`,
-        transcription: "Sem transcrição disponível",
-        script: responseText.slice(0, 150)
-      };
-    }
+  const fallbackResult: GeminiAnalysisResult = {
+    description: `Vídeo sobre: ${topic}`,
+    transcription: "Sem transcrição disponível",
+    script: responseText.slice(0, 150)
+  };
+
+  const parsed = parseGeminiResponse<GeminiAnalysisResult>(responseText, fallbackResult);
+  if (!parsed.script || !parsed.description) {
+    return fallbackResult;
   }
+  return parsed;
 }
 
 export type Step1AnalysisResult = {
@@ -194,30 +211,7 @@ export async function analyzeVideoForStep1(
   console.log(`[Gemini Pipeline Step 1] Iniciando extração de mídias para o vídeo: ${videoPath}`);
   const { framePaths, audioPath } = await extractVideoAssets(videoPath, workDir);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contents: any[] = [];
-
-  // Add frames as base64 inlineData
-  for (const framePath of framePaths) {
-    const data = await readFile(framePath);
-    contents.push({
-      inlineData: {
-        data: data.toString("base64"),
-        mimeType: "image/jpeg"
-      }
-    });
-  }
-
-  // Add audio if available
-  if (audioPath) {
-    const audioData = await readFile(audioPath);
-    contents.push({
-      inlineData: {
-        data: audioData.toString("base64"),
-        mimeType: "audio/mp3"
-      }
-    });
-  }
+  const contents = await prepareContents(framePaths, audioPath);
 
   // Add text prompt
   const textPrompt = `
@@ -253,26 +247,18 @@ Você DEVE responder rigorosamente em formato JSON com o seguinte formato de obj
   const responseText = response.text || "";
   console.log(`[Gemini Pipeline Step 1] Resposta recebida: ${responseText}`);
 
-  try {
-    const result = JSON.parse(responseText) as Step1AnalysisResult;
-    if (!result.description || !result.topic || !result.title) {
-      throw new Error("Resposta do Gemini incompleta");
-    }
-    return result;
-  } catch (parseError) {
-    console.error("Falha ao analisar a resposta JSON do Gemini na etapa 1, tentando extração manual:", parseError);
-    const cleanedText = responseText.replace(/```json|```/g, "").trim();
-    try {
-      return JSON.parse(cleanedText) as Step1AnalysisResult;
-    } catch {
-      return {
-        description: "Vídeo analisado",
-        transcription: "Sem transcrição disponível",
-        topic: "Vídeo interessante",
-        title: "Reação ao vídeo"
-      };
-    }
+  const fallbackResult: Step1AnalysisResult = {
+    description: "Vídeo analisado",
+    transcription: "Sem transcrição disponível",
+    topic: "Vídeo interessante",
+    title: "Reação ao vídeo"
+  };
+
+  const parsed = parseGeminiResponse<Step1AnalysisResult>(responseText, fallbackResult);
+  if (!parsed.description || !parsed.topic || !parsed.title) {
+    return fallbackResult;
   }
+  return parsed;
 }
 
 export async function generateScriptFromAnalysis(

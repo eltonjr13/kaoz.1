@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Clapperboard, Mic2, Play, Search, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Clapperboard, Globe, Mic2, Play, Search, Sparkles } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -11,9 +11,14 @@ export default function HomePage() {
           </span>
           <span>AI UGC Reaction Studio</span>
         </Link>
-        <Link className="button secondary" href="/viral-search">
-          Busca viral
-        </Link>
+        <div className="flex gap-2">
+          <Link className="button secondary" href="/flow">
+            Agente MrChicken
+          </Link>
+          <Link className="button secondary" href="/viral-search">
+            Busca viral
+          </Link>
+        </div>
       </header>
 
       <section className="hero">
@@ -32,6 +37,9 @@ export default function HomePage() {
               </Link>
               <Link className="button secondary" href="/dashboard">
                 Abrir dashboard <ArrowRight size={18} />
+              </Link>
+              <Link className="button secondary" href="/flow">
+                Agente MrChicken <Globe size={18} />
               </Link>
             </div>
           </div>

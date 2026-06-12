@@ -25,7 +25,7 @@ const navItems = [
   { href: "/jobs", label: "Projects", icon: Briefcase },
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
-  { href: "/flow", label: "Google Flow", icon: Globe },
+  { href: "/flow", label: "Agente MrChicken", icon: Globe },
   { href: "#library", label: "Library", icon: Database },
   { href: "#analytics", label: "Analytics", icon: LineChart },
   { href: "#settings", label: "Settings", icon: Settings },
@@ -50,11 +50,11 @@ export function AppShell({
     if (theme === "dark" || (!theme && prefersDark)) {
       root.classList.add("dark");
       root.classList.remove("light");
-      setIsDark(true);
+      setTimeout(() => setIsDark(true), 0);
     } else {
       root.classList.add("light");
       root.classList.remove("dark");
-      setIsDark(false);
+      setTimeout(() => setIsDark(false), 0);
     }
   }, []);
 
@@ -80,8 +80,8 @@ export function AppShell({
         {/* Brand/Logo */}
         <div className="flex items-baseline gap-1">
           <Link
-            href="/dashboard"
-            className="text-2xl font-black tracking-tighter uppercase text-zinc-950 dark:text-white hover:opacity-90 transition-opacity"
+             href="/dashboard"
+             className="text-2xl font-black tracking-tighter uppercase text-zinc-950 dark:text-white hover:opacity-90 transition-opacity"
           >
             MRCHICKEN
           </Link>
@@ -92,6 +92,11 @@ export function AppShell({
 
         {/* Center / Right Control Panel */}
         <div className="flex items-center gap-4">
+          {/* Workspace Pill */}
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-soft)] text-[9px] font-mono text-zinc-500 dark:text-zinc-400">
+            <span>Workspace: {workspaceLabel}</span>
+          </div>
+
           {/* AI Status Pill */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-soft)] text-[9px] font-mono font-bold tracking-wide uppercase text-zinc-700 dark:text-zinc-300">
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 dark:bg-white"></span>
@@ -128,6 +133,7 @@ export function AppShell({
 
           {/* User Profile Card */}
           <div className="w-8 h-8 rounded-lg overflow-hidden border border-[var(--line)] bg-zinc-100 dark:bg-zinc-800 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100&h=100&grayscale=1"
               alt="Profile"

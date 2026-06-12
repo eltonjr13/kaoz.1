@@ -76,6 +76,165 @@ function getStatusHint(status: JobListItem["status"]) {
   }
 }
 
+function JobSourceCell({ sourceUrl, sourceLabel }: { sourceUrl: string | null; sourceLabel: string }) {
+  if (!sourceUrl) {
+    return <span className="muted">-</span>;
+  }
+  return (
+    <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
+      <ExternalLink size={15} />
+      {sourceLabel}
+    </a>
+  );
+}
+
+function JobStatusCell({ job }: { job: JobListItem }) {
+  const badgeMessage = job.latest_event_message || getStatusHint(job.status);
+  const pulseMessage = job.latest_event_at
+    ? `Último pulso ${formatRelativeTime(job.latest_event_at)}`
+    : `Atualizado ${formatRelativeTime(job.updated_at)}`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <JobStatusBadge status={job.status} />
+      <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.35 }}>
+        {badgeMessage}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--muted)" }}>
+        {pulseMessage}
+      </span>
+    </div>
+  );
+}
+
+function JobActionsCell({
+  job,
+  loadingJobId,
+  onRestart,
+  onColabSync
+}: {
+  job: JobListItem;
+  loadingJobId: string | null;
+  onRestart: (jobId: string, startFrom?: "lipsync") => void;
+  onColabSync: (job: JobListItem) => void;
+}) {
+  const isLipSyncing = job.status === "lip_syncing";
+  const showRestart = !job.final_video_path && !isLipSyncing;
+  const showRefakeLipSync = !!(
+    job.audio_path &&
+    job.status !== "researching" &&
+    job.status !== "scripting" &&
+    job.status !== "voice_generating" &&
+    job.status !== "queued"
+  );
+
+  return (
+    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+      {job.final_video_path && (
+        <a className="button secondary" href={job.final_video_path}>
+          <Download size={16} /> Baixar
+        </a>
+      )}
+
+      {isLipSyncing && (
+        <button
+          className="button"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto",
+            background: "var(--brand)",
+            color: "#fff"
+          }}
+          onClick={() => onColabSync(job)}
+        >
+          Sincronizar (Colab)
+        </button>
+      )}
+
+      {showRestart && (
+        <button
+          className="button secondary"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto"
+          }}
+          onClick={() => onRestart(job.id)}
+          disabled={loadingJobId !== null}
+        >
+          <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
+          {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
+        </button>
+      )}
+
+      {showRefakeLipSync && (
+        <button
+          className="button secondary"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto"
+          }}
+          onClick={() => onRestart(job.id, "lipsync")}
+          disabled={loadingJobId !== null}
+        >
+          <RefreshCw size={14} className={loadingJobId === `${job.id}-lipsync` ? "spin-icon" : ""} />
+          {loadingJobId === `${job.id}-lipsync` ? "Iniciando..." : "Refazer LipSync"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function JobRow({
+  job,
+  loadingJobId,
+  onRestart,
+  onColabSync
+}: {
+  job: JobListItem;
+  loadingJobId: string | null;
+  onRestart: (jobId: string, startFrom?: "lipsync") => void;
+  onColabSync: (job: JobListItem) => void;
+}) {
+  const avatar = getRelatedOne(job.avatars);
+  const sourceVideo = getRelatedOne(job.viral_videos);
+  const sourceUrl = sourceVideo?.url ?? job.source_video_url ?? null;
+  const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
+
+  return (
+    <tr>
+      <td>{job.topic}</td>
+      <td>{avatar?.name ?? "Avatar removido"}</td>
+      <td>
+        <JobSourceCell sourceUrl={sourceUrl} sourceLabel={sourceLabel} />
+      </td>
+      <td>
+        <JobStatusCell job={job} />
+      </td>
+      <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
+      <td>
+        <JobActionsCell
+          job={job}
+          loadingJobId={loadingJobId}
+          onRestart={onRestart}
+          onColabSync={onColabSync}
+        />
+      </td>
+    </tr>
+  );
+}
+
 export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const router = useRouter();
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null);
@@ -184,107 +343,15 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
           </tr>
         </thead>
         <tbody>
-          {jobs.map((job) => {
-            const avatar = getRelatedOne(job.avatars);
-            const sourceVideo = getRelatedOne(job.viral_videos);
-            const sourceUrl = sourceVideo?.url ?? job.source_video_url ?? null;
-            const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
-
-            return (
-              <tr key={job.id}>
-                <td>{job.topic}</td>
-                <td>{avatar?.name ?? "Avatar removido"}</td>
-                <td>
-                  {sourceUrl ? (
-                    <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink size={15} />
-                      {sourceLabel}
-                    </a>
-                  ) : (
-                    <span className="muted">-</span>
-                  )}
-                </td>
-                <td>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <JobStatusBadge status={job.status} />
-                    <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.35 }}>
-                      {job.latest_event_message || getStatusHint(job.status)}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {job.latest_event_at ? `Último pulso ${formatRelativeTime(job.latest_event_at)}` : `Atualizado ${formatRelativeTime(job.updated_at)}`}
-                    </span>
-                  </div>
-                </td>
-                <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                    {job.final_video_path && (
-                      <a className="button secondary" href={job.final_video_path}>
-                        <Download size={16} /> Baixar
-                      </a>
-                    )}
-
-                    {job.status === "lip_syncing" && (
-                      <button
-                        className="button"
-                        style={{ 
-                          display: "inline-flex", 
-                          alignItems: "center", 
-                          gap: "6px",
-                          padding: "6px 12px",
-                          fontSize: "13px",
-                          minHeight: "auto",
-                          background: "var(--brand)",
-                          color: "#fff"
-                        }}
-                        onClick={() => setColabJob(job)}
-                      >
-                        Sincronizar (Colab)
-                      </button>
-                    )}
-
-                    {!job.final_video_path && job.status !== "lip_syncing" && (
-                      <button
-                        className="button secondary"
-                        style={{ 
-                          display: "inline-flex", 
-                          alignItems: "center", 
-                          gap: "6px",
-                          padding: "6px 12px",
-                          fontSize: "13px",
-                          minHeight: "auto"
-                        }}
-                        onClick={() => handleRestart(job.id)}
-                        disabled={loadingJobId !== null}
-                      >
-                        <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
-                        {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
-                      </button>
-                    )}
-
-                    {job.audio_path && job.status !== "researching" && job.status !== "scripting" && job.status !== "voice_generating" && job.status !== "queued" && (
-                      <button
-                        className="button secondary"
-                        style={{ 
-                          display: "inline-flex", 
-                          alignItems: "center", 
-                          gap: "6px",
-                          padding: "6px 12px",
-                          fontSize: "13px",
-                          minHeight: "auto"
-                        }}
-                        onClick={() => handleRestart(job.id, "lipsync")}
-                        disabled={loadingJobId !== null}
-                      >
-                        <RefreshCw size={14} className={loadingJobId === `${job.id}-lipsync` ? "spin-icon" : ""} />
-                        {loadingJobId === `${job.id}-lipsync` ? "Iniciando..." : "Refazer LipSync"}
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+          {jobs.map((job) => (
+            <JobRow
+              key={job.id}
+              job={job}
+              loadingJobId={loadingJobId}
+              onRestart={handleRestart}
+              onColabSync={setColabJob}
+            />
+          ))}
         </tbody>
       </table>
     </div>

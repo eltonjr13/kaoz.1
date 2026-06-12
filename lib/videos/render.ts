@@ -391,6 +391,55 @@ async function renderWithFfmpeg(args: string[]) {
   }
 }
 
+function getExpertBackgroundMode(bgMode: string | null | undefined, sourceVideoPath: string | null, layout: string): "remove" | "original" {
+  return bgMode === "remove" && sourceVideoPath && layout === "source_pip" ? "remove" : "original";
+}
+
+function getReactionInputArgs(sourceVideoPath: string | null, preparedReactionPath: string, isReactionImage: boolean): string[] {
+  const loopArg = isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"];
+  if (sourceVideoPath) {
+    return [
+      ...loopArg,
+      "-i",
+      preparedReactionPath,
+      "-stream_loop",
+      "-1",
+      "-i",
+      sourceVideoPath
+    ];
+  }
+  return [
+    ...loopArg,
+    "-i",
+    preparedReactionPath
+  ];
+}
+
+function getAudioMap(voiceAudioPath: string | null | undefined, sourceVideoPath: string | null): string {
+  if (voiceAudioPath) {
+    return sourceVideoPath ? "2:a" : "1:a";
+  }
+  if (sourceVideoPath) {
+    return "1:a?";
+  }
+  return "0:a?";
+}
+
+async function getDurationLimit(voiceAudioPath: string | null | undefined): Promise<number> {
+  if (!voiceAudioPath) {
+    return 30;
+  }
+  try {
+    const audioInfo = await probeMediaInfo(voiceAudioPath);
+    if (audioInfo.duration && audioInfo.duration > 0) {
+      return Math.min(audioInfo.duration, 60);
+    }
+  } catch (error) {
+    console.error("Erro ao obter duracao do audio de voz:", error);
+  }
+  return 30;
+}
+
 export async function renderVerticalVideo(input: RenderVerticalVideoInput): Promise<RenderVerticalVideoResult> {
   const workDir = input.workDir || path.join(process.cwd(), ".generated", "jobs", input.jobId);
   const outputPath = input.outputPath || path.join(workDir, "final-reaction.mp4");
@@ -400,50 +449,19 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
 
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
   const layout = input.layout ?? "source_pip";
-  const expertBackgroundMode =
-    input.expertBackgroundMode === "remove" && sourceVideoPath && layout === "source_pip" ? "remove" : "original";
+  const expertBackgroundMode = getExpertBackgroundMode(input.expertBackgroundMode, sourceVideoPath, layout);
   const preparedReactionPath = await prepareReactionVideo(input, workDir, expertBackgroundMode === "remove");
   const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
 
   const filter = sourceVideoPath ? buildReactionCollageFilter(layout, expertBackgroundMode) : buildExpertOnlyFilter();
-  const inputArgs = sourceVideoPath
-    ? [
-        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
-        "-i",
-        preparedReactionPath,
-        "-stream_loop",
-        "-1",
-        "-i",
-        sourceVideoPath
-      ]
-    : [
-        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
-        "-i",
-        preparedReactionPath
-      ];
+  const inputArgs = getReactionInputArgs(sourceVideoPath, preparedReactionPath, isReactionImage);
 
   if (input.voiceAudioPath) {
     inputArgs.push("-i", input.voiceAudioPath);
   }
 
-  let audioMap = "0:a?";
-  if (input.voiceAudioPath) {
-    audioMap = sourceVideoPath ? "2:a" : "1:a";
-  } else if (sourceVideoPath) {
-    audioMap = "1:a?";
-  }
-
-  let durationLimit = 30;
-  if (input.voiceAudioPath) {
-    try {
-      const audioInfo = await probeMediaInfo(input.voiceAudioPath);
-      if (audioInfo.duration && audioInfo.duration > 0) {
-        durationLimit = Math.min(audioInfo.duration, 60);
-      }
-    } catch (error) {
-      console.error("Erro ao obter duracao do audio de voz:", error);
-    }
-  }
+  const audioMap = getAudioMap(input.voiceAudioPath, sourceVideoPath);
+  const durationLimit = await getDurationLimit(input.voiceAudioPath);
 
   await renderWithFfmpeg([
     "-y",

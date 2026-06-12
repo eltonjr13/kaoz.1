@@ -40,7 +40,7 @@ export function StatusRow({
   onAdd,
 }: {
   label: string;
-  icon: any;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   onAdd?: () => void;
 }) {
   return (
@@ -75,6 +75,7 @@ export function ExportItem({
         {/* Tiny black thumbnail */}
         <div className="w-10 h-7 bg-zinc-950 rounded border border-zinc-800 flex items-center justify-center shrink-0 overflow-hidden relative">
           {thumbnailUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img src={thumbnailUrl} alt={title} className="w-full h-full object-cover filter grayscale" />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-zinc-950 flex items-center justify-center">

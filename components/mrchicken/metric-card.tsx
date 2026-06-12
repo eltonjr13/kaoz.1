@@ -1,12 +1,14 @@
 "use client";
 
 import { Heart, MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 
 interface MetricCardProps {
   title: string;
   description: string;
   chips?: string[];
   linkText?: string;
+  href?: string;
   likes?: number;
   showMore?: boolean;
 }
@@ -16,6 +18,7 @@ export function MetricCard({
   description,
   chips = [],
   linkText,
+  href,
   likes,
   showMore = true,
 }: MetricCardProps) {
@@ -62,12 +65,12 @@ export function MetricCard({
       {(linkText || likes !== undefined) && (
         <div className="flex justify-between items-center pt-2.5 border-t border-[var(--line)] mt-auto text-zinc-400 text-[10px]">
           {linkText ? (
-            <a
-              href="#"
+            <Link
+              href={href || "#"}
               className="text-[10px] font-mono font-semibold text-[var(--text)] hover:underline flex items-center gap-0.5"
             >
               {linkText}
-            </a>
+            </Link>
           ) : (
             <div></div>
           )}

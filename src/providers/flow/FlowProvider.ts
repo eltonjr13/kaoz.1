@@ -3,6 +3,7 @@ import { FlowSession } from './FlowSession';
 import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
 import { FlowVideoGenerator } from './FlowVideoGenerator';
+import { FlowLLMAutomation } from './FlowLLMAutomation';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 
@@ -12,6 +13,7 @@ export class FlowProvider {
   private downloader: FlowDownloader;
   private imageGenerator: FlowImageGenerator;
   private videoGenerator: FlowVideoGenerator;
+  private llmAutomation: FlowLLMAutomation;
   
   private activeTasksCount = 0;
 
@@ -33,6 +35,7 @@ export class FlowProvider {
     this.downloader = new FlowDownloader(this.config.downloadPath);
     this.imageGenerator = new FlowImageGenerator(this.downloader, this.config);
     this.videoGenerator = new FlowVideoGenerator(this.downloader, this.config);
+    this.llmAutomation = new FlowLLMAutomation(this.session, this.config);
   }
 
   /**
@@ -108,6 +111,22 @@ export class FlowProvider {
     defaultExt: string
   ): Promise<{ success: boolean; path: string; filename: string; createdAt: string }> {
     return this.downloader.downloadFile(page, triggerLocator, prefix, subfolder, defaultExt);
+  }
+
+  /**
+   * Optimizes a raw prompt using a web-automated LLM model via Playwright.
+   */
+  async optimizePrompt(
+    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+    prompt: string,
+    type: 'image' | 'video'
+  ): Promise<string> {
+    this.activeTasksCount++;
+    try {
+      return await this.llmAutomation.optimizePrompt(model, prompt, type);
+    } finally {
+      this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
+    }
   }
 
   /**

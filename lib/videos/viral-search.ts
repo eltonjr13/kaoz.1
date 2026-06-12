@@ -255,6 +255,31 @@ function stableOffset(value: string) {
   return Array.from(value).reduce((total, char) => total + char.charCodeAt(0), 0) % 8;
 }
 
+function getPlatformTag(platform: string): string {
+  if (platform === "tiktok") return "tiktokbrasil";
+  if (platform === "youtube") return "shortsbrasil";
+  return "reelsbrasil";
+}
+
+function getPlatformBoost(platform: string): number {
+  if (platform === "tiktok") return 2;
+  if (platform === "youtube") return 1;
+  return 0;
+}
+
+function getSearchAngle(platform: string): string {
+  const name = platform === "tiktok" ? "TikTok" : platform === "youtube" ? "YouTube" : "Instagram";
+  return `Melhor encaixe em ${name}.`;
+}
+
+function getMetrics(viralScore: number, tags: string[]) {
+  return {
+    velocity: viralScore >= 94 ? "muito alta" : viralScore >= 89 ? "alta" : "media",
+    competition: viralScore >= 94 ? "alta" : "media",
+    remixPotential: tags.includes("react") || tags.includes("dueto") ? "muito alto" : "alto"
+  };
+}
+
 function buildResult({
   niche,
   pattern,
@@ -267,8 +292,7 @@ function buildResult({
   selectedPlatforms: ViralSearchPlatform[];
 }): ViralSearchResult {
   const keywords = getKeywords(niche);
-  const platformTag =
-    pattern.platform === "tiktok" ? "tiktokbrasil" : pattern.platform === "youtube" ? "shortsbrasil" : "reelsbrasil";
+  const platformTag = getPlatformTag(pattern.platform);
   const hashtags = Array.from(new Set([toHashtag(niche), ...keywords.map(toHashtag), ...pattern.tags, platformTag]))
     .filter(Boolean)
     .slice(0, 7)
@@ -276,11 +300,13 @@ function buildResult({
 
   const searchQuery = buildSearchQuery(niche, pattern, pattern.platform);
   const selectedSearches = buildPlatformSearches(niche, pattern, selectedPlatforms, hashtags);
-  const platformBoost = pattern.platform === "tiktok" ? 2 : pattern.platform === "youtube" ? 1 : 0;
+  const platformBoost = getPlatformBoost(pattern.platform);
   const viralScore = Math.min(99, pattern.score + platformBoost + stableOffset(`${niche}-${pattern.platform}-${pattern.title}`));
 
+  const idHashtag = toHashtag(niche) || "nicho";
+
   return {
-    id: `${pattern.platform}-${index}-${toHashtag(niche) || "nicho"}`,
+    id: `${pattern.platform}-${index}-${idHashtag}`,
     platform: pattern.platform,
     title: pattern.title.replace("{niche}", niche),
     niche,
@@ -293,13 +319,9 @@ function buildResult({
     angle: pattern.angle,
     whyItWorks: pattern.whyItWorks,
     reactAngle: pattern.reactAngle,
-    searchAngle: `Melhor encaixe em ${pattern.platform === "tiktok" ? "TikTok" : pattern.platform === "youtube" ? "YouTube" : "Instagram"}.`,
+    searchAngle: getSearchAngle(pattern.platform),
     hashtags,
-    metrics: {
-      velocity: viralScore >= 94 ? "muito alta" : viralScore >= 89 ? "alta" : "media",
-      competition: viralScore >= 94 ? "alta" : "media",
-      remixPotential: pattern.tags.includes("react") || pattern.tags.includes("dueto") ? "muito alto" : "alto"
-    },
+    metrics: getMetrics(viralScore, pattern.tags),
     signals: pattern.signals
   };
 }

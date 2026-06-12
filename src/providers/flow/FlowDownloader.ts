@@ -39,7 +39,7 @@ export class FlowDownloader {
         await resolutionOption.waitFor({ state: 'visible', timeout: 4000 });
         logger.info('Menu de resoluções detectado. Clicando na opção de download...');
         await resolutionOption.click();
-      } catch (err) {
+      } catch {
         logger.info('Nenhum menu de resoluções detectado. Aguardando download direto...');
       }
 

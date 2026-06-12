@@ -146,44 +146,45 @@ export async function listLocalJobs(): Promise<ReactionJob[]> {
   return jobs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
-export async function createLocalJob({
-  avatarId,
-  sourceVideoId = null,
-  sourceVideoUrl = null,
-  sourceVideoTitle = null,
-  renderLayout = "source_pip",
-  expertBackgroundMode = "original",
-  topic,
-  voiceSettings = null,
-  sourceVideoDescription = null,
-  sourceVideoTranscription = null,
-  trimStart = null,
-  trimEnd = null,
-  scriptText = null
-}: NewLocalJobInput): Promise<ReactionJob> {
+const defaultJobOptions = {
+  sourceVideoId: null,
+  sourceVideoUrl: null,
+  sourceVideoTitle: null,
+  renderLayout: "source_pip" as const,
+  expertBackgroundMode: "original" as const,
+  voiceSettings: null,
+  sourceVideoDescription: null,
+  sourceVideoTranscription: null,
+  trimStart: null,
+  trimEnd: null,
+  scriptText: null
+};
+
+export async function createLocalJob(input: NewLocalJobInput): Promise<ReactionJob> {
+  const merged = { ...defaultJobOptions, ...input };
   const now = new Date().toISOString();
   const job: ReactionJob = {
     id: crypto.randomUUID(),
     user_id: APP_WORKSPACE_ID,
-    avatar_id: avatarId,
-    source_video_id: sourceVideoId,
-    source_video_url: sourceVideoUrl,
-    source_video_title: sourceVideoTitle,
-    render_layout: renderLayout,
-    expert_background_mode: expertBackgroundMode,
-    topic,
+    avatar_id: merged.avatarId,
+    source_video_id: merged.sourceVideoId,
+    source_video_url: merged.sourceVideoUrl,
+    source_video_title: merged.sourceVideoTitle,
+    render_layout: merged.renderLayout,
+    expert_background_mode: merged.expertBackgroundMode,
+    topic: merged.topic,
     status: "draft",
-    script_text: scriptText,
+    script_text: merged.scriptText,
     voice_provider: null,
     audio_path: null,
     lip_sync_video_path: null,
     final_video_path: null,
     error_message: null,
-    voice_settings: voiceSettings ?? null,
-    source_video_description: sourceVideoDescription,
-    source_video_transcription: sourceVideoTranscription,
-    trim_start: trimStart,
-    trim_end: trimEnd,
+    voice_settings: merged.voiceSettings,
+    source_video_description: merged.sourceVideoDescription,
+    source_video_transcription: merged.sourceVideoTranscription,
+    trim_start: merged.trimStart,
+    trim_end: merged.trimEnd,
     created_at: now,
     updated_at: now
   };

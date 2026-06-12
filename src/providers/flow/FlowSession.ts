@@ -143,11 +143,24 @@ export class FlowSession {
       'button:has-text("Sign in"), button:has-text("Fazer login"), a:has-text("Sign in"), a:has-text("Fazer login")'
     ).first();
 
+    const entryButton = page.locator(
+      'a:has-text("Create with Google Flow"), button:has-text("Create with Google Flow"), a:has-text("Criar com o Google Flow"), button:has-text("Criar com o Google Flow"), a:has-text("Create with"), button:has-text("Create with"), a:has-text("Criar com"), button:has-text("Criar com")'
+    ).first();
+
     for (let i = 0; i < 5; i++) {
       const currentUrl = page.url();
       if (currentUrl.includes('accounts.google.com') || currentUrl.includes('signin')) {
         return false;
       }
+      
+      // If we see the landing page entry button, click it to enter workspace
+      if (await entryButton.isVisible()) {
+        logger.info('Botão de entrada "Create with Google Flow" localizado. Clicando...');
+        await entryButton.click();
+        await page.waitForTimeout(4000);
+        continue;
+      }
+
       if (await loggedInLocator.isVisible()) {
         logger.info('Elemento de workspace ou criação detectado. Autenticado.');
         return true;

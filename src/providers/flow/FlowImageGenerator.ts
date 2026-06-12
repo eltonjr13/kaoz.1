@@ -85,6 +85,27 @@ export class FlowImageGenerator {
       // 1. Wait for page load state and settle
       await page.waitForLoadState('domcontentloaded');
 
+      // Detect if we are on the landing page and click "Create with Google Flow" to enter the workspace
+      const entryButton = page.locator(
+        'a:has-text("Create with Google Flow"), button:has-text("Create with Google Flow"), a:has-text("Criar com o Google Flow"), button:has-text("Criar com o Google Flow"), a:has-text("Create with"), button:has-text("Create with"), a:has-text("Criar com"), button:has-text("Criar com")'
+      ).first();
+
+      if (await entryButton.isVisible()) {
+        logger.info('Botão "Create with Google Flow" detectado na landing page. Clicando para acessar o workspace...');
+        await entryButton.click();
+        await page.waitForTimeout(5000);
+      } else {
+        // Give it a brief moment to check if it appears
+        try {
+          await entryButton.waitFor({ state: 'visible', timeout: 3000 });
+          logger.info('Botão "Create with Google Flow" apareceu após breve espera. Clicando...');
+          await entryButton.click();
+          await page.waitForTimeout(5000);
+        } catch {
+          // If not visible, we are likely already inside the workspace/lobby
+        }
+      }
+
       logger.info('Aguardando carregamento da interface (lobby ou workspace)...');
       const lobbyBtn = page.locator('button:has-text("Novo projeto"), button:has-text("New project"), button:has-text("add_2")').first();
       const workspaceTextbox = page.locator('[role="textbox"], div[contenteditable="true"]').first();

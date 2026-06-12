@@ -13,6 +13,9 @@ import {
   Trash2,
   Terminal,
   RefreshCw,
+  Copy,
+  ArrowRight,
+  Bot
 } from "lucide-react";
 
 interface FlowStatus {
@@ -33,15 +36,25 @@ interface GenerationResult {
   error?: string;
 }
 
-// eslint-disable-next-line complexity
 export default function FlowDashboardPage() {
+  // Refs for scrolling to panels
+  const imageSectionRef = useRef<HTMLDivElement>(null);
+  const videoSectionRef = useRef<HTMLDivElement>(null);
+
   // 1. Status States
   const [status, setStatus] = useState<FlowStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [closeLoading, setCloseLoading] = useState(false);
 
-  // 2. Generation States
+  // 2. Agente MrChicken States
+  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
+  const [agentPrompt, setAgentPrompt] = useState("");
+  const [agentType, setAgentType] = useState<'image' | 'video'>('image');
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentResult, setAgentResult] = useState<string | null>(null);
+
+  // 3. Generation States
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageLoading, setImageLoading] = useState(false);
   const [imageResult, setImageResult] = useState<GenerationResult | null>(null);
@@ -75,7 +88,7 @@ export default function FlowDashboardPage() {
     reader.readAsDataURL(file);
   };
 
-  // 3. Logger Console State
+  // 4. Logger Console State
   const [logs, setLogs] = useState<string[]>([]);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +121,7 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     setTimeout(() => {
       fetchStatus();
-      appendLog("Painel de Controle Google Flow inicializado.");
+      appendLog("Painel do Agente MrChicken inicializado.");
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -121,7 +134,7 @@ export default function FlowDashboardPage() {
   // Handle Session Initialization / Auth Fallback
   const handleAuthenticate = async () => {
     setAuthLoading(true);
-    appendLog("Inicializando sessão. Se necessário, um navegador headful será aberto para login.");
+    appendLog("Inicializando sessão do navegador persistente. Se necessário, um navegador headful abrirá para autenticação.");
     
     // Start status polling
     const pollInterval = setInterval(() => {
@@ -139,16 +152,16 @@ export default function FlowDashboardPage() {
       if (data.success) {
         appendLog(`Sessão processada: ${data.message}`);
         if (data.status?.authenticated) {
-          appendLog("Sessão autenticada e pronta para uso.");
+          appendLog("Sessão autenticada e pronta para automações.");
         } else {
           appendLog("Sessão inicializada, mas requer login manual.");
         }
       } else {
-        appendLog(`Falha na autenticação: ${data.error || "Erro desconhecido"}`);
+        appendLog(`Falha na inicialização: ${data.error || "Erro desconhecido"}`);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro na autenticação: ${errMsg}`);
+      appendLog(`Erro ao autenticar: ${errMsg}`);
     } finally {
       clearInterval(pollInterval);
       setAuthLoading(false);
@@ -159,7 +172,7 @@ export default function FlowDashboardPage() {
   // Handle Browser Session Shutdown
   const handleCloseSession = async () => {
     setCloseLoading(true);
-    appendLog("Encerrando qualquer processo do navegador ativo...");
+    appendLog("Encerrando qualquer processo ativo do navegador...");
     try {
       const res = await fetch("/api/flow/auth", {
         method: "POST",
@@ -168,15 +181,52 @@ export default function FlowDashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
-        appendLog("Sessão do browser finalizada.");
+        appendLog("Sessão de navegador fechada.");
       } else {
-        appendLog(`Falha ao encerrar browser: ${data.error}`);
+        appendLog(`Falha ao fechar navegador: ${data.error}`);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       appendLog(`Erro ao fechar navegador: ${errMsg}`);
     } finally {
       setCloseLoading(false);
+      fetchStatus();
+    }
+  };
+
+  // Handle Agente MrChicken Prompt Optimization
+  const handleOptimizePrompt = async () => {
+    if (!agentPrompt.trim()) {
+      appendLog("Aviso: Digite um conceito ou ideia simples para otimizar.");
+      return;
+    }
+    setAgentLoading(true);
+    setAgentResult(null);
+    appendLog(`[Agente MrChicken] Conectando ao portal do ${agentModel.toUpperCase()} via Playwright para otimização...`);
+    
+    try {
+      const res = await fetch("/api/flow/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: agentModel,
+          prompt: agentPrompt,
+          type: agentType,
+        }),
+      });
+      const data = await res.json();
+      
+      if (data.success && data.prompt) {
+        setAgentResult(data.prompt);
+        appendLog(`[Agente MrChicken] Otimização concluída via ${agentModel.toUpperCase()} com sucesso!`);
+      } else {
+        appendLog(`[Agente MrChicken] Erro na automação: ${data.error || "Falha desconhecida"}`);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendLog(`[Agente MrChicken] Erro na requisição do agente: ${errMsg}`);
+    } finally {
+      setAgentLoading(false);
       fetchStatus();
     }
   };
@@ -190,7 +240,7 @@ export default function FlowDashboardPage() {
     setImageLoading(true);
     setImageResult(null);
     setActiveImageIndex(0);
-    appendLog(`Gerando imagem para: "${imagePrompt}"...`);
+    appendLog(`[ImageFX] Gerando imagem autônoma para: "${imagePrompt}"...`);
     
     try {
       const res = await fetch("/api/flow/generate", {
@@ -209,7 +259,7 @@ export default function FlowDashboardPage() {
       
       if (data.success) {
         setImageResult(data);
-        appendLog(`Imagem gerada com sucesso! Arquivo: ${data.filename}`);
+        appendLog(`[ImageFX] Imagem gerada com sucesso! Arquivo: ${data.filename}`);
       } else {
         setImageResult({
           success: false,
@@ -218,11 +268,11 @@ export default function FlowDashboardPage() {
           createdAt: new Date().toISOString(),
           error: data.error || "Falha na geração",
         });
-        appendLog(`Erro na geração de imagem: ${data.error}`);
+        appendLog(`[ImageFX] Erro na geração: ${data.error}`);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro ao gerar imagem: ${errMsg}`);
+      appendLog(`[ImageFX] Erro na geração: ${errMsg}`);
     } finally {
       setImageLoading(false);
       fetchStatus();
@@ -238,7 +288,7 @@ export default function FlowDashboardPage() {
     setVideoLoading(true);
     setVideoResult(null);
     setActiveVideoIndex(0);
-    appendLog(`Gerando vídeo para: "${videoPrompt}"...`);
+    appendLog(`[VideoFX] Gerando vídeo autônomo para: "${videoPrompt}"...`);
 
     try {
       const res = await fetch("/api/flow/generate", {
@@ -257,7 +307,7 @@ export default function FlowDashboardPage() {
       
       if (data.success) {
         setVideoResult(data);
-        appendLog(`Vídeo gerado com sucesso! Arquivo: ${data.filename} (Duração: ${data.duration}s)`);
+        appendLog(`[VideoFX] Vídeo gerado com sucesso! Arquivo: ${data.filename} (Duração: ${data.duration}s)`);
       } else {
         setVideoResult({
           success: false,
@@ -266,11 +316,11 @@ export default function FlowDashboardPage() {
           createdAt: new Date().toISOString(),
           error: data.error || "Falha na geração",
         });
-        appendLog(`Erro na geração de vídeo: ${data.error}`);
+        appendLog(`[VideoFX] Erro na geração: ${data.error}`);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro ao gerar vídeo: ${errMsg}`);
+      appendLog(`[VideoFX] Erro na geração: ${errMsg}`);
     } finally {
       setVideoLoading(false);
       fetchStatus();
@@ -287,11 +337,12 @@ export default function FlowDashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 dark:from-violet-400 dark:to-indigo-400 bg-clip-text text-transparent">
-            Google Flow Creative Studio
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 dark:from-violet-400 dark:to-indigo-400 bg-clip-text text-transparent flex items-center gap-2.5">
+            <Bot className="text-indigo-600 dark:text-indigo-400" size={30} />
+            <span>Agente MrChicken Autopilot</span>
           </h1>
           <p className="text-zinc-500 dark:text-zinc-400 text-sm mt-1">
-            Painel de automação para geração de imagens (ImageFX) e vídeos (VideoFX) via navegador integrado.
+            Autopilot Agent: Engenharia de prompts e geração autônoma de mídia (ImageFX/VideoFX) usando automações no navegador.
           </p>
         </div>
         <button
@@ -308,14 +359,14 @@ export default function FlowDashboardPage() {
         </button>
       </div>
 
-      {/* Grid: Row 1 - Session Status and Live Logs */}
+      {/* Grid: Row 1 - Session Status and Agent Console */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Status Card (Col-5) */}
-        <div className="lg:col-span-5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-5 flex flex-col justify-between">
+        {/* Status Card (Col-4) */}
+        <div className="lg:col-span-4 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <h2 className="text-lg font-bold flex items-center gap-2">
               <Globe size={18} className="text-indigo-500" />
-              <span>Status da Sessão</span>
+              <span>Status do Navegador</span>
             </h2>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
@@ -352,8 +403,8 @@ export default function FlowDashboardPage() {
                 <span className="font-mono font-bold">{status?.activeTasks ?? 0}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-zinc-400 dark:text-zinc-500">Perfil de Armazenamento:</span>
-                <span className="font-mono text-[10px] bg-zinc-100 dark:bg-zinc-900 px-2 py-1 rounded select-all break-all text-zinc-600 dark:text-zinc-300">
+                <span className="text-zinc-400 dark:text-zinc-500">Perfil persistente:</span>
+                <span className="font-mono text-[9px] bg-zinc-100 dark:bg-zinc-900 px-2 py-1 rounded select-all break-all text-zinc-650 dark:text-zinc-400">
                   {status?.profilePath ?? "Carregando..."}
                 </span>
               </div>
@@ -371,7 +422,7 @@ export default function FlowDashboardPage() {
               ) : (
                 <Sparkles size={14} />
               )}
-              <span>Inicializar & Conectar</span>
+              <span>Conectar Navegador</span>
             </button>
 
             <button
@@ -389,12 +440,147 @@ export default function FlowDashboardPage() {
           </div>
         </div>
 
-        {/* Live Logs Card (Col-7) */}
-        <div className="lg:col-span-7 bg-zinc-950 border border-zinc-850 rounded-xl p-5 shadow-sm flex flex-col h-[280px]">
+        {/* Agente MrChicken Console (Col-8) */}
+        <div className="lg:col-span-8 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <h2 className="text-lg font-bold flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900 pb-2">
+              <Sparkles size={18} className="text-amber-500" />
+              <span>Engenharia de Prompt do Agente MrChicken</span>
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Ideia ou Conceito Simples:</label>
+                  <textarea
+                    value={agentPrompt}
+                    onChange={(e) => setAgentPrompt(e.target.value)}
+                    placeholder="Ex: Um pintinho amarelo comendo milho no celeiro..."
+                    className="w-full h-24 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-500 transition-colors duration-150 resize-none font-sans"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Modelo IA</label>
+                    <select
+                      value={agentModel}
+                      onChange={(e) => setAgentModel(e.target.value as 'deepseek' | 'claude' | 'chatgpt' | 'gemini')}
+                      className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                    >
+                      <option value="gemini">♊ Google Gemini</option>
+                      <option value="chatgpt">💬 OpenAI ChatGPT</option>
+                      <option value="deepseek">🐳 DeepSeek Chat</option>
+                      <option value="claude">🤖 Anthropic Claude</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Objetivo</label>
+                    <select
+                      value={agentType}
+                      onChange={(e) => setAgentType(e.target.value as 'image' | 'video')}
+                      className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-indigo-500 text-zinc-700 dark:text-zinc-300 font-semibold cursor-pointer"
+                    >
+                      <option value="image">🖼️ Imagem (ImageFX)</option>
+                      <option value="video">🎥 Vídeo (VideoFX)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Resultado Otimizado */}
+              <div className="flex flex-col justify-between bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-900 rounded-xl p-4 min-h-[140px]">
+                <div className="space-y-2 flex-1">
+                  <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider block">Prompt Otimizado pelo Agente:</span>
+                  {agentLoading ? (
+                    <div className="flex flex-col items-center justify-center h-24 text-xs text-zinc-400 space-y-2">
+                      <Loader2 className="animate-spin text-indigo-500" size={20} />
+                      <span className="animate-pulse">Agente digitando no navegador...</span>
+                    </div>
+                  ) : agentResult ? (
+                    <p className="text-xs text-zinc-800 dark:text-zinc-200 font-medium leading-relaxed font-sans select-all max-h-24 overflow-y-auto pr-1">
+                      {agentResult}
+                    </p>
+                  ) : (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 italic block py-6 text-center">
+                      Insira sua ideia e clique em Otimizar Prompt.
+                    </span>
+                  )}
+                </div>
+
+                {agentResult && !agentLoading && (
+                  <div className="flex flex-wrap gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800 mt-2">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(agentResult);
+                        appendLog("Prompt otimizado copiado para o clipboard.");
+                      }}
+                      className="flex items-center gap-1 py-1 px-2.5 rounded bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-bold transition-all cursor-pointer"
+                      title="Copiar prompt"
+                    >
+                      <Copy size={10} />
+                      <span>Copiar</span>
+                    </button>
+                    {agentType === 'image' ? (
+                      <button
+                        onClick={() => {
+                          setImagePrompt(agentResult);
+                          imageSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+                          appendLog("Prompt transferido para o ImageFX.");
+                        }}
+                        className="flex items-center gap-1 py-1 px-2.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-all cursor-pointer"
+                      >
+                        <ArrowRight size={10} />
+                        <span>Usar no ImageFX</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setVideoPrompt(agentResult);
+                          videoSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+                          appendLog("Prompt transferido para o VideoFX.");
+                        }}
+                        className="flex items-center gap-1 py-1 px-2.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-all cursor-pointer"
+                      >
+                        <ArrowRight size={10} />
+                        <span>Usar no VideoFX</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleOptimizePrompt}
+            disabled={agentLoading || !agentPrompt.trim()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer mt-2"
+          >
+            {agentLoading ? (
+              <>
+                <Loader2 className="animate-spin" size={14} />
+                <span>Otimizando Prompt com o Agente...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} />
+                <span>Otimizar Prompt com Agente MrChicken</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Row 1.5 - Live Logs (Full width) */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Live Logs Card */}
+        <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-5 shadow-sm flex flex-col h-[200px]">
           <div className="flex items-center justify-between border-b border-zinc-850 pb-2 mb-3">
-            <h2 className="text-xs font-bold text-zinc-450 uppercase tracking-widest flex items-center gap-2">
+            <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
               <Terminal size={14} className="text-indigo-400" />
-              <span>Console Logs de Automação</span>
+              <span>Painel de Logs do Agente MrChicken</span>
             </h2>
             <button
               onClick={clearConsole}
@@ -406,7 +592,7 @@ export default function FlowDashboardPage() {
 
           <div className="flex-1 overflow-y-auto font-mono text-[11px] text-zinc-300 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-800">
             {logs.length === 0 ? (
-              <span className="text-zinc-655 italic">Nenhum evento registrado.</span>
+              <span className="text-zinc-600 italic">Nenhum evento registrado.</span>
             ) : (
               logs.map((log, idx) => (
                 <div key={idx} className="leading-normal break-all">
@@ -414,7 +600,7 @@ export default function FlowDashboardPage() {
                     <span className="text-rose-500">{log}</span>
                   ) : log.includes("[WARN]") ? (
                     <span className="text-amber-500">{log}</span>
-                  ) : log.includes("[INFO]") ? (
+                  ) : log.includes("[INFO]") || log.includes("[Agente") ? (
                     <span className="text-cyan-400">{log}</span>
                   ) : (
                     <span>{log}</span>
@@ -430,7 +616,7 @@ export default function FlowDashboardPage() {
       {/* Grid: Row 2 - Generation Panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ImageFX Generation Panel */}
-        <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+        <div ref={imageSectionRef} className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
           <div className="space-y-4">
             <h2 className="text-lg font-bold flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900 pb-2">
               <ImageIcon size={18} className="text-violet-500" />
@@ -564,7 +750,6 @@ export default function FlowDashboardPage() {
                       return (
                         <>
                           <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
-                            {/* Using secure server-side file streaming route to preview */}
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={`/api/flow/media?path=${encodeURIComponent(activePath)}`}
@@ -635,7 +820,7 @@ export default function FlowDashboardPage() {
         </div>
 
         {/* VideoFX Generation Panel */}
-        <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+        <div ref={videoSectionRef} className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
           <div className="space-y-4">
             <h2 className="text-lg font-bold flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900 pb-2">
               <VideoIcon size={18} className="text-blue-500" />
@@ -766,7 +951,6 @@ export default function FlowDashboardPage() {
                       return (
                         <>
                           <div className="aspect-video w-full rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 relative bg-zinc-200 dark:bg-zinc-950">
-                            {/* Using secure server-side file streaming route to play video */}
                             <video
                               key={activePath}
                               src={`/api/flow/media?path=${encodeURIComponent(activePath)}`}

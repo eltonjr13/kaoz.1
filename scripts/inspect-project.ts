@@ -53,11 +53,12 @@ async function main() {
       // List interactive elements
       const elements = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('textarea, input, [contenteditable="true"], button, a, [role="tab"], [role="textbox"]')).map(el => {
+          const inputEl = el as HTMLElement & { type?: string; placeholder?: string };
           return {
             tag: el.tagName.toLowerCase(),
-            type: (el as any).type || '',
-            placeholder: (el as any).placeholder || el.getAttribute('placeholder') || '',
-            text: (el as any).innerText || el.textContent || '',
+            type: inputEl.type || '',
+            placeholder: inputEl.placeholder || el.getAttribute('placeholder') || '',
+            text: inputEl.innerText || el.textContent || '',
             role: el.getAttribute('role') || '',
             ariaLabel: el.getAttribute('aria-label') || '',
             id: el.id || '',

@@ -1,6 +1,5 @@
 import { chromium } from 'playwright';
 import * as path from 'path';
-import * as fs from 'fs';
 
 async function main() {
   console.log('[INSPECT] Inicializando navegador com perfil persistente...');
@@ -46,11 +45,12 @@ async function main() {
     console.log('[INSPECT] Mapeando elementos interativos...');
     const interactiveElements = await page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll('textarea, input, [contenteditable="true"], button, a, [role="tab"]')).map(el => {
+        const inputEl = el as HTMLElement & { type?: string; placeholder?: string };
         return {
           tag: el.tagName.toLowerCase(),
-          type: (el as any).type || '',
-          placeholder: (el as any).placeholder || el.getAttribute('placeholder') || '',
-          text: (el as any).innerText || el.textContent || '',
+          type: inputEl.type || '',
+          placeholder: inputEl.placeholder || el.getAttribute('placeholder') || '',
+          text: inputEl.innerText || el.textContent || '',
           role: el.getAttribute('role') || '',
           ariaLabel: el.getAttribute('aria-label') || '',
           className: el.className || ''

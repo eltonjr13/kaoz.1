@@ -61,8 +61,11 @@ export default function DashboardPage() {
       likes: 38,
     },
     {
-      title: "Ywntefniist",
-      description: "Video output renders by target segments",
+      title: "Agente MrChicken",
+      description: "Automated generation and LLM prompt engineering via Playwright automation.",
+      chips: ["AI", "Agent", "Flow"],
+      linkText: "Open Agente MrChicken >",
+      href: "/flow",
     },
   ];
 
@@ -146,6 +149,7 @@ export default function DashboardPage() {
                   description={card.description}
                   chips={card.chips}
                   linkText={card.linkText}
+                  href={card.href}
                   likes={card.likes}
                 />
               ))}

@@ -5,6 +5,15 @@ const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
+    linterOptions: {
+      reportUnusedDisableDirectives: "off"
+    },
+    rules: {
+      "@next/next/no-img-element": "off"
+    }
+  },
+  {
+    files: ["src/providers/flow/**/*.ts"],
     rules: {
       "complexity": ["error", 10]
     }
