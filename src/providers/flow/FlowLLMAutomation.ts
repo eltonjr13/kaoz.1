@@ -178,7 +178,14 @@ export class FlowLLMAutomation {
 
     // Verify if logged in
     const currentUrl = page.url();
-    if (currentUrl.includes('/login') || currentUrl.includes('/sign-up')) {
+    if (
+      currentUrl.includes('/login') ||
+      currentUrl.includes('/sign_in') ||
+      currentUrl.includes('/sign-in') ||
+      currentUrl.includes('/signup') ||
+      currentUrl.includes('/sign-up') ||
+      currentUrl.includes('signin')
+    ) {
       throw new Error('Sessão expirada no DeepSeek.');
     }
 

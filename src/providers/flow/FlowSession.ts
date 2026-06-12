@@ -281,8 +281,11 @@ export class FlowSession {
         try {
           const authenticated = await this.checkPortalAuthenticated(page, portal);
           if (authenticated) {
-            logger.info(`Login detectado para o portal ${portal}! Fechando navegador automaticamente.`);
+            logger.info(`Login detectado para o portal ${portal}! Aguardando 5 segundos para persistência de cookies...`);
             clearInterval(checkInterval);
+            resolved = true;
+            await page.waitForTimeout(5000);
+            logger.info(`Fechando navegador automaticamente.`);
             await this.close();
             finish();
           }
@@ -306,6 +309,8 @@ export class FlowSession {
       if (
         url.includes('accounts.google.com') ||
         url.includes('signin') ||
+        url.includes('sign_in') ||
+        url.includes('sign-in') ||
         url.includes('/login') ||
         url.includes('/auth') ||
         url.includes('/signup') ||
