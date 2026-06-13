@@ -20,7 +20,15 @@ export async function GET(request: NextRequest) {
 
     // Security check: ensure the file resides inside our allowed storage path
     const allowedRoot = path.resolve("storage/generated/");
-    if (!absolutePath.startsWith(allowedRoot)) {
+    
+    const isWindows = process.platform === "win32";
+    const normAbsolute = isWindows ? absolutePath.toLowerCase() : absolutePath;
+    const normAllowed = isWindows ? allowedRoot.toLowerCase() : allowedRoot;
+    
+    // Ensure we check with a trailing separator to prevent partial folder name matching (e.g. generated_attack)
+    const allowedPrefix = normAllowed.endsWith(path.sep) ? normAllowed : normAllowed + path.sep;
+
+    if (!normAbsolute.startsWith(allowedPrefix)) {
       return jsonError("Acesso negado fora do diretório de armazenamento.", 403);
     }
 

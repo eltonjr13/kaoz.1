@@ -231,8 +231,8 @@ export class FlowVideoGenerator {
 
       // 4. Count initial generated items (to detect when a new one is finished)
       const getMediaCount = async () => {
-        const imgCount = await page.locator('img[src*="getMediaUrlRedirect"]').count();
-        const videoCount = await page.locator('video').count();
+        const imgCount = await page.locator('img[src*="getMediaUrlRedirect"]:not([role="dialog"] img):not(aside img)').count();
+        const videoCount = await page.locator('video:not([role="dialog"] video):not(aside video)').count();
         return imgCount + videoCount;
       };
       
@@ -360,7 +360,7 @@ export class FlowVideoGenerator {
 
       // 8. Open and download the generated media cards
       logger.info('Geração concluída. Iniciando download de todos os novos itens...');
-      const mediaCards = page.locator('img[src*="getMediaUrlRedirect"], video');
+      const mediaCards = page.locator('img[src*="getMediaUrlRedirect"]:not([role="dialog"] img):not(aside img), video:not([role="dialog"] video):not(aside video)');
 
       // Calculate how many items were generated in this run
       const finalMediaCount = await getMediaCount();
@@ -375,7 +375,7 @@ export class FlowVideoGenerator {
 
       // Loop and download each item
       for (let i = 0; i < newItemsCount; i++) {
-        const index = i;
+        const index = (finalMediaCount - newItemsCount) + i;
         logger.info(`Abrindo visualização da mídia ${i + 1} de ${newItemsCount}...`);
 
         const card = mediaCards.nth(index);
@@ -425,7 +425,10 @@ export class FlowVideoGenerator {
         // Close preview overlay
         logger.info(`Fechando painel de visualização do item ${i + 1}.`);
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(1000); // Wait for transition
+        
+        // Wait for preview to close fully
+        await page.locator('button').filter({ hasText: /download|baixar/i }).first().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(500); // Wait for transition to settle
       }
 
       if (downloadedPaths.length === 0) {

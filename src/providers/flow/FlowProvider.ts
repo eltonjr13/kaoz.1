@@ -131,6 +131,19 @@ export class FlowProvider {
   }
 
   /**
+   * Run the autonomous agent loop to create a complete project.
+   */
+  async runAgentTask(options: import('./FlowAgent').AgentTaskOptions): Promise<{ success: boolean; jobId: string; videoPath?: string; error?: string }> {
+    this.activeTasksCount++;
+    try {
+      const { flowAgent } = await import('./FlowAgent');
+      return await flowAgent.createCompleteProject(options);
+    } finally {
+      this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
+    }
+  }
+
+  /**
    * Opens a visible, headful browser session for manual login to the specified portal.
    */
   async openLoginSession(portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'): Promise<void> {

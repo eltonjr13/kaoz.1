@@ -5,6 +5,7 @@ import {
   Image as ImageIcon,
   Loader2,
   AlertCircle,
+  CheckCircle,
   Trash2,
   Terminal,
   Copy,
@@ -27,6 +28,12 @@ interface GenerationResult {
   createdAt: string;
   duration?: string;
   error?: string;
+}
+
+interface Avatar {
+  id: string;
+  name: string;
+  image_path: string;
 }
 
 const copyToClipboard = (text: string): boolean => {
@@ -60,9 +67,16 @@ export default function FlowDashboardPage() {
   // 2. Control States
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentPrompt, setAgentPrompt] = useState("");
-  const [agentType, setAgentType] = useState<'image' | 'video'>('image');
+  const [agentType, setAgentType] = useState<'image' | 'video' | 'project'>('image');
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentResult, setAgentResult] = useState<string | null>(null);
+
+  // Avatar and Agent Project States
+  const [avatars, setAvatars] = useState<Avatar[]>([]);
+  const [selectedAvatarId, setSelectedAvatarId] = useState("");
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectResult, setProjectResult] = useState<{ success: boolean; jobId?: string; videoPath?: string; error?: string } | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   // 3. ImageFX States
   const [imageRatio, setImageRatio] = useState("16:9");
@@ -119,10 +133,28 @@ export default function FlowDashboardPage() {
     }
   };
 
-  // Trigger status check on load (using setTimeout to prevent cascading render error)
+  // Fetch avatars list
+  const fetchAvatars = async () => {
+    try {
+      const res = await fetch("/api/avatars");
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.avatars || data;
+        setAvatars(list);
+        if (list.length > 0) {
+          setSelectedAvatarId(list[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Falha ao buscar avatars:", err);
+    }
+  };
+
+  // Trigger status and avatar checks on load (using setTimeout to prevent cascading render error)
   useEffect(() => {
     setTimeout(() => {
       fetchStatus();
+      fetchAvatars();
       appendLog("Painel do Agente MrChicken inicializado.");
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,6 +164,57 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     consoleEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  // Poll agent events in real-time
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    let isMounted = true;
+    const seenEventIds = new Set<string>();
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/jobs/events?jobId=${activeJobId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = data.events || [];
+
+        if (!isMounted) return;
+
+        const newEvents = events.filter((e: { id: string }) => !seenEventIds.has(e.id));
+        if (newEvents.length > 0) {
+          newEvents.forEach((e: { id: string }) => seenEventIds.add(e.id));
+          
+          setLogs((prev) => {
+            const added = newEvents.map((e: { created_at: string; message: string }) => {
+              const dateStr = new Date(e.created_at).toLocaleTimeString();
+              return `[${dateStr}] [Agente] ${e.message}`;
+            });
+            return [...prev, ...added];
+          });
+        }
+
+        // Check if the agent has finished (e.g. status completed or failed)
+        const hasFinished = events.some((e: { event_type: string }) => e.event_type === "completed" || e.event_type === "failed");
+        if (hasFinished) {
+          setActiveJobId(null);
+          fetchStatus();
+        }
+      } catch (err) {
+        console.error("Erro no polling de eventos:", err);
+      }
+    };
+
+    // Run immediately
+    poll();
+
+    const interval = setInterval(poll, 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJobId]);
 
   // Handle Session Initialization / Auth Fallback
   const handleAuthenticate = async () => {
@@ -218,6 +301,46 @@ export default function FlowDashboardPage() {
   const handleExecuteAutopilot = async () => {
     if (!agentPrompt.trim()) {
       appendLog("Aviso: Digite uma ideia para começar.");
+      return;
+    }
+
+    // Agent mode: Create Complete Video Project (autonomous loop)
+    if (agentType === "project") {
+      setProjectLoading(true);
+      setProjectResult(null);
+      setActiveJobId(null);
+      setShowLogs(true);
+      setLogs([]); // Clear logs for new run
+      appendLog(`[Agente Autônomo] Solicitando criação do projeto para o tema: "${agentPrompt}"...`);
+      try {
+        const res = await fetch("/api/flow/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create-project",
+            prompt: agentPrompt,
+            avatarId: selectedAvatarId,
+            model: agentModel,
+            aspectRatio: videoRatio,
+            videoModel: videoModel
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.jobId) {
+          setProjectResult(data);
+          setActiveJobId(data.jobId);
+          appendLog(`[Agente Autônomo] Projeto inicializado com sucesso! Job ID: ${data.jobId}`);
+        } else {
+          setProjectResult({ success: false, error: data.error || "Erro desconhecido" });
+          appendLog(`[Agente Autônomo] Erro ao inicializar: ${data.error}`);
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendLog(`[Agente Autônomo] Erro na requisição: ${errMsg}`);
+      } finally {
+        setProjectLoading(false);
+        fetchStatus();
+      }
       return;
     }
 
@@ -335,7 +458,7 @@ export default function FlowDashboardPage() {
     }
   };
 
-  const currentReference = agentType === 'image' ? imageReference : videoReference;
+  const currentReference = agentType === 'project' ? null : (agentType === 'image' ? imageReference : videoReference);
 
   return (
     <div className="flex-1 w-full min-h-full flex flex-col justify-start px-8 py-10 select-none overflow-y-auto" style={{ backgroundColor: '#0A0A0B', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -396,7 +519,7 @@ export default function FlowDashboardPage() {
           onChange={(e) => setAgentPrompt(e.target.value)}
           placeholder="Descreva uma cena, produto, personagem ou ideia..."
           className="w-full bg-transparent border-none text-[#F2F2F2] placeholder-[#5A5A6A] text-sm font-sans resize-none outline-none min-h-[100px] leading-relaxed"
-          disabled={agentLoading || imageLoading || videoLoading}
+          disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
         />
         
         {/* Imagem de Referência anexada inline */}
@@ -432,108 +555,132 @@ export default function FlowDashboardPage() {
             {/* Objetivo */}
             <select
               value={agentType}
-              onChange={(e) => setAgentType(e.target.value as 'image' | 'video')}
+              onChange={(e) => setAgentType(e.target.value as 'image' | 'video' | 'project')}
               className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
             >
               <option value="image">Imagem</option>
               <option value="video">Vídeo</option>
+              <option value="project">Projeto (Agente)</option>
             </select>
+
+            {/* Avatar Selector (Only for complete projects) */}
+            {agentType === "project" && avatars.length > 0 && (
+              <select
+                value={selectedAvatarId}
+                onChange={(e) => setSelectedAvatarId(e.target.value)}
+                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
+              >
+                {avatars.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    Avatar: {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
             {/* Aspect Ratio */}
-            <select
-              value={agentType === 'image' ? imageRatio : videoRatio}
-              onChange={(e) => {
-                if (agentType === 'image') {
-                  setImageRatio(e.target.value);
-                } else {
-                  setVideoRatio(e.target.value);
-                }
-              }}
-              className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-            >
-              <option value="16:9">16:9</option>
-              <option value="4:3">4:3</option>
-              <option value="1:1">1:1</option>
-              <option value="3:4">3:4</option>
-              <option value="9:16">9:16</option>
-            </select>
-
-            {/* Versão do Modelo */}
-            <select
-              value={agentType === 'image' ? imageModel : videoModel}
-              onChange={(e) => {
-                if (agentType === 'image') {
-                  setImageModel(e.target.value);
-                } else {
-                  setVideoModel(e.target.value);
-                }
-              }}
-              className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-            >
-              {agentType === 'image' ? (
-                <>
-                  <option value="Nano Banana 2">Banana 2</option>
-                  <option value="Nano Banana Pro">Banana Pro</option>
-                  <option value="Imagen 4 (Leaving 6/16)">Imagen 4</option>
-                </>
-              ) : (
-                <>
-                  <option value="Veo 3.1">Veo 3.1</option>
-                  <option value="Veo">Veo</option>
-                </>
-              )}
-            </select>
-
-            {/* Quantidade */}
-            <select
-              value={agentType === 'image' ? imageQty : videoQty}
-              onChange={(e) => {
-                if (agentType === 'image') {
-                  setImageQty(e.target.value);
-                } else {
-                  setVideoQty(e.target.value);
-                }
-              }}
-              className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-            >
-              {agentType === 'image' ? (
-                <>
-                  <option value="1x">1 Img</option>
-                  <option value="x2">2 Imgs</option>
-                  <option value="x3">3 Imgs</option>
-                  <option value="x4">4 Imgs</option>
-                </>
-              ) : (
-                <>
-                  <option value="1x">1 Vídeo</option>
-                  <option value="x2">2 Vídeos</option>
-                </>
-              )}
-            </select>
-
-            {/* Botão de Anexo */}
-            <label className="bg-[#111114] border border-[rgba(255,255,255,0.07)] hover:border-zinc-700 text-[#F2F2F2] p-1.5 rounded-full cursor-pointer transition-colors flex items-center justify-center">
-              <ImageIcon size={14} />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
+            {agentType !== "project" && (
+              <select
+                value={agentType === 'image' ? imageRatio : videoRatio}
                 onChange={(e) => {
                   if (agentType === 'image') {
-                    handleFileChange(e, setImageReference);
+                    setImageRatio(e.target.value);
                   } else {
-                    handleFileChange(e, setVideoReference);
+                    setVideoRatio(e.target.value);
                   }
                 }}
-              />
-            </label>
+                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
+              >
+                <option value="16:9">16:9</option>
+                <option value="4:3">4:3</option>
+                <option value="1:1">1:1</option>
+                <option value="3:4">3:4</option>
+                <option value="9:16">9:16</option>
+              </select>
+            )}
+
+            {/* Versão do Modelo */}
+            {agentType !== "project" && (
+              <select
+                value={agentType === 'image' ? imageModel : videoModel}
+                onChange={(e) => {
+                  if (agentType === 'image') {
+                    setImageModel(e.target.value);
+                  } else {
+                    setVideoModel(e.target.value);
+                  }
+                }}
+                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
+              >
+                {agentType === 'image' ? (
+                  <>
+                    <option value="Nano Banana 2">Banana 2</option>
+                    <option value="Nano Banana Pro">Banana Pro</option>
+                    <option value="Imagen 4 (Leaving 6/16)">Imagen 4</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Veo 3.1">Veo 3.1</option>
+                    <option value="Veo">Veo</option>
+                  </>
+                )}
+              </select>
+            )}
+
+            {/* Quantidade */}
+            {agentType !== "project" && (
+              <select
+                value={agentType === 'image' ? imageQty : videoQty}
+                onChange={(e) => {
+                  if (agentType === 'image') {
+                    setImageQty(e.target.value);
+                  } else {
+                    setVideoQty(e.target.value);
+                  }
+                }}
+                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
+              >
+                {agentType === 'image' ? (
+                  <>
+                    <option value="1x">1 Img</option>
+                    <option value="x2">2 Imgs</option>
+                    <option value="x3">3 Imgs</option>
+                    <option value="x4">4 Imgs</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="1x">1 Vídeo</option>
+                    <option value="x2">2 Vídeos</option>
+                  </>
+                )}
+              </select>
+            )}
+
+            {/* Botão de Anexo */}
+            {agentType !== "project" && (
+              <label className="bg-[#111114] border border-[rgba(255,255,255,0.07)] hover:border-zinc-700 text-[#F2F2F2] p-1.5 rounded-full cursor-pointer transition-colors flex items-center justify-center">
+                <ImageIcon size={14} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (agentType === 'image') {
+                      handleFileChange(e, setImageReference);
+                    } else {
+                      handleFileChange(e, setVideoReference);
+                    }
+                  }}
+                />
+              </label>
+            )}
 
           </div>
 
           {/* Botão Criar */}
           <button
             onClick={handleExecuteAutopilot}
-            disabled={agentLoading || imageLoading || videoLoading || !agentPrompt.trim()}
+            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId || !agentPrompt.trim()}
             className="bg-[#FFFFFF] hover:bg-[#E4E4E7] text-[#0A0A0B] disabled:opacity-50 text-xs font-bold px-4 py-2 rounded-full cursor-pointer transition-all flex items-center gap-1"
           >
             <span>Criar</span>
@@ -563,11 +710,19 @@ export default function FlowDashboardPage() {
       )}
 
       {/* Estado de Processamento Minimalista */}
-      {(agentLoading || imageLoading || videoLoading) && (
+      {(agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId) && (
         <div className="flex flex-col items-center justify-center p-12 space-y-3 w-full max-w-md mx-auto mt-6">
           <Loader2 className="animate-spin text-white opacity-40" size={24} />
           <div className="text-xs font-semibold text-[#F2F2F2] animate-pulse">
-            {agentLoading ? "Otimizando ideia..." : imageLoading ? "Gerando imagem..." : "Gerando vídeo..."}
+            {activeJobId
+              ? "Agente processando em background..."
+              : projectLoading
+              ? "Inicializando agente..."
+              : agentLoading
+              ? "Otimizando ideia..."
+              : imageLoading
+              ? "Gerando imagem..."
+              : "Gerando vídeo..."}
           </div>
           {logs.length > 0 && (
             <div className="text-[10px] text-[#5A5A6A] font-mono text-center max-w-xs truncate">
@@ -577,8 +732,56 @@ export default function FlowDashboardPage() {
         </div>
       )}
 
-      {/* Resultados Inline */}
-      {((agentType === 'image' && imageResult) || (agentType === 'video' && videoResult)) && (
+      {/* Resultados Inline: Projeto Autônomo */}
+      {agentType === 'project' && projectResult && (
+        <div className="w-full max-w-3xl mx-auto">
+          <div className="flex items-center gap-4 w-full text-xs text-[#5A5A6A] mt-10 mb-6">
+            <span className="shrink-0 font-medium">Projeto Autônomo Criado</span>
+            <div className="h-[1px] bg-[rgba(255,255,255,0.07)] flex-1"></div>
+          </div>
+          {projectResult.success ? (
+            <div className="bg-[#111114] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-6 space-y-4 text-sm">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                <CheckCircle size={16} />
+                <span>Projeto do Agente Inicializado</span>
+              </div>
+              <div className="text-xs space-y-2 text-[#5A5A6A]">
+                <div><strong className="text-[#F2F2F2]">Job ID:</strong> <span className="font-mono">{projectResult.jobId}</span></div>
+                <div><strong className="text-[#F2F2F2]">Status do Render:</strong> Rodando em background local</div>
+              </div>
+              {projectResult.videoPath && (
+                <div className="space-y-2">
+                  <strong className="text-xs text-[#5A5A6A] block">Background VideoFX Gerado:</strong>
+                  <div className="aspect-video w-full rounded-[10px] overflow-hidden bg-black border border-[rgba(255,255,255,0.07)]">
+                    <video
+                      src={`/api/flow/media?path=${encodeURIComponent(projectResult.videoPath)}`}
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="pt-2">
+                <a
+                  href="/jobs"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-black bg-white px-4 py-2 rounded-full hover:opacity-90 transition-opacity"
+                >
+                  <span>Ir para a Lista de Projetos</span>
+                  <ArrowRight size={12} />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="text-rose-500 text-xs py-4 flex items-center gap-1.5 justify-center">
+              <AlertCircle size={14} />
+              <span>Erro no projeto do agente: {projectResult.error}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Resultados Inline: Imagens/Vídeos */}
+      {agentType !== 'project' && ((agentType === 'image' && imageResult) || (agentType === 'video' && videoResult)) && (
         <div className="w-full max-w-3xl mx-auto">
           <div className="flex items-center gap-4 w-full text-xs text-[#5A5A6A] mt-10 mb-6">
             <span className="shrink-0 font-medium">Gerado agora</span>

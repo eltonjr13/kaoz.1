@@ -10,7 +10,9 @@ import { generateOmniVoice } from "@/lib/ai/omni-voice";
 import { generateLipSync } from "@/lib/ai/lipsync";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { analyzeAndGenerateScript } from "@/lib/ai/gemini";
+import { appendAgentMemory } from "@/lib/agent-memory";
 
 function extractReferenceAudio(videoPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -99,16 +101,19 @@ export async function POST(request: Request) {
       if (result.started) {
         // Process Supabase job in background locally
         (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let jobRecord: any = null;
           try {
-            const { data: jobRecord, error: fetchErr } = await supabase
+            const { data, error: fetchErr } = await supabase
               .from("reaction_jobs")
               .select("*, avatars(*)")
               .eq("id", jobId)
               .single();
-
-            if (fetchErr || !jobRecord) {
+            
+            if (fetchErr || !data) {
               throw fetchErr || new Error("Job não encontrado no banco de dados.");
             }
+            jobRecord = data;
 
             const avatar = Array.isArray(jobRecord.avatars) ? jobRecord.avatars[0] : jobRecord.avatars;
             if (!avatar) {
@@ -119,6 +124,11 @@ export async function POST(request: Request) {
             let downloadedSourcePath: string | null = null;
             const jobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
             await mkdir(jobDir, { recursive: true });
+
+            if (jobRecord.source_video_id && existsSync(jobRecord.source_video_id)) {
+              downloadedSourcePath = jobRecord.source_video_id;
+              console.log(`[Supabase Pipeline] Usando vídeo de fonte local: ${downloadedSourcePath}`);
+            }
 
             let sourceUrl = jobRecord.source_video_url;
             if (jobRecord.source_video_id) {
@@ -485,6 +495,15 @@ export async function POST(request: Request) {
               final_video_path: publicUrl
             }).eq("id", jobId);
 
+            await appendAgentMemory({
+              avatarId: jobRecord.avatar_id,
+              topic: jobRecord.topic,
+              type: "success",
+              promptUsed: jobRecord.script_text || "",
+              modelUsed: "Pipeline Supabase Render",
+              learnings: `Renderização de vídeo finalizada com sucesso no Supabase. Vídeo salvo em: ${publicUrl}`
+            });
+
             await supabase.from("job_events").insert({
               user_id: APP_WORKSPACE_ID,
               job_id: jobId,
@@ -493,16 +512,28 @@ export async function POST(request: Request) {
             });
           } catch (jobErr) {
             console.error("Erro no processamento do job do Supabase:", jobErr);
+            const errMsg = jobErr instanceof Error ? jobErr.message : "Falha ao processar pipeline.";
             await supabase.from("reaction_jobs").update({
               status: "failed",
-              error_message: jobErr instanceof Error ? jobErr.message : "Falha ao processar pipeline."
+              error_message: errMsg
             }).eq("id", jobId);
             await supabase.from("job_events").insert({
               user_id: APP_WORKSPACE_ID,
               job_id: jobId,
               event_type: "pipeline_failed",
-              message: jobErr instanceof Error ? jobErr.message : "Erro desconhecido."
+              message: errMsg
             });
+            if (jobRecord) {
+              await appendAgentMemory({
+                avatarId: jobRecord.avatar_id,
+                topic: jobRecord.topic,
+                type: "failure",
+                promptUsed: jobRecord.script_text || "",
+                modelUsed: "Pipeline Supabase Render",
+                errorMessage: errMsg,
+                learnings: `Falha na renderização do vídeo no Supabase: ${errMsg}`
+              });
+            }
           }
         })();
       }
@@ -537,6 +568,11 @@ export async function POST(request: Request) {
         let downloadedSourcePath: string | null = null;
         const localJobDir = path.join(process.cwd(), ".generated", "jobs", jobId);
         await mkdir(localJobDir, { recursive: true });
+
+        if (localJobRecord.source_video_id && existsSync(localJobRecord.source_video_id)) {
+          downloadedSourcePath = localJobRecord.source_video_id;
+          console.log(`[Local Pipeline] Usando vídeo de fonte local: ${downloadedSourcePath}`);
+        }
 
         const localSourceUrl = localJobRecord.source_video_url;
         let voiceDiskPath = "";
@@ -723,12 +759,30 @@ export async function POST(request: Request) {
 
         // 5. Completion
         await completeLocalJob(jobId, publicVideoPath);
+        await appendAgentMemory({
+          avatarId: localJobRecord.avatar_id,
+          topic: localJobRecord.topic,
+          type: "success",
+          promptUsed: localJobRecord.script_text || "",
+          modelUsed: "Pipeline Local Render",
+          learnings: `Renderização de vídeo finalizada com sucesso. Vídeo salvo em: ${publicVideoPath}`
+        });
         console.log(`[Local Pipeline] Job ${jobId} COMPLETO com sucesso!`);
       } catch (renderError) {
         console.error("Erro no processamento local do pipeline em segundo plano:", renderError);
+        const errMsg = renderError instanceof Error ? renderError.message : "Falha ao processar pipeline.";
         await updateLocalJob(jobId, {
           status: "failed",
-          error_message: renderError instanceof Error ? renderError.message : "Falha ao processar pipeline."
+          error_message: errMsg
+        });
+        await appendAgentMemory({
+          avatarId: localJobRecord.avatar_id,
+          topic: localJobRecord.topic,
+          type: "failure",
+          promptUsed: localJobRecord.script_text || "",
+          modelUsed: "Pipeline Local Render",
+          errorMessage: errMsg,
+          learnings: `Falha na renderização do vídeo local: ${errMsg}`
         });
       }
     })();

@@ -229,3 +229,43 @@ export async function updateLocalJob(jobId: string, patch: Partial<ReactionJob>)
 
   return updatedJob;
 }
+
+const EVENTS_FILE = path.join(DATA_DIR, "events.json");
+
+export type LocalJobEvent = {
+  id: string;
+  user_id: string;
+  job_id: string;
+  event_type: string;
+  message: string;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export async function createLocalJobEvent(
+  jobId: string,
+  eventType: string,
+  message: string,
+  metadata?: Record<string, unknown> | null
+): Promise<LocalJobEvent> {
+  const event: LocalJobEvent = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(),
+    user_id: APP_WORKSPACE_ID,
+    job_id: jobId,
+    event_type: eventType,
+    message,
+    metadata: metadata ?? null,
+    created_at: new Date().toISOString()
+  };
+  const events = await readJsonFile<LocalJobEvent[]>(EVENTS_FILE, []);
+  events.push(event);
+  await writeJsonFile(EVENTS_FILE, events);
+  return event;
+}
+
+export async function listLocalJobEvents(jobId: string): Promise<LocalJobEvent[]> {
+  const events = await readJsonFile<LocalJobEvent[]>(EVENTS_FILE, []);
+  return events
+    .filter((e) => e.job_id === jobId)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+}
