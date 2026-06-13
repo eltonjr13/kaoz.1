@@ -197,6 +197,30 @@ export default function FlowDashboardPage() {
         // Check if the agent has finished (e.g. status completed or failed)
         const hasFinished = events.some((e: { event_type: string }) => e.event_type === "completed" || e.event_type === "failed");
         if (hasFinished) {
+          // Fetch the final job details
+          try {
+            const jobRes = await fetch(`/api/jobs?jobId=${activeJobId}`);
+            if (jobRes.ok) {
+              const jobData = await jobRes.json();
+              const job = jobData.jobs?.[0];
+              if (job) {
+                if (job.status === "completed") {
+                  setProjectResult({
+                    success: true,
+                    jobId: activeJobId,
+                    videoPath: job.final_video_path || undefined
+                  });
+                } else {
+                  setProjectResult({
+                    success: false,
+                    error: job.error_message || "O agente falhou na execução."
+                  });
+                }
+              }
+            }
+          } catch (jobErr) {
+            console.error("Erro ao buscar detalhes do job finalizado:", jobErr);
+          }
           setActiveJobId(null);
           fetchStatus();
         }
@@ -560,7 +584,7 @@ export default function FlowDashboardPage() {
             >
               <option value="image">Imagem</option>
               <option value="video">Vídeo</option>
-              <option value="project">Projeto (Agente)</option>
+              <option value="project">Autopilot (Agente Autônomo)</option>
             </select>
 
             {/* Avatar Selector (Only for complete projects) */}
@@ -736,28 +760,37 @@ export default function FlowDashboardPage() {
       {agentType === 'project' && projectResult && (
         <div className="w-full max-w-3xl mx-auto">
           <div className="flex items-center gap-4 w-full text-xs text-[#5A5A6A] mt-10 mb-6">
-            <span className="shrink-0 font-medium">Projeto Autônomo Criado</span>
+            <span className="shrink-0 font-medium">Execução do Agente Autônomo</span>
             <div className="h-[1px] bg-[rgba(255,255,255,0.07)] flex-1"></div>
           </div>
           {projectResult.success ? (
             <div className="bg-[#111114] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-6 space-y-4 text-sm">
               <div className="flex items-center gap-2 text-emerald-400 font-bold">
                 <CheckCircle size={16} />
-                <span>Projeto do Agente Inicializado</span>
+                <span>Agente Autônomo Iniciado</span>
               </div>
               <div className="text-xs space-y-2 text-[#5A5A6A]">
                 <div><strong className="text-[#F2F2F2]">Job ID:</strong> <span className="font-mono">{projectResult.jobId}</span></div>
-                <div><strong className="text-[#F2F2F2]">Status do Render:</strong> Rodando em background local</div>
+                <div><strong className="text-[#F2F2F2]">Status:</strong> {projectResult.videoPath ? "Concluído" : "Processando em segundo plano..."}</div>
               </div>
               {projectResult.videoPath && (
                 <div className="space-y-2">
-                  <strong className="text-xs text-[#5A5A6A] block">Background VideoFX Gerado:</strong>
-                  <div className="aspect-video w-full rounded-[10px] overflow-hidden bg-black border border-[rgba(255,255,255,0.07)]">
-                    <video
-                      src={`/api/flow/media?path=${encodeURIComponent(projectResult.videoPath)}`}
-                      controls
-                      className="w-full h-full object-contain"
-                    />
+                  <strong className="text-xs text-[#5A5A6A] block">Resultado Gerado:</strong>
+                  <div className="aspect-video w-full rounded-[10px] overflow-hidden bg-black border border-[rgba(255,255,255,0.07)] flex items-center justify-center">
+                    {/\.(png|jpe?g|webp)$/i.test(projectResult.videoPath) || projectResult.videoPath.includes("image") ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={projectResult.videoPath.startsWith("http") ? projectResult.videoPath : `/api/flow/media?path=${encodeURIComponent(projectResult.videoPath)}`}
+                        alt="Resultado do Agente"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <video
+                        src={projectResult.videoPath.startsWith("http") ? projectResult.videoPath : `/api/flow/media?path=${encodeURIComponent(projectResult.videoPath)}`}
+                        controls
+                        className="w-full h-full object-contain"
+                      />
+                    )}
                   </div>
                 </div>
               )}

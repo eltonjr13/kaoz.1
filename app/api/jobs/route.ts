@@ -12,27 +12,46 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function GET() {
-  if (hasSupabaseConfig()) {
-    try {
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from("reaction_jobs")
-        .select("*, avatars(name), viral_videos(title, url, platform)")
-        .eq("user_id", APP_WORKSPACE_ID)
-        .order("created_at", { ascending: false });
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get("jobId");
 
-      if (!error) {
-        const localJobs = await listLocalJobs();
-        return NextResponse.json({ jobs: [...localJobs, ...(data ?? [])] });
+    if (hasSupabaseConfig()) {
+      try {
+        const supabase = await createClient();
+        let query = supabase
+          .from("reaction_jobs")
+          .select("*, avatars(name), viral_videos(title, url, platform)")
+          .eq("user_id", APP_WORKSPACE_ID);
+
+        if (jobId) {
+          query = query.eq("id", jobId);
+        }
+
+        const { data, error } = await query.order("created_at", { ascending: false });
+
+        if (!error) {
+          let localJobs = await listLocalJobs();
+          if (jobId) {
+            localJobs = localJobs.filter(j => j.id === jobId);
+          }
+          return NextResponse.json({ jobs: [...localJobs, ...(data ?? [])] });
+        }
+      } catch (err) {
+        console.error("Erro ao ler jobs do Supabase:", err);
       }
-    } catch (err) {
-      console.error("Erro ao ler jobs do Supabase:", err);
     }
-  }
 
-  const localJobs = await listLocalJobs();
-  return NextResponse.json({ jobs: localJobs });
+    let localJobs = await listLocalJobs();
+    if (jobId) {
+      localJobs = localJobs.filter(j => j.id === jobId);
+    }
+    return NextResponse.json({ jobs: localJobs });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errMsg }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

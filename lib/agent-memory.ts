@@ -8,13 +8,16 @@ const MEMORY_FILE = path.join(DATA_DIR, "agent-memory.json");
 export interface AgentMemoryEntry {
   id: string;
   avatarId: string;
-  topic: string;
+  taskType?: "image" | "video" | "project" | "refine";
+  inputSummary?: string;
+  outputSummary?: string;
   timestamp: string;
   type: "success" | "failure";
   promptUsed: string;
   modelUsed: string;
   errorMessage?: string | null;
   learnings: string;
+  topic?: string;
 }
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
@@ -39,18 +42,38 @@ export async function loadAgentMemory(avatarId: string, topic?: string): Promise
   let filtered = memories.filter((m) => m.avatarId === avatarId);
   if (topic) {
     const searchTopic = topic.toLowerCase().trim();
-    filtered = filtered.filter((m) => m.topic.toLowerCase().trim() === searchTopic);
+    filtered = filtered.filter(
+      (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() === searchTopic
+    );
   }
   return filtered.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 }
 
 export async function appendAgentMemory(
-  entry: Omit<AgentMemoryEntry, "id" | "timestamp">
+  entry: Omit<AgentMemoryEntry, "id" | "timestamp"> & {
+    topic?: string;
+    inputSummary?: string;
+    outputSummary?: string;
+    taskType?: "image" | "video" | "project" | "refine";
+  }
 ): Promise<AgentMemoryEntry> {
+  const inputSummary = entry.inputSummary || entry.topic || "N/A";
+  const outputSummary = entry.outputSummary || entry.learnings || "N/A";
+  const taskType = entry.taskType || "project";
+
   const newEntry: AgentMemoryEntry = {
     id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(),
     timestamp: new Date().toISOString(),
-    ...entry
+    avatarId: entry.avatarId,
+    taskType,
+    inputSummary,
+    outputSummary,
+    type: entry.type,
+    promptUsed: entry.promptUsed,
+    modelUsed: entry.modelUsed,
+    errorMessage: entry.errorMessage || null,
+    learnings: entry.learnings,
+    topic: entry.topic || inputSummary
   };
 
   const memories = await readJsonFile<AgentMemoryEntry[]>(MEMORY_FILE, []);
@@ -66,11 +89,13 @@ export async function appendAgentMemory(
 export async function getMemoryContextForPrompt(avatarId: string, topic: string): Promise<string> {
   // Load general avatar learnings and topic-specific learnings
   const generalMemories = await loadAgentMemory(avatarId);
-  const topicMemories = await loadAgentMemory(avatarId, topic);
+  const topicMemories = generalMemories.filter(
+    (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() === topic.toLowerCase().trim()
+  );
 
   // Filter out general memories that match the same topic (avoiding duplicates)
   const otherMemories = generalMemories.filter(
-    (m) => m.topic.toLowerCase().trim() !== topic.toLowerCase().trim()
+    (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() !== topic.toLowerCase().trim()
   );
 
   const combinedMemories = [...topicMemories, ...otherMemories];
@@ -88,14 +113,14 @@ export async function getMemoryContextForPrompt(avatarId: string, topic: string)
   if (successes.length > 0) {
     context += "- EXEMPLOS DE SUCESSO (essas abordagens funcionaram):\n";
     successes.forEach((m) => {
-      context += `  * No tema "${m.topic}", usou o prompt: "${m.promptUsed}". Aprendizado: ${m.learnings}\n`;
+      context += `  * No tema "${m.topic || m.inputSummary}", usou o prompt: "${m.promptUsed}". Aprendizado: ${m.learnings}\n`;
     });
   }
 
   if (failures.length > 0) {
     context += "- ERROS A EVITAR (essas abordagens falharam):\n";
     failures.forEach((m) => {
-      context += `  * No tema "${m.topic}", usou o prompt: "${m.promptUsed}". Falhou com o erro: "${m.errorMessage || m.learnings}"\n`;
+      context += `  * No tema "${m.topic || m.inputSummary}", usou o prompt: "${m.promptUsed}". Falhou com o erro: "${m.errorMessage || m.learnings}"\n`;
     });
   }
 

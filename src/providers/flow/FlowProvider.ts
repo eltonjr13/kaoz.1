@@ -137,7 +137,7 @@ export class FlowProvider {
     this.activeTasksCount++;
     try {
       const { flowAgent } = await import('./FlowAgent');
-      return await flowAgent.createCompleteProject(options);
+      return await flowAgent.runAutonomousAgent(options);
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }

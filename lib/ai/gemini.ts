@@ -303,3 +303,70 @@ Escreva um roteiro de reação curto, de no máximo 15 segundos em português. O
   return response.text?.trim() ?? "";
 }
 
+export interface FlowDecision {
+  flow: 'image' | 'video' | 'project' | 'refine';
+  explanation: string;
+  optimizedPrompt: string;
+  targetJobId?: string | null;
+}
+
+export async function classifyIntention(intention: string): Promise<FlowDecision> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY não configurada no .env.local.");
+  }
+
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+Você é o classificador central de intenções do agente autônomo do MrChicken.
+MrChicken é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares.
+Sua tarefa é analisar o pedido/intenção do usuário e decidir qual é o melhor fluxo para atendê-lo.
+
+Os fluxos possíveis são:
+1. "image": Se o usuário quer gerar apenas uma imagem estática ou ilustrações (ex: "Gere uma imagem de...", "Crie uma foto de...", "Quero um avatar de frango...").
+2. "video": Se o usuário quer gerar apenas um vídeo estático/background (ex: "Gere um clipe de...", "Faça um vídeo curto de...", "Crie um vídeo em loop de...").
+3. "project": Se o usuário quer criar um projeto completo de vídeo react do zero (ex: "Crie um react sobre...", "Faça um vídeo do zero sobre...", "Faça o avatar falar sobre...", "Cria um novo projeto sobre...").
+4. "refine": Se o usuário quer refinar, corrigir ou alterar algum projeto, mídia ou roteiro que já foi criado ou está em andamento (ex: "Ajuste o roteiro de X...", "Refaça o vídeo anterior com...", "Corrija a geração do job 123...").
+
+Pedido do usuário: "${intention}"
+
+Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
+{
+  "flow": "image" | "video" | "project" | "refine",
+  "explanation": "Breve justificativa em português sobre a decisão de fluxo.",
+  "optimizedPrompt": "O prompt otimizado (em inglês se for para image ou video, ou em português/instruções se for para project ou refine).",
+  "targetJobId": "ID do job a ser refinado se o fluxo for 'refine' e o usuário mencionou um ID (formato UUID comum), ou 'latest' se o usuário quer refinar o último projeto, ou null se não aplicável"
+}
+`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const responseText = response.text || "{}";
+    const parsed = parseGeminiResponse<FlowDecision>(responseText, {
+      flow: "project",
+      explanation: "Fallback por falha de parser",
+      optimizedPrompt: intention,
+      targetJobId: null
+    });
+    return parsed;
+  } catch (err) {
+    console.error("Falha ao classificar intenção do usuário:", err);
+    return {
+      flow: "project",
+      explanation: "Fallback por erro de execução",
+      optimizedPrompt: intention,
+      targetJobId: null
+    };
+  }
+}
+
+
