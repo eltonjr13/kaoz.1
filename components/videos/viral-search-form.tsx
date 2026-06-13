@@ -65,6 +65,25 @@ function buildSearchPack(result: ViralSearchResult) {
   return lines.join("\n");
 }
 
+function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    console.error("Clipboard fallback failed", err);
+  }
+  document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
 export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFormProps) {
   const [niche, setNiche] = useState(initialNiche);
   const [platforms, setPlatforms] = useState<ViralSearchPlatform[]>(defaultPlatforms);
@@ -107,11 +126,11 @@ export function ViralSearchForm({ initialNiche, initialResults }: ViralSearchFor
   }
 
   async function copyHook(hook: string) {
-    await navigator.clipboard.writeText(hook);
+    await copyToClipboard(hook);
   }
 
   async function copySearchPack(result: ViralSearchResult) {
-    await navigator.clipboard.writeText(buildSearchPack(result));
+    await copyToClipboard(buildSearchPack(result));
     setCopiedId(result.id);
     window.setTimeout(() => setCopiedId((current) => (current === result.id ? null : current)), 1600);
   }

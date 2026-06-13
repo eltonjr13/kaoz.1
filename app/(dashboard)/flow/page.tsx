@@ -36,6 +36,28 @@ interface GenerationResult {
   error?: string;
 }
 
+const copyToClipboard = (text: string): boolean => {
+  if (typeof window === "undefined") return false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text);
+    return true;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return true;
+  } catch {
+    document.body.removeChild(textarea);
+    return false;
+  }
+};
+
 export default function FlowDashboardPage() {
   // Refs for scrolling to panels
   const imageSectionRef = useRef<HTMLDivElement>(null);
@@ -513,8 +535,11 @@ export default function FlowDashboardPage() {
                   <div className="flex flex-wrap gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800 mt-2">
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(agentResult);
-                        appendLog("Prompt otimizado copiado para o clipboard.");
+                        if (copyToClipboard(agentResult)) {
+                          appendLog("Prompt otimizado copiado para o clipboard.");
+                        } else {
+                          appendLog("Erro ao copiar prompt.");
+                        }
                       }}
                       className="flex items-center gap-1 py-1 px-2.5 rounded bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-bold transition-all cursor-pointer"
                       title="Copiar prompt"

@@ -283,13 +283,12 @@ export class FlowSession {
           if (authenticated) {
             logger.info(`Login detectado para o portal ${portal}! Aguardando 5 segundos para persistência de cookies...`);
             clearInterval(checkInterval);
-            resolved = true;
             await page.waitForTimeout(5000);
             logger.info(`Fechando navegador automaticamente.`);
             await this.close();
             finish();
           }
-        } catch (err) {
+        } catch {
           // Ignore errors during polling (e.g. navigation or closed page)
         }
       }, 2000);
@@ -299,6 +298,7 @@ export class FlowSession {
   /**
    * Helper method to verify authentication for a specific portal during the login session.
    */
+  // eslint-disable-next-line complexity
   private async checkPortalAuthenticated(
     page: Page,
     portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'
@@ -362,7 +362,7 @@ export class FlowSession {
       }
 
       return false;
-    } catch (err) {
+    } catch {
       return false;
     }
   }

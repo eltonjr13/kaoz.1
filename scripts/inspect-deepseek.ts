@@ -7,7 +7,7 @@ async function main() {
   const profilePath = path.resolve('storage/browser-profile/');
   
   const context = await chromium.launchPersistentContext(profilePath, {
-    headless: true, // run headlessly
+    headless: false, // run headfully to bypass headless-only bot detection
     viewport: { width: 1280, height: 720 },
     ignoreDefaultArgs: ['--enable-automation'],
     args: [

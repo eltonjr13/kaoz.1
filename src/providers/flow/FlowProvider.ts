@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FlowConfig, ImageGenerationResult, VideoGenerationResult, FlowStatus, ImageGenerationOptions, VideoGenerationOptions } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { FlowDownloader } from './FlowDownloader';

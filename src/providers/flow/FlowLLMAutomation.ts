@@ -68,9 +68,17 @@ export class FlowLLMAutomation {
 
     logger.info('[Agente MrChicken] Inserindo prompt no Gemini...');
     const input = await findSmartElement(page, queries, 10000);
-    await input.focus();
-    await input.fill('');
-    await input.fill(prompt);
+    try {
+      await input.focus();
+      await input.fill('');
+      await input.fill(prompt);
+    } catch (err) {
+      logger.warn('Falha ao usar fill no Gemini. Usando teclado virtual...', err);
+      await input.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type(prompt, { delay: 10 });
+    }
 
     // Locate send button
     const sendBtnQueries: ElementQuery[] = [
@@ -130,9 +138,17 @@ export class FlowLLMAutomation {
 
     logger.info('[Agente MrChicken] Inserindo prompt no ChatGPT...');
     const input = await findSmartElement(page, queries, 10000);
-    await input.focus();
-    await input.fill('');
-    await input.fill(prompt);
+    try {
+      await input.focus();
+      await input.fill('');
+      await input.fill(prompt);
+    } catch (err) {
+      logger.warn('Falha ao usar fill no ChatGPT. Usando teclado virtual...', err);
+      await input.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type(prompt, { delay: 10 });
+    }
 
     const sendBtnQueries: ElementQuery[] = [
       { selector: 'button[data-testid="send-button"]' },
@@ -197,12 +213,20 @@ export class FlowLLMAutomation {
 
     logger.info('[Agente MrChicken] Inserindo prompt no DeepSeek...');
     const input = await findSmartElement(page, queries, 10000);
-    await input.focus();
-    await input.fill('');
-    await input.fill(prompt);
+    try {
+      await input.focus();
+      await input.fill('');
+      await input.fill(prompt);
+    } catch (err) {
+      logger.warn('Falha ao usar fill no DeepSeek. Usando teclado virtual...', err);
+      await input.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type(prompt, { delay: 10 });
+    }
 
     const sendBtnQueries: ElementQuery[] = [
-      { selector: 'div[role="button"]' },
+      { selector: 'div[role="button"].ds-button--circle' },
       { selector: 'button[type="submit"]' },
       { selector: '.send-btn' }
     ];
@@ -255,9 +279,17 @@ export class FlowLLMAutomation {
 
     logger.info('[Agente MrChicken] Inserindo prompt no Claude...');
     const input = await findSmartElement(page, queries, 10000);
-    await input.focus();
-    await input.fill('');
-    await input.fill(prompt);
+    try {
+      await input.focus();
+      await input.fill('');
+      await input.fill(prompt);
+    } catch (err) {
+      logger.warn('Falha ao usar fill no Claude. Usando teclado virtual...', err);
+      await input.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type(prompt, { delay: 10 });
+    }
 
     const sendBtnQueries: ElementQuery[] = [
       { selector: 'button[aria-label*="Send"]' },

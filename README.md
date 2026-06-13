@@ -19,6 +19,7 @@ Funcionalidades implementadas:
 - APIs internas para avatares, jobs, busca viral e inicio do pipeline.
 - Persistencia em Supabase quando configurado, com fallback local em `.generated/local-data`.
 - Render local do video final via `ffmpeg`, com layout vertical: expert no topo e video fonte embaixo.
+- Otimização de prompts para imagem/vídeo em `/flow` utilizando agentes de IA de automação web via Playwright com suporte a Gemini, ChatGPT, Claude e DeepSeek.
 
 Pontos ainda parciais ou dependentes de servico externo:
 
@@ -40,6 +41,7 @@ Pontos ainda parciais ou dependentes de servico externo:
 - Microserviço Python/FastAPI para MuseTalk lip-sync
 - ffmpeg/ffprobe para render
 - yt-dlp para baixar videos fonte remotos
+- Playwright para automação e raspagem web de LLMs gratuitas
 
 ## Estrutura principal
 
@@ -92,6 +94,13 @@ LIPSYNC_API_KEY=
 LIPSYNC_TIMEOUT_MS=1800000
 LIPSYNC_TRANSFER_MODE=upload
 LIPSYNC_DOWNLOADS_DIR=.generated/jobs
+
+# Configurações do Flow & Automação Web (Playwright)
+FLOW_HEADLESS=false # Definir como false para rodar visível (necessário para ChatGPT/Claude/DeepSeek passarem pelo Cloudflare)
+FLOW_TIMEOUT=300000
+FLOW_DOWNLOAD_PATH=storage/generated/
+FLOW_PROFILE_PATH=storage/browser-profile/
+FLOW_URL=https://flow.google
 ```
 
 As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle/Colab, veja `docs/kaggle-musetalk-v15.md`.
@@ -182,3 +191,22 @@ Quando Supabase nao esta configurado ou uma operacao falha, o app usa fallback l
 - **Logs em Tempo Real**: As saídas dos subprocessos (como progresso do FFmpeg e contagem de frames processados pelo Python `rembg`) são enviadas diretamente ao terminal do Next.js em tempo real, permitindo auditoria visual detalhada da renderização.
 - **Resiliência com OneDrive (Windows)**: O script de remoção de fundo possui um sistema de retry (5 tentativas com delay de 300ms) para evitar que o sincronismo automático do OneDrive crie bloqueios que quebrem o processamento com erro `FileNotFoundError`.
 - **Prevenção de Socket Leaks**: As conexões SSE do Gradio Client abertas no OmniVoice são explicitamente fechadas com `app.close()` após o término de cada predição de voz.
+
+## Login e Automação de IAs (Playwright)
+
+Para otimizar seus prompts de imagem e vídeo usando agentes inteligentes web, o MrChicken utiliza o **Playwright** para interagir diretamente com as interfaces web gratuitas do **Gemini, ChatGPT, Claude e DeepSeek**.
+
+### Configuração de Sessão de Login
+Como as automações rodam simulando um navegador, você precisa realizar o login nas plataformas uma vez para salvar os cookies e tokens de sessão.
+1. Acesse o painel de **Configurações** no menu lateral.
+2. Na seção **Contas & Login das IAs (Playwright Session)**, clique em **Fazer Login** para a IA desejada.
+3. Um navegador Chrome será aberto. Faça login na sua conta normalmente.
+4. O sistema detectará o login e aguardará **5 segundos** antes de fechar o navegador automaticamente. Esse atraso é obrigatório para garantir que o Chromium grave todos os dados de sessão no perfil (`storage/browser-profile/`).
+
+### Contornando Bloqueios (Cloudflare Turnstile)
+Plataformas como **ChatGPT, Claude e DeepSeek** possuem bloqueios severos contra navegadores ocultos (`headless: true`).
+* **Gemini** funciona normalmente em modo oculto (`FLOW_HEADLESS=true`).
+* Para garantir que os outros três modelos funcionem corretamente sem ser ejetados pelo Cloudflare, você deve rodar a automação em modo visível definindo **`FLOW_HEADLESS=false`** no arquivo `.env.local`.
+
+### Copiar com Segurança (Fallback de Clipboard)
+Em navegadores modernos, a API `navigator.clipboard` é bloqueada quando a aplicação é acessada fora de um contexto seguro (HTTP sem SSL ou IP de rede local). O sistema implementa uma função robusta de fallback (`document.execCommand('copy')`) nos botões de cópia para assegurar que a cópia de prompts/ganchos funcione em qualquer dispositivo ou rede.
