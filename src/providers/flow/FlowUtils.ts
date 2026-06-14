@@ -2,17 +2,37 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { Page, Locator } from 'playwright';
 
+function formatLogMeta(meta?: unknown): string {
+  if (meta === undefined || meta === null) {
+    return '';
+  }
+
+  const normalized = meta instanceof Error
+    ? {
+        name: meta.name,
+        message: meta.message,
+        stack: meta.stack
+      }
+    : meta;
+
+  try {
+    return JSON.stringify(normalized);
+  } catch {
+    return String(normalized);
+  }
+}
+
 /**
  * Structured log helper for the Flow provider.
  */
 export const logger = {
   info(message: string, meta?: unknown) {
     const timestamp = new Date().toISOString();
-    console.log(`[FLOW] [INFO] [${timestamp}] ${message}`, meta ? JSON.stringify(meta) : '');
+    console.log(`[FLOW] [INFO] [${timestamp}] ${message}`, formatLogMeta(meta));
   },
   warn(message: string, meta?: unknown) {
     const timestamp = new Date().toISOString();
-    console.warn(`[FLOW] [WARN] [${timestamp}] ${message}`, meta ? JSON.stringify(meta) : '');
+    console.warn(`[FLOW] [WARN] [${timestamp}] ${message}`, formatLogMeta(meta));
   },
   error(message: string, error?: unknown) {
     const timestamp = new Date().toISOString();

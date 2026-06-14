@@ -151,11 +151,19 @@ export class FlowProvider {
   }
 
   /**
+   * Checks the login status of all portals in background.
+   */
+  async checkPortalsStatus(): Promise<Record<string, boolean>> {
+    return await this.session.checkAllPortalsStatus();
+  }
+
+  /**
    * Closes the active browser session. Highly recommended to invoke when finishing operations.
    */
   async close(): Promise<void> {
     await this.session.close();
   }
+
 
   // ==========================================
   // FUTURAS EXPANSÕES

@@ -24,6 +24,15 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "check-status") {
+      console.log("[API FLOW AUTH] Verificando status de login de todos os portais...");
+      const statuses = await flowProvider.checkPortalsStatus();
+      return NextResponse.json({
+        success: true,
+        statuses
+      });
+    }
+
     if (action === "login-session") {
       if (
         portal !== "google" &&

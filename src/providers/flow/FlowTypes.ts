@@ -36,6 +36,15 @@ export interface FlowStatus {
   profilePath: string;
 }
 
+export type FlowPortal = 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek';
+
+export interface PortalLoginResult {
+  portal: FlowPortal;
+  authenticated: boolean;
+  reason: 'detected' | 'closed' | 'timeout' | 'error';
+  message: string;
+}
+
 // Future expansion types
 export interface AudioGenerationResult {
   success: boolean;

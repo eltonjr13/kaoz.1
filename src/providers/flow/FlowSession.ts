@@ -368,6 +368,83 @@ export class FlowSession {
   }
 
   /**
+   * Verifies the authentication status of all supported portals in parallel,
+   * launching a headless browser context if not already active.
+   */
+  async checkAllPortalsStatus(): Promise<Record<string, boolean>> {
+    const wasInitialized = this.context !== null;
+    let page: Page | null = null;
+    try {
+      if (!this.context) {
+        page = await this.launchContext(true);
+      } else {
+        const pages = this.context.pages();
+        page = pages.length > 0 ? pages[0] : await this.context.newPage();
+      }
+
+      const results: Record<string, boolean> = {
+        google: false,
+        gemini: false,
+        chatgpt: false,
+        claude: false,
+        deepseek: false
+      };
+
+      // 1. Check Google Flow on the active page or navigate to it
+      const currentUrl = page.url();
+      if (!currentUrl.includes('labs.google') && !currentUrl.includes('google.com') && !currentUrl.includes('flow.google')) {
+        await page.goto(this.config.flowUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      }
+      results.google = await this.checkAuthenticated(page);
+
+      // 2. Helper to check another portal on a temporary page
+      const checkPortal = async (portal: 'gemini' | 'chatgpt' | 'claude' | 'deepseek', url: string) => {
+        let p: Page | null = null;
+        try {
+          p = await this.context!.newPage();
+          await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          return await this.checkPortalAuthenticated(p, portal);
+        } catch (err) {
+          logger.error(`[FlowSession] Erro ao verificar portal ${portal}:`, err);
+          return false;
+        } finally {
+          if (p) {
+            await p.close().catch(() => {});
+          }
+        }
+      };
+
+      // Run checks in parallel for other portals
+      const [gemini, chatgpt, claude, deepseek] = await Promise.all([
+        checkPortal('gemini', 'https://gemini.google.com'),
+        checkPortal('chatgpt', 'https://chatgpt.com'),
+        checkPortal('claude', 'https://claude.ai'),
+        checkPortal('deepseek', 'https://chat.deepseek.com')
+      ]);
+
+      results.gemini = gemini;
+      results.chatgpt = chatgpt;
+      results.claude = claude;
+      results.deepseek = deepseek;
+
+      return results;
+    } catch (err) {
+      logger.error('[FlowSession] Erro geral ao verificar status dos portais:', err);
+      return {
+        google: false,
+        gemini: false,
+        chatgpt: false,
+        claude: false,
+        deepseek: false
+      };
+    } finally {
+      if (!wasInitialized) {
+        await this.close().catch(() => {});
+      }
+    }
+  }
+
+  /**
    * Closes the current browser and context.
    */
   async close(): Promise<void> {
