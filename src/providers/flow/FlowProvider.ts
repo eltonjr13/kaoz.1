@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { FlowConfig, ImageGenerationResult, VideoGenerationResult, FlowStatus, ImageGenerationOptions, VideoGenerationOptions } from './FlowTypes';
+import { FlowConfig, FlowPortal, ImageGenerationResult, PortalLoginResult, VideoGenerationResult, FlowStatus, ImageGenerationOptions, VideoGenerationOptions } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
@@ -146,8 +146,8 @@ export class FlowProvider {
   /**
    * Opens a visible, headful browser session for manual login to the specified portal.
    */
-  async openLoginSession(portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'): Promise<void> {
-    await this.session.openLoginSession(portal);
+  async openLoginSession(portal: FlowPortal): Promise<PortalLoginResult> {
+    return await this.session.openLoginSession(portal);
   }
 
   /**
@@ -228,4 +228,3 @@ if (process.env.NODE_ENV !== 'production') {
     Object.setPrototypeOf((flowProvider as any).llmAutomation, FlowLLMAutomation.prototype);
   }
 }
-

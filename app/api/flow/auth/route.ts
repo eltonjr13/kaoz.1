@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
+import { FlowPortal } from "@/src/providers/flow/FlowTypes";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -45,10 +46,22 @@ export async function POST(request: Request) {
       }
 
       console.log(`[API FLOW AUTH] Abrindo sessão de login para o portal: ${portal}...`);
-      await flowProvider.openLoginSession(portal as 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek');
+      const result = await flowProvider.openLoginSession(portal as FlowPortal);
+      if (!result.authenticated) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: result.message,
+            result
+          },
+          { status: result.reason === "timeout" ? 408 : 409 }
+        );
+      }
+
       return NextResponse.json({
         success: true,
-        message: `Sessão de login para ${portal} concluída.`
+        message: result.message,
+        result
       });
     }
 

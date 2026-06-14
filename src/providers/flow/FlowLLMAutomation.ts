@@ -6,6 +6,14 @@ import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUti
 export class FlowLLMAutomation {
   constructor(private session: FlowSession, private config: FlowConfig) {}
 
+  private async hasVisibleLoginPrompt(page: Page): Promise<boolean> {
+    return await page
+      .getByText(/Log in|Sign in|Entrar|Fazer login|Login/i)
+      .first()
+      .isVisible({ timeout: 1500 })
+      .catch(() => false);
+  }
+
   /**
    * Refines/optimizes a prompt using the selected LLM browser portal.
    * If the portal is offline, not logged in, or blocked, uses a smart local fallback prompt engineer.
@@ -22,7 +30,7 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
 
     try {
-      const page = await this.session.getPage();
+      const page = await this.session.getAutomationPage();
       
       switch (model) {
         case 'gemini':
@@ -126,7 +134,12 @@ export class FlowLLMAutomation {
 
     // Verify if logged in
     const currentUrl = page.url();
-    if (currentUrl.includes('/login') || currentUrl.includes('/auth') || currentUrl.includes('/signup')) {
+    if (
+      currentUrl.includes('/login') ||
+      currentUrl.includes('/auth') ||
+      currentUrl.includes('/signup') ||
+      await this.hasVisibleLoginPrompt(page)
+    ) {
       throw new Error('Sessão expirada no ChatGPT.');
     }
 

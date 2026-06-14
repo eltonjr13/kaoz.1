@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { chromium, BrowserContext, Page } from 'playwright';
-import { FlowConfig } from './FlowTypes';
+import { FlowConfig, FlowPortal, PortalLoginResult } from './FlowTypes';
 import { logger, ensureDirExists } from './FlowUtils';
 
 export class FlowSession {
@@ -20,6 +20,19 @@ export class FlowSession {
       return this.activePage;
     }
     return this.launch();
+  }
+
+  /**
+   * Returns a browser page for external LLM portals without forcing Google Flow auth first.
+   */
+  async getAutomationPage(): Promise<Page> {
+    if (this.activePage && !this.activePage.isClosed()) {
+      return this.activePage;
+    }
+
+    const page = await this.launchContext(this.config.headless);
+    this.activePage = page;
+    return page;
   }
 
   /**
@@ -221,7 +234,7 @@ export class FlowSession {
    * Launches a headful browser session for manual login to the specified portal,
    * keeping it open until either successful authentication is detected, or the user closes the window.
    */
-  async openLoginSession(portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'): Promise<void> {
+  async openLoginSession(portal: FlowPortal): Promise<PortalLoginResult> {
     logger.info(`Abrindo sessão de login visível para: ${portal}`);
     
     // 1. Close any existing context to release the lock on the profile
@@ -245,48 +258,98 @@ export class FlowSession {
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // 4. Wait for the browser context to be closed by the user or authentication to be detected
-    return new Promise<void>((resolve) => {
+    return new Promise<PortalLoginResult>((resolve) => {
       let resolved = false;
+      let authenticatedDetected = false;
+      let checkInterval: NodeJS.Timeout | null = null;
+      let timeoutHandle: NodeJS.Timeout | null = null;
 
-      const finish = () => {
+      const finish = (result: PortalLoginResult) => {
         if (resolved) return;
         resolved = true;
-        clearInterval(checkInterval);
-        resolve();
+        if (checkInterval) {
+          clearInterval(checkInterval);
+        }
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        resolve(result);
       };
 
       if (!this.context) {
-        resolve();
+        finish({
+          portal,
+          authenticated: false,
+          reason: 'error',
+          message: `Navegador de login para ${portal} nao foi inicializado.`
+        });
         return;
       }
 
       this.context.once('close', () => {
         logger.info(`Sessão de login para ${portal} concluída (Browser Context fechado).`);
-        finish();
+        if (authenticatedDetected) {
+          return;
+        }
+        finish({
+          portal,
+          authenticated: false,
+          reason: 'closed',
+          message: `A janela de login para ${portal} foi fechada antes de a autenticacao ser detectada.`
+        });
       });
 
       page.once('close', async () => {
         logger.info(`Página de login para ${portal} fechada pelo usuário.`);
+        if (authenticatedDetected || resolved) {
+          return;
+        }
+        finish({
+          portal,
+          authenticated: false,
+          reason: 'closed',
+          message: `A pagina de login para ${portal} foi fechada antes de a autenticacao ser detectada.`
+        });
         await this.close();
-        finish();
       });
 
+      timeoutHandle = setTimeout(() => {
+        logger.warn(`Timeout aguardando login no portal ${portal}.`);
+        finish({
+          portal,
+          authenticated: false,
+          reason: 'timeout',
+          message: `Tempo limite aguardando login em ${portal}. Abra novamente e conclua o login antes de fechar a janela.`
+        });
+        void this.close();
+      }, this.config.timeout);
+
       // Poll every 2 seconds to check if authenticated
-      const checkInterval = setInterval(async () => {
+      checkInterval = setInterval(async () => {
         if (resolved || page.isClosed()) {
-          clearInterval(checkInterval);
+          if (checkInterval) {
+            clearInterval(checkInterval);
+          }
           return;
         }
 
         try {
           const authenticated = await this.checkPortalAuthenticated(page, portal);
           if (authenticated) {
+            authenticatedDetected = true;
             logger.info(`Login detectado para o portal ${portal}! Aguardando 5 segundos para persistência de cookies...`);
-            clearInterval(checkInterval);
+            if (checkInterval) {
+              clearInterval(checkInterval);
+            }
             await page.waitForTimeout(5000);
             logger.info(`Fechando navegador automaticamente.`);
             await this.close();
-            finish();
+            finish({
+              portal,
+              authenticated: true,
+              reason: 'detected',
+              message: `Login em ${portal} detectado e sessao salva no perfil do Playwright.`
+            });
           }
         } catch {
           // Ignore errors during polling (e.g. navigation or closed page)
@@ -301,7 +364,7 @@ export class FlowSession {
   // eslint-disable-next-line complexity
   private async checkPortalAuthenticated(
     page: Page,
-    portal: 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek'
+    portal: FlowPortal
   ): Promise<boolean> {
     try {
       const url = page.url();
@@ -369,14 +432,14 @@ export class FlowSession {
 
   /**
    * Verifies the authentication status of all supported portals in parallel,
-   * launching a headless browser context if not already active.
+   * launching a configured browser context if not already active.
    */
   async checkAllPortalsStatus(): Promise<Record<string, boolean>> {
     const wasInitialized = this.context !== null;
     let page: Page | null = null;
     try {
       if (!this.context) {
-        page = await this.launchContext(true);
+        page = await this.launchContext(this.config.headless);
       } else {
         const pages = this.context.pages();
         page = pages.length > 0 ? pages[0] : await this.context.newPage();

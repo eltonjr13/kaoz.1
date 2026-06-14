@@ -36,10 +36,7 @@ export const logger = {
   },
   error(message: string, error?: unknown) {
     const timestamp = new Date().toISOString();
-    console.error(
-      `[FLOW] [ERROR] [${timestamp}] ${message}`,
-      error instanceof Error ? { message: error.message, stack: error.stack } : error
-    );
+    console.error(`[FLOW] [ERROR] [${timestamp}] ${message}`, formatLogMeta(error));
   }
 };
 

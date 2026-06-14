@@ -150,18 +150,18 @@ export default function SettingsPage() {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.result?.authenticated) {
         setStatusMessage({
-          text: `Sessão de login para ${portal.name} concluída e salva com sucesso!`,
+          text: data.message || `Sessão de login para ${portal.name} concluída e salva com sucesso!`,
           type: "success"
         });
-        // Set individual portal status to connected
         setPortalStatuses(prev => ({ ...prev, [portal.id]: 'connected' }));
       } else {
         setStatusMessage({
-          text: `Erro ao concluir sessão de login: ${data.error || "Erro desconhecido"}`,
+          text: `Login não confirmado para ${portal.name}: ${data.error || "autenticação não detectada"}`,
           type: "error"
         });
+        setPortalStatuses(prev => ({ ...prev, [portal.id]: 'disconnected' }));
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
