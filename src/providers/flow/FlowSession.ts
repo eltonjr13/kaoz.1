@@ -6,6 +6,7 @@ import { logger, ensureDirExists } from './FlowUtils';
 export class FlowSession {
   private context: BrowserContext | null = null;
   private activePage: Page | null = null;
+  private loginInProgress = false;
 
   constructor(private config: FlowConfig) {
     // Ensure profile path exists
@@ -236,6 +237,19 @@ export class FlowSession {
    */
   async openLoginSession(portal: FlowPortal): Promise<PortalLoginResult> {
     logger.info(`Abrindo sessão de login visível para: ${portal}`);
+
+    if (this.loginInProgress) {
+      return {
+        portal,
+        authenticated: false,
+        reason: 'error',
+        message: 'Ja existe uma sessao de login manual em andamento.'
+      };
+    }
+
+    this.loginInProgress = true;
+
+    try {
     
     // 1. Close any existing context to release the lock on the profile
     await this.close();
@@ -258,7 +272,7 @@ export class FlowSession {
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // 4. Wait for the browser context to be closed by the user or authentication to be detected
-    return new Promise<PortalLoginResult>((resolve) => {
+    return await new Promise<PortalLoginResult>((resolve) => {
       let resolved = false;
       let authenticatedDetected = false;
       let checkInterval: NodeJS.Timeout | null = null;
@@ -289,6 +303,12 @@ export class FlowSession {
       this.context.once('close', () => {
         logger.info(`Sessão de login para ${portal} concluída (Browser Context fechado).`);
         if (authenticatedDetected) {
+          finish({
+            portal,
+            authenticated: true,
+            reason: 'detected',
+            message: `Login em ${portal} detectado e sessao salva no perfil do Playwright.`
+          });
           return;
         }
         finish({
@@ -301,7 +321,17 @@ export class FlowSession {
 
       page.once('close', async () => {
         logger.info(`Página de login para ${portal} fechada pelo usuário.`);
-        if (authenticatedDetected || resolved) {
+        if (resolved) {
+          return;
+        }
+        if (authenticatedDetected) {
+          finish({
+            portal,
+            authenticated: true,
+            reason: 'detected',
+            message: `Login em ${portal} detectado e sessao salva no perfil do Playwright.`
+          });
+          await this.close();
           return;
         }
         finish({
@@ -315,6 +345,15 @@ export class FlowSession {
 
       timeoutHandle = setTimeout(() => {
         logger.warn(`Timeout aguardando login no portal ${portal}.`);
+        if (authenticatedDetected) {
+          finish({
+            portal,
+            authenticated: true,
+            reason: 'detected',
+            message: `Login em ${portal} detectado e sessao salva no perfil do Playwright.`
+          });
+          return;
+        }
         finish({
           portal,
           authenticated: false,
@@ -336,26 +375,28 @@ export class FlowSession {
         try {
           const authenticated = await this.checkPortalAuthenticated(page, portal);
           if (authenticated) {
-            authenticatedDetected = true;
-            logger.info(`Login detectado para o portal ${portal}! Aguardando 5 segundos para persistência de cookies...`);
-            if (checkInterval) {
-              clearInterval(checkInterval);
+            if (!authenticatedDetected) {
+              authenticatedDetected = true;
+              logger.info(`Login detectado para o portal ${portal}. Aguardando o usuario fechar a janela para concluir.`);
             }
-            await page.waitForTimeout(5000);
-            logger.info(`Fechando navegador automaticamente.`);
-            await this.close();
-            finish({
-              portal,
-              authenticated: true,
-              reason: 'detected',
-              message: `Login em ${portal} detectado e sessao salva no perfil do Playwright.`
-            });
           }
         } catch {
           // Ignore errors during polling (e.g. navigation or closed page)
         }
       }, 2000);
     });
+    } catch (err) {
+      logger.error(`Falha ao abrir sessao de login para ${portal}:`, err);
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        portal,
+        authenticated: false,
+        reason: 'error',
+        message
+      };
+    } finally {
+      this.loginInProgress = false;
+    }
   }
 
   /**
@@ -431,18 +472,20 @@ export class FlowSession {
   }
 
   /**
-   * Verifies the authentication status of all supported portals in parallel,
-   * launching a configured browser context if not already active.
+   * Verifies portal authentication sequentially in a temporary page.
    */
   async checkAllPortalsStatus(): Promise<Record<string, boolean>> {
+    if (this.loginInProgress) {
+      throw new Error('Login manual em andamento. Aguarde concluir antes de verificar status.');
+    }
+
     const wasInitialized = this.context !== null;
     let page: Page | null = null;
     try {
       if (!this.context) {
-        page = await this.launchContext(this.config.headless);
+        page = await this.launchContext(true);
       } else {
-        const pages = this.context.pages();
-        page = pages.length > 0 ? pages[0] : await this.context.newPage();
+        page = await this.context.newPage();
       }
 
       const results: Record<string, boolean> = {
@@ -460,35 +503,21 @@ export class FlowSession {
       }
       results.google = await this.checkAuthenticated(page);
 
-      // 2. Helper to check another portal on a temporary page
+      // 2. Helper to check another portal on the same temporary page.
       const checkPortal = async (portal: 'gemini' | 'chatgpt' | 'claude' | 'deepseek', url: string) => {
-        let p: Page | null = null;
         try {
-          p = await this.context!.newPage();
-          await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          return await this.checkPortalAuthenticated(p, portal);
+          await page!.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          return await this.checkPortalAuthenticated(page!, portal);
         } catch (err) {
           logger.error(`[FlowSession] Erro ao verificar portal ${portal}:`, err);
           return false;
-        } finally {
-          if (p) {
-            await p.close().catch(() => {});
-          }
         }
       };
 
-      // Run checks in parallel for other portals
-      const [gemini, chatgpt, claude, deepseek] = await Promise.all([
-        checkPortal('gemini', 'https://gemini.google.com'),
-        checkPortal('chatgpt', 'https://chatgpt.com'),
-        checkPortal('claude', 'https://claude.ai'),
-        checkPortal('deepseek', 'https://chat.deepseek.com')
-      ]);
-
-      results.gemini = gemini;
-      results.chatgpt = chatgpt;
-      results.claude = claude;
-      results.deepseek = deepseek;
+      results.gemini = await checkPortal('gemini', 'https://gemini.google.com');
+      results.chatgpt = await checkPortal('chatgpt', 'https://chatgpt.com');
+      results.claude = await checkPortal('claude', 'https://claude.ai');
+      results.deepseek = await checkPortal('deepseek', 'https://chat.deepseek.com');
 
       return results;
     } catch (err) {
@@ -503,6 +532,8 @@ export class FlowSession {
     } finally {
       if (!wasInitialized) {
         await this.close().catch(() => {});
+      } else if (page && !page.isClosed()) {
+        await page.close().catch(() => {});
       }
     }
   }

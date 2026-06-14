@@ -27,7 +27,16 @@ export async function POST(request: Request) {
 
     if (action === "check-status") {
       console.log("[API FLOW AUTH] Verificando status de login de todos os portais...");
-      const statuses = await flowProvider.checkPortalsStatus();
+      let statuses: Record<string, boolean>;
+      try {
+        statuses = await flowProvider.checkPortalsStatus();
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes("Login manual em andamento")) {
+          return jsonError(errMsg, 409);
+        }
+        throw err;
+      }
       return NextResponse.json({
         success: true,
         statuses

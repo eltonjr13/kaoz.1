@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Settings,
   Cpu,
@@ -126,19 +126,11 @@ export default function SettingsPage() {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      checkAllStatuses();
-    }, 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Trigger headful manual login session for a specific portal
   const handleOpenLogin = async (portal: PortalConfig) => {
     setLoadingPortal(portal.id);
     setStatusMessage({
-      text: `Navegador aberto para ${portal.name}. Faça o login na janela visível. O MrChicken fechará a janela automaticamente assim que o login for detectado.`,
+      text: `Navegador aberto para ${portal.name}. Faça o login na janela visível e feche a janela apenas depois de concluir.`,
       type: "info"
     });
 
@@ -171,8 +163,6 @@ export default function SettingsPage() {
       });
     } finally {
       setLoadingPortal(null);
-      // Run status check again to ensure status is up to date
-      checkAllStatuses();
     }
   };
 
@@ -188,7 +178,13 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setStatusMessage({ text: "Todas as sessões abertas foram encerradas.", type: "success" });
-        checkAllStatuses();
+        setPortalStatuses({
+          google: 'disconnected',
+          gemini: 'disconnected',
+          chatgpt: 'disconnected',
+          claude: 'disconnected',
+          deepseek: 'disconnected'
+        });
       } else {
         setStatusMessage({ text: `Falha ao fechar sessões: ${data.error}`, type: "error" });
       }
@@ -216,7 +212,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={checkAllStatuses}
-            disabled={isCheckingAll}
+            disabled={isCheckingAll || !!loadingPortal}
             className="flex items-center justify-center gap-1.5 px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md"
           >
             {isCheckingAll ? (
@@ -229,7 +225,8 @@ export default function SettingsPage() {
           
           <button
             onClick={handleForceCloseAll}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-rose-500 rounded-full text-[11px] font-bold transition-all cursor-pointer"
+            disabled={!!loadingPortal || isCheckingAll}
+            className="flex items-center justify-center gap-1.5 px-4 py-2 border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-rose-500 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer"
           >
             <XCircle size={12} />
             <span>Encerrar Navegadores</span>
