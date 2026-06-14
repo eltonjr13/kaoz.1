@@ -9,15 +9,16 @@ import {
   Trash2,
   Terminal,
   Copy,
-  ArrowRight
+  ArrowRight,
+  Sliders,
+  Film,
+  Cpu,
+  Sparkles,
+  User,
+  Check
 } from "lucide-react";
 
-interface FlowStatus {
-  initialized: boolean;
-  authenticated: boolean;
-  activeTasks: number;
-  profilePath: string;
-}
+
 
 interface GenerationResult {
   success: boolean;
@@ -59,10 +60,7 @@ const copyToClipboard = (text: string): boolean => {
 };
 
 export default function FlowDashboardPage() {
-  // 1. Status States
-  const [status, setStatus] = useState<FlowStatus | null>(null);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [closeLoading, setCloseLoading] = useState(false);
+
 
   // 2. Control States
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
@@ -99,12 +97,30 @@ export default function FlowDashboardPage() {
   const [showLogs, setShowLogs] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
+  // 6. Popover States
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Popover container ref for click-outside detection
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   // Auto-scroll background page element to deep dark
   useEffect(() => {
     const mainEl = document.querySelector('main');
     if (mainEl) {
       const originalBg = mainEl.style.backgroundColor;
-      mainEl.style.backgroundColor = '#0A0A0B';
+      mainEl.style.backgroundColor = '#0a0a0a';
       return () => {
         mainEl.style.backgroundColor = originalBg;
       };
@@ -117,21 +133,7 @@ export default function FlowDashboardPage() {
     setLogs((prev) => [...prev, `[${timestamp}] ${message}`]);
   };
 
-  // Fetch session status
-  const fetchStatus = async () => {
-    try {
-      const res = await fetch("/api/flow/generate");
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data.status);
-      } else {
-        appendLog("Falha ao obter status do provider.");
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro ao consultar status: ${errMsg}`);
-    }
-  };
+
 
   // Fetch avatars list
   const fetchAvatars = async () => {
@@ -150,10 +152,9 @@ export default function FlowDashboardPage() {
     }
   };
 
-  // Trigger status and avatar checks on load (using setTimeout to prevent cascading render error)
+  // Trigger avatar checks on load (using setTimeout to prevent cascading render error)
   useEffect(() => {
     setTimeout(() => {
-      fetchStatus();
       fetchAvatars();
       appendLog("Painel do Agente MrChicken inicializado.");
     }, 0);
@@ -222,7 +223,6 @@ export default function FlowDashboardPage() {
             console.error("Erro ao buscar detalhes do job finalizado:", jobErr);
           }
           setActiveJobId(null);
-          fetchStatus();
         }
       } catch (err) {
         console.error("Erro no polling de eventos:", err);
@@ -240,62 +240,7 @@ export default function FlowDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJobId]);
 
-  // Handle Session Initialization / Auth Fallback
-  const handleAuthenticate = async () => {
-    setAuthLoading(true);
-    appendLog("Inicializando sessão do navegador. Faça login se a janela abrir.");
-    
-    const pollInterval = setInterval(() => {
-      fetchStatus();
-    }, 3000);
 
-    try {
-      const res = await fetch("/api/flow/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "initialize" }),
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        appendLog(`Sessão: ${data.message}`);
-      } else {
-        appendLog(`Falha na inicialização: ${data.error || "Erro desconhecido"}`);
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro ao autenticar: ${errMsg}`);
-    } finally {
-      clearInterval(pollInterval);
-      setAuthLoading(false);
-      fetchStatus();
-    }
-  };
-
-  // Handle Browser Session Shutdown
-  const handleCloseSession = async () => {
-    setCloseLoading(true);
-    appendLog("Encerrando navegador...");
-    try {
-      const res = await fetch("/api/flow/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "close" }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        appendLog("Navegador encerrado.");
-      } else {
-        appendLog(`Falha ao encerrar: ${data.error}`);
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      appendLog(`Erro ao encerrar navegador: ${errMsg}`);
-    } finally {
-      setCloseLoading(false);
-      fetchStatus();
-    }
-  };
 
   // Upload Reference Image Handler
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setRef: (val: string | null) => void) => {
@@ -363,7 +308,6 @@ export default function FlowDashboardPage() {
         appendLog(`[Agente Autônomo] Erro na requisição: ${errMsg}`);
       } finally {
         setProjectLoading(false);
-        fetchStatus();
       }
       return;
     }
@@ -438,7 +382,6 @@ export default function FlowDashboardPage() {
         appendLog(`[ImageFX] Erro: ${errMsg}`);
       } finally {
         setImageLoading(false);
-        fetchStatus();
       }
     } else {
       setVideoLoading(true);
@@ -477,267 +420,106 @@ export default function FlowDashboardPage() {
         appendLog(`[VideoFX] Erro: ${errMsg}`);
       } finally {
         setVideoLoading(false);
-        fetchStatus();
       }
     }
   };
 
   const currentReference = agentType === 'project' ? null : (agentType === 'image' ? imageReference : videoReference);
+  const hasResult = (agentType === 'project' && projectResult) || 
+                    (agentType === 'image' && imageResult) || 
+                    (agentType === 'video' && videoResult);
+  const isLoading = agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId;
+
+  const renderSettingsSummary = () => {
+    if (agentType === 'image') {
+      return (
+        <span className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-300">
+          <ImageIcon size={12} className="text-zinc-400" />
+          <span>Imagem</span>
+          <span className="text-zinc-650">•</span>
+          <span>{imageRatio}</span>
+        </span>
+      );
+    } else if (agentType === 'video') {
+      return (
+        <span className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-300">
+          <Film size={12} className="text-zinc-400" />
+          <span>Vídeo</span>
+          <span className="text-zinc-650">•</span>
+          <span>{videoRatio}</span>
+        </span>
+      );
+    } else {
+      return (
+        <span className="flex items-center gap-1.5 font-semibold text-[11px] text-zinc-300">
+          <Cpu size={12} className="text-zinc-400" />
+          <span>Autopilot</span>
+        </span>
+      );
+    }
+  };
 
   return (
-    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-8 py-10 select-none overflow-y-auto" style={{ backgroundColor: '#0A0A0B', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-8 py-10 pb-36 select-none overflow-y-auto" style={{ backgroundColor: '#0a0a0a', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Topbar fina, minimalista dentro da página */}
-      <div className="flex items-center justify-between w-full border-b border-[rgba(255,255,255,0.07)] pb-4 mb-12">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#F2F2F2]">MRCHICKEN</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* Status do Navegador / Tooltip */}
-          <div className="relative group flex items-center gap-2 cursor-pointer py-1">
-            <span className={`w-2 h-2 rounded-full ${status?.authenticated ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-            <span className="text-[10px] text-[#5A5A6A] font-mono tracking-wide uppercase select-none">
-              {status?.authenticated ? 'AI Active' : 'Login Required'}
-            </span>
-            
-            {/* Tooltip Card */}
-            <div className="absolute right-0 top-7 scale-0 group-hover:scale-100 transition-all duration-150 origin-top-right bg-[#111114] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-3 text-xs w-64 shadow-xl z-50 pointer-events-none">
-              <p className="font-bold text-[#F2F2F2] mb-1">Status do Navegador</p>
-              <p className="text-[#5A5A6A] text-[10px] mb-1">
-                Sessão Playwright: <span className={status?.initialized ? 'text-emerald-400' : 'text-zinc-500'}>{status?.initialized ? 'Ativa' : 'Inativa'}</span>
-              </p>
-              <p className="text-[#5A5A6A] text-[10px] mb-3">
-                Google Auth: <span className={status?.authenticated ? 'text-emerald-400' : 'text-amber-400'}>{status?.authenticated ? 'Conectado' : 'Requer Login'}</span>
-              </p>
-              <div className="flex gap-2 pt-2 border-t border-[rgba(255,255,255,0.07)]">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleAuthenticate(); }}
-                  disabled={authLoading}
-                  className="flex-1 py-1 bg-[#F2F2F2] text-[#0A0A0B] rounded-[6px] text-[10px] font-bold pointer-events-auto hover:bg-white transition-colors cursor-pointer"
-                >
-                  {authLoading ? 'Conectando...' : 'Conectar'}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleCloseSession(); }}
-                  disabled={closeLoading || !status?.initialized}
-                  className="flex-1 py-1 border border-[rgba(255,255,255,0.07)] text-[#F2F2F2] rounded-[6px] text-[10px] font-bold pointer-events-auto hover:bg-[#16161A] transition-colors cursor-pointer"
-                >
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Headline principal centralizado-esquerda */}
-      <div className="w-full max-w-3xl mx-auto flex flex-col items-start mb-8">
-        <h1 className="text-2xl font-light text-[#F2F2F2] tracking-tight">Agente MrChicken</h1>
-        <p className="text-xs text-[#5A5A6A] mt-1 font-light">O que você quer criar hoje?</p>
-      </div>
 
-      {/* Caixa de Entrada principal (Hero Input Card) */}
-      <div className="w-full max-w-3xl mx-auto bg-[#16161A] border border-[rgba(255,255,255,0.07)] rounded-[14px] p-4 flex flex-col shadow-2xl transition-all duration-200 focus-within:border-zinc-700">
-        <textarea
-          value={agentPrompt}
-          onChange={(e) => setAgentPrompt(e.target.value)}
-          placeholder="Descreva uma cena, produto, personagem ou ideia..."
-          className="w-full bg-transparent border-none text-[#F2F2F2] placeholder-[#5A5A6A] text-sm font-sans resize-none outline-none min-h-[100px] leading-relaxed"
-          disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
-        />
-        
-        {/* Imagem de Referência anexada inline */}
-        {currentReference && (
-          <div className="relative w-12 h-12 rounded-[10px] overflow-hidden border border-[rgba(255,255,255,0.07)] mb-4 group shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={currentReference} alt="Referência" className="w-full h-full object-cover" />
-            <button
-              onClick={handleRemoveReference}
-              className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-rose-500 cursor-pointer"
+      {/* Estado Vazio Central */}
+      {!hasResult && !isLoading && (
+        <div className="flex-1 flex flex-col items-center justify-center py-20 select-none">
+          {/* Pintinho Pixel Art em SVG */}
+          <div className="w-16 h-16 mb-4 flex items-center justify-center animate-bounce">
+            <svg
+              width="64"
+              height="64"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{ imageRendering: "pixelated", shapeRendering: "crispEdges" }}
             >
-              <Trash2 size={12} />
-            </button>
+              {/* Comb (Red) */}
+              <rect x="7" y="1" width="2" height="2" fill="#EF4444" />
+              <rect x="6" y="2" width="1" height="1" fill="#EF4444" />
+              
+              {/* Head & Body (Yellow) */}
+              <rect x="5" y="4" width="6" height="8" fill="#FCD34D" />
+              <rect x="4" y="5" width="8" height="6" fill="#FCD34D" />
+              
+              {/* Wings (Dark yellow / orange-yellow) */}
+              <rect x="3" y="7" width="1" height="3" fill="#F59E0B" />
+              <rect x="12" y="7" width="1" height="3" fill="#F59E0B" />
+              <rect x="4" y="8" width="1" height="1" fill="#F59E0B" />
+              <rect x="11" y="8" width="1" height="1" fill="#F59E0B" />
+
+              {/* Eyes */}
+              <rect x="8" y="5" width="1" height="2" fill="#000000" />
+              <rect x="9" y="5" width="1" height="2" fill="#FFFFFF" />
+              <rect x="8" y="5" width="1" height="1" fill="#FFFFFF" />
+
+              {/* Beak (Orange) */}
+              <rect x="9" y="7" width="3" height="2" fill="#F97316" />
+
+              {/* Cheeks (Pink) */}
+              <rect x="7" y="8" width="1" height="1" fill="#F472B6" />
+
+              {/* Legs (Orange) */}
+              <rect x="6" y="12" width="1" height="2" fill="#F97316" />
+              <rect x="9" y="12" width="1" height="2" fill="#F97316" />
+              <rect x="5" y="13" width="2" height="1" fill="#F97316" />
+              <rect x="8" y="13" width="2" height="1" fill="#F97316" />
+            </svg>
           </div>
-        )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[rgba(255,255,255,0.07)] mt-2">
-          {/* Controles inline na base do input */}
-          <div className="flex flex-wrap items-center gap-2">
-            
-            {/* Modelo IA */}
-            <select
-              value={agentModel}
-              onChange={(e) => setAgentModel(e.target.value as 'deepseek' | 'claude' | 'chatgpt' | 'gemini')}
-              className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-            >
-              <option value="gemini">Gemini</option>
-              <option value="chatgpt">ChatGPT</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="claude">Claude</option>
-            </select>
-
-            {/* Objetivo */}
-            <select
-              value={agentType}
-              onChange={(e) => setAgentType(e.target.value as 'image' | 'video' | 'project')}
-              className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-            >
-              <option value="image">Imagem</option>
-              <option value="video">Vídeo</option>
-              <option value="project">Autopilot (Agente Autônomo)</option>
-            </select>
-
-            {/* Avatar Selector (Only for complete projects) */}
-            {agentType === "project" && avatars.length > 0 && (
-              <select
-                value={selectedAvatarId}
-                onChange={(e) => setSelectedAvatarId(e.target.value)}
-                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-              >
-                {avatars.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    Avatar: {a.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Aspect Ratio */}
-            {agentType !== "project" && (
-              <select
-                value={agentType === 'image' ? imageRatio : videoRatio}
-                onChange={(e) => {
-                  if (agentType === 'image') {
-                    setImageRatio(e.target.value);
-                  } else {
-                    setVideoRatio(e.target.value);
-                  }
-                }}
-                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-              >
-                <option value="16:9">16:9</option>
-                <option value="4:3">4:3</option>
-                <option value="1:1">1:1</option>
-                <option value="3:4">3:4</option>
-                <option value="9:16">9:16</option>
-              </select>
-            )}
-
-            {/* Versão do Modelo */}
-            {agentType !== "project" && (
-              <select
-                value={agentType === 'image' ? imageModel : videoModel}
-                onChange={(e) => {
-                  if (agentType === 'image') {
-                    setImageModel(e.target.value);
-                  } else {
-                    setVideoModel(e.target.value);
-                  }
-                }}
-                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-              >
-                {agentType === 'image' ? (
-                  <>
-                    <option value="Nano Banana 2">Banana 2</option>
-                    <option value="Nano Banana Pro">Banana Pro</option>
-                    <option value="Imagen 4 (Leaving 6/16)">Imagen 4</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Veo 3.1">Veo 3.1</option>
-                    <option value="Veo">Veo</option>
-                  </>
-                )}
-              </select>
-            )}
-
-            {/* Quantidade */}
-            {agentType !== "project" && (
-              <select
-                value={agentType === 'image' ? imageQty : videoQty}
-                onChange={(e) => {
-                  if (agentType === 'image') {
-                    setImageQty(e.target.value);
-                  } else {
-                    setVideoQty(e.target.value);
-                  }
-                }}
-                className="bg-[#111114] border border-[rgba(255,255,255,0.07)] text-[11px] text-[#F2F2F2] px-3 py-1.5 rounded-full cursor-pointer hover:border-zinc-700 outline-none transition-colors"
-              >
-                {agentType === 'image' ? (
-                  <>
-                    <option value="1x">1 Img</option>
-                    <option value="x2">2 Imgs</option>
-                    <option value="x3">3 Imgs</option>
-                    <option value="x4">4 Imgs</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="1x">1 Vídeo</option>
-                    <option value="x2">2 Vídeos</option>
-                  </>
-                )}
-              </select>
-            )}
-
-            {/* Botão de Anexo */}
-            {agentType !== "project" && (
-              <label className="bg-[#111114] border border-[rgba(255,255,255,0.07)] hover:border-zinc-700 text-[#F2F2F2] p-1.5 rounded-full cursor-pointer transition-colors flex items-center justify-center">
-                <ImageIcon size={14} />
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (agentType === 'image') {
-                      handleFileChange(e, setImageReference);
-                    } else {
-                      handleFileChange(e, setVideoReference);
-                    }
-                  }}
-                />
-              </label>
-            )}
-
-          </div>
-
-          {/* Botão Criar */}
-          <button
-            onClick={handleExecuteAutopilot}
-            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId || !agentPrompt.trim()}
-            className="bg-[#FFFFFF] hover:bg-[#E4E4E7] text-[#0A0A0B] disabled:opacity-50 text-xs font-bold px-4 py-2 rounded-full cursor-pointer transition-all flex items-center gap-1"
-          >
-            <span>Criar</span>
-            <ArrowRight size={12} />
-          </button>
-        </div>
-      </div>
-
-      {/* Prompt Otimizado abaixo do input */}
-      {agentResult && (
-        <div className="w-full max-w-3xl mx-auto text-xs text-[#5A5A6A] italic mt-3 flex items-start gap-2">
-          <span className="flex-1 leading-relaxed">
-            *Prompt otimizado pelo Agente:* &quot;{agentResult}&quot;
-          </span>
-          <button
-            onClick={() => {
-              if (copyToClipboard(agentResult)) {
-                appendLog("Prompt otimizado copiado.");
-              }
-            }}
-            className="text-[#5A5A6A] hover:text-[#F2F2F2] p-1 transition-colors shrink-0 cursor-pointer"
-            title="Copiar prompt"
-          >
-            <Copy size={12} />
-          </button>
+          <p className="text-zinc-500 text-sm font-medium tracking-wide">
+            Comece a criar ou adicione arquivos
+          </p>
         </div>
       )}
 
       {/* Estado de Processamento Minimalista */}
       {(agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId) && (
         <div className="flex flex-col items-center justify-center p-12 space-y-3 w-full max-w-md mx-auto mt-6">
-          <Loader2 className="animate-spin text-white opacity-40" size={24} />
-          <div className="text-xs font-semibold text-[#F2F2F2] animate-pulse">
+          <Loader2 className="animate-spin text-white opacity-45" size={24} />
+          <div className="text-xs font-semibold text-white/95 animate-pulse">
             {activeJobId
               ? "Agente processando em background..."
               : projectLoading
@@ -749,7 +531,7 @@ export default function FlowDashboardPage() {
               : "Gerando vídeo..."}
           </div>
           {logs.length > 0 && (
-            <div className="text-[10px] text-[#5A5A6A] font-mono text-center max-w-xs truncate">
+            <div className="text-[10px] text-zinc-500 font-mono text-center max-w-xs truncate">
               {logs[logs.length - 1].replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '')}
             </div>
           )}
@@ -938,18 +720,55 @@ export default function FlowDashboardPage() {
         </div>
       )}
 
-      {/* Rodapé discreto com Logs colapsados */}
-      <div className="mt-auto pt-16 flex flex-col items-center justify-center gap-4">
-        <button
-          onClick={() => setShowLogs(!showLogs)}
-          className="text-[10px] text-[#5A5A6A] hover:text-[#F2F2F2] transition-colors duration-150 flex items-center gap-1 cursor-pointer font-mono uppercase tracking-wider"
-        >
-          <Terminal size={12} />
-          <span>{showLogs ? "Esconder logs" : "Ver logs"}</span>
-        </button>
+      {/* Rodapé Fixo com Input Bar e Controles flutuantes */}
+      <div className="fixed bottom-6 left-0 right-0 md:left-[184px] flex flex-col items-center gap-3 px-6 z-45 pointer-events-none">
         
+        {/* Reference Image preview floating above the input pill */}
+        {currentReference && (
+          <div className="w-full max-w-3xl flex justify-start pointer-events-auto">
+            <div className="flex items-center gap-2 bg-[#141416]/95 border border-white/10 rounded-xl p-1.5 pr-3 shadow-lg backdrop-blur-md">
+              <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={currentReference} alt="Referência" className="w-full h-full object-cover" />
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">Imagem de ref.</span>
+              <button
+                type="button"
+                onClick={handleRemoveReference}
+                className="text-zinc-500 hover:text-rose-500 transition-colors p-1"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Optimized prompt suggestion floating above input bar */}
+        {agentResult && (
+          <div className="w-full max-w-3xl flex justify-start pointer-events-auto">
+            <div className="bg-[#141416]/95 border border-white/10 rounded-xl p-2 px-3 shadow-lg backdrop-blur-md text-[11px] text-zinc-400 max-w-xl flex items-center gap-2">
+              <span className="italic truncate flex-1">
+                *Otimizado:* &quot;{agentResult}&quot;
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (copyToClipboard(agentResult)) {
+                    appendLog("Prompt otimizado copiado.");
+                  }
+                }}
+                className="text-zinc-500 hover:text-white p-0.5 transition-colors shrink-0"
+                title="Copiar prompt"
+              >
+                <Copy size={12} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Logs container floating above the input pill */}
         {showLogs && (
-          <div className="w-full max-w-2xl bg-[#111114] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-4 h-48 overflow-y-auto font-mono text-[11px] text-[#5A5A6A] space-y-1.5 text-left scrollbar-thin scrollbar-thumb-zinc-800">
+          <div className="w-full max-w-2xl bg-[#111114]/90 border border-white/5 rounded-[12px] p-4 h-48 overflow-y-auto font-mono text-[11px] text-zinc-500 space-y-1.5 text-left scrollbar-thin scrollbar-thumb-zinc-800 backdrop-blur-md pointer-events-auto shadow-2xl">
             {logs.length === 0 ? (
               <span className="italic">Nenhum evento registrado.</span>
             ) : (
@@ -962,6 +781,271 @@ export default function FlowDashboardPage() {
             <div ref={consoleEndRef} />
           </div>
         )}
+
+        {/* "VER LOGS" button */}
+        <div className="pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setShowLogs(!showLogs)}
+            className="text-[9px] text-zinc-500 hover:text-zinc-300 transition-colors duration-150 flex items-center gap-1 cursor-pointer font-mono uppercase tracking-wider bg-[#0a0a0a]/80 px-2 py-1 rounded border border-white/5"
+          >
+            <Terminal size={10} />
+            <span>{showLogs ? "Esconder logs" : "Ver logs"}</span>
+          </button>
+        </div>
+
+        {/* Main Input Pill Bar */}
+        <div className="w-full max-w-3xl bg-white/[0.06] border-[0.5px] border-white/10 rounded-[28px] p-2 pr-3 pl-4 flex items-center justify-between gap-3 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-md overflow-visible relative pointer-events-auto">
+          {/* Campo de texto à esquerda */}
+          <input
+            type="text"
+            value={agentPrompt}
+            onChange={(e) => setAgentPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
+                handleExecuteAutopilot();
+              }
+            }}
+            placeholder="O que você quer criar?"
+            className="flex-1 bg-transparent border-none outline-none text-white placeholder-zinc-500 text-sm py-2 px-2 min-w-0"
+            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
+          />
+
+          {/* Attachment button next to input */}
+          {agentType !== "project" && (
+            <label className="text-zinc-500 hover:text-zinc-300 p-2 cursor-pointer transition-colors flex items-center justify-center shrink-0">
+              <ImageIcon size={16} />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (agentType === 'image') {
+                    handleFileChange(e, setImageReference);
+                  } else {
+                    handleFileChange(e, setVideoReference);
+                  }
+                }}
+              />
+            </label>
+          )}
+          <div className="flex items-center gap-2 shrink-0 overflow-visible" ref={popoverRef}>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSettings(!showSettings)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all border flex items-center gap-1.5 cursor-pointer max-w-[190px] sm:max-w-[280px] md:max-w-none truncate ${showSettings ? 'bg-white text-black border-white shadow-md' : 'bg-white/[0.04] text-zinc-300 hover:text-white border-white/5 hover:bg-white/[0.08]'}`}
+              >
+                <Sliders size={12} className={showSettings ? 'text-black' : 'text-zinc-450'} />
+                {renderSettingsSummary()}
+              </button>
+
+              {/* Painel Unificado de Configurações */}
+              {showSettings && (
+                <div className="absolute bottom-full mb-3 right-0 z-50 bg-[#121214]/98 border border-white/10 rounded-[20px] p-5 shadow-2xl backdrop-blur-md flex flex-col gap-5 w-[340px] pointer-events-auto">
+                  {/* Tipo de Geração */}
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest px-1">Tipo de Geração</div>
+                    <div className="grid grid-cols-3 bg-zinc-950/80 p-0.5 rounded-xl border border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => { setAgentType('image'); }}
+                        className={`py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${agentType === 'image' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                      >
+                        <ImageIcon size={12} />
+                        <span>Imagem</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAgentType('video'); }}
+                        className={`py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${agentType === 'video' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                      >
+                        <Film size={12} />
+                        <span>Vídeo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAgentType('project'); }}
+                        className={`py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${agentType === 'project' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                      >
+                        <Cpu size={12} />
+                        <span>Autopilot</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Modelo & Estilo */}
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest px-1">
+                      {agentType === 'project' ? 'Avatar do Agente' : 'Modelo'}
+                    </div>
+                    <div className="grid grid-cols-1 gap-1 max-h-[120px] overflow-y-auto bg-zinc-950/80 p-1.5 rounded-xl border border-white/5 scrollbar-thin scrollbar-thumb-zinc-800">
+                      {agentType === 'image' && (
+                        <>
+                          {[
+                            { id: "Nano Banana 2", name: "Nano Banana 2", icon: <Sparkles size={12} /> },
+                            { id: "Nano Banana Pro", name: "Nano Banana Pro", icon: <Sparkles size={12} /> },
+                            { id: "Imagen 4 (Leaving 6/16)", name: "Imagen 4", icon: <ImageIcon size={12} /> }
+                          ].map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => { setImageModel(m.id); }}
+                              className={`text-left text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${imageModel === m.id ? 'bg-white/10 text-white font-semibold' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                            >
+                              <span className="text-zinc-500">{m.icon}</span>
+                              <span>{m.name}</span>
+                              {imageModel === m.id && <Check size={12} className="ml-auto text-white" />}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {agentType === 'video' && (
+                        <>
+                          {[
+                            { id: "Veo 3.1", name: "Veo 3.1", icon: <Film size={12} /> },
+                            { id: "Veo", name: "Veo Legacy", icon: <Film size={12} /> }
+                          ].map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => { setVideoModel(m.id); }}
+                              className={`text-left text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${videoModel === m.id ? 'bg-white/10 text-white font-semibold' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                            >
+                              <span className="text-zinc-500">{m.icon}</span>
+                              <span>{m.name}</span>
+                              {videoModel === m.id && <Check size={12} className="ml-auto text-white" />}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {agentType === 'project' && (
+                        <>
+                          {avatars.length > 0 ? (
+                            avatars.map((a) => (
+                              <button
+                                key={a.id}
+                                type="button"
+                                onClick={() => { setSelectedAvatarId(a.id); }}
+                                className={`text-left text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${selectedAvatarId === a.id ? 'bg-white/10 text-white font-semibold' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                              >
+                                <User size={12} className="text-zinc-500" />
+                                <span>{a.name}</span>
+                                {selectedAvatarId === a.id && <Check size={12} className="ml-auto text-white" />}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="text-zinc-650 text-xs px-3 py-1.5 italic">Nenhum avatar</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Proporção e Quantidade lado a lado */}
+                  {agentType !== 'project' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Proporção */}
+                      <div className="flex flex-col gap-2">
+                        <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest px-1">Proporção</div>
+                        <div className="grid grid-cols-2 gap-1.5 bg-zinc-950/80 p-1.5 rounded-xl border border-white/5 text-center">
+                          {['16:9', '4:3', '1:1', '3:4', '9:16'].map((r) => {
+                            const currentRatio = agentType === 'image' ? imageRatio : videoRatio;
+                            const handleRatioChange = (val: string) => {
+                              if (agentType === 'image') {
+                                setImageRatio(val);
+                              } else {
+                                setVideoRatio(val);
+                              }
+                            };
+                            const isActive = currentRatio === r;
+                            return (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => handleRatioChange(r)}
+                                className={`py-1 rounded-lg text-[10px] font-mono transition-all border ${isActive ? 'bg-white text-black font-bold border-white shadow-sm' : 'bg-transparent border-transparent text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                              >
+                                {r}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Quantidade */}
+                      <div className="flex flex-col gap-2">
+                        <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest px-1">Quantidade</div>
+                        <div className="grid grid-cols-2 gap-1.5 bg-zinc-955/80 p-1.5 rounded-xl border border-white/5 text-center">
+                          {['1x', 'x2', 'x3', 'x4'].map((q) => {
+                            const currentQty = agentType === 'image' ? imageQty : videoQty;
+                            const handleQtyChange = (val: string) => {
+                              if (agentType === 'image') {
+                                setImageQty(val);
+                              } else {
+                                if (val === 'x3' || val === 'x4') {
+                                  setVideoQty('x2');
+                                } else {
+                                  setVideoQty(val);
+                                }
+                              }
+                            };
+                            const isDisabled = agentType === 'video' && (q === 'x3' || q === 'x4');
+                            const isActive = currentQty === q && !isDisabled;
+                            return (
+                              <button
+                                key={q}
+                                type="button"
+                                disabled={isDisabled}
+                                onClick={() => handleQtyChange(q)}
+                                className={`py-1 rounded-lg text-[10px] font-mono transition-all border ${isActive ? 'bg-white text-black font-bold border-white shadow-sm' : isDisabled ? 'opacity-20 cursor-not-allowed text-zinc-650 border-transparent' : 'bg-transparent border-transparent text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                              >
+                                {q}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Otimizador LLM */}
+                  <div className="flex flex-col gap-2 border-t border-white/5 pt-3">
+                    <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest px-1">Otimizador (LLM)</div>
+                    <div className="grid grid-cols-4 gap-1 bg-zinc-950/80 p-0.5 rounded-xl border border-white/5 text-center">
+                      {(['gemini', 'chatgpt', 'deepseek', 'claude'] as const).map((m) => {
+                        const isActive = agentModel === m;
+                        const displayName = m === 'chatgpt' ? 'ChatGPT' : m === 'deepseek' ? 'DeepSeek' : m === 'gemini' ? 'Gemini' : 'Claude';
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setAgentModel(m)}
+                            className={`py-1.5 rounded-lg text-[9px] font-bold tracking-wide transition-all ${isActive ? 'bg-white/10 text-white font-bold' : 'text-zinc-550 hover:text-white'}`}
+                          >
+                            {displayName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Botão enviar: círculo branco com ícone de seta → */}
+          <button
+            type="button"
+            onClick={handleExecuteAutopilot}
+            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId || !agentPrompt.trim()}
+            className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-zinc-200 disabled:opacity-40 disabled:hover:bg-white transition-all shrink-0 shadow-md cursor-pointer"
+          >
+            <ArrowRight size={16} />
+          </button>
+
+        </div>
+
       </div>
 
     </div>
