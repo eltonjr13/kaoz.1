@@ -25,6 +25,7 @@ export class FlowProvider {
       timeout: process.env.FLOW_TIMEOUT ? parseInt(process.env.FLOW_TIMEOUT, 10) : 300000,
       downloadPath: process.env.FLOW_DOWNLOAD_PATH || 'storage/generated/',
       profilePath: process.env.FLOW_PROFILE_PATH || 'storage/browser-profile/',
+      browserChannel: process.env.FLOW_BROWSER_CHANNEL || undefined,
       flowUrl: process.env.FLOW_URL || 'https://flow.google',
       imageUrl: process.env.FLOW_IMAGE_URL || 'https://flow.google',
       videoUrl: process.env.FLOW_VIDEO_URL || 'https://flow.google',

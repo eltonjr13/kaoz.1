@@ -54,6 +54,16 @@ export async function POST(request: Request) {
         return jsonError("Portal de login não suportado.", 400);
       }
 
+      if (
+        process.env.FLOW_ALLOW_PROTECTED_LLM_WEB !== "true" &&
+        (portal === "chatgpt" || portal === "claude" || portal === "deepseek")
+      ) {
+        return jsonError(
+          "Login web deste portal foi desativado porque esta sujeito a loop de Cloudflare/Turnstile. Configure a API oficial ou defina FLOW_ALLOW_PROTECTED_LLM_WEB=true se quiser testar manualmente.",
+          409
+        );
+      }
+
       console.log(`[API FLOW AUTH] Abrindo sessão de login para o portal: ${portal}...`);
       const result = await flowProvider.openLoginSession(portal as FlowPortal);
       if (!result.authenticated) {

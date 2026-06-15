@@ -1,10 +1,21 @@
 import { Page } from 'playwright';
+import { GoogleGenAI } from '@google/genai';
+import { OpenAI } from 'openai';
 import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
 
+type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+
 export class FlowLLMAutomation {
   constructor(private session: FlowSession, private config: FlowConfig) {}
+
+  private shouldSkipWebAutomation(model: LLMModel): boolean {
+    if (model === 'gemini') {
+      return false;
+    }
+    return process.env.FLOW_ALLOW_PROTECTED_LLM_WEB !== 'true';
+  }
 
   private async hasVisibleLoginPrompt(page: Page): Promise<boolean> {
     return await page
@@ -14,12 +25,132 @@ export class FlowLLMAutomation {
       .catch(() => false);
   }
 
+  private async hasCloudflareChallenge(page: Page): Promise<boolean> {
+    const url = page.url().toLowerCase();
+    if (url.includes('cloudflare') || url.includes('challenge') || url.includes('turnstile')) {
+      return true;
+    }
+
+    const challengeTextVisible = await page
+      .getByText(/Confirme que .+ humano|verify you are human|checking your browser|cloudflare|turnstile/i)
+      .first()
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    if (challengeTextVisible) {
+      return true;
+    }
+
+    return await page
+      .locator('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], input[name="cf-turnstile-response"]')
+      .first()
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+  }
+
+  private async assertNoCloudflareChallenge(page: Page, model: LLMModel): Promise<void> {
+    if (await this.hasCloudflareChallenge(page)) {
+      throw new Error(`Portal ${model} bloqueado por Cloudflare/Turnstile. Use API oficial ou fallback local.`);
+    }
+  }
+
+  private async optimizeWithGeminiApi(prompt: string): Promise<string | null> {
+    if (!process.env.GEMINI_API_KEY) {
+      return null;
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      contents: prompt
+    });
+    return this.cleanLLMResponse(response.text || '');
+  }
+
+  private async optimizeWithOpenAIApi(prompt: string): Promise<string | null> {
+    if (!process.env.OPENAI_API_KEY) {
+      return null;
+    }
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7
+    });
+    return this.cleanLLMResponse(response.choices[0]?.message?.content || '');
+  }
+
+  private async optimizeWithDeepSeekApi(prompt: string): Promise<string | null> {
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return null;
+    }
+
+    const deepseek = new OpenAI({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'
+    });
+    const response = await deepseek.chat.completions.create({
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7
+    });
+    return this.cleanLLMResponse(response.choices[0]?.message?.content || '');
+  }
+
+  private async optimizeWithClaudeApi(prompt: string): Promise<string | null> {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return null;
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Anthropic API retornou ${response.status}: ${await response.text()}`);
+    }
+
+    const data = await response.json() as {
+      content?: Array<{ type?: string; text?: string }>;
+    };
+    const text = data.content?.find(part => part.type === 'text')?.text || '';
+    return this.cleanLLMResponse(text);
+  }
+
+  private async optimizeWithApi(model: LLMModel, prompt: string): Promise<string | null> {
+    try {
+      switch (model) {
+        case 'gemini':
+          return await this.optimizeWithGeminiApi(prompt);
+        case 'chatgpt':
+          return await this.optimizeWithOpenAIApi(prompt);
+        case 'deepseek':
+          return await this.optimizeWithDeepSeekApi(prompt);
+        case 'claude':
+          return await this.optimizeWithClaudeApi(prompt);
+      }
+    } catch (err) {
+      logger.warn(`[Agente MrChicken] API do modelo ${model} indisponivel.`, err);
+      return null;
+    }
+  }
+
   /**
    * Refines/optimizes a prompt using the selected LLM browser portal.
    * If the portal is offline, not logged in, or blocked, uses a smart local fallback prompt engineer.
    */
   async optimizePrompt(
-    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+    model: LLMModel,
     rawPrompt: string,
     type: 'image' | 'video'
   ): Promise<string> {
@@ -28,6 +159,19 @@ export class FlowLLMAutomation {
     } para torná-lo profissional, ultra-detalhado e de alto impacto visual. Retorne apenas o prompt melhorado em inglês, sem comentários adicionais, sem aspas e sem explicações: '${rawPrompt}'`;
 
     logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
+
+    const apiResult = await this.optimizeWithApi(model, promptTemplate);
+    if (apiResult) {
+      logger.info(`[Agente MrChicken] Prompt otimizado via API do modelo: ${model}.`);
+      return apiResult;
+    }
+
+    if (this.shouldSkipWebAutomation(model)) {
+      logger.warn(
+        `[Agente MrChicken] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
+      );
+      return this.localPromptOptimizer(rawPrompt, type);
+    }
 
     try {
       const page = await this.session.getAutomationPage();
@@ -58,6 +202,7 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Navegando para Gemini: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
+    await this.assertNoCloudflareChallenge(page, 'gemini');
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -131,6 +276,7 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Navegando para ChatGPT: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
+    await this.assertNoCloudflareChallenge(page, 'chatgpt');
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -204,6 +350,7 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Navegando para DeepSeek: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
+    await this.assertNoCloudflareChallenge(page, 'deepseek');
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -277,6 +424,7 @@ export class FlowLLMAutomation {
     logger.info(`[Agente MrChicken] Navegando para Claude: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
+    await this.assertNoCloudflareChallenge(page, 'claude');
 
     // Verify if logged in
     const currentUrl = page.url();

@@ -3,6 +3,7 @@ export interface FlowConfig {
   timeout: number;
   downloadPath: string;
   profilePath: string;
+  browserChannel?: string;
   flowUrl: string;
   imageUrl?: string;
   videoUrl?: string;

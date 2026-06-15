@@ -93,28 +93,32 @@ export class FlowSession {
    */
   private async launchContext(headless: boolean): Promise<Page> {
     const absoluteProfilePath = path.resolve(this.config.profilePath);
-    
-    this.context = await chromium.launchPersistentContext(absoluteProfilePath, {
+
+    const launchOptions: Parameters<typeof chromium.launchPersistentContext>[1] = {
       headless: headless,
       viewport: { width: 1280, height: 720 },
-      ignoreDefaultArgs: ['--enable-automation'],
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-blink-features=AutomationControlled'
-      ],
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       acceptDownloads: true
-    });
+    };
 
-    // Mask the navigator.webdriver property to bypass anti-bot detections
-    await this.context.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-      });
-    });
+    if (this.config.browserChannel) {
+      launchOptions.channel = this.config.browserChannel;
+    }
+
+    try {
+      this.context = await chromium.launchPersistentContext(absoluteProfilePath, launchOptions);
+    } catch (err) {
+      if (!this.config.browserChannel) {
+        throw err;
+      }
+
+      logger.warn(
+        `Falha ao iniciar navegador no canal ${this.config.browserChannel}. Tentando Chromium padrao.`,
+        err
+      );
+      const fallbackOptions = { ...launchOptions };
+      delete fallbackOptions.channel;
+      this.context = await chromium.launchPersistentContext(absoluteProfilePath, fallbackOptions);
+    }
 
     // Handle context-level errors
     this.context.on('close', () => {
