@@ -15,11 +15,7 @@ import {
   Cpu,
   Sparkles,
   User,
-  Check,
-  Plus,
-  BookOpen,
-  BarChart3,
-  ChevronRight
+  Check
 } from "lucide-react";
 
 
@@ -441,32 +437,7 @@ export default function FlowDashboardPage() {
                     (agentType === 'video' && videoResult);
   const isLoading = agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId;
 
-  const quickActions = [
-    {
-      title: "Novo Projeto",
-      description: "Inicie um fluxo autônomo",
-      icon: Plus,
-      action: () => setAgentType("project")
-    },
-    {
-      title: "Explorar Agentes",
-      description: "Gere imagem ou vídeo",
-      icon: Sparkles,
-      action: () => setAgentType("image")
-    },
-    {
-      title: "Minha Biblioteca",
-      description: "Acesse seus recursos",
-      icon: BookOpen,
-      action: () => { window.location.href = "#library"; }
-    },
-    {
-      title: "Ver Analytics",
-      description: "Acompanhe o desempenho",
-      icon: BarChart3,
-      action: () => { window.location.href = "#analytics"; }
-    }
-  ];
+
 
   const renderSettingsSummary = () => {
     if (agentType === 'image') {
@@ -509,13 +480,13 @@ export default function FlowDashboardPage() {
           bottom: 0,
           width: "65%",
           minHeight: "100vh",
-          zIndex: 0,
+          zIndex: 1,
           backgroundImage: "url('/mrchicken-anime-bg.jpeg')",
           backgroundSize: "cover",
           backgroundPosition: "right 15% top",
           backgroundAttachment: "local",
-          opacity: 0.11,
-          mixBlendMode: "soft-light",
+          opacity: 0.25,
+          mixBlendMode: "luminosity",
           maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
           pointerEvents: "none",
@@ -539,7 +510,7 @@ export default function FlowDashboardPage() {
 
         {/* ── Hero Section ── */}
         <section
-          className="animate-fade-in-up rounded-[20px] p-8 sm:p-10 lg:p-12"
+          className="animate-fade-in-up rounded-[32px] p-8 sm:p-10 lg:p-12"
           style={{
             background: "rgba(255,255,255,0.022)",
             border: "1px solid rgba(255,255,255,0.07)",
@@ -547,130 +518,48 @@ export default function FlowDashboardPage() {
             WebkitBackdropFilter: "blur(20px)",
           }}
         >
-          <header className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex flex-col gap-5">
-              {/* Status badge */}
-              <div
-                className="inline-flex items-center gap-2 self-start rounded-full px-3 py-1.5 text-[11px] font-medium tracking-[0.03em]"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  color: "#B8B8C0",
-                }}
-              >
-                <span
-                  className="animate-pulse-dot rounded-full"
-                  style={{ width: 6, height: 6, background: "#4ade80", flexShrink: 0, display: "inline-block" }}
-                />
-                AI workspace online
-              </div>
-
-              {/* Title + subtitle */}
-              <div>
-                <h1
-                  className="text-[38px] font-light leading-none text-white sm:text-[50px]"
-                  style={{ letterSpacing: "-0.02em", fontWeight: 300 }}
-                >
-                  AgenteMrChicken
-                </h1>
-                <p
-                  className="mt-4 max-w-[460px] text-[15px] leading-relaxed"
-                  style={{ color: "#B8B8C0" }}
-                >
-                  Seu ambiente de criação e automação inteligente.
-                </p>
-              </div>
-            </div>
-
-            {/* Status indicator card */}
+          <div className="flex flex-col gap-5">
+            {/* Status badge */}
             <div
-              className="shrink-0 self-start rounded-2xl px-4 py-3"
+              className="inline-flex items-center gap-2 self-start rounded-full px-3 py-1.5 text-[11px] font-medium tracking-[0.03em]"
               style={{
-                background: "rgba(255,255,255,0.022)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                minWidth: 158,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#B8B8C0",
               }}
             >
               <span
-                className="block text-[10px] font-semibold uppercase tracking-[0.18em]"
-                style={{ color: "#7B7B86" }}
+                className="animate-pulse-dot rounded-full"
+                style={{ width: 6, height: 6, background: "#4ade80", flexShrink: 0, display: "inline-block" }}
+              />
+              AI workspace online
+            </div>
+
+            {/* Title + subtitle */}
+            <div>
+              <h1
+                className="text-[38px] font-light leading-none text-white sm:text-[50px]"
+                style={{ letterSpacing: "-0.02em", fontWeight: 300 }}
               >
-                Status
-              </span>
-              <span className="mt-2 flex items-center gap-2 text-[13px] font-medium text-white">
-                <span
-                  className="rounded-full"
-                  style={{ width: 7, height: 7, background: "#4ade80", flexShrink: 0, display: "inline-block" }}
-                />
-                Pronto para gerar
-              </span>
+                AgenteMrChicken
+              </h1>
+              <p
+                className="mt-4 max-w-[460px] text-[15px] leading-relaxed"
+                style={{ color: "#B8B8C0" }}
+              >
+                Seu ambiente de criação e automação inteligente.
+              </p>
             </div>
-          </header>
-
-          {/* ── Quick Action Cards ── */}
-          {!hasResult && !isLoading && (
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {quickActions.map((item, idx) => {
-                const Icon = item.icon;
-                const staggerClass = `card-stagger-${idx + 1}`;
-                return (
-                  <button
-                    key={item.title}
-                    type="button"
-                    onClick={item.action}
-                    className={`group glass-card ${staggerClass} flex min-h-[132px] flex-col items-start p-5 text-left w-full`}
-                  >
-                    {/* Icon */}
-                    <span
-                      className="flex h-10 w-10 items-center justify-center rounded-[14px]"
-                      style={{
-                        background: "rgba(157,124,255,0.09)",
-                        border: "1px solid rgba(157,124,255,0.18)",
-                        color: "#9D7CFF",
-                      }}
-                    >
-                      <Icon size={18} />
-                    </span>
-
-                    {/* Title + desc + arrow */}
-                    <span className="mt-auto flex w-full items-end justify-between gap-2 pt-5">
-                      <span>
-                        <span className="block text-[14px] font-semibold leading-tight text-white">
-                          {item.title}
-                        </span>
-                        <span
-                          className="mt-1 block text-[12px] leading-snug"
-                          style={{ color: "#7B7B86" }}
-                        >
-                          {item.description}
-                        </span>
-                      </span>
-                      <ChevronRight
-                        size={15}
-                        style={{
-                          color: "#4A4A54",
-                          flexShrink: 0,
-                          transition: "color 200ms ease-out, transform 200ms ease-out",
-                        }}
-                        className="group-hover:text-[#9D7CFF] group-hover:translate-x-0.5"
-                      />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          </div>
         </section>
 
-        {/* ── Secondary Content: Recent Activity + Capabilities ── */}
+        {/* ── Secondary Content: Recent Activity ── */}
         {!hasResult && !isLoading && (
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
+          <div className="mt-5">
 
             {/* Recent Activity */}
             <div
-              className="rounded-[20px] p-6"
+              className="rounded-[32px] p-6"
               style={{
                 background: "rgba(255,255,255,0.018)",
                 border: "1px solid rgba(255,255,255,0.06)",
@@ -696,12 +585,12 @@ export default function FlowDashboardPage() {
               </div>
               <div className="space-y-3">
                 {[
-                  { label: "Nenhum projeto recente", sub: "Crie seu primeiro projeto acima", icon: "◦" },
+                  { label: "Nenhum projeto recente", sub: "Use a barra de comando abaixo para iniciar", icon: "◦" },
                   { label: "Pronto para gerar", sub: "Aguardando seu comando", icon: "◦" },
                 ].map((row, idx) => (
                   <div
                     key={idx}
-                    className="flex items-start gap-3 rounded-xl px-3 py-3"
+                    className="flex items-start gap-3 rounded-[20px] px-3 py-3"
                     style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
                   >
                     <span className="mt-0.5 text-[16px] leading-none" style={{ color: "#4A4A54" }}>
@@ -712,47 +601,6 @@ export default function FlowDashboardPage() {
                       <div className="mt-0.5 text-[11px]" style={{ color: "#7B7B86" }}>{row.sub}</div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Capabilities */}
-            <div
-              className="rounded-[20px] p-6"
-              style={{
-                background: "rgba(255,255,255,0.018)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                backdropFilter: "blur(16px)",
-              }}
-            >
-              <span
-                className="mb-5 block text-[11px] font-semibold uppercase tracking-[0.12em]"
-                style={{ color: "#7B7B86" }}
-              >
-                Capacidades
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "Geração de Imagens",
-                  "Geração de Vídeos",
-                  "Agente Autônomo",
-                  "Otimização de Prompts",
-                  "Multi-LLM",
-                  "Veo 3.1",
-                  "Imagen 4",
-                  "Referência de Imagem",
-                ].map((cap) => (
-                  <span
-                    key={cap}
-                    className="rounded-full px-3 py-1.5 text-[11px] font-medium"
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.07)",
-                      color: "#B8B8C0",
-                    }}
-                  >
-                    {cap}
-                  </span>
                 ))}
               </div>
             </div>
@@ -804,7 +652,7 @@ export default function FlowDashboardPage() {
             </div>
             {projectResult.success ? (
               <div
-                className="rounded-[16px] p-6 space-y-4 text-sm"
+                className="rounded-[28px] p-6 space-y-4 text-sm"
                 style={{
                   background: "rgba(255,255,255,0.028)",
                   border: "1px solid rgba(255,255,255,0.07)",
@@ -833,7 +681,7 @@ export default function FlowDashboardPage() {
                       Resultado Gerado
                     </strong>
                     <div
-                      className="aspect-video w-full overflow-hidden rounded-[12px]"
+                      className="aspect-video w-full overflow-hidden rounded-[20px]"
                       style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.07)" }}
                     >
                       {/\.(png|jpe?g|webp)$/i.test(projectResult.videoPath) || projectResult.videoPath.includes("image") ? (
@@ -891,7 +739,7 @@ export default function FlowDashboardPage() {
                     {(imageResult.paths && imageResult.paths.length > 0 ? imageResult.paths : [imageResult.path]).map((p, idx) => (
                       <div
                         key={idx}
-                        className="group relative aspect-square overflow-hidden rounded-[14px]"
+                        className="group relative aspect-square overflow-hidden rounded-[20px]"
                         style={{ background: "#111114" }}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -938,7 +786,7 @@ export default function FlowDashboardPage() {
                     {(videoResult.paths && videoResult.paths.length > 0 ? videoResult.paths : [videoResult.path]).map((p, idx) => (
                       <div
                         key={idx}
-                        className="group relative aspect-video overflow-hidden rounded-[14px]"
+                        className="group relative aspect-video overflow-hidden rounded-[20px]"
                         style={{ background: "#111114" }}
                       >
                         <video
@@ -982,14 +830,14 @@ export default function FlowDashboardPage() {
         {currentReference && (
           <div className="pointer-events-auto w-full max-w-[900px]">
             <div
-              className="inline-flex items-center gap-2 rounded-2xl p-1.5 pr-3"
+              className="inline-flex items-center gap-2 rounded-[24px] p-1.5 pr-3"
               style={{
                 background: "rgba(255,255,255,0.04)",
                 border: "1px solid rgba(255,255,255,0.08)",
                 backdropFilter: "blur(16px)",
               }}
             >
-              <div className="h-8 w-8 overflow-hidden rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="h-8 w-8 overflow-hidden rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={currentReference} alt="Referência" className="h-full w-full object-cover" />
               </div>
@@ -1012,7 +860,7 @@ export default function FlowDashboardPage() {
         {agentResult && (
           <div className="pointer-events-auto w-full max-w-[900px]">
             <div
-              className="inline-flex max-w-xl items-center gap-2 rounded-2xl px-3 py-2 text-[11px]"
+              className="inline-flex max-w-xl items-center gap-2 rounded-[24px] px-3 py-2 text-[11px]"
               style={{
                 background: "rgba(255,255,255,0.04)",
                 border: "1px solid rgba(255,255,255,0.08)",
@@ -1039,7 +887,7 @@ export default function FlowDashboardPage() {
         {/* Logs panel */}
         {showLogs && (
           <div
-            className="pointer-events-auto w-full max-w-[900px] overflow-y-auto rounded-[16px] p-4 font-mono text-[11px] space-y-1.5 text-left"
+            className="pointer-events-auto w-full max-w-[900px] overflow-y-auto rounded-[24px] p-4 font-mono text-[11px] space-y-1.5 text-left"
             style={{
               height: 176,
               background: "rgba(10,10,14,0.94)",
@@ -1146,7 +994,7 @@ export default function FlowDashboardPage() {
             {/* Settings Popover */}
             {showSettings && (
               <div
-                className="absolute bottom-full right-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[20px] p-5 pointer-events-auto"
+                className="absolute bottom-full right-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto"
                 style={{
                   background: "rgba(12,12,16,0.97)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -1160,7 +1008,7 @@ export default function FlowDashboardPage() {
                     Tipo de Geração
                   </div>
                   <div
-                    className="grid grid-cols-3 rounded-xl p-0.5"
+                    className="grid grid-cols-3 rounded-[14px] p-0.5"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                   >
                     {[
@@ -1172,7 +1020,7 @@ export default function FlowDashboardPage() {
                         key={t.id}
                         type="button"
                         onClick={() => setAgentType(t.id as AgentType)}
-                        className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-semibold transition-all"
+                        className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[10px] font-semibold transition-all"
                         style={{
                           background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent",
                           color: agentType === t.id ? "#ffffff" : "#4A4A54",
@@ -1191,7 +1039,7 @@ export default function FlowDashboardPage() {
                     {agentType === "project" ? "Avatar do Agente" : "Modelo"}
                   </div>
                   <div
-                    className="flex max-h-[112px] flex-col gap-0.5 overflow-y-auto rounded-xl p-1.5"
+                    className="flex max-h-[112px] flex-col gap-0.5 overflow-y-auto rounded-[14px] p-1.5"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                   >
                     {agentType === "image" && [
@@ -1203,7 +1051,7 @@ export default function FlowDashboardPage() {
                         key={m.id}
                         type="button"
                         onClick={() => setImageModel(m.id)}
-                        className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[11px] transition-colors"
+                        className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[11px] transition-colors"
                         style={{
                           background: imageModel === m.id ? "rgba(255,255,255,0.08)" : "transparent",
                           color: imageModel === m.id ? "#ffffff" : "#7B7B86",
@@ -1223,7 +1071,7 @@ export default function FlowDashboardPage() {
                         key={m.id}
                         type="button"
                         onClick={() => setVideoModel(m.id)}
-                        className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[11px] transition-colors"
+                        className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[11px] transition-colors"
                         style={{
                           background: videoModel === m.id ? "rgba(255,255,255,0.08)" : "transparent",
                           color: videoModel === m.id ? "#ffffff" : "#7B7B86",
@@ -1241,7 +1089,7 @@ export default function FlowDashboardPage() {
                           key={a.id}
                           type="button"
                           onClick={() => setSelectedAvatarId(a.id)}
-                          className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[11px] transition-colors"
+                          className="flex items-center gap-2 rounded-[16px] px-3 py-1.5 text-left text-[11px] transition-colors"
                           style={{
                             background: selectedAvatarId === a.id ? "rgba(255,255,255,0.08)" : "transparent",
                             color: selectedAvatarId === a.id ? "#ffffff" : "#7B7B86",
@@ -1264,7 +1112,7 @@ export default function FlowDashboardPage() {
                     <div className="flex flex-col gap-2">
                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "#4A4A54" }}>Proporção</div>
                       <div
-                        className="grid grid-cols-2 gap-1 rounded-xl p-1.5"
+                        className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5"
                         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                       >
                         {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
@@ -1275,7 +1123,7 @@ export default function FlowDashboardPage() {
                               key={r}
                               type="button"
                               onClick={() => { if (agentType === "image") setImageRatio(r); else setVideoRatio(r); }}
-                              className="rounded-lg py-1 font-mono text-[10px] transition-all"
+                              className="rounded-xl py-1 font-mono text-[10px] transition-all"
                               style={{
                                 background: isActive ? "#ffffff" : "transparent",
                                 color: isActive ? "#080808" : "#7B7B86",
@@ -1291,7 +1139,7 @@ export default function FlowDashboardPage() {
                     <div className="flex flex-col gap-2">
                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "#4A4A54" }}>Quantidade</div>
                       <div
-                        className="grid grid-cols-2 gap-1 rounded-xl p-1.5"
+                        className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5"
                         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                       >
                         {["1x", "x2", "x3", "x4"].map((q) => {
@@ -1307,7 +1155,7 @@ export default function FlowDashboardPage() {
                                 if (agentType === "image") setImageQty(q);
                                 else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
                               }}
-                              className="rounded-lg py-1 font-mono text-[10px] transition-all"
+                              className="rounded-xl py-1 font-mono text-[10px] transition-all"
                               style={{
                                 background: isActive ? "#ffffff" : "transparent",
                                 color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
@@ -1334,7 +1182,7 @@ export default function FlowDashboardPage() {
                     Otimizador (LLM)
                   </div>
                   <div
-                    className="grid grid-cols-4 gap-0.5 rounded-xl p-0.5"
+                    className="grid grid-cols-4 gap-0.5 rounded-[14px] p-0.5"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                   >
                     {(["gemini", "chatgpt", "deepseek", "claude"] as const).map((m) => {
@@ -1345,7 +1193,7 @@ export default function FlowDashboardPage() {
                           key={m}
                           type="button"
                           onClick={() => setAgentModel(m)}
-                          className="rounded-lg py-1.5 text-[9px] font-bold tracking-wide transition-all"
+                          className="rounded-xl py-1.5 text-[9px] font-bold tracking-wide transition-all"
                           style={{
                             background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
                             color: isActive ? "#ffffff" : "#4A4A54",

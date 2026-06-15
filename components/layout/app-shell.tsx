@@ -49,12 +49,12 @@ export function AppShell({
       {/* Logo */}
       <Link
         href="/dashboard"
-        className="group flex items-center gap-3 rounded-2xl px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03]"
+        className="group flex items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03]"
         onClick={() => setSidebarOpen(false)}
         style={{ marginBottom: "4px" }}
       >
         <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px]"
           style={{
             background: "rgba(157,124,255,0.12)",
             border: "1px solid rgba(157,124,255,0.2)",
@@ -91,7 +91,7 @@ export function AppShell({
               href={item.href}
               key={item.label}
               onClick={() => setSidebarOpen(false)}
-              className="group relative flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium no-underline transition-all duration-200"
+              className="group relative flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline transition-all duration-200"
               style={{
                 background: isActive
                   ? "rgba(255,255,255,0.035)"
@@ -142,7 +142,7 @@ export function AppShell({
         style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
         <div
-          className="flex items-center gap-3 rounded-2xl p-2.5 px-3"
+          className="flex items-center gap-3 rounded-[20px] p-2.5 px-3"
           style={{
             background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.07)",
