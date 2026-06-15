@@ -2,30 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Briefcase,
-  Globe,
   Compass,
   Cpu,
   Database,
   LineChart,
-  Moon,
+  Menu,
   Rss,
-  Search,
   Settings,
-  Sun,
+  Sparkles,
   UserRound,
+  X,
 } from "lucide-react";
 
-// Navigation mapping to the project routes
 const navItems = [
   { href: "/dashboard", label: "Feed", icon: Rss },
   { href: "/viral-search", label: "Discovery", icon: Compass },
   { href: "/jobs", label: "Projects", icon: Briefcase },
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
-  { href: "/flow", label: "Agente MrChicken", icon: Globe },
+  { href: "/flow", label: "AgenteMrChicken", icon: Sparkles },
   { href: "#library", label: "Library", icon: Database },
   { href: "#analytics", label: "Analytics", icon: LineChart },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -39,159 +37,203 @@ export function AppShell({
   workspaceLabel: string;
 }>) {
   const pathname = usePathname();
-  const [isDark, setIsDark] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Initialize theme from system or local storage
-  useEffect(() => {
-    const root = window.document.documentElement;
-    const theme = localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    
-    if (theme === "dark" || (!theme && prefersDark)) {
-      root.classList.add("dark");
-      root.classList.remove("light");
-      setTimeout(() => setIsDark(true), 0);
-    } else {
-      root.classList.add("light");
-      root.classList.remove("dark");
-      setTimeout(() => setIsDark(false), 0);
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const root = window.document.documentElement;
-    if (isDark) {
-      root.classList.remove("dark");
-      root.classList.add("light");
-      localStorage.setItem("theme", "light");
-      setIsDark(false);
-    } else {
-      root.classList.remove("light");
-      root.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-      setIsDark(true);
-    }
-  };
-
-  return (
-    <div className="flex flex-col min-h-screen bg-[var(--bg)] text-[var(--text)] font-sans antialiased transition-colors duration-150">
-      {/* 1. Header Superior (80px height) */}
-      <header className="h-20 w-full bg-[var(--bg-soft)] border-b border-[var(--line)] flex items-center justify-between px-6 shrink-0 z-30">
-        {/* Brand/Logo */}
-        <div className="flex items-baseline gap-1">
-          <Link
-             href="/dashboard"
-             className="text-2xl font-black tracking-tighter uppercase text-zinc-950 dark:text-white hover:opacity-90 transition-opacity"
+  const sidebar = (
+    <aside
+      className="flex h-full w-[248px] shrink-0 flex-col bg-[#080808] px-3 py-5 text-white"
+      style={{
+        borderRight: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      {/* Logo */}
+      <Link
+        href="/dashboard"
+        className="group flex items-center gap-3 rounded-2xl px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03]"
+        onClick={() => setSidebarOpen(false)}
+        style={{ marginBottom: "4px" }}
+      >
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+          style={{
+            background: "rgba(157,124,255,0.12)",
+            border: "1px solid rgba(157,124,255,0.2)",
+          }}
+        >
+          <Sparkles size={15} className="text-[#9D7CFF]" />
+        </span>
+        <span className="min-w-0">
+          <span
+            className="block text-[13px] font-semibold leading-tight text-white tracking-[-0.01em]"
           >
-            MRCHICKEN
-          </Link>
-          <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold font-mono tracking-tight select-none">
-            by KHAOZ Studio.
+            AgenteMrChicken
           </span>
-        </div>
+          <span className="block truncate text-[11px] font-normal text-[#7B7B86] mt-0.5">
+            {workspaceLabel}
+          </span>
+        </span>
+      </Link>
 
-        {/* Center / Right Control Panel */}
-        <div className="flex items-center gap-4">
-          {/* Workspace Pill */}
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-soft)] text-[9px] font-mono text-zinc-500 dark:text-zinc-400">
-            <span>Workspace: {workspaceLabel}</span>
-          </div>
+      {/* Separator */}
+      <div
+        className="mx-3 my-3"
+        style={{ height: "1px", background: "rgba(255,255,255,0.05)" }}
+      />
 
-          {/* AI Status Pill */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-soft)] text-[9px] font-mono font-bold tracking-wide uppercase text-zinc-700 dark:text-zinc-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 dark:bg-white"></span>
-            <span>AI ACTIVE</span>
-            <span className="w-1.5 h-1.5 bg-blue-500 rounded-sm"></span>
-          </div>
+      {/* Navigation */}
+      <nav className="flex flex-1 flex-col gap-0.5" aria-label="Navegação lateral">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
 
-          {/* Credits Pill */}
-          <div className="hidden md:flex items-center px-3 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-soft)] text-[9px] font-mono text-zinc-500 dark:text-zinc-400">
-            <span>Credits: </span>
-            <span className="font-extrabold text-zinc-950 dark:text-white ml-1">4,500</span>
-            <span className="mx-0.5">/</span>
-            <span>5,000</span>
-          </div>
+          return (
+            <Link
+              href={item.href}
+              key={item.label}
+              onClick={() => setSidebarOpen(false)}
+              className="group relative flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium no-underline transition-all duration-200"
+              style={{
+                background: isActive
+                  ? "rgba(255,255,255,0.035)"
+                  : "transparent",
+                color: isActive ? "#ffffff" : "#B8B8C0",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.025)";
+                  e.currentTarget.style.color = "#ffffff";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "#B8B8C0";
+                }
+              }}
+            >
+              {/* Active indicator bar */}
+              <span
+                className="absolute left-0 rounded-full transition-opacity duration-200"
+                style={{
+                  top: "10px",
+                  bottom: "10px",
+                  width: "2px",
+                  background: "#9D7CFF",
+                  opacity: isActive ? 1 : 0,
+                }}
+              />
+              <Icon
+                size={16}
+                style={{
+                  color: isActive ? "#9D7CFF" : "#7B7B86",
+                  flexShrink: 0,
+                  transition: "color 200ms ease-out",
+                }}
+              />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
-          {/* Search Input */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search"
-              className="pl-8 pr-3 py-1.5 w-40 lg:w-48 bg-zinc-50 dark:bg-zinc-900 border border-[var(--line)] rounded-md text-[11px] outline-none focus:border-zinc-500 dark:focus:border-zinc-400 transition-colors duration-150"
-            />
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={12} />
-          </div>
-
-          {/* Theme Toggle Button */}
-          <button
-            onClick={toggleTheme}
-            className="w-8 h-8 rounded-md border border-[var(--line)] flex items-center justify-center bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[var(--text)] transition-colors duration-150 cursor-pointer"
-            aria-label="Toggle Theme"
+      {/* Bottom user profile */}
+      <div
+        className="mt-4 pt-4"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+      >
+        <div
+          className="flex items-center gap-3 rounded-2xl p-2.5 px-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+          }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+            style={{
+              background: "rgba(157,124,255,0.15)",
+              border: "1px solid rgba(157,124,255,0.25)",
+            }}
           >
-            {isDark ? <Sun size={13} /> : <Moon size={13} />}
-          </button>
-
-          {/* User Profile Card */}
-          <div className="w-8 h-8 rounded-lg overflow-hidden border border-[var(--line)] bg-zinc-100 dark:bg-zinc-800 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100&h=100&grayscale=1"
-              alt="Profile"
-              className="w-full h-full object-cover filter grayscale"
-            />
+            N
           </div>
-        </div>
-      </header>
-
-      {/* Main Body Layout (Sidebar + Main Area) */}
-      <div className="flex flex-1 w-full overflow-hidden">
-        {/* 2. Sidebar Fixa à Esquerda (184px width) */}
-        <aside className="hidden md:flex flex-col w-[184px] bg-[var(--bg)] border-r border-[var(--line)] h-full justify-between py-6 select-none shrink-0 z-20">
-          <nav className="space-y-1 px-1.5" aria-label="Navegação Lateral">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-
-              return (
-                <Link
-                  href={item.href}
-                  key={item.label}
-                  className={`flex items-center gap-3 py-2 px-3.5 text-[11px] transition-all relative group ${
-                    isActive
-                      ? "text-zinc-950 font-bold dark:text-white"
-                      : "text-zinc-500 font-medium hover:text-zinc-850 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  {/* Left Indicator vertical bar */}
-                  {isActive && (
-                    <div className="absolute left-0 top-0 bottom-0 w-[2.5px] bg-zinc-950 dark:bg-white"></div>
-                  )}
-
-                  <Icon
-                    size={13}
-                    className={`shrink-0 transition-colors ${
-                      isActive ? "text-zinc-950 dark:text-white" : "text-zinc-400 group-hover:text-zinc-700"
-                    }`}
-                  />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Sidebar Footer */}
-          <div className="px-5 mt-auto">
-            <div className="text-[10px] font-bold text-zinc-950 dark:text-white font-mono leading-none tracking-tight">
-              by KHAOZ Studio
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium text-white leading-tight">
+              Nexus
+            </div>
+            <div
+              className="mt-0.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                background: "rgba(157,124,255,0.1)",
+                color: "#9D7CFF",
+                border: "1px solid rgba(157,124,255,0.18)",
+              }}
+            >
+              Pro
             </div>
           </div>
-        </aside>
-
-        {/* 3. Main Workspace Area */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[var(--bg)]">
-          {children}
-        </main>
+        </div>
+        <div
+          className="mt-3 px-1 text-[10px] tracking-[0.06em] uppercase"
+          style={{ color: "#4A4A54" }}
+        >
+          by BM4E Studio
+        </div>
       </div>
+    </aside>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#080808] text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/* Mobile top bar */}
+      <div
+        className="fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
+        style={{
+          borderBottom: "1px solid rgba(255,255,255,0.07)",
+          background: "rgba(8,8,8,0.9)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+        }}
+      >
+        <Link href="/flow" className="flex items-center gap-2 text-sm font-semibold text-white no-underline">
+          <Sparkles size={15} className="text-[#9D7CFF]" />
+          AgenteMrChicken
+        </Link>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((value) => !value)}
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-white transition-colors"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(255,255,255,0.04)",
+          }}
+          aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"}
+        >
+          {sidebarOpen ? <X size={16} /> : <Menu size={16} />}
+        </button>
+      </div>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: "rgba(0,0,0,0.65)" }}
+          aria-label="Fechar menu"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:z-10 md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {sidebar}
+      </div>
+
+      <main className="min-h-screen pt-14 md:ml-[248px] md:pt-0">{children}</main>
     </div>
   );
 }

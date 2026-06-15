@@ -1,14 +1,20 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { startPollingWorker } from "@/lib/videos/polling-worker";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
 
 if (typeof window === "undefined") {
   startPollingWorker();
 }
 
 export const metadata: Metadata = {
-  title: "AI UGC Reaction Studio",
-  description: "SaaS para criar videos verticais de react com IA."
+  title: "AgenteMrChicken — AI Workspace",
+  description: "Ambiente de criação e automação inteligente com IA de próxima geração.",
 };
 
 export default function RootLayout({
@@ -18,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

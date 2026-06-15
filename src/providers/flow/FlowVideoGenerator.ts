@@ -152,7 +152,7 @@ export class FlowVideoGenerator {
       const modelBtn = page.locator('button').filter({ hasText: /Veo|Banana|Imagen/ }).first();
       if (await modelBtn.count() > 0 && await modelBtn.isVisible()) {
         const buttonText = await modelBtn.innerText();
-        const isImageActive = buttonText.includes('Banana') || buttonText.includes('Imagen');
+        const isImageActive = /(Banana|Imagen)/i.test(buttonText);
         const needsPopoverConfig = isImageActive || options?.aspectRatio || options?.quantity || options?.model;
 
         if (needsPopoverConfig) {
@@ -229,15 +229,52 @@ export class FlowVideoGenerator {
         }
       }
 
-      // 4. Count initial generated items (to detect when a new one is finished)
-      const getMediaCount = async () => {
-        const imgCount = await page.locator('img[src*="getMediaUrlRedirect"]:not([role="dialog"] img):not(aside img)').count();
-        const videoCount = await page.locator('video:not([role="dialog"] video):not(aside video)').count();
-        return imgCount + videoCount;
+      // 4. Prepare strict video-only tracking so old images or videos are never downloaded by accident.
+      const activeModelText = await page.locator('button').filter({ hasText: /Veo|Banana|Imagen/ }).first().innerText().catch(() => '');
+      if (/(Banana|Imagen)/i.test(activeModelText) && !/Veo/i.test(activeModelText)) {
+        throw new Error('Google Flow ainda esta em modo Imagem. A geracao de video foi bloqueada para evitar criar ou baixar imagem por engano.');
+      }
+
+      const videoCardSelector = 'video:not([role="dialog"] video):not(aside video)';
+      const videoCards = () => page.locator(videoCardSelector);
+      const getVideoIdentity = async (index: number): Promise<string> => {
+        return await videoCards().nth(index).evaluate((el) => {
+          const video = el as HTMLVideoElement;
+          const source = video.querySelector('source');
+          return video.currentSrc || video.src || source?.src || video.getAttribute('src') || '';
+        }).catch(() => '');
       };
-      
-      const initialMediaCount = await getMediaCount();
-      logger.info(`Itens de mídia existentes no workspace: ${initialMediaCount}`);
+      const getVideoIdentities = async (): Promise<Set<string>> => {
+        const cards = videoCards();
+        const count = await cards.count();
+        const identities = new Set<string>();
+        for (let i = 0; i < count; i++) {
+          const identity = await getVideoIdentity(i);
+          if (identity) {
+            identities.add(identity);
+          }
+        }
+        return identities;
+      };
+      const getNewVideoIndexes = async (initialIdentities: Set<string>, initialCount: number): Promise<number[]> => {
+        const cards = videoCards();
+        const count = await cards.count();
+        const indexes: number[] = [];
+        for (let i = 0; i < count; i++) {
+          const identity = await getVideoIdentity(i);
+          if (identity && !initialIdentities.has(identity)) {
+            indexes.push(i);
+          }
+        }
+
+        if (indexes.length === 0 && count > initialCount) {
+          for (let i = initialCount; i < count; i++) {
+            indexes.push(i);
+          }
+        }
+
+        return indexes;
+      };
 
       let expectedNewItemsCount = 1; // Default for VideoFX
       if (options?.quantity) {
@@ -253,6 +290,10 @@ export class FlowVideoGenerator {
       if (options?.referenceImage) {
         await this.uploadReferenceImage(page, options.referenceImage);
       }
+
+      const initialVideoCount = await videoCards().count();
+      const initialVideoIdentities = await getVideoIdentities();
+      logger.info(`Videos existentes no workspace antes da geracao: ${initialVideoCount}`);
 
       // 5. Find prompt input area
       logger.info('Inserindo prompt.');
@@ -305,40 +346,42 @@ export class FlowVideoGenerator {
         'text=violou as diretrizes',
         'text=prompt inválido'
       ];
+      const assertNoVisibleGenerationError = async () => {
+        for (const selector of errorQueries) {
+          const errEl = page.locator(selector);
+          if (await errEl.count() > 0 && await errEl.first().isVisible()) {
+            const errMsg = await errEl.first().innerText();
+            throw new Error(`Prompt inválido ou violou diretrizes de conteúdo: ${errMsg}`);
+          }
+        }
+      };
 
-      // Poll until generation finishes (new media item is added to the count)
-      let lastCount = initialMediaCount;
+      // Poll until generation finishes (new video items are added after submit)
+      let lastCount = 0;
       let lastChangeTime = Date.now();
       const generationStartTime = Date.now();
 
       await pollCondition(
         page,
         async () => {
-          // Check for errors first
-          for (const selector of errorQueries) {
-            const errEl = page.locator(selector);
-            if (await errEl.count() > 0 && await errEl.first().isVisible()) {
-              const errMsg = await errEl.first().innerText();
-              throw new Error(`Prompt inválido ou violou diretrizes de conteúdo: ${errMsg}`);
-            }
-          }
+          await assertNoVisibleGenerationError();
 
-          const currentCount = await getMediaCount();
+          const currentCount = (await getNewVideoIndexes(initialVideoIdentities, initialVideoCount)).length;
           if (currentCount > lastCount) {
             lastCount = currentCount;
             lastChangeTime = Date.now();
-            logger.info(`Nova mídia detectada. Contagem parcial: ${currentCount}`);
+            logger.info(`Novo video detectado. Contagem parcial: ${currentCount}`);
           }
 
           // If we reached the expected count, we are done!
-          if (currentCount >= initialMediaCount + expectedNewItemsCount) {
-            logger.info(`Alcançou a quantidade esperada de itens: ${currentCount}`);
+          if (currentCount >= expectedNewItemsCount) {
+            logger.info(`Alcancou a quantidade esperada de videos novos: ${currentCount}`);
             return true;
           }
 
           // If we have at least one new item, and it's been 12 seconds since the count last changed, we assume generation is complete.
-          if (currentCount > initialMediaCount && Date.now() - lastChangeTime > 12000) {
-            logger.info(`Geração estabilizada em ${currentCount} itens após timeout de estabilização.`);
+          if (currentCount > 0 && Date.now() - lastChangeTime > 12000) {
+            logger.info(`Geracao estabilizada em ${currentCount} videos novos apos timeout de estabilizacao.`);
             return true;
           }
 
@@ -346,7 +389,7 @@ export class FlowVideoGenerator {
           // If the submit button containing 'arrow_forward' is visible again,
           // and we have waited at least 15 seconds since generation started, we assume generation finished.
           const currentSubmitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
-          if (await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > 15000) {
+          if (currentCount > 0 && await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > 15000) {
             logger.info('Botão de envio ("arrow_forward") está visível novamente. Geração terminada.');
             return true;
           }
@@ -358,14 +401,17 @@ export class FlowVideoGenerator {
         2000
       );
 
-      // 8. Open and download the generated media cards
-      logger.info('Geração concluída. Iniciando download de todos os novos itens...');
-      const mediaCards = page.locator('img[src*="getMediaUrlRedirect"]:not([role="dialog"] img):not(aside img), video:not([role="dialog"] video):not(aside video)');
+      // 8. Open and download only the generated video cards
+      logger.info('Geração concluída. Iniciando download de todos os novos videos...');
 
-      // Calculate how many items were generated in this run
-      const finalMediaCount = await getMediaCount();
-      const newItemsCount = Math.max(1, finalMediaCount - initialMediaCount);
-      logger.info(`Total de novas mídias detectadas: ${newItemsCount} (Contagem: ${initialMediaCount} -> ${finalMediaCount})`);
+      const newVideoIndexes = await getNewVideoIndexes(initialVideoIdentities, initialVideoCount);
+      const newItemsCount = newVideoIndexes.length;
+      const finalVideoCount = await videoCards().count();
+      logger.info(`Total de novos videos detectados: ${newItemsCount} (Contagem: ${initialVideoCount} -> ${finalVideoCount})`);
+
+      if (newItemsCount <= 0) {
+        throw new Error('Nenhum video novo foi detectado apos a geracao. Download bloqueado para evitar baixar videos antigos do workspace.');
+      }
 
       const downloadedPaths: string[] = [];
       const downloadedFilenames: string[] = [];
@@ -375,10 +421,10 @@ export class FlowVideoGenerator {
 
       // Loop and download each item
       for (let i = 0; i < newItemsCount; i++) {
-        const index = (finalMediaCount - newItemsCount) + i;
-        logger.info(`Abrindo visualização da mídia ${i + 1} de ${newItemsCount}...`);
+        const index = newVideoIndexes[i];
+        logger.info(`Abrindo visualização do video ${i + 1} de ${newItemsCount}...`);
 
-        const card = mediaCards.nth(index);
+        const card = videoCards().nth(index);
         await card.waitFor({ state: 'visible', timeout: 15000 });
         await card.click({ force: true });
         await page.waitForTimeout(2000); // Settling time for preview overlay
@@ -432,7 +478,7 @@ export class FlowVideoGenerator {
       }
 
       if (downloadedPaths.length === 0) {
-        throw new Error('Nenhuma mídia de vídeo foi baixada com sucesso.');
+        throw new Error('Nenhum video foi baixado com sucesso.');
       }
 
       return {
