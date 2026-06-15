@@ -111,6 +111,7 @@ export default function FlowDashboardPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 6. Popover States
   const [showSettings, setShowSettings] = useState(false);
@@ -178,6 +179,16 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     consoleEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  useEffect(() => {
+    const textarea = promptTextareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, 220);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 220 ? "auto" : "hidden";
+  }, [agentPrompt]);
 
   // Poll agent events in real-time
   useEffect(() => {
@@ -374,7 +385,8 @@ export default function FlowDashboardPage() {
         const data: GenerationResult = await res.json();
         if (data.success) {
           setImageResult(data);
-          appendLog(`[ImageFX] Imagens geradas com sucesso.`);
+          const generatedCount = data.paths?.length || (data.path ? 1 : 0);
+          appendLog(`[ImageFX] ${generatedCount} imagem(ns) baixada(s) com sucesso.`);
         } else {
           setImageResult({
             success: false,
@@ -930,22 +942,24 @@ export default function FlowDashboardPage() {
 
         {/* ── Main Input Pill ── */}
         <div
-          className="liquid-input pointer-events-auto relative flex w-full max-w-[900px] flex-wrap items-center gap-3 overflow-visible p-3 pl-5 sm:flex-nowrap"
+          className="liquid-input pointer-events-auto relative flex w-full max-w-[900px] flex-wrap items-end gap-3 overflow-visible p-3 pb-[22px] pl-5 sm:flex-nowrap"
           style={{ minHeight: 88 }}
           ref={popoverRef}
         >
           {/* Text input */}
-          <input
-            type="text"
+          <textarea
+            ref={promptTextareaRef}
+            rows={1}
             value={agentPrompt}
             onChange={(e) => setAgentPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
+              if (e.key === "Enter" && !e.shiftKey && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
+                e.preventDefault();
                 handleExecuteAutopilot();
               }
             }}
             placeholder="O que você quer criar hoje?"
-            className="min-w-0 flex-1 basis-full border-none bg-transparent px-2 py-4 text-[15px] text-white outline-none placeholder:text-[#7B7B86] sm:basis-auto"
+            className="min-h-[44px] min-w-0 flex-1 basis-full resize-none border-none bg-transparent px-2 py-3 text-[15px] leading-relaxed text-white outline-none placeholder:text-[#7B7B86] sm:basis-auto"
             style={{ caretColor: "#9D7CFF" }}
             disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
           />

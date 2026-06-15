@@ -267,9 +267,12 @@ export class FlowVideoGenerator {
           }
         }
 
-        if (indexes.length === 0 && count > initialCount) {
+        const countDelta = Math.max(0, count - initialCount);
+        if (countDelta > indexes.length) {
           for (let i = initialCount; i < count; i++) {
-            indexes.push(i);
+            if (!indexes.includes(i)) {
+              indexes.push(i);
+            }
           }
         }
 
@@ -360,6 +363,8 @@ export class FlowVideoGenerator {
       let lastCount = 0;
       let lastChangeTime = Date.now();
       const generationStartTime = Date.now();
+      const partialSettleMs = expectedNewItemsCount > 1 ? 60000 : 12000;
+      const submitReturnSettleMs = expectedNewItemsCount > 1 ? expectedNewItemsCount * 20000 : 15000;
 
       await pollCondition(
         page,
@@ -379,8 +384,8 @@ export class FlowVideoGenerator {
             return true;
           }
 
-          // If we have at least one new item, and it's been 12 seconds since the count last changed, we assume generation is complete.
-          if (currentCount > 0 && Date.now() - lastChangeTime > 12000) {
+          // If only part of a multi-video batch arrived, wait longer before accepting a partial result.
+          if (currentCount > 0 && Date.now() - lastChangeTime > partialSettleMs) {
             logger.info(`Geracao estabilizada em ${currentCount} videos novos apos timeout de estabilizacao.`);
             return true;
           }
@@ -389,7 +394,7 @@ export class FlowVideoGenerator {
           // If the submit button containing 'arrow_forward' is visible again,
           // and we have waited at least 15 seconds since generation started, we assume generation finished.
           const currentSubmitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
-          if (currentCount > 0 && await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > 15000) {
+          if (currentCount > 0 && await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > submitReturnSettleMs) {
             logger.info('Botão de envio ("arrow_forward") está visível novamente. Geração terminada.');
             return true;
           }

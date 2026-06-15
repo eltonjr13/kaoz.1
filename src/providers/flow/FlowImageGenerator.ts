@@ -237,12 +237,20 @@ export class FlowImageGenerator {
         throw new Error('Google Flow ainda esta em modo Video. A geracao de imagem foi bloqueada para evitar criar ou baixar video por engano.');
       }
 
-      const imageCardSelector = 'img[src*="getMediaUrlRedirect"]:not([role="dialog"] img):not(aside img)';
+      const imageCardSelector = 'img:not([role="dialog"] img):not(aside img)';
       const imageCards = () => page.locator(imageCardSelector);
       const getImageIdentity = async (index: number): Promise<string> => {
         return await imageCards().nth(index).evaluate((el) => {
           const image = el as HTMLImageElement;
-          return image.currentSrc || image.src || image.getAttribute('src') || '';
+          const src = image.currentSrc || image.src || image.getAttribute('src') || '';
+          if (!src) return '';
+
+          const rect = image.getBoundingClientRect();
+          const isLargePreview = (rect.width >= 96 && rect.height >= 96) || (image.naturalWidth >= 256 && image.naturalHeight >= 256);
+          const isFlowMedia = /getMediaUrlRedirect|googleusercontent|usercontent\.google|^blob:/i.test(src);
+          if (!isFlowMedia && !isLargePreview) return '';
+
+          return src;
         }).catch(() => '');
       };
       const getImageIdentities = async (): Promise<Set<string>> => {
@@ -268,9 +276,12 @@ export class FlowImageGenerator {
           }
         }
 
-        if (indexes.length === 0 && count > initialCount) {
+        const countDelta = Math.max(0, count - initialCount);
+        if (countDelta > indexes.length) {
           for (let i = initialCount; i < count; i++) {
-            indexes.push(i);
+            if (!indexes.includes(i)) {
+              indexes.push(i);
+            }
           }
         }
 
@@ -361,6 +372,8 @@ export class FlowImageGenerator {
       let lastCount = 0;
       let lastChangeTime = Date.now();
       const generationStartTime = Date.now();
+      const partialSettleMs = expectedNewItemsCount > 1 ? 60000 : 12000;
+      const submitReturnSettleMs = expectedNewItemsCount > 1 ? expectedNewItemsCount * 20000 : 15000;
 
       await pollCondition(
         page,
@@ -380,8 +393,8 @@ export class FlowImageGenerator {
             return true;
           }
 
-          // If we have at least one new item, and it's been 12 seconds since the count last changed, we assume generation is complete.
-          if (currentCount > 0 && Date.now() - lastChangeTime > 12000) {
+          // If only part of a multi-image batch arrived, wait longer before accepting a partial result.
+          if (currentCount > 0 && Date.now() - lastChangeTime > partialSettleMs) {
             logger.info(`Geracao estabilizada em ${currentCount} imagens novas apos timeout de estabilizacao.`);
             return true;
           }
@@ -390,7 +403,7 @@ export class FlowImageGenerator {
           // If the submit button containing 'arrow_forward' is visible again,
           // and we have waited at least 15 seconds since generation started, we assume generation finished.
           const currentSubmitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
-          if (currentCount > 0 && await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > 15000) {
+          if (currentCount > 0 && await currentSubmitBtn.isVisible() && Date.now() - generationStartTime > submitReturnSettleMs) {
             logger.info('Botão de envio ("arrow_forward") está visível novamente. Geração terminada.');
             return true;
           }
