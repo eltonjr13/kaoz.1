@@ -10,11 +10,7 @@ import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/s
 
 function getMediaUrl(filePath: string | null | undefined) {
   if (!filePath) return "";
-  if (filePath.startsWith("/")) {
-    return filePath;
-  }
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  return `${supabaseUrl}/storage/v1/object/public/avatars/${filePath}`;
+  return filePath.startsWith("/") ? filePath : `/${filePath}`;
 }
 
 const isVideo = (path: string) => /\.(mp4|mov|webm|mkv|avi)$/i.test(path);

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { findLocalAvatar } from "@/lib/local-store";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { generateScriptFromAnalysis } from "@/lib/ai/gemini";
 
 function jsonError(message: string, status = 400) {
@@ -27,26 +26,9 @@ export async function POST(request: Request) {
 
     let avatarPersonality: Record<string, unknown> | null = null;
     if (avatarId) {
-      if (hasSupabaseConfig()) {
-        try {
-          const supabase = await createClient();
-          const { data } = await supabase
-            .from("avatars")
-            .select("personality")
-            .eq("id", avatarId)
-            .single();
-          if (data) {
-            avatarPersonality = data.personality as Record<string, unknown> | null;
-          }
-        } catch (err) {
-          console.error("Erro ao buscar avatar no Supabase para gerar roteiro:", err);
-        }
-      }
-      if (!avatarPersonality) {
-        const localAvatar = await findLocalAvatar(avatarId);
-        if (localAvatar) {
-          avatarPersonality = (localAvatar.personality as Record<string, unknown>) || null;
-        }
+      const localAvatar = await findLocalAvatar(avatarId);
+      if (localAvatar) {
+        avatarPersonality = (localAvatar.personality as Record<string, unknown>) || null;
       }
     }
 

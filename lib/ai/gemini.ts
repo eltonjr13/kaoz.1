@@ -166,6 +166,7 @@ Você DEVE responder rigorosamente em formato JSON com o seguinte formato de obj
 
   console.log(`[Gemini Pipeline] Enviando requisição multimodal para o Gemini usando modelo ${modelName}...`);
   const ai = new GoogleGenAI({ apiKey });
+
   const response = await ai.models.generateContent({
     model: modelName,
     contents,
@@ -308,6 +309,10 @@ export interface FlowDecision {
   explanation: string;
   optimizedPrompt: string;
   targetJobId?: string | null;
+  strategy?: string;
+  scriptOutline?: string | null;
+  creativeSteps?: string[];
+  visualReferenceInstructions?: string;
 }
 
 export async function classifyIntention(intention: string): Promise<FlowDecision> {
@@ -319,7 +324,22 @@ export async function classifyIntention(intention: string): Promise<FlowDecision
   const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const ai = new GoogleGenAI({ apiKey });
 
+  const agentPlannerInstructions = `
+Modo agente autonomo:
+- Interprete o pedido, decida o fluxo, monte estrategia criativa e defina passos antes da execucao.
+- Nunca misture image e video quando o usuario pediu apenas um tipo.
+- Para "image", nao planeje nenhuma etapa de video.
+- Para "video", nao planeje nenhuma etapa de imagem final.
+- Para "project", planeje tambem estrutura de roteiro/reacao do avatar.
+- Se houver avatar selecionado, considere que o Flow recebera uma imagem ou frame do avatar como referencia visual.
+- O prompt final deve pedir consistencia visual com a referencia do avatar sem trocar o tipo de midia.
+- Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
+- Para project/refine, escreva optimizedPrompt como briefing operacional em portugues.
+- Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions.
+`;
+
   const prompt = `
+${agentPlannerInstructions}
 Você é o classificador central de intenções do agente autônomo do MrChicken.
 MrChicken é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares.
 Sua tarefa é analisar o pedido/intenção do usuário e decidir qual é o melhor fluxo para atendê-lo.
@@ -355,7 +375,11 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
       flow: "project",
       explanation: "Fallback por falha de parser",
       optimizedPrompt: intention,
-      targetJobId: null
+      targetJobId: null,
+      strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
+      scriptOutline: null,
+      creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
+      visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel."
     });
     return parsed;
   } catch (err) {
@@ -364,7 +388,11 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
       flow: "project",
       explanation: "Fallback por erro de execução",
       optimizedPrompt: intention,
-      targetJobId: null
+      targetJobId: null,
+      strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
+      scriptOutline: null,
+      creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
+      visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel."
     };
   }
 }

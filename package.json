@@ -12,8 +12,6 @@
   "dependencies": {
     "@google/genai": "^2.7.0",
     "@gradio/client": "^2.2.1",
-    "@supabase/ssr": "0.10.3",
-    "@supabase/supabase-js": "2.106.2",
     "lucide-react": "1.16.0",
     "next": "16.2.6",
     "openai": "^6.39.0",

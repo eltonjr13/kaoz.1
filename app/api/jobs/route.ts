@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { createLocalJob, findLocalAvatar, listLocalJobs } from "@/lib/local-store";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { buildSourceVideoMetrics, parseSourceVideoUrl } from "@/lib/videos/source-video";
-import { APP_WORKSPACE_ID } from "@/lib/workspace";
+import { parseSourceVideoUrl } from "@/lib/videos/source-video";
 import type { ExpertBackgroundMode, RenderLayout } from "@/types";
 
 const renderLayouts = new Set<RenderLayout>(["source_pip", "source_top_expert_bottom", "balanced_split"]);
@@ -16,32 +14,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get("jobId");
-
-    if (hasSupabaseConfig()) {
-      try {
-        const supabase = await createClient();
-        let query = supabase
-          .from("reaction_jobs")
-          .select("*, avatars(name), viral_videos(title, url, platform)")
-          .eq("user_id", APP_WORKSPACE_ID);
-
-        if (jobId) {
-          query = query.eq("id", jobId);
-        }
-
-        const { data, error } = await query.order("created_at", { ascending: false });
-
-        if (!error) {
-          let localJobs = await listLocalJobs();
-          if (jobId) {
-            localJobs = localJobs.filter(j => j.id === jobId);
-          }
-          return NextResponse.json({ jobs: [...localJobs, ...(data ?? [])] });
-        }
-      } catch (err) {
-        console.error("Erro ao ler jobs do Supabase:", err);
-      }
-    }
 
     let localJobs = await listLocalJobs();
     if (jobId) {
@@ -73,7 +45,7 @@ export async function POST(request: Request) {
 
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
   const avatarId = typeof body?.avatarId === "string" ? body.avatarId.trim() : "";
-  let sourceVideoId =
+  const sourceVideoId =
     typeof body?.sourceVideoId === "string" && body.sourceVideoId.trim()
       ? body.sourceVideoId.trim()
       : null;
@@ -102,116 +74,6 @@ export async function POST(request: Request) {
     return jsonError("Assunto e avatar sao obrigatorios.");
   }
 
-  if (hasSupabaseConfig()) {
-    try {
-      const supabase = await createClient();
-      const { data: avatar, error: avatarError } = await supabase
-        .from("avatars")
-        .select("id, consent_accepted, status")
-        .eq("id", avatarId)
-        .eq("user_id", APP_WORKSPACE_ID)
-        .single();
-
-      if (!avatarError && avatar) {
-        if (!avatar.consent_accepted || avatar.status !== "ready") {
-          return jsonError("Avatar precisa ter consentimento aceito e estar ativo.");
-        }
-
-        let sourceVideoEventMetadata: Record<string, string> | null = null;
-
-        if (!sourceVideoId && sourceVideoUrl) {
-          const parsedSourceVideo = parseSourceVideoUrl(sourceVideoUrl);
-
-          if (!parsedSourceVideo) {
-            return jsonError("Use um link direto valido de video para a colagem.");
-          }
-
-          const { data: existingVideo, error: existingVideoError } = await supabase
-            .from("viral_videos")
-            .select("id")
-            .eq("platform", parsedSourceVideo.platform)
-            .eq("external_id", parsedSourceVideo.externalId)
-            .maybeSingle();
-
-          if (existingVideoError) {
-            return jsonError(existingVideoError.message, 500);
-          }
-
-          if (existingVideo) {
-            sourceVideoId = existingVideo.id;
-          } else {
-            const { data: insertedVideo, error: insertedVideoError } = await supabase
-              .from("viral_videos")
-              .insert({
-                platform: parsedSourceVideo.platform,
-                external_id: parsedSourceVideo.externalId,
-                title: sourceVideoTitle,
-                url: parsedSourceVideo.normalizedUrl,
-                topic,
-                metrics: buildSourceVideoMetrics(parsedSourceVideo.platform)
-              })
-              .select("id")
-              .single();
-
-            if (insertedVideoError || !insertedVideo) {
-              return jsonError(insertedVideoError?.message ?? "Nao foi possivel salvar o video fonte.", 500);
-            }
-
-            sourceVideoId = insertedVideo.id;
-          }
-
-          if (!sourceVideoId) {
-            return jsonError("Nao foi possivel conectar o video fonte.", 500);
-          }
-
-          sourceVideoEventMetadata = {
-            source_video_id: sourceVideoId,
-            source_video_url: parsedSourceVideo.normalizedUrl,
-            source_platform: parsedSourceVideo.platform,
-            render_layout: renderLayout,
-            expert_background_mode: expertBackgroundMode
-          };
-        }
-
-        const { data, error } = await supabase
-          .from("reaction_jobs")
-          .insert({
-            user_id: APP_WORKSPACE_ID,
-            avatar_id: avatarId,
-            source_video_id: sourceVideoId,
-            topic,
-            render_layout: renderLayout,
-            expert_background_mode: expertBackgroundMode,
-            status: "draft",
-            voice_settings: voiceSettings || {},
-            script_text: scriptText,
-            source_video_description: sourceVideoDescription || null,
-            source_video_transcription: sourceVideoTranscription || null,
-            trim_start: trimStart,
-            trim_end: trimEnd
-          })
-          .select("*")
-          .single();
-
-        if (error) {
-          return jsonError(error.message, 500);
-        }
-
-        await supabase.from("job_events").insert({
-          user_id: APP_WORKSPACE_ID,
-          job_id: data.id,
-          event_type: "job_created",
-          message: sourceVideoId ? "Job criado com video fonte para colagem." : "Job criado.",
-          metadata: sourceVideoEventMetadata ?? {}
-        });
-
-        return NextResponse.json({ job: data }, { status: 201 });
-      }
-    } catch (err) {
-      console.error("Falha ao criar job no Supabase, caindo para local:", err);
-    }
-  }
-
   const localAvatar = await findLocalAvatar(avatarId);
 
   if (!localAvatar) {
@@ -227,6 +89,7 @@ export async function POST(request: Request) {
   const localJob = await createLocalJob({
     avatarId,
     topic,
+    sourceVideoId,
     sourceVideoUrl: parsedSourceVideo?.normalizedUrl ?? null,
     sourceVideoTitle: sourceVideoTitle || null,
     renderLayout,

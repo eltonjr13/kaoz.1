@@ -2,14 +2,14 @@ import { flowProvider } from "./FlowProvider";
 import { listLocalAvatars, updateLocalJob, createLocalJobEvent, listLocalJobs } from "@/lib/local-store";
 import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, type FlowDecision } from "@/lib/ai/gemini";
 import { logger } from "./FlowUtils";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
+import { getFfmpegPath, runCommand } from "@/lib/videos/render";
 import path from "node:path";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
 
 type GenerationQuantity = 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+const VIDEO_REFERENCE_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
 
 export interface AgentTaskOptions {
   topic: string;
@@ -34,43 +34,28 @@ export class FlowAgent {
     metadata?: Record<string, unknown> | null
   ) {
     logger.info(`[FlowAgent] [${jobId}] [${eventType}] ${message}`, metadata);
-    if (hasSupabaseConfig()) {
-      try {
-        const supabase = await createClient();
-        await supabase.from("job_events").insert({
-          user_id: APP_WORKSPACE_ID,
-          job_id: jobId,
-          event_type: eventType,
-          message,
-          metadata: metadata ?? {}
-        });
-      } catch (err) {
-        logger.warn("Falha ao registrar evento no Supabase", err);
-      }
-    } else {
-      await createLocalJobEvent(jobId, eventType, message, metadata);
+    await createLocalJobEvent(jobId, eventType, message, metadata);
+  }
+
+  private async logCreativePlan(jobId: string, decision: FlowDecision) {
+    if (decision.strategy) {
+      await this.logAgentEvent(jobId, "planning", `Estrategia criativa: ${decision.strategy}`);
+    }
+
+    if (decision.visualReferenceInstructions) {
+      await this.logAgentEvent(jobId, "planning", `Referencia visual: ${decision.visualReferenceInstructions}`);
+    }
+
+    if (decision.scriptOutline) {
+      await this.logAgentEvent(jobId, "planning", `Estrutura/roteiro: ${decision.scriptOutline}`);
+    }
+
+    if (decision.creativeSteps && decision.creativeSteps.length > 0) {
+      await this.logAgentEvent(jobId, "planning", `Plano de execucao: ${decision.creativeSteps.join(" -> ")}`);
     }
   }
 
   private async findAvatar(avatarId: string): Promise<import("@/types").Avatar> {
-    if (hasSupabaseConfig()) {
-      try {
-        const supabase = await createClient();
-        const { data } = await supabase
-          .from("avatars")
-          .select("*")
-          .eq("id", avatarId)
-          .eq("user_id", APP_WORKSPACE_ID)
-          .single();
-
-        if (data) {
-          return data as import("@/types").Avatar;
-        }
-      } catch (err) {
-        logger.warn(`[FlowAgent] Falha ao buscar avatar ${avatarId} no Supabase. Tentando armazenamento local.`, err);
-      }
-    }
-
     const avatars = await listLocalAvatars();
     const avatar = avatars.find(a => a.id === avatarId);
     if (!avatar) {
@@ -88,7 +73,8 @@ export class FlowAgent {
 
     try {
       if (/^https?:\/\//i.test(imagePath)) {
-        return this.cacheRemoteAvatarReferenceImage(imagePath, jobId);
+        const cachedMedia = await this.cacheRemoteAvatarReferenceMedia(imagePath, jobId);
+        return this.prepareAvatarReferenceImage(cachedMedia, jobId);
       }
 
       const localPath = path.isAbsolute(imagePath)
@@ -98,7 +84,7 @@ export class FlowAgent {
         : path.resolve(imagePath);
 
       await access(localPath);
-      return localPath;
+      return this.prepareAvatarReferenceImage(localPath, jobId);
     } catch (err) {
       logger.warn(`[FlowAgent] Nao foi possivel preparar a imagem de referencia do avatar ${avatar.id}.`, err);
       await this.logAgentEvent(jobId, "planning", "Avatar selecionado, mas a imagem de referencia nao pode ser anexada. Seguindo sem referencia visual.");
@@ -106,14 +92,14 @@ export class FlowAgent {
     }
   }
 
-  private async cacheRemoteAvatarReferenceImage(imagePath: string, jobId: string): Promise<string> {
+  private async cacheRemoteAvatarReferenceMedia(imagePath: string, jobId: string): Promise<string> {
     const response = await fetch(imagePath);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
     const contentType = response.headers.get("content-type") || "";
-    const ext = this.avatarReferenceExtension(contentType);
+    const ext = this.avatarReferenceExtension(contentType, imagePath);
     const tempDir = path.resolve("storage/temp_uploads");
     await mkdir(tempDir, { recursive: true });
     const localPath = path.join(tempDir, `avatar_ref_${jobId}${ext}`);
@@ -121,10 +107,38 @@ export class FlowAgent {
     return localPath;
   }
 
-  private avatarReferenceExtension(contentType: string): ".jpg" | ".png" | ".webp" {
+  private avatarReferenceExtension(contentType: string, sourcePath: string): string {
     if (contentType.includes("webp")) return ".webp";
     if (contentType.includes("jpeg") || contentType.includes("jpg")) return ".jpg";
+    if (contentType.includes("mp4")) return ".mp4";
+    if (contentType.includes("quicktime")) return ".mov";
+    if (contentType.includes("webm")) return ".webm";
+    const ext = path.extname(new URL(sourcePath, "http://local").pathname).toLowerCase();
+    if (ext) return ext;
     return ".png";
+  }
+
+  private async prepareAvatarReferenceImage(mediaPath: string, jobId: string): Promise<string> {
+    if (!this.isVideoReference(mediaPath)) {
+      return mediaPath;
+    }
+
+    const tempDir = path.resolve("storage/temp_uploads");
+    await mkdir(tempDir, { recursive: true });
+    const framePath = path.join(tempDir, `avatar_ref_${jobId}_frame.jpg`);
+    await runCommand(getFfmpegPath(), [
+      "-y",
+      "-ss", "00:00:01",
+      "-i", mediaPath,
+      "-frames:v", "1",
+      "-vf", "scale=1024:-1",
+      framePath
+    ]);
+    return framePath;
+  }
+
+  private isVideoReference(mediaPath: string): boolean {
+    return VIDEO_REFERENCE_EXTENSIONS.has(path.extname(mediaPath).toLowerCase());
   }
 
   private async generateBackgroundVideoPrompt(
@@ -177,15 +191,7 @@ export class FlowAgent {
   }
 
   private async updateJobVideoPath(jobId: string, videoPath: string) {
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      await supabase
-        .from("reaction_jobs")
-        .update({ source_video_id: videoPath })
-        .eq("id", jobId);
-    } else {
-      await updateLocalJob(jobId, { source_video_id: videoPath });
-    }
+    await updateLocalJob(jobId, { source_video_id: videoPath });
   }
 
   private async analyzeAndCreateScript(
@@ -224,26 +230,12 @@ export class FlowAgent {
 
   private async finalizeJob(jobId: string, details: { scriptText: string; description: string; transcription: string }) {
     await this.logAgentEvent(jobId, "queued", "Atualizando o registro do projeto no banco de dados e preparando para renderizar...");
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      await supabase
-        .from("reaction_jobs")
-        .update({
-          status: "queued",
-          script_text: details.scriptText,
-          source_video_description: details.description,
-          source_video_transcription: details.transcription,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", jobId);
-    } else {
-      await updateLocalJob(jobId, {
-        status: "queued",
-        script_text: details.scriptText,
-        source_video_description: details.description,
-        source_video_transcription: details.transcription
-      });
-    }
+    await updateLocalJob(jobId, {
+      status: "queued",
+      script_text: details.scriptText,
+      source_video_description: details.description,
+      source_video_transcription: details.transcription
+    });
   }
 
   private triggerPipelineStart(jobId: string, baseUrlOpt?: string) {
@@ -349,22 +341,10 @@ export class FlowAgent {
           await this.logAgentEvent(jobId, "failed", `Todas as ${maxRetries + 1} tentativas falharam. Erro final: ${errMsg}`);
           
           try {
-            if (hasSupabaseConfig()) {
-              const supabase = await createClient();
-              await supabase
-                .from("reaction_jobs")
-                .update({
-                  status: "failed",
-                  error_message: errMsg,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", jobId);
-            } else {
-              await updateLocalJob(jobId, {
-                status: "failed",
-                error_message: errMsg
-              });
-            }
+            await updateLocalJob(jobId, {
+              status: "failed",
+              error_message: errMsg
+            });
           } catch (dbErr) {
             logger.error("Falha ao salvar status de erro no banco de dados", dbErr);
           }
@@ -385,24 +365,8 @@ export class FlowAgent {
     };
   }
 
-  private async uploadMediaFile(jobId: string, localPath: string, contentType: string): Promise<string> {
-    if (hasSupabaseConfig()) {
-      try {
-        const supabase = await createClient();
-        const fs = await import("node:fs/promises");
-        const fileBuffer = await fs.readFile(localPath);
-        const ext = path.extname(localPath);
-        const supabasePath = `${APP_WORKSPACE_ID}/${jobId}-generated${ext}`;
-        await supabase.storage.from("renders").upload(supabasePath, fileBuffer, {
-          contentType,
-          upsert: true
-        });
-        const { data: { publicUrl } } = supabase.storage.from("renders").getPublicUrl(supabasePath);
-        return publicUrl;
-      } catch (err) {
-        logger.warn(`[FlowAgent] Falha ao subir arquivo para Supabase storage. Usando caminho local.`, err);
-      }
-    }
+  private async uploadMediaFile(_jobId: string, localPath: string, _contentType: string): Promise<string> {
+    void _contentType;
     return localPath;
   }
 
@@ -411,98 +375,38 @@ export class FlowAgent {
     finalPath: string,
     details: { status: string; source_video_description: string; source_video_transcription: string }
   ) {
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      await supabase
-        .from("reaction_jobs")
-        .update({
-          status: "completed",
-          final_video_path: finalPath,
-          source_video_description: details.source_video_description,
-          source_video_transcription: details.source_video_transcription,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", jobId);
-    } else {
-      await updateLocalJob(jobId, {
-        status: "completed",
-        final_video_path: finalPath,
-        source_video_description: details.source_video_description,
-        source_video_transcription: details.source_video_transcription
-      });
-    }
+    await updateLocalJob(jobId, {
+      status: "completed",
+      final_video_path: finalPath,
+      source_video_description: details.source_video_description,
+      source_video_transcription: details.source_video_transcription
+    });
   }
 
   private async updateJobStatusToFailed(jobId: string, errorMessage: string) {
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      await supabase
-        .from("reaction_jobs")
-        .update({
-          status: "failed",
-          error_message: errorMessage,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", jobId);
-    } else {
-      await updateLocalJob(jobId, {
-        status: "failed",
-        error_message: errorMessage
-      });
-    }
+    await updateLocalJob(jobId, {
+      status: "failed",
+      error_message: errorMessage
+    });
   }
 
   private async updateJobRefinedDetails(jobId: string, patch: { source_video_id: string; script_text: string; status: string }) {
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      await supabase
-        .from("reaction_jobs")
-        .update({
-          source_video_id: patch.source_video_id,
-          script_text: patch.script_text,
-          status: "queued",
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", jobId);
-    } else {
-      await updateLocalJob(jobId, {
-        source_video_id: patch.source_video_id,
-        script_text: patch.script_text,
-        status: "queued"
-      });
-    }
+    await updateLocalJob(jobId, {
+      source_video_id: patch.source_video_id,
+      script_text: patch.script_text,
+      status: "queued"
+    });
   }
 
   private async findTargetJob(avatarId: string, jobIdParam?: string | null): Promise<import("@/types").ReactionJob | null> {
+    const jobs = await listLocalJobs();
+
     if (jobIdParam && jobIdParam !== "latest") {
-      if (hasSupabaseConfig()) {
-        const supabase = await createClient();
-        const { data } = await supabase
-          .from("reaction_jobs")
-          .select("*")
-          .eq("id", jobIdParam)
-          .single();
-        return (data as import("@/types").ReactionJob) || null;
-      } else {
-        const jobs = await listLocalJobs();
-        return jobs.find(j => j.id === jobIdParam) || null;
-      }
+      return jobs.find(j => j.id === jobIdParam) || null;
     }
 
-    if (hasSupabaseConfig()) {
-      const supabase = await createClient();
-      const { data } = await supabase
-        .from("reaction_jobs")
-        .select("*")
-        .eq("avatar_id", avatarId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      return data && data.length > 0 ? (data[0] as import("@/types").ReactionJob) : null;
-    } else {
-      const jobs = await listLocalJobs();
-      const avatarJobs = jobs.filter(j => j.avatar_id === avatarId);
-      return avatarJobs.length > 0 ? avatarJobs[0] : null;
-    }
+    const avatarJobs = jobs.filter(j => j.avatar_id === avatarId);
+    return avatarJobs.length > 0 ? avatarJobs[0] : null;
   }
 
   // eslint-disable-next-line complexity
@@ -877,6 +781,8 @@ Retorne estritamente um JSON no formato:
       "planning", 
       `Classificação concluída. Decisão: fluxo "${decision.flow}". Explicação: ${decision.explanation}`
     );
+
+    await this.logCreativePlan(jobId, decision);
 
     let personality: unknown = null;
     let avatarReferenceImage: string | undefined;

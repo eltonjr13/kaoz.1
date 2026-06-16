@@ -465,19 +465,19 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                 
                 <div style={{ display: "grid", gap: "8px", background: "var(--panel-strong)", padding: "12px", borderRadius: "8px", border: "1px solid var(--line)" }}>
                   <div>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_URL</label>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>ARMAZENAMENTO</label>
                     <input 
                       readOnly 
-                      value={process.env.NEXT_PUBLIC_SUPABASE_URL || ""} 
+                      value="local" 
                       style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_KEY (Anon Key)</label>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>PASTA DE DADOS</label>
                     <input 
                       readOnly 
-                      value={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""} 
+                      value=".generated/local-data" 
                       style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />

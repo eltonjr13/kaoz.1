@@ -17,7 +17,7 @@ Funcionalidades implementadas:
 - Remocao opcional de fundo do expert no layout de fonte cheia, deixando o expert recortado sobre o video fonte.
 - Listagem de jobs em `/jobs`, com status, fonte usada e download quando houver render final.
 - APIs internas para avatares, jobs, busca viral e inicio do pipeline.
-- Persistencia em Supabase quando configurado, com fallback local em `.generated/local-data`.
+- Persistencia local em `.generated/local-data` e uploads publicos no proprio computador.
 - Render local do video final via `ffmpeg`, com layout vertical: expert no topo e video fonte embaixo.
 - Otimização de prompts para imagem/vídeo em `/flow` utilizando agentes de IA de automação web via Playwright com suporte a Gemini, ChatGPT, Claude e DeepSeek.
 
@@ -35,7 +35,6 @@ Pontos ainda parciais ou dependentes de servico externo:
 - Next.js 16 App Router
 - React 19
 - TypeScript
-- Supabase SSR e Supabase JS
 - OpenAI para roteiro
 - Gradio client para OmniVoice
 - Microserviço Python/FastAPI para MuseTalk lip-sync
@@ -57,9 +56,7 @@ components/                   UI, forms, tabelas e layout
 lib/
   ai/                         Roteiro OpenAI, voz OmniVoice e provider lip-sync
   videos/                     Busca viral, parser de fonte, pipeline e render
-  local-store.ts              Fallback local em JSON e uploads publicos
-  supabase/                   Cliente Supabase server-side
-supabase/schema.sql           Schema, RLS permissivo para workspace unico e buckets
+  local-store.ts              Persistencia local em JSON e uploads publicos
 types/                        Tipos de dominio
 services/lipsync/              Microserviço MuseTalk para gerar talking avatar
 ```
@@ -81,8 +78,6 @@ copy .env.example .env.local
 3. Configure as variaveis em `.env.local`:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
 APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
 
 OPENAI_API_KEY=
@@ -105,9 +100,7 @@ FLOW_URL=https://flow.google
 
 As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle/Colab, veja `docs/kaggle-musetalk-v15.md`.
 
-4. Se for usar Supabase, rode `supabase/schema.sql` no projeto Supabase. O schema cria tabelas, enums, triggers, politicas RLS permissivas para o modo workspace unico e buckets `avatars`, `job-assets` e `renders`.
-
-5. Para render local completo, deixe estes comandos disponiveis no worker:
+4. Para render local completo, deixe estes comandos disponiveis no worker:
 
 - `ffmpeg`
 - `ffprobe`
@@ -169,10 +162,6 @@ npm run typecheck  # TypeScript sem emitir arquivos
 6. Acompanhe o status e baixe o resultado em `/jobs`.
 
 ## Persistencia
-
-Quando Supabase esta configurado, o app grava avatares, jobs, eventos e arquivos nos buckets configurados.
-
-Quando Supabase nao esta configurado ou uma operacao falha, o app usa fallback local:
 
 - Metadados: `.generated/local-data/*.json`
 - Avatares: `public/uploads/avatars`

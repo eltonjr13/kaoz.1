@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import type { FlowDecision } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +33,15 @@ function parseApprovedPlan(value: unknown): FlowDecision | undefined {
       flow,
       optimizedPrompt: optimizedPrompt.trim(),
       explanation: typeof plan.explanation === "string" ? plan.explanation : "Plano aprovado pelo usuario.",
-      targetJobId: typeof plan.targetJobId === "string" ? plan.targetJobId : null
+      targetJobId: typeof plan.targetJobId === "string" ? plan.targetJobId : null,
+      strategy: typeof plan.strategy === "string" ? plan.strategy : undefined,
+      scriptOutline: typeof plan.scriptOutline === "string" ? plan.scriptOutline : null,
+      creativeSteps: Array.isArray(plan.creativeSteps)
+        ? plan.creativeSteps.filter((step): step is string => typeof step === "string")
+        : undefined,
+      visualReferenceInstructions: typeof plan.visualReferenceInstructions === "string"
+        ? plan.visualReferenceInstructions
+        : undefined
     };
   }
 
@@ -71,30 +77,24 @@ export async function POST(request: Request) {
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
 
     if (!model) {
-      return NextResponse.json(
-        { error: "Parâmetro 'model' é obrigatório." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Parametro 'model' e obrigatorio." }, { status: 400 });
     }
 
     if (model !== "deepseek" && model !== "claude" && model !== "chatgpt" && model !== "gemini") {
       return NextResponse.json(
-        { error: "Modelo não suportado. Escolha entre: deepseek, claude, chatgpt ou gemini." },
+        { error: "Modelo nao suportado. Escolha entre: deepseek, claude, chatgpt ou gemini." },
         { status: 400 }
       );
     }
 
     if (body?.approvedPlan && !approvedPlan) {
-      return NextResponse.json(
-        { error: "Plano aprovado invalido." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Plano aprovado invalido." }, { status: 400 });
     }
 
-    if (action === "plan-project") {
-      if (!prompt || !avatarId) {
+    if (action === "plan-agent" || action === "plan-project") {
+      if (!prompt || (action === "plan-project" && !avatarId)) {
         return NextResponse.json(
-          { error: "Parâmetros 'prompt' (tema/ideia) e 'avatarId' são obrigatórios para planejar um projeto." },
+          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para planejar um projeto." },
           { status: 400 }
         );
       }
@@ -118,94 +118,40 @@ export async function POST(request: Request) {
     if (action === "create-project") {
       if (!prompt || !avatarId) {
         return NextResponse.json(
-          { error: "Parâmetros 'prompt' (tema/ideia) e 'avatarId' são obrigatórios para criar um projeto." },
+          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para criar um projeto." },
           { status: 400 }
         );
       }
 
-      console.log(`[API AGENT] Iniciando criação autônoma de vídeo para: "${prompt}" com o avatar: ${avatarId}...`);
-      
+      console.log(`[API AGENT] Iniciando criacao autonoma para: "${prompt}" com o avatar: ${avatarId}...`);
+
       const requestUrl = new URL(request.url);
       const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
-      
-      let jobId = "";
-      
-      if (hasSupabaseConfig()) {
-        try {
-          const supabase = await createClient();
-          // Verify avatar
-          const { data: avatar } = await supabase
-            .from("avatars")
-            .select("id")
-            .eq("id", avatarId)
-            .eq("user_id", APP_WORKSPACE_ID)
-            .single();
+      const { findLocalAvatar, createLocalJob, updateLocalJobStatus, createLocalJobEvent } = await import("@/lib/local-store");
+      const avatar = await findLocalAvatar(avatarId);
 
-          if (!avatar) {
-            return NextResponse.json({ error: "Avatar não encontrado." }, { status: 404 });
-          }
-
-          // Create reaction job
-          const { data: job, error } = await supabase
-            .from("reaction_jobs")
-            .insert({
-              user_id: APP_WORKSPACE_ID,
-              avatar_id: avatarId,
-              topic: prompt,
-              status: "researching",
-              render_layout: "balanced_split",
-              expert_background_mode: "original"
-            })
-            .select("id")
-            .single();
-
-          if (error || !job) {
-            return NextResponse.json({ error: error?.message || "Erro ao criar job no Supabase." }, { status: 500 });
-          }
-
-          jobId = job.id;
-
-          // Event log
-          await supabase.from("job_events").insert({
-            user_id: APP_WORKSPACE_ID,
-            job_id: jobId,
-            event_type: "job_created",
-            message: "Projeto do Agente Autônomo inicializado no Supabase."
-          });
-
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          console.error("[API AGENT] Falha ao criar job no Supabase:", err);
-          return NextResponse.json({ error: `Erro no Supabase: ${errMsg}` }, { status: 500 });
-        }
-      } else {
-        // Local fallback
-        const { findLocalAvatar, createLocalJob, updateLocalJobStatus, createLocalJobEvent } = await import("@/lib/local-store");
-        const avatar = await findLocalAvatar(avatarId);
-        if (!avatar) {
-          return NextResponse.json({ error: "Avatar local não encontrado." }, { status: 404 });
-        }
-
-        const localJob = await createLocalJob({
-          avatarId,
-          topic: prompt,
-          renderLayout: "balanced_split",
-          expertBackgroundMode: "original"
-        });
-
-        jobId = localJob.id;
-        await updateLocalJobStatus(jobId, "researching");
-        await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autônomo inicializado no armazenamento local.");
+      if (!avatar) {
+        return NextResponse.json({ error: "Avatar local nao encontrado." }, { status: 404 });
       }
 
-      // Start the agent task in the background without awaiting!
+      const localJob = await createLocalJob({
+        avatarId,
+        topic: prompt,
+        renderLayout: "balanced_split",
+        expertBackgroundMode: "original"
+      });
+
+      const jobId = localJob.id;
+      await updateLocalJobStatus(jobId, "researching");
+      await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autonomo inicializado no armazenamento local.");
+
       void flowProvider.runAgentTask({
         topic: prompt,
         avatarId,
-        model: model as 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+        model: model as "deepseek" | "claude" | "chatgpt" | "gemini",
         imageModel,
         imageQuantity,
-        aspectRatio: aspectRatio as '16:9' | '4:3' | '1:1' | '3:4' | '9:16',
+        aspectRatio: aspectRatio as "16:9" | "4:3" | "1:1" | "3:4" | "9:16",
         videoModel,
         videoQuantity,
         jobId,
@@ -215,7 +161,6 @@ export async function POST(request: Request) {
         console.error(`[API AGENT] Erro no loop de background do agente para o job ${jobId}:`, err);
       });
 
-      // Return immediately to the client
       return NextResponse.json({
         success: true,
         jobId,
@@ -223,37 +168,36 @@ export async function POST(request: Request) {
       });
     }
 
-    // Default action: optimize
     if (!prompt || !type) {
       return NextResponse.json(
-        { error: "Parâmetros 'prompt' e 'type' são obrigatórios para otimizar." },
+        { error: "Parametros 'prompt' e 'type' sao obrigatorios para otimizar." },
         { status: 400 }
       );
     }
 
     if (type !== "image" && type !== "video") {
       return NextResponse.json(
-        { error: "Tipo não suportado para otimizar. Escolha entre: image ou video." },
+        { error: "Tipo nao suportado para otimizar. Escolha entre: image ou video." },
         { status: 400 }
       );
     }
 
     console.log(`[API AGENT] Otimizando prompt via Playwright com o modelo: ${model} para ${type}...`);
     const optimizedPrompt = await flowProvider.optimizePrompt(
-      model as 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+      model as "deepseek" | "claude" | "chatgpt" | "gemini",
       prompt,
-      type as 'image' | 'video'
+      type as "image" | "video"
     );
 
     return NextResponse.json({
       success: true,
-      prompt: optimizedPrompt,
+      prompt: optimizedPrompt
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[API AGENT] Erro no endpoint do agente:", err);
     return NextResponse.json(
-      { error: `Falha ao processar requisição do agente: ${errMsg}` },
+      { error: `Falha ao processar requisicao do agente: ${errMsg}` },
       { status: 500 }
     );
   }

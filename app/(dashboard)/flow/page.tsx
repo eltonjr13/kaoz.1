@@ -55,6 +55,10 @@ interface PendingPlan {
   avatarName?: string;
   referenceImage?: string | null;
   targetJobId?: string | null;
+  strategy?: string;
+  scriptOutline?: string | null;
+  creativeSteps?: string[];
+  visualReferenceInstructions?: string;
 }
 
 const normalizePromptForIntent = (value: string) =>
@@ -393,7 +397,11 @@ export default function FlowDashboardPage() {
             flow: plan.flow,
             optimizedPrompt: plan.prompt,
             explanation: plan.explanation,
-            targetJobId: plan.targetJobId ?? null
+            targetJobId: plan.targetJobId ?? null,
+            strategy: plan.strategy,
+            scriptOutline: plan.scriptOutline ?? null,
+            creativeSteps: plan.creativeSteps,
+            visualReferenceInstructions: plan.visualReferenceInstructions
           }
         })
       });
@@ -447,7 +455,11 @@ export default function FlowDashboardPage() {
               flow: plan.kind,
               optimizedPrompt: plan.prompt,
               explanation: plan.explanation,
-              targetJobId: null
+              targetJobId: null,
+              strategy: plan.strategy,
+              scriptOutline: plan.scriptOutline ?? null,
+              creativeSteps: plan.creativeSteps,
+              visualReferenceInstructions: plan.visualReferenceInstructions
             }
           }),
         });
@@ -626,7 +638,11 @@ export default function FlowDashboardPage() {
             mediaModel: videoModel,
             avatarId: selectedAvatarId,
             avatarName: selectedAvatar?.name,
-            targetJobId: data.plan.targetJobId ?? null
+            targetJobId: data.plan.targetJobId ?? null,
+            strategy: data.plan.strategy,
+            scriptOutline: data.plan.scriptOutline ?? null,
+            creativeSteps: data.plan.creativeSteps,
+            visualReferenceInstructions: data.plan.visualReferenceInstructions
           });
           setAgentResult(data.plan.optimizedPrompt || agentPrompt);
           appendLog("[Agente Autonomo] Plano pronto. Aguardando aprovacao para executar.");
@@ -648,22 +664,36 @@ export default function FlowDashboardPage() {
     appendLog(`[Agente MrChicken] Conectando ao ${agentModel.toUpperCase()} para otimização...`);
 
     let finalPrompt = agentPrompt;
+    let plannedFlow: PlannedFlow = executionType;
+    let planExplanation = "O agente montou o plano. A geracao so comeca apos aprovacao.";
+    let planStrategy: string | undefined;
+    let planScriptOutline: string | null | undefined;
+    let planCreativeSteps: string[] | undefined;
+    let planVisualReferenceInstructions: string | undefined;
 
     try {
       const res = await fetch("/api/flow/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "plan-agent",
           model: agentModel,
           prompt: agentPrompt,
-          type: executionType,
         }),
       });
       const data = await res.json();
-      if (data.success && data.prompt) {
-        finalPrompt = data.prompt;
-        setAgentResult(data.prompt);
-        appendLog(`[Agente MrChicken] Ideia otimizada: "${finalPrompt}"`);
+      const plan = data.plan || null;
+      if (data.success && plan) {
+        const agentFlow = plan.flow === "image" || plan.flow === "video" ? plan.flow : executionType;
+        plannedFlow = agentFlow;
+        finalPrompt = plan.optimizedPrompt || agentPrompt;
+        planExplanation = plan.strategy || plan.explanation || planExplanation;
+        planStrategy = plan.strategy;
+        planScriptOutline = plan.scriptOutline ?? null;
+        planCreativeSteps = plan.creativeSteps;
+        planVisualReferenceInstructions = plan.visualReferenceInstructions;
+        setAgentResult(finalPrompt);
+        appendLog(`[Agente MrChicken] Plano: ${planExplanation}`);
       } else {
         appendLog(`[Agente MrChicken] Usando prompt original (${data.error || "Otimização ignorada"}).`);
       }
@@ -675,19 +705,24 @@ export default function FlowDashboardPage() {
     }
 
     const selectedAvatar = avatars.find((avatar) => avatar.id === selectedAvatarId);
+    const directFlow = plannedFlow === "image" || plannedFlow === "video" ? plannedFlow : executionType;
     setPendingPlan({
-      kind: executionType,
-      flow: executionType,
+      kind: directFlow,
+      flow: directFlow,
       originalPrompt: agentPrompt,
       prompt: finalPrompt,
-      explanation: "O agente otimizou o prompt. A geracao so comeca apos aprovacao.",
+      explanation: planExplanation,
       model: agentModel,
-      aspectRatio: executionType === "image" ? imageRatio : videoRatio,
-      quantity: executionType === "image" ? imageQty : videoQty,
-      mediaModel: executionType === "image" ? imageModel : videoModel,
+      aspectRatio: directFlow === "image" ? imageRatio : videoRatio,
+      quantity: directFlow === "image" ? imageQty : videoQty,
+      mediaModel: directFlow === "image" ? imageModel : videoModel,
       avatarId: selectedAvatarId || undefined,
       avatarName: selectedAvatar?.name,
-      referenceImage: executionType === "image" ? imageReference : videoReference
+      referenceImage: directFlow === "image" ? imageReference : videoReference,
+      strategy: planStrategy,
+      scriptOutline: planScriptOutline ?? null,
+      creativeSteps: planCreativeSteps,
+      visualReferenceInstructions: planVisualReferenceInstructions
     });
     appendLog("[Agente MrChicken] Plano pronto. Aguardando aprovacao para gerar.");
   };
