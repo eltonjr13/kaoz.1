@@ -28,6 +28,7 @@ interface QueueItem {
   progress: number;
   resultUrl?: string;
   resultPaths?: string[];
+  resultPdfPaths?: string[];
   error?: string;
   logs: string[];
 }
@@ -303,6 +304,10 @@ export default function PatternsPage() {
         ? data.paths.map((p: string) => `/api/flow/media?path=${encodeURIComponent(p)}`) 
         : [resultPath];
       
+      const resultPdfPaths = data.pdfPaths
+        ? data.pdfPaths.map((p: string) => `/api/flow/media?path=${encodeURIComponent(p)}`)
+        : [];
+      
       setQueue(prev =>
         prev.map(i =>
           i.id === item.id
@@ -312,6 +317,7 @@ export default function PatternsPage() {
                 progress: 100,
                 resultUrl: resultPath,
                 resultPaths: resultPaths,
+                resultPdfPaths: resultPdfPaths,
                 logs: [...i.logs, `[${new Date().toLocaleTimeString()}] Download concluído com sucesso.`]
               }
             : i
@@ -353,6 +359,72 @@ export default function PatternsPage() {
     } catch (err) {
       addLog(`Falha ao baixar estampa: ${err instanceof Error ? err.message : String(err)}`);
     }
+  };
+
+  const handleConvertBatchToPdf = async () => {
+    const successItems = queue.filter(item => item.status === "success");
+    if (successItems.length === 0) {
+      addLog("Nenhum item com sucesso na fila para converter em PDF.");
+      return;
+    }
+
+    addLog(`Iniciando conversão manual do lote para PDF (${successItems.length} itens)...`);
+    
+    for (const item of successItems) {
+      addLog(`Convertendo variações de: ${item.filename} para PDF...`, item.id);
+      
+      if (!item.resultPaths) continue;
+
+      const newPdfPaths: string[] = [];
+
+      for (let idx = 0; idx < item.resultPaths.length; idx++) {
+        const resPath = item.resultPaths[idx];
+        try {
+          const urlParams = new URLSearchParams(resPath.split('?')[1]);
+          const serverPath = urlParams.get('path');
+          if (!serverPath) continue;
+
+          // Compute destination path in the same batch folder
+          const pdfServerPath = serverPath.replace(/\.[^/.]+$/, "") + ".pdf";
+
+          const response = await fetch("/api/flow/convert-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imagePath: serverPath,
+              pdfPath: pdfServerPath
+            })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Erro HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          const pdfWebUrl = `/api/flow/media?path=${encodeURIComponent(pdfServerPath)}`;
+          newPdfPaths.push(pdfWebUrl);
+          
+          addLog(`Convertido para PDF: ${data.filename}`, item.id);
+        } catch (err) {
+          addLog(`Falha ao converter variação ${idx + 1} para PDF: ${err instanceof Error ? err.message : String(err)}`, item.id);
+        }
+      }
+
+      // Update the item in queue
+      setQueue(prev =>
+        prev.map(i =>
+          i.id === item.id
+            ? {
+                ...i,
+                resultPdfPaths: newPdfPaths
+              }
+            : i
+        )
+      );
+    }
+
+    addLog("Conversão de lote para PDF concluída!");
   };
 
   return (
@@ -461,13 +533,25 @@ export default function PatternsPage() {
                   Fila de Imagens ({queue.length})
                 </h3>
                 {queue.length > 0 && (
-                  <button
-                    onClick={handleClearQueue}
-                    className="text-[10px] font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 size={10} />
-                    Limpar Tudo
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleConvertBatchToPdf}
+                      disabled={isProcessing || queue.filter(i => i.status === "success").length === 0}
+                      className="text-[10px] font-semibold text-[#9D7CFF] hover:text-[#b094ff] disabled:opacity-40 disabled:hover:text-[#9D7CFF] transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Converter todas as imagens bem-sucedidas do lote para PDF"
+                    >
+                      <Sparkles size={10} />
+                      Converter Lote para PDF
+                    </button>
+                    <span className="text-white/10 text-[10px] select-none">|</span>
+                    <button
+                      onClick={handleClearQueue}
+                      className="text-[10px] font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 size={10} />
+                      Limpar Tudo
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -610,25 +694,36 @@ export default function PatternsPage() {
                                 <div key={idx} className="relative group/var h-12 w-12 overflow-hidden rounded-lg border border-white/[0.06] bg-neutral-900 flex items-center justify-center">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={pUrl} alt={`Variação ${idx + 1}`} className="h-full w-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/70 flex gap-1 items-center justify-center opacity-0 group-hover/var:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => setSelectedResult({
-                                        original: item.previewUrl,
-                                        result: pUrl,
-                                        name: `${item.filename} (Variação ${idx + 1})`
-                                      })}
-                                      className="p-1 hover:text-white text-[#B8B8C0] transition-colors cursor-pointer"
-                                      title="Ampliar"
-                                    >
-                                      <Maximize2 size={10} />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDownload(pUrl, `${item.filename.replace(/\.[^/.]+$/, "")}_${idx + 1}`)}
-                                      className="p-1 hover:text-white text-[#B8B8C0] transition-colors cursor-pointer"
-                                      title="Baixar"
-                                    >
-                                      <Download size={10} />
-                                    </button>
+                                  <div className="absolute inset-0 bg-black/70 flex flex-col gap-1 items-center justify-center opacity-0 group-hover/var:opacity-100 transition-opacity">
+                                    <div className="flex gap-0.5">
+                                      <button
+                                        onClick={() => setSelectedResult({
+                                          original: item.previewUrl,
+                                          result: pUrl,
+                                          name: `${item.filename} (Variação ${idx + 1})`
+                                        })}
+                                        className="p-1 hover:text-white text-[#B8B8C0] transition-colors cursor-pointer"
+                                        title="Ampliar"
+                                      >
+                                        <Maximize2 size={10} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDownload(pUrl, `${item.filename.replace(/\.[^/.]+$/, "")}_${idx + 1}`)}
+                                        className="p-1 hover:text-white text-[#B8B8C0] transition-colors cursor-pointer"
+                                        title="Baixar Imagem"
+                                      >
+                                        <Download size={10} />
+                                      </button>
+                                    </div>
+                                    {item.resultPdfPaths && item.resultPdfPaths[idx] && (
+                                      <button
+                                        onClick={() => handleDownload(item.resultPdfPaths![idx], `${item.filename.replace(/\.[^/.]+$/, "")}_${idx + 1}`)}
+                                        className="text-[8px] font-bold bg-[#9D7CFF]/20 border border-[#9D7CFF]/40 text-[#9D7CFF] px-1 py-0.5 rounded hover:bg-[#9D7CFF]/40 transition-colors cursor-pointer select-none"
+                                        title="Baixar PDF de Máxima Qualidade"
+                                      >
+                                        PDF
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               ))}

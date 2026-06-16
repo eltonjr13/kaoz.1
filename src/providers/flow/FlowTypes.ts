@@ -15,6 +15,8 @@ export interface ImageGenerationResult {
   filename: string;
   paths?: string[];
   filenames?: string[];
+  pdfPaths?: string[];
+  pdfFilenames?: string[];
   createdAt: string;
   error?: string;
 }

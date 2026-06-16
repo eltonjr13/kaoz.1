@@ -1,7 +1,9 @@
+import * as path from 'path';
 import { Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
+import { convertImageToPdf } from './FlowPdfHelper';
 export class FlowImageGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
@@ -429,6 +431,8 @@ export class FlowImageGenerator {
 
       const downloadedPaths: string[] = [];
       const downloadedFilenames: string[] = [];
+      const pdfPaths: string[] = [];
+      const pdfFilenames: string[] = [];
       let primaryPath = '';
       let primaryFilename = '';
 
@@ -471,6 +475,16 @@ export class FlowImageGenerator {
             primaryFilename = downloadResult.filename;
           }
           logger.info(`Download do item ${i + 1} concluído: ${downloadResult.filename}`);
+
+          // Convert image to high quality PDF
+          try {
+            const pdfPath = downloadResult.path.replace(/\.[^/.]+$/, "") + ".pdf";
+            await convertImageToPdf(downloadResult.path, pdfPath);
+            pdfPaths.push(pdfPath);
+            pdfFilenames.push(path.basename(pdfPath));
+          } catch (pdfErr) {
+            logger.error(`Falha ao converter estampa ${i + 1} para PDF:`, pdfErr);
+          }
         } else {
           logger.warn(`Falha ao realizar download do item ${i + 1}`);
         }
@@ -494,6 +508,8 @@ export class FlowImageGenerator {
         filename: primaryFilename,
         paths: downloadedPaths,
         filenames: downloadedFilenames,
+        pdfPaths: pdfPaths,
+        pdfFilenames: pdfFilenames,
         createdAt: new Date().toISOString()
       };
 
