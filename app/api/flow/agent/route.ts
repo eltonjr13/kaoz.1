@@ -2,8 +2,32 @@ import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
+import type { FlowDecision } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
+
+function parseApprovedPlan(value: unknown): FlowDecision | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const plan = value as Record<string, unknown>;
+  const flow = plan.flow;
+  const optimizedPrompt = plan.optimizedPrompt;
+
+  if (
+    (flow === "image" || flow === "video" || flow === "project" || flow === "refine") &&
+    typeof optimizedPrompt === "string" &&
+    optimizedPrompt.trim()
+  ) {
+    return {
+      flow,
+      optimizedPrompt: optimizedPrompt.trim(),
+      explanation: typeof plan.explanation === "string" ? plan.explanation : "Plano aprovado pelo usuario.",
+      targetJobId: typeof plan.targetJobId === "string" ? plan.targetJobId : null
+    };
+  }
+
+  return undefined;
+}
 
 export async function POST(request: Request) {
   try {
@@ -15,6 +39,7 @@ export async function POST(request: Request) {
       avatarId?: unknown;
       aspectRatio?: unknown;
       videoModel?: unknown;
+      approvedPlan?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
@@ -24,6 +49,7 @@ export async function POST(request: Request) {
     const avatarId = typeof body?.avatarId === "string" ? body.avatarId.trim() : "";
     const aspectRatio = typeof body?.aspectRatio === "string" ? body.aspectRatio.trim() : "16:9";
     const videoModel = typeof body?.videoModel === "string" ? body.videoModel.trim() : "Veo 3.1";
+    const approvedPlan = parseApprovedPlan(body?.approvedPlan);
 
     if (!model) {
       return NextResponse.json(
@@ -37,6 +63,37 @@ export async function POST(request: Request) {
         { error: "Modelo não suportado. Escolha entre: deepseek, claude, chatgpt ou gemini." },
         { status: 400 }
       );
+    }
+
+    if (body?.approvedPlan && !approvedPlan) {
+      return NextResponse.json(
+        { error: "Plano aprovado invalido." },
+        { status: 400 }
+      );
+    }
+
+    if (action === "plan-project") {
+      if (!prompt || !avatarId) {
+        return NextResponse.json(
+          { error: "Parâmetros 'prompt' (tema/ideia) e 'avatarId' são obrigatórios para planejar um projeto." },
+          { status: 400 }
+        );
+      }
+
+      const { flowAgent } = await import("@/src/providers/flow/FlowAgent");
+      const plan = await flowAgent.planAutonomousAgent({ topic: prompt });
+
+      return NextResponse.json({
+        success: true,
+        plan: {
+          ...plan,
+          originalPrompt: prompt,
+          avatarId,
+          model,
+          aspectRatio,
+          videoModel
+        }
+      });
     }
 
     if (action === "create-project") {
@@ -130,7 +187,8 @@ export async function POST(request: Request) {
         aspectRatio: aspectRatio as '16:9' | '4:3' | '1:1' | '3:4' | '9:16',
         videoModel,
         jobId,
-        baseUrl
+        baseUrl,
+        approvedPlan
       }).catch(err => {
         console.error(`[API AGENT] Erro no loop de background do agente para o job ${jobId}:`, err);
       });

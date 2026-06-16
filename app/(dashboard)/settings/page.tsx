@@ -105,6 +105,10 @@ export default function SettingsPage() {
         }
         setPortalStatuses(updated);
       } else {
+        setStatusMessage({
+          text: data.error || "Nao foi possivel verificar os status agora.",
+          type: "error"
+        });
         setPortalStatuses({
           google: 'disconnected',
           gemini: 'disconnected',
@@ -113,7 +117,12 @@ export default function SettingsPage() {
           deepseek: 'disconnected'
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setStatusMessage({
+        text: `Erro ao verificar status: ${errMsg}`,
+        type: "error"
+      });
       setPortalStatuses({
         google: 'disconnected',
         gemini: 'disconnected',
@@ -130,7 +139,7 @@ export default function SettingsPage() {
   const handleOpenLogin = async (portal: PortalConfig) => {
     setLoadingPortal(portal.id);
     setStatusMessage({
-      text: `Navegador aberto para ${portal.name}. Faça o login na janela visível e feche a janela apenas depois de concluir.`,
+      text: `Abrindo navegador para ${portal.name}. Faca o login na janela visivel e depois use Verificar Status.`,
       type: "info"
     });
 
@@ -142,6 +151,14 @@ export default function SettingsPage() {
       });
 
       const data = await res.json();
+      if (data.success && data.started) {
+        setStatusMessage({
+          text: data.message || `Janela de login para ${portal.name} aberta. Conclua o login e depois use Verificar Status.`,
+          type: "info"
+        });
+        return;
+      }
+
       if (data.success && data.result?.authenticated) {
         setStatusMessage({
           text: data.message || `Sessão de login para ${portal.name} concluída e salva com sucesso!`,

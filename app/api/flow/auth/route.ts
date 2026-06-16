@@ -6,6 +6,19 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    })
+  ]);
+}
+
+const globalForFlowAuth = globalThis as unknown as {
+  activeManualLoginPortal?: FlowPortal | null;
+};
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as {
@@ -29,7 +42,11 @@ export async function POST(request: Request) {
       console.log("[API FLOW AUTH] Verificando status de login de todos os portais...");
       let statuses: Record<string, boolean>;
       try {
-        statuses = await flowProvider.checkPortalsStatus();
+        statuses = await withTimeout(
+          flowProvider.checkPortalsStatus(),
+          20000,
+          "Verificacao de status demorou demais. Tente novamente em instantes."
+        );
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         if (errMsg.includes("Login manual em andamento")) {
@@ -64,23 +81,28 @@ export async function POST(request: Request) {
         );
       }
 
-      console.log(`[API FLOW AUTH] Abrindo sessão de login para o portal: ${portal}...`);
-      const result = await flowProvider.openLoginSession(portal as FlowPortal);
-      if (!result.authenticated) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: result.message,
-            result
-          },
-          { status: result.reason === "timeout" ? 408 : 409 }
+      if (globalForFlowAuth.activeManualLoginPortal) {
+        return jsonError(
+          `Ja existe uma sessao de login manual em andamento para ${globalForFlowAuth.activeManualLoginPortal}. Conclua ou feche essa janela antes de abrir outra.`,
+          409
         );
       }
 
+      console.log(`[API FLOW AUTH] Abrindo sessão de login para o portal: ${portal}...`);
+      const selectedPortal = portal as FlowPortal;
+      globalForFlowAuth.activeManualLoginPortal = selectedPortal;
+      void flowProvider.openLoginSession(selectedPortal)
+        .catch((err) => {
+          console.error(`[API FLOW AUTH] Erro na sessao de login em background para ${selectedPortal}:`, err);
+        })
+        .finally(() => {
+          globalForFlowAuth.activeManualLoginPortal = null;
+        });
+
       return NextResponse.json({
         success: true,
-        message: result.message,
-        result
+        started: true,
+        message: `Janela de login para ${portal} aberta. Conclua o login na janela visivel e depois use Verificar Status.`
       });
     }
 

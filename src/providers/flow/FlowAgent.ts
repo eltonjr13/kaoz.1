@@ -1,6 +1,6 @@
 import { flowProvider } from "./FlowProvider";
 import { listLocalAvatars, updateLocalJob, createLocalJobEvent, listLocalJobs } from "@/lib/local-store";
-import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention } from "@/lib/ai/gemini";
+import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, type FlowDecision } from "@/lib/ai/gemini";
 import { logger } from "./FlowUtils";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
@@ -16,6 +16,7 @@ export interface AgentTaskOptions {
   aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   jobId: string;
   baseUrl?: string;
+  approvedPlan?: FlowDecision;
 }
 
 export class FlowAgent {
@@ -786,9 +787,14 @@ Retorne estritamente um JSON no formato:
     const { jobId } = options;
     logger.info(`[FlowAgent] Iniciando agente autônomo para a intenção: "${options.topic}" (Job ID: ${jobId})`);
     
-    await this.logAgentEvent(jobId, "researching_started", "Analisando intenção e classificando o fluxo ideal...");
-    
-    const decision = await classifyIntention(options.topic);
+    let decision: FlowDecision;
+    if (options.approvedPlan) {
+      decision = options.approvedPlan;
+      await this.logAgentEvent(jobId, "planning", "Plano aprovado pelo usuario. Iniciando execucao autorizada.");
+    } else {
+      await this.logAgentEvent(jobId, "researching_started", "Analisando intenção e classificando o fluxo ideal...");
+      decision = await this.planAutonomousAgent({ topic: options.topic });
+    }
     await this.logAgentEvent(
       jobId, 
       "planning", 
@@ -816,6 +822,11 @@ Retorne estritamente um JSON no formato:
       };
       return this.createCompleteProject(projectOptions);
     }
+  }
+
+  async planAutonomousAgent(options: Pick<AgentTaskOptions, "topic">): Promise<FlowDecision> {
+    logger.info(`[FlowAgent] Planejando intenção sem executar: "${options.topic}"`);
+    return classifyIntention(options.topic);
   }
 }
 

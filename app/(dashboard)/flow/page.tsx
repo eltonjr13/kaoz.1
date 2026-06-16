@@ -39,6 +39,23 @@ interface Avatar {
 
 type AgentType = 'image' | 'video' | 'project';
 type DirectGenerationType = 'image' | 'video';
+type PlannedFlow = AgentType | 'refine';
+
+interface PendingPlan {
+  kind: AgentType;
+  flow: PlannedFlow;
+  originalPrompt: string;
+  prompt: string;
+  explanation: string;
+  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+  aspectRatio: string;
+  quantity?: string;
+  mediaModel?: string;
+  avatarId?: string;
+  avatarName?: string;
+  referenceImage?: string | null;
+  targetJobId?: string | null;
+}
 
 const normalizePromptForIntent = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -83,6 +100,7 @@ export default function FlowDashboardPage() {
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentResult, setAgentResult] = useState<string | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
 
   // Avatar and Agent Project States
   const [avatars, setAvatars] = useState<Avatar[]>([]);
@@ -147,6 +165,10 @@ export default function FlowDashboardPage() {
   const appendLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, `[${timestamp}] ${message}`]);
+  };
+
+  const clearPendingPlan = () => {
+    setPendingPlan(null);
   };
 
   // Fetch avatars list
@@ -263,6 +285,7 @@ export default function FlowDashboardPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setRef: (val: string | null) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    clearPendingPlan();
     const reader = new FileReader();
     reader.onload = (event) => {
       if (typeof event.target?.result === "string") {
@@ -274,6 +297,7 @@ export default function FlowDashboardPage() {
   };
 
   const handleRemoveReference = () => {
+    clearPendingPlan();
     if (agentType === 'image') {
       setImageReference(null);
     } else {
@@ -282,8 +306,154 @@ export default function FlowDashboardPage() {
     appendLog("Imagem de referência removida.");
   };
 
+  const executeProjectPlan = async (plan: PendingPlan) => {
+    if (!plan.avatarId) {
+      appendLog("[Agente Autonomo] Selecione um avatar antes de aplicar o plano.");
+      return;
+    }
+
+    setProjectLoading(true);
+    setProjectResult(null);
+    setActiveJobId(null);
+    setShowLogs(true);
+    setLogs([]);
+    appendLog(`[Agente Autonomo] Aplicando plano aprovado para: "${plan.originalPrompt}"...`);
+
+    try {
+      const res = await fetch("/api/flow/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create-project",
+          prompt: plan.originalPrompt,
+          avatarId: plan.avatarId,
+          model: plan.model,
+          aspectRatio: plan.aspectRatio,
+          videoModel: plan.mediaModel,
+          approvedPlan: {
+            flow: plan.flow,
+            optimizedPrompt: plan.prompt,
+            explanation: plan.explanation,
+            targetJobId: plan.targetJobId ?? null
+          }
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.jobId) {
+        setProjectResult(data);
+        setActiveJobId(data.jobId);
+        setPendingPlan(null);
+        appendLog(`[Agente Autonomo] Projeto inicializado com sucesso! Job ID: ${data.jobId}`);
+      } else {
+        setProjectResult({ success: false, error: data.error || "Erro desconhecido" });
+        appendLog(`[Agente Autonomo] Erro ao inicializar: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendLog(`[Agente Autonomo] Erro na requisicao: ${errMsg}`);
+    } finally {
+      setProjectLoading(false);
+    }
+  };
+
+  const executeDirectGenerationPlan = async (plan: PendingPlan) => {
+    if (plan.kind === "image") {
+      setImageLoading(true);
+      setImageResult(null);
+      appendLog("[ImageFX] Aplicando plano aprovado e gerando imagens...");
+      try {
+        const res = await fetch("/api/flow/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "image",
+            prompt: plan.prompt,
+            aspectRatio: plan.aspectRatio,
+            quantity: plan.quantity,
+            model: plan.mediaModel,
+            referenceImage: plan.referenceImage || undefined,
+          }),
+        });
+        const data: GenerationResult = await res.json();
+        if (data.success) {
+          setImageResult(data);
+          setPendingPlan(null);
+          const generatedCount = data.paths?.length || (data.path ? 1 : 0);
+          appendLog(`[ImageFX] ${generatedCount} imagem(ns) baixada(s) com sucesso.`);
+        } else {
+          setImageResult({
+            success: false,
+            path: "",
+            filename: "",
+            createdAt: new Date().toISOString(),
+            error: data.error || "Erro na geracao",
+          });
+          appendLog(`[ImageFX] Falha: ${data.error}`);
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        appendLog(`[ImageFX] Erro: ${errMsg}`);
+      } finally {
+        setImageLoading(false);
+      }
+      return;
+    }
+
+    setVideoLoading(true);
+    setVideoResult(null);
+    appendLog("[VideoFX] Aplicando plano aprovado e gerando video...");
+    try {
+      const res = await fetch("/api/flow/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "video",
+          prompt: plan.prompt,
+          aspectRatio: plan.aspectRatio,
+          quantity: plan.quantity,
+          model: plan.mediaModel,
+          referenceImage: plan.referenceImage || undefined,
+        }),
+      });
+      const data: GenerationResult = await res.json();
+      if (data.success) {
+        setVideoResult(data);
+        setPendingPlan(null);
+        appendLog("[VideoFX] Video gerado com sucesso.");
+      } else {
+        setVideoResult({
+          success: false,
+          path: "",
+          filename: "",
+          createdAt: new Date().toISOString(),
+          error: data.error || "Erro na geracao",
+        });
+        appendLog(`[VideoFX] Falha: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendLog(`[VideoFX] Erro: ${errMsg}`);
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  const handleApplyPlan = async () => {
+    if (!pendingPlan) return;
+    if (pendingPlan.kind === "project") {
+      await executeProjectPlan(pendingPlan);
+      return;
+    }
+    await executeDirectGenerationPlan(pendingPlan);
+  };
+
   // Main Autopilot Execution
   const handleExecuteAutopilot = async () => {
+    if (pendingPlan) {
+      appendLog("Existe um plano pendente. Aplique ou cancele antes de planejar novamente.");
+      return;
+    }
+
     if (!agentPrompt.trim()) {
       appendLog("Aviso: Digite uma ideia para começar.");
       return;
@@ -302,13 +472,13 @@ export default function FlowDashboardPage() {
       setActiveJobId(null);
       setShowLogs(true);
       setLogs([]);
-      appendLog(`[Agente Autônomo] Solicitando criação do projeto para o tema: "${agentPrompt}"...`);
+      appendLog(`[Agente Autonomo] Pensando antes de aplicar: "${agentPrompt}"...`);
       try {
         const res = await fetch("/api/flow/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "create-project",
+            action: "plan-project",
             prompt: agentPrompt,
             avatarId: selectedAvatarId,
             model: agentModel,
@@ -317,10 +487,23 @@ export default function FlowDashboardPage() {
           })
         });
         const data = await res.json();
-        if (data.success && data.jobId) {
-          setProjectResult(data);
-          setActiveJobId(data.jobId);
-          appendLog(`[Agente Autônomo] Projeto inicializado com sucesso! Job ID: ${data.jobId}`);
+        if (data.success && data.plan) {
+          const selectedAvatar = avatars.find((avatar) => avatar.id === selectedAvatarId);
+          setPendingPlan({
+            kind: "project",
+            flow: data.plan.flow || "project",
+            originalPrompt: agentPrompt,
+            prompt: data.plan.optimizedPrompt || agentPrompt,
+            explanation: data.plan.explanation || "Plano criado pelo agente.",
+            model: agentModel,
+            aspectRatio: videoRatio,
+            mediaModel: videoModel,
+            avatarId: selectedAvatarId,
+            avatarName: selectedAvatar?.name,
+            targetJobId: data.plan.targetJobId ?? null
+          });
+          setAgentResult(data.plan.optimizedPrompt || agentPrompt);
+          appendLog("[Agente Autonomo] Plano pronto. Aguardando aprovacao para executar.");
         } else {
           setProjectResult({ success: false, error: data.error || "Erro desconhecido" });
           appendLog(`[Agente Autônomo] Erro ao inicializar: ${data.error}`);
@@ -365,82 +548,19 @@ export default function FlowDashboardPage() {
       setAgentLoading(false);
     }
 
-    if (executionType === "image") {
-      setImageLoading(true);
-      setImageResult(null);
-      appendLog(`[ImageFX] Gerando imagens...`);
-      try {
-        const res = await fetch("/api/flow/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "image",
-            prompt: finalPrompt,
-            aspectRatio: imageRatio,
-            quantity: imageQty,
-            model: imageModel,
-            referenceImage: imageReference || undefined,
-          }),
-        });
-        const data: GenerationResult = await res.json();
-        if (data.success) {
-          setImageResult(data);
-          const generatedCount = data.paths?.length || (data.path ? 1 : 0);
-          appendLog(`[ImageFX] ${generatedCount} imagem(ns) baixada(s) com sucesso.`);
-        } else {
-          setImageResult({
-            success: false,
-            path: "",
-            filename: "",
-            createdAt: new Date().toISOString(),
-            error: data.error || "Erro na geração",
-          });
-          appendLog(`[ImageFX] Falha: ${data.error}`);
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        appendLog(`[ImageFX] Erro: ${errMsg}`);
-      } finally {
-        setImageLoading(false);
-      }
-    } else {
-      setVideoLoading(true);
-      setVideoResult(null);
-      appendLog(`[VideoFX] Gerando vídeo...`);
-      try {
-        const res = await fetch("/api/flow/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "video",
-            prompt: finalPrompt,
-            aspectRatio: videoRatio,
-            quantity: videoQty,
-            model: videoModel,
-            referenceImage: videoReference || undefined,
-          }),
-        });
-        const data: GenerationResult = await res.json();
-        if (data.success) {
-          setVideoResult(data);
-          appendLog(`[VideoFX] Vídeo gerado com sucesso.`);
-        } else {
-          setVideoResult({
-            success: false,
-            path: "",
-            filename: "",
-            createdAt: new Date().toISOString(),
-            error: data.error || "Erro na geração",
-          });
-          appendLog(`[VideoFX] Falha: ${data.error}`);
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        appendLog(`[VideoFX] Erro: ${errMsg}`);
-      } finally {
-        setVideoLoading(false);
-      }
-    }
+    setPendingPlan({
+      kind: executionType,
+      flow: executionType,
+      originalPrompt: agentPrompt,
+      prompt: finalPrompt,
+      explanation: "O agente otimizou o prompt. A geracao so comeca apos aprovacao.",
+      model: agentModel,
+      aspectRatio: executionType === "image" ? imageRatio : videoRatio,
+      quantity: executionType === "image" ? imageQty : videoQty,
+      mediaModel: executionType === "image" ? imageModel : videoModel,
+      referenceImage: executionType === "image" ? imageReference : videoReference
+    });
+    appendLog("[Agente MrChicken] Plano pronto. Aguardando aprovacao para gerar.");
   };
 
   const currentReference = agentType === 'project' ? null : (agentType === 'image' ? imageReference : videoReference);
@@ -868,8 +988,90 @@ export default function FlowDashboardPage() {
           </div>
         )}
 
+        {/* Pending approval plan */}
+        {pendingPlan && (
+          <div className="pointer-events-auto w-full max-w-[900px]">
+            <div
+              className="rounded-[24px] p-4 text-left"
+              style={{
+                background: "rgba(12,12,16,0.96)",
+                border: "1px solid rgba(157,124,255,0.28)",
+                backdropFilter: "blur(20px)",
+              }}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#9D7CFF" }}>
+                    Plano aguardando aprovacao
+                  </div>
+                  <div className="mt-1 text-[12px]" style={{ color: "#B8B8C0" }}>
+                    O agente ainda nao executou nada.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingPlan(null);
+                      appendLog("Plano cancelado.");
+                    }}
+                    className="rounded-full px-3 py-2 text-[11px] font-semibold"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "#B8B8C0",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyPlan}
+                    disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold disabled:opacity-40"
+                    style={{
+                      background: "#ffffff",
+                      color: "#080808",
+                    }}
+                  >
+                    <Check size={12} />
+                    Aplicar
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 text-[11px] sm:grid-cols-2" style={{ color: "#7B7B86" }}>
+                <div>Tipo: <span style={{ color: "#E8E8EF" }}>{pendingPlan.flow}</span></div>
+                <div>Modelo: <span style={{ color: "#E8E8EF" }}>{pendingPlan.mediaModel || pendingPlan.model}</span></div>
+                <div>Proporcao: <span style={{ color: "#E8E8EF" }}>{pendingPlan.aspectRatio}</span></div>
+                {pendingPlan.quantity && (
+                  <div>Quantidade: <span style={{ color: "#E8E8EF" }}>{pendingPlan.quantity}</span></div>
+                )}
+                {pendingPlan.avatarName && (
+                  <div>Avatar: <span style={{ color: "#E8E8EF" }}>{pendingPlan.avatarName}</span></div>
+                )}
+              </div>
+
+              <div
+                className="mt-3 rounded-[16px] p-3 text-[11px] leading-relaxed"
+                style={{
+                  background: "rgba(255,255,255,0.035)",
+                  color: "#B8B8C0",
+                }}
+              >
+                <div className="mb-1 font-semibold" style={{ color: "#E8E8EF" }}>Prompt final</div>
+                {pendingPlan.prompt}
+              </div>
+
+              <div className="mt-2 text-[11px]" style={{ color: "#7B7B86" }}>
+                {pendingPlan.explanation}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Optimized prompt suggestion */}
-        {agentResult && (
+        {agentResult && !pendingPlan && (
           <div className="pointer-events-auto w-full max-w-[900px]">
             <div
               className="inline-flex max-w-xl items-center gap-2 rounded-[24px] px-3 py-2 text-[11px]"
@@ -951,9 +1153,12 @@ export default function FlowDashboardPage() {
             ref={promptTextareaRef}
             rows={1}
             value={agentPrompt}
-            onChange={(e) => setAgentPrompt(e.target.value)}
+            onChange={(e) => {
+              setAgentPrompt(e.target.value);
+              clearPendingPlan();
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
+              if (e.key === "Enter" && !e.shiftKey && !pendingPlan && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
                 e.preventDefault();
                 handleExecuteAutopilot();
               }
@@ -1033,7 +1238,10 @@ export default function FlowDashboardPage() {
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => setAgentType(t.id as AgentType)}
+                        onClick={() => {
+                          clearPendingPlan();
+                          setAgentType(t.id as AgentType);
+                        }}
                         className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[10px] font-semibold transition-all"
                         style={{
                           background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent",
@@ -1064,7 +1272,10 @@ export default function FlowDashboardPage() {
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setImageModel(m.id)}
+                        onClick={() => {
+                          clearPendingPlan();
+                          setImageModel(m.id);
+                        }}
                         className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[11px] transition-colors"
                         style={{
                           background: imageModel === m.id ? "rgba(255,255,255,0.08)" : "transparent",
@@ -1084,7 +1295,10 @@ export default function FlowDashboardPage() {
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setVideoModel(m.id)}
+                        onClick={() => {
+                          clearPendingPlan();
+                          setVideoModel(m.id);
+                        }}
                         className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[11px] transition-colors"
                         style={{
                           background: videoModel === m.id ? "rgba(255,255,255,0.08)" : "transparent",
@@ -1102,7 +1316,10 @@ export default function FlowDashboardPage() {
                         <button
                           key={a.id}
                           type="button"
-                          onClick={() => setSelectedAvatarId(a.id)}
+                          onClick={() => {
+                            clearPendingPlan();
+                            setSelectedAvatarId(a.id);
+                          }}
                           className="flex items-center gap-2 rounded-[16px] px-3 py-1.5 text-left text-[11px] transition-colors"
                           style={{
                             background: selectedAvatarId === a.id ? "rgba(255,255,255,0.08)" : "transparent",
@@ -1136,7 +1353,11 @@ export default function FlowDashboardPage() {
                             <button
                               key={r}
                               type="button"
-                              onClick={() => { if (agentType === "image") setImageRatio(r); else setVideoRatio(r); }}
+                              onClick={() => {
+                                clearPendingPlan();
+                                if (agentType === "image") setImageRatio(r);
+                                else setVideoRatio(r);
+                              }}
                               className="rounded-xl py-1 font-mono text-[10px] transition-all"
                               style={{
                                 background: isActive ? "#ffffff" : "transparent",
@@ -1166,6 +1387,7 @@ export default function FlowDashboardPage() {
                               type="button"
                               disabled={isDisabled}
                               onClick={() => {
+                                clearPendingPlan();
                                 if (agentType === "image") setImageQty(q);
                                 else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
                               }}
@@ -1206,7 +1428,10 @@ export default function FlowDashboardPage() {
                         <button
                           key={m}
                           type="button"
-                          onClick={() => setAgentModel(m)}
+                          onClick={() => {
+                            clearPendingPlan();
+                            setAgentModel(m);
+                          }}
                           className="rounded-xl py-1.5 text-[9px] font-bold tracking-wide transition-all"
                           style={{
                             background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
