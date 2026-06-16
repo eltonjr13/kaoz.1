@@ -6,12 +6,25 @@ import type { FlowDecision } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 
+type GenerationQuantity = 1 | 2 | 3 | 4 | "1x" | "x2" | "x3" | "x4";
+
+function parseQuantity(value: unknown): GenerationQuantity | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+
+  const quantity = String(value);
+  if (!["1", "2", "3", "4", "1x", "x2", "x3", "x4"].includes(quantity)) {
+    return undefined;
+  }
+
+  return (/^\d+$/.test(quantity) ? Number(quantity) : quantity) as GenerationQuantity;
+}
+
 function parseApprovedPlan(value: unknown): FlowDecision | undefined {
   if (!value || typeof value !== "object") return undefined;
 
   const plan = value as Record<string, unknown>;
   const flow = plan.flow;
-  const optimizedPrompt = plan.optimizedPrompt;
+  const optimizedPrompt = typeof plan.optimizedPrompt === "string" ? plan.optimizedPrompt : plan.prompt;
 
   if (
     (flow === "image" || flow === "video" || flow === "project" || flow === "refine") &&
@@ -39,6 +52,9 @@ export async function POST(request: Request) {
       avatarId?: unknown;
       aspectRatio?: unknown;
       videoModel?: unknown;
+      videoQuantity?: unknown;
+      imageModel?: unknown;
+      imageQuantity?: unknown;
       approvedPlan?: unknown;
     } | null;
 
@@ -49,6 +65,9 @@ export async function POST(request: Request) {
     const avatarId = typeof body?.avatarId === "string" ? body.avatarId.trim() : "";
     const aspectRatio = typeof body?.aspectRatio === "string" ? body.aspectRatio.trim() : "16:9";
     const videoModel = typeof body?.videoModel === "string" ? body.videoModel.trim() : "Veo 3.1";
+    const videoQuantity = parseQuantity(body?.videoQuantity);
+    const imageModel = typeof body?.imageModel === "string" ? body.imageModel.trim() : "Nano Banana Pro";
+    const imageQuantity = parseQuantity(body?.imageQuantity);
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
 
     if (!model) {
@@ -184,8 +203,11 @@ export async function POST(request: Request) {
         topic: prompt,
         avatarId,
         model: model as 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+        imageModel,
+        imageQuantity,
         aspectRatio: aspectRatio as '16:9' | '4:3' | '1:1' | '3:4' | '9:16',
         videoModel,
+        videoQuantity,
         jobId,
         baseUrl,
         approvedPlan

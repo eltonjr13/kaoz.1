@@ -92,6 +92,25 @@ const copyToClipboard = (text: string): boolean => {
   }
 };
 
+const getResultFilename = (filePath: string) => {
+  if (!filePath) return "";
+  const cleanPath = filePath.split("?")[0];
+  return cleanPath.split(/[\\/]/).pop() || cleanPath;
+};
+
+const extractImagePathsFromJob = (value?: string | null) => {
+  if (!value) return [];
+  const match = value.match(/\[[\s\S]*\]/);
+  if (!match) return [];
+
+  try {
+    const parsed = JSON.parse(match[0]);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function FlowDashboardPage() {
 
   // 2. Control States
@@ -108,6 +127,7 @@ export default function FlowDashboardPage() {
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectResult, setProjectResult] = useState<{ success: boolean; jobId?: string; videoPath?: string; error?: string } | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeJobType, setActiveJobType] = useState<AgentType | null>(null);
 
   // 3. ImageFX States
   const [imageRatio, setImageRatio] = useState("16:9");
@@ -249,16 +269,54 @@ export default function FlowDashboardPage() {
               const job = jobData.jobs?.[0];
               if (job) {
                 if (job.status === "completed") {
-                  setProjectResult({
-                    success: true,
-                    jobId: activeJobId,
-                    videoPath: job.final_video_path || undefined
-                  });
+                  const finalPath = job.final_video_path || "";
+                  if (activeJobType === "image") {
+                    const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
+                    setImageResult({
+                      success: true,
+                      path: finalPath,
+                      filename: getResultFilename(finalPath),
+                      paths: imagePaths.length > 0 ? imagePaths : (finalPath ? [finalPath] : []),
+                      createdAt: job.updated_at || new Date().toISOString()
+                    });
+                  } else if (activeJobType === "video") {
+                    setVideoResult({
+                      success: true,
+                      path: finalPath,
+                      filename: getResultFilename(finalPath),
+                      createdAt: job.updated_at || new Date().toISOString()
+                    });
+                  } else {
+                    setProjectResult({
+                      success: true,
+                      jobId: activeJobId,
+                      videoPath: finalPath || undefined
+                    });
+                  }
                 } else {
-                  setProjectResult({
-                    success: false,
-                    error: job.error_message || "O agente falhou na execução."
-                  });
+                  const error = job.error_message || "O agente falhou na execucao.";
+                  if (activeJobType === "image") {
+                    setImageResult({
+                      success: false,
+                      path: "",
+                      filename: "",
+                      createdAt: new Date().toISOString(),
+                      error
+                    });
+                  } else if (activeJobType === "video") {
+                    setVideoResult({
+                      success: false,
+                      path: "",
+                      filename: "",
+                      createdAt: new Date().toISOString(),
+                      error
+                    });
+                  } else {
+                    setProjectResult({
+                      success: false,
+                      error
+                    });
+                  }
                 }
               }
             }
@@ -266,6 +324,7 @@ export default function FlowDashboardPage() {
             console.error("Erro ao buscar detalhes do job finalizado:", jobErr);
           }
           setActiveJobId(null);
+          setActiveJobType(null);
         }
       } catch (err) {
         console.error("Erro no polling de eventos:", err);
@@ -279,7 +338,7 @@ export default function FlowDashboardPage() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeJobId]);
+  }, [activeJobId, activeJobType]);
 
   // Upload Reference Image Handler
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setRef: (val: string | null) => void) => {
@@ -342,6 +401,7 @@ export default function FlowDashboardPage() {
       if (data.success && data.jobId) {
         setProjectResult(data);
         setActiveJobId(data.jobId);
+        setActiveJobType("project");
         setPendingPlan(null);
         appendLog(`[Agente Autonomo] Projeto inicializado com sucesso! Job ID: ${data.jobId}`);
       } else {
@@ -357,6 +417,72 @@ export default function FlowDashboardPage() {
   };
 
   const executeDirectGenerationPlan = async (plan: PendingPlan) => {
+    if (plan.avatarId) {
+      const isImage = plan.kind === "image";
+      const setLoading = isImage ? setImageLoading : setVideoLoading;
+      const setResult = isImage ? setImageResult : setVideoResult;
+      setLoading(true);
+      setResult(null);
+      setProjectResult(null);
+      setActiveJobId(null);
+      setActiveJobType(null);
+      setShowLogs(true);
+      appendLog(`[Agente Autonomo] Aplicando plano de ${isImage ? "imagem" : "video"} com avatar de referencia...`);
+
+      try {
+        const res = await fetch("/api/flow/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create-project",
+            prompt: plan.originalPrompt,
+            avatarId: plan.avatarId,
+            model: plan.model,
+            aspectRatio: plan.aspectRatio,
+            imageModel: isImage ? plan.mediaModel : undefined,
+            imageQuantity: isImage ? plan.quantity : undefined,
+            videoModel: isImage ? undefined : plan.mediaModel,
+            videoQuantity: isImage ? undefined : plan.quantity,
+            approvedPlan: {
+              flow: plan.kind,
+              optimizedPrompt: plan.prompt,
+              explanation: plan.explanation,
+              targetJobId: null
+            }
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.jobId) {
+          setPendingPlan(null);
+          setActiveJobId(data.jobId);
+          setActiveJobType(plan.kind);
+          appendLog(`[Agente Autonomo] Execucao ${isImage ? "de imagem" : "de video"} iniciada. Job ID: ${data.jobId}`);
+        } else {
+          setResult({
+            success: false,
+            path: "",
+            filename: "",
+            createdAt: new Date().toISOString(),
+            error: data.error || "Erro desconhecido",
+          });
+          appendLog(`[Agente Autonomo] Falha: ${data.error}`);
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setResult({
+          success: false,
+          path: "",
+          filename: "",
+          createdAt: new Date().toISOString(),
+          error: errMsg,
+        });
+        appendLog(`[Agente Autonomo] Erro: ${errMsg}`);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (plan.kind === "image") {
       setImageLoading(true);
       setImageResult(null);
@@ -548,6 +674,7 @@ export default function FlowDashboardPage() {
       setAgentLoading(false);
     }
 
+    const selectedAvatar = avatars.find((avatar) => avatar.id === selectedAvatarId);
     setPendingPlan({
       kind: executionType,
       flow: executionType,
@@ -558,6 +685,8 @@ export default function FlowDashboardPage() {
       aspectRatio: executionType === "image" ? imageRatio : videoRatio,
       quantity: executionType === "image" ? imageQty : videoQty,
       mediaModel: executionType === "image" ? imageModel : videoModel,
+      avatarId: selectedAvatarId || undefined,
+      avatarName: selectedAvatar?.name,
       referenceImage: executionType === "image" ? imageReference : videoReference
     });
     appendLog("[Agente MrChicken] Plano pronto. Aguardando aprovacao para gerar.");

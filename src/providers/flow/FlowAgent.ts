@@ -6,17 +6,24 @@ import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
 import path from "node:path";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
+
+type GenerationQuantity = 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
 
 export interface AgentTaskOptions {
   topic: string;
   avatarId: string;
   model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+  imageModel?: string;
+  imageQuantity?: GenerationQuantity;
   videoModel?: string;
+  videoQuantity?: GenerationQuantity;
   aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   jobId: string;
   baseUrl?: string;
   approvedPlan?: FlowDecision;
+  avatarReferenceImage?: string;
 }
 
 export class FlowAgent {
@@ -46,12 +53,78 @@ export class FlowAgent {
   }
 
   private async findAvatar(avatarId: string): Promise<import("@/types").Avatar> {
+    if (hasSupabaseConfig()) {
+      try {
+        const supabase = await createClient();
+        const { data } = await supabase
+          .from("avatars")
+          .select("*")
+          .eq("id", avatarId)
+          .eq("user_id", APP_WORKSPACE_ID)
+          .single();
+
+        if (data) {
+          return data as import("@/types").Avatar;
+        }
+      } catch (err) {
+        logger.warn(`[FlowAgent] Falha ao buscar avatar ${avatarId} no Supabase. Tentando armazenamento local.`, err);
+      }
+    }
+
     const avatars = await listLocalAvatars();
     const avatar = avatars.find(a => a.id === avatarId);
     if (!avatar) {
       throw new Error(`Avatar com ID ${avatarId} não encontrado.`);
     }
     return avatar;
+  }
+
+  private async resolveAvatarReferenceImage(
+    avatar: import("@/types").Avatar,
+    jobId: string
+  ): Promise<string | undefined> {
+    const imagePath = avatar.thumbnail_path || avatar.image_path;
+    if (!imagePath) return undefined;
+
+    try {
+      if (/^https?:\/\//i.test(imagePath)) {
+        return this.cacheRemoteAvatarReferenceImage(imagePath, jobId);
+      }
+
+      const localPath = path.isAbsolute(imagePath)
+        ? imagePath
+        : imagePath.startsWith("/")
+        ? path.join(process.cwd(), "public", imagePath.slice(1))
+        : path.resolve(imagePath);
+
+      await access(localPath);
+      return localPath;
+    } catch (err) {
+      logger.warn(`[FlowAgent] Nao foi possivel preparar a imagem de referencia do avatar ${avatar.id}.`, err);
+      await this.logAgentEvent(jobId, "planning", "Avatar selecionado, mas a imagem de referencia nao pode ser anexada. Seguindo sem referencia visual.");
+      return undefined;
+    }
+  }
+
+  private async cacheRemoteAvatarReferenceImage(imagePath: string, jobId: string): Promise<string> {
+    const response = await fetch(imagePath);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const ext = this.avatarReferenceExtension(contentType);
+    const tempDir = path.resolve("storage/temp_uploads");
+    await mkdir(tempDir, { recursive: true });
+    const localPath = path.join(tempDir, `avatar_ref_${jobId}${ext}`);
+    await writeFile(localPath, Buffer.from(await response.arrayBuffer()));
+    return localPath;
+  }
+
+  private avatarReferenceExtension(contentType: string): ".jpg" | ".png" | ".webp" {
+    if (contentType.includes("webp")) return ".webp";
+    if (contentType.includes("jpeg") || contentType.includes("jpg")) return ".jpg";
+    return ".png";
   }
 
   private async generateBackgroundVideoPrompt(
@@ -79,8 +152,8 @@ export class FlowAgent {
       return videoPrompt;
     } catch (err) {
       logger.warn(`[FlowAgent] Otimização de prompt falhou. Usando fallback.`, err);
-      const fallbackPrompt = `${topic}, highly detailed, cinematic lighting, slow motion, professional video`;
-      await this.logAgentEvent(jobId, "researching", `Otimização falhou. Usando fallback padrão: "${fallbackPrompt}"`);
+      const fallbackPrompt = topic.trim();
+      await this.logAgentEvent(jobId, "researching", `Otimização falhou. Usando o prompt recebido sem reescrever: "${fallbackPrompt}"`);
       return fallbackPrompt;
     }
   }
@@ -90,8 +163,9 @@ export class FlowAgent {
     await this.logAgentEvent(jobId, "researching", "Abrindo o VideoFX no Google Flow para renderizar o clipe de fundo...");
     const videoResult = await flowProvider.generateVideo(prompt, {
       aspectRatio: options.aspectRatio || '16:9',
-      quantity: '1x',
-      model: options.videoModel || 'Veo 3.1'
+      quantity: options.videoQuantity || '1x',
+      model: options.videoModel || 'Veo 3.1',
+      referenceImage: options.avatarReferenceImage
     });
 
     if (!videoResult.success || !videoResult.path) {
@@ -466,8 +540,9 @@ export class FlowAgent {
         
         const imageResult = await flowProvider.generateImage(optimized, {
           aspectRatio: options.aspectRatio || '1:1',
-          quantity: 'x2',
-          model: 'Nano Banana Pro'
+          quantity: options.imageQuantity || 'x2',
+          model: options.imageModel || 'Nano Banana Pro',
+          referenceImage: options.avatarReferenceImage
         });
 
         if (!imageResult.success || (!imageResult.path && (!imageResult.paths || imageResult.paths.length === 0))) {
@@ -583,8 +658,9 @@ export class FlowAgent {
         
         const videoResult = await flowProvider.generateVideo(optimized, {
           aspectRatio: options.aspectRatio || '16:9',
-          quantity: '1x',
-          model: options.videoModel || 'Veo 3.1'
+          quantity: options.videoQuantity || '1x',
+          model: options.videoModel || 'Veo 3.1',
+          referenceImage: options.avatarReferenceImage
         });
 
         if (!videoResult.success || !videoResult.path) {
@@ -728,8 +804,9 @@ Retorne estritamente um JSON no formato:
       await this.logAgentEvent(jobId, "researching", "Iniciando regeneração de vídeo de fundo para o refinamento...");
       const videoResult = await flowProvider.generateVideo(parsedResponse.newVideoPrompt, {
         aspectRatio: options.aspectRatio || '16:9',
-        quantity: '1x',
-        model: options.videoModel || 'Veo 3.1'
+        quantity: options.videoQuantity || '1x',
+        model: options.videoModel || 'Veo 3.1',
+        referenceImage: options.avatarReferenceImage
       });
       if (!videoResult.success || !videoResult.path) {
         throw new Error(`Geração do novo vídeo para refinamento falhou: ${videoResult.error}`);
@@ -802,22 +879,32 @@ Retorne estritamente um JSON no formato:
     );
 
     let personality: unknown = null;
+    let avatarReferenceImage: string | undefined;
     try {
       const avatar = await this.findAvatar(options.avatarId);
       personality = avatar.personality;
+      avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
+      if (avatarReferenceImage) {
+        await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
+      }
     } catch (err) {
       logger.warn(`[FlowAgent] Falha ao carregar avatar ${options.avatarId}. Usando dados genéricos.`, err);
     }
 
+    const executionOptions = {
+      ...options,
+      avatarReferenceImage
+    };
+
     if (decision.flow === "image") {
-      return this.executeImageFlow(options, decision.optimizedPrompt);
+      return this.executeImageFlow(executionOptions, decision.optimizedPrompt);
     } else if (decision.flow === "video") {
-      return this.executeVideoFlow(options, decision.optimizedPrompt);
+      return this.executeVideoFlow(executionOptions, decision.optimizedPrompt);
     } else if (decision.flow === "refine") {
-      return this.executeRefineFlow(options, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
+      return this.executeRefineFlow(executionOptions, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
     } else {
       const projectOptions = {
-        ...options,
+        ...executionOptions,
         topic: decision.optimizedPrompt || options.topic
       };
       return this.createCompleteProject(projectOptions);
