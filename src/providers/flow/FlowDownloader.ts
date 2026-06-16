@@ -22,7 +22,9 @@ export class FlowDownloader {
     triggerLocator: Locator,
     prefix: 'image' | 'video',
     subfolder: 'images' | 'videos',
-    defaultExt: string
+    defaultExt: string,
+    customFolder?: string,
+    customFilename?: string
   ): Promise<{ success: boolean; path: string; filename: string; createdAt: string }> {
     logger.info('Download iniciado.');
 
@@ -50,9 +52,16 @@ export class FlowDownloader {
       const suggestedFilename = download.suggestedFilename();
       const ext = path.extname(suggestedFilename) || defaultExt;
 
-      // Generate clean UUID filename
-      const filename = generateFilename(prefix, ext);
-      const targetDir = path.resolve(this.downloadRootPath, subfolder);
+      // Generate clean filename
+      const filename = customFilename ? `${customFilename}${ext}` : generateFilename(prefix, ext);
+      
+      let targetDir;
+      if (customFolder) {
+        // Save to storage/generated/patterns/<customFolder>
+        targetDir = path.resolve(this.downloadRootPath, 'patterns', customFolder);
+      } else {
+        targetDir = path.resolve(this.downloadRootPath, subfolder);
+      }
       ensureDirExists(targetDir);
 
       const targetPath = path.join(targetDir, filename);

@@ -8,6 +8,11 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function sanitizeFilenameOrFolder(input: string): string {
+  // Allow only alphanumeric, underscores, hyphens, dots, and spaces.
+  return input.replace(/[^a-zA-Z0-9_\-\.\s]/g, "").replace(/\.\.+/g, ".").trim();
+}
+
 function saveBase64Image(base64Data: string): { filePath: string; extension: string } {
   const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
   let buffer: Buffer;
@@ -49,6 +54,8 @@ export async function POST(request: Request) {
       quantity?: unknown;
       model?: unknown;
       referenceImage?: unknown;
+      folderName?: unknown;
+      originalFilename?: unknown;
     } | null;
 
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -66,6 +73,11 @@ export async function POST(request: Request) {
     const aspectRatio = typeof body?.aspectRatio === "string" ? body.aspectRatio.trim() : undefined;
     const quantity = typeof body?.quantity === "number" || typeof body?.quantity === "string" ? body.quantity : undefined;
     const model = typeof body?.model === "string" ? body.model.trim() : undefined;
+    const folderNameRaw = typeof body?.folderName === "string" ? body.folderName.trim() : "";
+    const originalFilenameRaw = typeof body?.originalFilename === "string" ? body.originalFilename.trim() : "";
+
+    const folderName = folderNameRaw ? sanitizeFilenameOrFolder(folderNameRaw) : undefined;
+    const originalFilename = originalFilenameRaw ? sanitizeFilenameOrFolder(originalFilenameRaw) : undefined;
 
     let validatedAspectRatio: '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | undefined = undefined;
     if (aspectRatio && ["16:9", "4:3", "1:1", "3:4", "9:16"].includes(aspectRatio)) {
@@ -98,7 +110,9 @@ export async function POST(request: Request) {
       aspectRatio: validatedAspectRatio,
       quantity: validatedQuantity,
       model: model || undefined,
-      referenceImage: tempFilePath
+      referenceImage: tempFilePath,
+      folderName,
+      originalFilename
     };
 
     console.log(`[API FLOW] Iniciando geração de ${type} para o prompt: "${prompt}" com opções:`, options);

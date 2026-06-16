@@ -446,13 +446,21 @@ export class FlowImageGenerator {
         const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
         await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
 
-        logger.info(`Iniciando download do item ${i + 1}...`);
+        const customFolder = options?.folderName && options?.originalFilename 
+          ? `${options.folderName}/${options.originalFilename}` 
+          : undefined;
+        const customFilename = options?.originalFilename 
+          ? `${options.originalFilename}_${i + 1}` 
+          : undefined;
+
         const downloadResult = await this.downloader.downloadFile(
           page,
           downloadBtn,
           'image',
           'images',
-          '.png'
+          '.png',
+          customFolder,
+          customFilename
         );
 
         if (downloadResult.success) {
