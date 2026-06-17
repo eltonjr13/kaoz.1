@@ -69,6 +69,18 @@ export default function PatternsPage() {
     terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [globalLogs]);
 
+  // Auto-scroll background page element to deep dark
+  useEffect(() => {
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+      const originalBg = mainEl.style.backgroundColor;
+      mainEl.style.backgroundColor = '#080808';
+      return () => {
+        mainEl.style.backgroundColor = originalBg;
+      };
+    }
+  }, []);
+
   // Clean memory object URLs on unmount
   useEffect(() => {
     return () => {
@@ -428,62 +440,117 @@ export default function PatternsPage() {
   };
 
   return (
-    <div className="relative isolate min-h-screen bg-[#080808] pb-32 pt-10 text-white select-none">
-      {/* Background radial highlight */}
+    <div
+      className="relative isolate min-h-screen overflow-y-auto bg-[#080808] pb-48 pt-10 text-white select-none"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
+      {/* ── Background: Anime watermark ── */}
       <div
-        className="pointer-events-none absolute inset-0 -z-10"
+        aria-hidden="true"
         style={{
-          background: "radial-gradient(ellipse 50% 50% at 75% 15%, rgba(157,124,255,0.05) 0%, transparent 100%), linear-gradient(180deg, rgba(8,8,8,0.2) 0%, #080808 100%)",
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: "65%",
+          minHeight: "100vh",
+          zIndex: 1,
+          backgroundImage: "url('/mrchicken-anime-bg.jpeg')",
+          backgroundSize: "cover",
+          backgroundPosition: "right 15% top",
+          backgroundAttachment: "local",
+          opacity: 0.25,
+          mixBlendMode: "luminosity",
+          maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
+          pointerEvents: "none",
+        }}
+      />
+      {/* ── Background: Dark gradient overlay ── */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          minHeight: "100vh",
+          zIndex: 0,
+          background: "radial-gradient(ellipse 55% 50% at 82% 10%, rgba(157,124,255,0.065) 0%, transparent 100%), linear-gradient(180deg, rgba(8,8,8,0.30) 0%, rgba(8,8,8,0.72) 52%, #080808 100%)",
+          pointerEvents: "none",
         }}
       />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      {/* ── Main Content ── */}
+      <div className="relative mx-auto w-full max-w-[1200px] px-6 sm:px-8 lg:px-10" style={{ zIndex: 1 }}>
         
-        {/* Header Section */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between pb-8 border-b border-white/[0.06]">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span
-                className="flex h-9 w-9 items-center justify-center rounded-xl"
+        {/* ── Hero Section ── */}
+        <section
+          className="animate-fade-in-up rounded-[32px] p-8 sm:p-10 lg:p-12"
+          style={{
+            background: "rgba(255,255,255,0.022)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="flex flex-col gap-5">
+              {/* Status badge */}
+              <div
+                className="inline-flex items-center gap-2 self-start rounded-full px-3 py-1.5 text-[11px] font-medium tracking-[0.03em]"
                 style={{
-                  background: "rgba(157,124,255,0.12)",
-                  border: "1px solid rgba(157,124,255,0.2)",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "#B8B8C0",
                 }}
               >
-                <Shirt size={18} className="text-[#9D7CFF]" />
-              </span>
+                <span
+                  className="animate-pulse-dot rounded-full"
+                  style={{ width: 6, height: 6, background: "#4ade80", flexShrink: 0, display: "inline-block" }}
+                />
+                AI workspace online
+              </div>
+
+              {/* Title + subtitle */}
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
+                <h1
+                  className="text-[38px] font-light leading-none text-white sm:text-[50px] flex items-center gap-3"
+                  style={{ letterSpacing: "-0.02em", fontWeight: 300 }}
+                >
+                  <Shirt size={38} className="text-[#9D7CFF] opacity-85" />
                   Extrator de Estampas
                 </h1>
-                <p className="text-xs text-[#7B7B86] mt-0.5">
-                  Remova o modelo e isole a estampa da roupa com fundo branco usando Google Flow
+                <p
+                  className="mt-4 max-w-[500px] text-[15px] leading-relaxed"
+                  style={{ color: "#B8B8C0" }}
+                >
+                  Remova o modelo e isole a estampa da roupa com fundo branco usando Google Flow.
                 </p>
               </div>
             </div>
+
+            {/* Action buttons inside hero */}
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              {isProcessing ? (
+                <button
+                  onClick={stopProcessing}
+                  className="flex h-11 items-center gap-2 rounded-full px-5 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-950/25 hover:bg-red-900/30 transition-colors cursor-pointer"
+                >
+                  <StopCircle size={14} className="animate-pulse" />
+                  Parar Processamento
+                </button>
+              ) : (
+                <button
+                  onClick={startBatchProcessing}
+                  disabled={queue.length === 0}
+                  className="flex h-11 items-center gap-2 rounded-full px-5 text-xs font-semibold text-black bg-[#9D7CFF] hover:bg-[#b094ff] disabled:bg-[#7b7b86]/30 disabled:text-[#4A4A54] transition-colors shadow-lg shadow-[#9D7CFF]/10 cursor-pointer"
+                >
+                  <Play size={14} />
+                  Extrair Estampas ({queue.filter(i => i.status === "pending" || i.status === "failed").length})
+                </button>
+              )}
+            </div>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-2">
-            {isProcessing ? (
-              <button
-                onClick={stopProcessing}
-                className="flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-950/25 hover:bg-red-900/30 transition-colors cursor-pointer"
-              >
-                <StopCircle size={14} className="animate-pulse" />
-                Parar Processamento
-              </button>
-            ) : (
-              <button
-                onClick={startBatchProcessing}
-                disabled={queue.length === 0}
-                className="flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-semibold text-black bg-[#9D7CFF] hover:bg-[#b094ff] disabled:bg-[#7b7b86]/30 disabled:text-[#4A4A54] transition-colors shadow-lg shadow-[#9D7CFF]/10 cursor-pointer"
-              >
-                <Play size={14} />
-                Extrair Estampas ({queue.filter(i => i.status === "pending" || i.status === "failed").length})
-              </button>
-            )}
-          </div>
-        </div>
+        </section>
 
         {/* Core Layout Grid (2 Columns: Upload & Queue Left, Configurations & Logs Right) */}
         <div className="mt-8 grid gap-8 lg:grid-cols-3">
@@ -496,7 +563,12 @@ export default function PatternsPage() {
               onDragOver={handleDragOver}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="group relative flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.12] bg-[#0c0c0e]/30 px-6 py-12 text-center cursor-pointer transition-all hover:border-[#9D7CFF]/50 hover:bg-[#0c0c0e]/50"
+              className="group relative flex flex-col items-center justify-center rounded-[28px] border border-dashed border-white/[0.1] px-6 py-12 text-center cursor-pointer transition-all hover:border-[#9D7CFF]/50 card-stagger-1"
+              style={{
+                background: "rgba(255,255,255,0.015)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+              }}
             >
               {/* input tag is now protected from bubbling */}
               <input
@@ -526,10 +598,10 @@ export default function PatternsPage() {
             </div>
 
             {/* Fila Grid */}
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 card-stagger-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#7B7B86] flex items-center gap-1.5">
-                  <Shirt size={12} className="text-[#9D7CFF]" />
+                <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[#7B7B86] flex items-center gap-2">
+                  <Shirt size={13} className="text-[#9D7CFF] opacity-75" />
                   Fila de Imagens ({queue.length})
                 </h3>
                 {queue.length > 0 && (
@@ -546,7 +618,7 @@ export default function PatternsPage() {
                     <span className="text-white/10 text-[10px] select-none">|</span>
                     <button
                       onClick={handleClearQueue}
-                      className="text-[10px] font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 cursor-pointer"
+                      className="text-[10px] font-semibold text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <Trash2 size={10} />
                       Limpar Tudo
@@ -556,7 +628,13 @@ export default function PatternsPage() {
               </div>
 
               {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.04] bg-[#0c0c0e]/10 py-16 text-center">
+                <div
+                  className="flex flex-col items-center justify-center rounded-[28px] border border-white/[0.04] py-16 text-center"
+                  style={{
+                    background: "rgba(255,255,255,0.01)",
+                    border: "1px solid rgba(255,255,255,0.04)"
+                  }}
+                >
                   <Shirt size={32} className="text-[#4A4A54] mb-3" />
                   <p className="text-xs font-medium text-[#7B7B86]">
                     Nenhuma imagem na fila de extração.
@@ -569,23 +647,36 @@ export default function PatternsPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {queue.map((item) => {
                     const isProcessingThis = activeItemId === item.id;
+                    
+                    let cardBg = "rgba(255, 255, 255, 0.012)";
+                    let cardBorder = "rgba(255, 255, 255, 0.05)";
+                    
+                    if (isProcessingThis) {
+                      cardBg = "rgba(157, 124, 255, 0.04)";
+                      cardBorder = "rgba(157, 124, 255, 0.2)";
+                    } else if (item.status === "success") {
+                      cardBg = "rgba(74, 222, 128, 0.02)";
+                      cardBorder = "rgba(74, 222, 128, 0.15)";
+                    } else if (item.status === "failed") {
+                      cardBg = "rgba(239, 68, 68, 0.02)";
+                      cardBorder = "rgba(239, 68, 68, 0.15)";
+                    }
+
                     return (
                       <div
                         key={item.id}
-                        className={`group relative overflow-hidden rounded-2xl border backdrop-blur-sm transition-all duration-200 ${
-                          isProcessingThis
-                            ? "border-[#9D7CFF] bg-[#9D7CFF]/5 shadow-lg shadow-[#9D7CFF]/5"
-                            : item.status === "success"
-                            ? "border-emerald-500/30 bg-emerald-950/5"
-                            : item.status === "failed"
-                            ? "border-red-500/30 bg-red-950/5"
-                            : "border-white/[0.06] bg-[#0c0c0e]/40 hover:border-white/[0.12]"
-                        }`}
+                        className="group relative overflow-hidden rounded-[24px] transition-all duration-200 hover:-translate-y-0.5"
+                        style={{
+                          background: cardBg,
+                          border: `1px solid ${cardBorder}`,
+                          backdropFilter: "blur(8px)",
+                          WebkitBackdropFilter: "blur(8px)"
+                        }}
                       >
                         {/* Card Content */}
                         <div className="p-4 flex gap-4">
                           {/* Image preview (Original) */}
-                          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/[0.08] bg-neutral-900">
+                          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/[0.08] bg-neutral-900/60">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={item.previewUrl}
@@ -623,24 +714,50 @@ export default function PatternsPage() {
                             <div className="mt-3 flex items-center justify-between">
                               {/* Status Badges */}
                               {item.status === "pending" && (
-                                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold bg-white/[0.03] text-[#B8B8C0] border border-white/[0.06]">
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                                  style={{
+                                    background: "rgba(255,255,255,0.03)",
+                                    border: "1px solid rgba(255,255,255,0.06)",
+                                    color: "#B8B8C0"
+                                  }}
+                                >
                                   Pendente
                                 </span>
                               )}
                               {item.status === "processing" && (
-                                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold bg-[#9D7CFF]/10 text-[#9D7CFF] border border-[#9D7CFF]/20 animate-pulse">
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold animate-pulse"
+                                  style={{
+                                    background: "rgba(157, 124, 255, 0.1)",
+                                    border: "1px solid rgba(157, 124, 255, 0.2)",
+                                    color: "#9D7CFF"
+                                  }}
+                                >
                                   Processando ({item.progress}%)
                                 </span>
                               )}
                               {item.status === "success" && (
-                                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                                  style={{
+                                    background: "rgba(74, 222, 128, 0.1)",
+                                    border: "1px solid rgba(74, 222, 128, 0.2)",
+                                    color: "#4ade80"
+                                  }}
+                                >
                                   <CheckCircle2 size={9} />
                                   Concluído
                                 </span>
                               )}
                               {item.status === "failed" && (
                                 <span
-                                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 cursor-pointer"
+                                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold cursor-pointer"
+                                  style={{
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                                    color: "#f87171"
+                                  }}
                                   title={item.error}
                                 >
                                   <AlertCircle size={9} />
@@ -684,7 +801,13 @@ export default function PatternsPage() {
 
                         {/* Variations List (only if success and multiple variations exist) */}
                         {item.status === "success" && item.resultPaths && item.resultPaths.length > 0 && (
-                          <div className="px-4 pb-4 pt-3 border-t border-white/[0.04] bg-black/10">
+                          <div
+                            className="px-4 pb-4 pt-3 border-t"
+                            style={{
+                              borderColor: "rgba(255, 255, 255, 0.04)",
+                              background: "rgba(0, 0, 0, 0.15)"
+                            }}
+                          >
                             <p className="text-[10px] font-bold text-[#7B7B86] uppercase tracking-wider mb-2 flex items-center gap-1">
                               <Sparkles size={9} className="text-[#9D7CFF]" />
                               Variações Geradas e Salvas
@@ -752,9 +875,17 @@ export default function PatternsPage() {
           <div className="flex flex-col gap-6">
             
             {/* Configurations Box */}
-            <div className="rounded-2xl border border-white/[0.06] bg-[#0c0c0e]/80 p-5 backdrop-blur-md">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#7B7B86] flex items-center gap-1.5 mb-4">
-                <Sliders size={12} className="text-[#9D7CFF]" />
+            <div
+              className="rounded-[32px] p-6 card-stagger-3"
+              style={{
+                background: "rgba(255,255,255,0.018)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+              }}
+            >
+              <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#7B7B86] flex items-center gap-2 mb-5">
+                <Sliders size={13} className="text-[#9D7CFF] opacity-75" />
                 Parâmetros do Google Flow
               </h2>
               
@@ -767,11 +898,12 @@ export default function PatternsPage() {
                     type="text"
                     value={batchFolder}
                     onChange={(e) => setBatchFolder(e.target.value)}
-                    className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3.5 py-2.5 text-xs text-white focus:border-[#9D7CFF] focus:outline-none placeholder-white/20"
+                    className="w-full rounded-xl border border-white/[0.08] px-3.5 py-2.5 text-xs text-white focus:border-[#9D7CFF] focus:outline-none placeholder-white/20 transition-colors"
+                    style={{ background: "rgba(255,255,255,0.02)" }}
                     placeholder="Ex: Colecao_Verao_2026"
                   />
                   <p className="text-[9px] text-[#7B7B86] mt-1.5 leading-relaxed">
-                    As variações de cada modelo serão salvas em subpastas individuais dentro de <code className="text-[#9D7CFF] bg-black/40 px-1 py-0.5 rounded">storage/generated/patterns/&lt;Pasta_do_Lote&gt;/&lt;Nome_do_Modelo&gt;/</code>.
+                    As variações de cada modelo serão salvas em subpastas individuais dentro de <code className="text-[#9D7CFF] bg-black/40 px-1 py-0.5 rounded font-mono">storage/generated/patterns/&lt;Pasta_do_Lote&gt;/&lt;Nome_do_Modelo&gt;/</code>.
                   </p>
                 </div>
 
@@ -779,66 +911,99 @@ export default function PatternsPage() {
                   <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-2">
                     Proporção da Estampa (Aspect Ratio)
                   </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(["1:1", "16:9", "4:3", "3:4", "9:16"] as const).map((ratio) => (
-                      <button
-                        key={ratio}
-                        type="button"
-                        onClick={() => setAspectRatio(ratio)}
-                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
-                          aspectRatio === ratio
-                            ? "border-[#9D7CFF] bg-[#9D7CFF]/10 text-white"
-                            : "border-white/[0.06] bg-white/[0.02] text-[#B8B8C0] hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        {ratio}
-                      </button>
-                    ))}
+                  <div
+                    className="grid grid-cols-5 gap-1 rounded-[14px] p-1"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  >
+                    {(["1:1", "16:9", "4:3", "3:4", "9:16"] as const).map((ratio) => {
+                      const isActive = aspectRatio === ratio;
+                      return (
+                        <button
+                          key={ratio}
+                          type="button"
+                          onClick={() => setAspectRatio(ratio)}
+                          className="rounded-xl py-1.5 font-mono text-[10px] transition-all cursor-pointer"
+                          style={{
+                            background: isActive ? "#ffffff" : "transparent",
+                            color: isActive ? "#080808" : "#7B7B86",
+                            fontWeight: isActive ? 700 : 400,
+                          }}
+                        >
+                          {ratio}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-1.5">
+                    <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-2">
                       Modelo da IA
                     </label>
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3.5 py-2 text-xs text-white focus:border-[#9D7CFF] focus:outline-none"
+                    <div
+                      className="grid grid-cols-3 gap-1 rounded-[14px] p-1"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                     >
-                      <option value="Imagen 3">Imagen 3</option>
-                      <option value="Imagen 2">Imagen 2</option>
-                      <option value="Nano Banana 2">Nano Banana 2</option>
-                    </select>
+                      {["Imagen 3", "Imagen 2", "Nano Banana 2"].map((m) => {
+                        const isActive = model === m;
+                        const displayLabel = m === "Nano Banana 2" ? "Banana 2" : m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setModel(m)}
+                            className="rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer truncate"
+                            style={{
+                              background: isActive ? "#ffffff" : "transparent",
+                              color: isActive ? "#080808" : "#7B7B86",
+                            }}
+                          >
+                            {displayLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-1.5">
+                    <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-2">
                       Quantidade
                     </label>
-                    <select
-                      value={quantity}
-                      onChange={(e) => setQuantity(Number(e.target.value))}
-                      className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3.5 py-2 text-xs text-white focus:border-[#9D7CFF] focus:outline-none"
+                    <div
+                      className="grid grid-cols-4 gap-1 rounded-[14px] p-1"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                     >
-                      {[1, 2, 3, 4].map((n) => (
-                        <option key={n} value={n}>
-                          {n} variação{n > 1 ? "ões" : ""}
-                        </option>
-                      ))}
-                    </select>
+                      {[1, 2, 3, 4].map((n) => {
+                        const isActive = quantity === n;
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setQuantity(n)}
+                            className="rounded-xl py-1.5 font-mono text-[10px] transition-all cursor-pointer"
+                            style={{
+                              background: isActive ? "#ffffff" : "transparent",
+                              color: isActive ? "#080808" : "#7B7B86",
+                            }}
+                          >
+                            {n}x
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-1.5">
+                  <label className="block text-[11px] font-semibold text-[#B8B8C0] mb-2">
                     Prompt de Comando Otimizado
                   </label>
                   <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     rows={6}
-                    className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:border-[#9D7CFF] focus:outline-none focus:ring-1 focus:ring-[#9D7CFF] resize-y leading-relaxed font-sans"
+                    className="w-full rounded-xl border border-white/[0.08] px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:border-[#9D7CFF] focus:outline-none transition-colors resize-y leading-relaxed font-sans"
+                    style={{ background: "rgba(255,255,255,0.02)" }}
                     placeholder="Escreva as instruções para a IA..."
                   />
                   <div className="mt-2 flex justify-end">
@@ -855,18 +1020,32 @@ export default function PatternsPage() {
             </div>
 
             {/* Terminal Console Logs */}
-            <div className="flex flex-col gap-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#7B7B86] flex items-center gap-1.5">
-                <TerminalIcon size={12} className="text-[#9D7CFF]" />
+            <div className="flex flex-col gap-4 card-stagger-4">
+              <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[#7B7B86] flex items-center gap-2">
+                <TerminalIcon size={13} className="text-[#9D7CFF] opacity-75" />
                 Console do Google Flow (Logs)
               </h3>
 
-              <div className="flex flex-col h-[280px] rounded-2xl border border-white/[0.06] bg-black/85 font-mono text-[10px] text-[#A6ACCD]">
+              <div
+                className="flex flex-col h-[280px] rounded-[24px] overflow-hidden font-mono text-[10px] text-[#A6ACCD]"
+                style={{
+                  background: "rgba(10,10,14,0.94)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                }}
+              >
                 {/* Terminal Title Bar */}
-                <div className="flex items-center gap-1.5 px-4 py-2 border-b border-white/[0.04] bg-[#0c0c0e] select-none">
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                  <div className="h-2 w-2 rounded-full bg-yellow-500" />
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                <div
+                  className="flex items-center gap-1.5 px-4 py-2.5 select-none"
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  }}
+                >
+                  <div className="h-2 w-2 rounded-full bg-red-500/80" />
+                  <div className="h-2 w-2 rounded-full bg-yellow-500/80" />
+                  <div className="h-2 w-2 rounded-full bg-green-500/80" />
                   <span className="text-[#4A4A54] ml-2 text-[9px] font-semibold uppercase tracking-wider">
                     Playwright Console
                   </span>
@@ -909,9 +1088,15 @@ export default function PatternsPage() {
 
       {/* Side-by-Side Detail Comparison Dialog (Modal) */}
       {selectedResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fade-in">
           <div
-            className="relative w-full max-w-4xl rounded-3xl border border-white/[0.08] bg-[#0c0c0e] p-6 shadow-2xl"
+            className="relative w-full max-w-4xl rounded-[32px] p-6 shadow-2xl"
+            style={{
+              background: "rgba(12,12,16,0.97)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -939,7 +1124,12 @@ export default function PatternsPage() {
                 <span className="text-[10px] font-bold text-[#7B7B86] uppercase tracking-wider">
                   Foto Original do Modelo
                 </span>
-                <div className="relative aspect-square overflow-hidden rounded-2xl border border-white/[0.06] bg-neutral-900 flex items-center justify-center">
+                <div
+                  className="relative aspect-square overflow-hidden rounded-[20px] flex items-center justify-center bg-neutral-900/40"
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.06)"
+                  }}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={selectedResult.original}
@@ -955,7 +1145,12 @@ export default function PatternsPage() {
                   Estampa Extraída (Fundo Branco)
                   <Sparkles size={10} className="text-[#9D7CFF]" />
                 </span>
-                <div className="relative aspect-square overflow-hidden rounded-2xl border border-white/[0.06] bg-white flex items-center justify-center p-4">
+                <div
+                  className="relative aspect-square overflow-hidden rounded-[20px] flex items-center justify-center p-4 bg-white"
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.06)"
+                  }}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={selectedResult.result}
@@ -979,7 +1174,7 @@ export default function PatternsPage() {
                   handleDownload(selectedResult.result, selectedResult.name);
                   setSelectedResult(null);
                 }}
-                className="flex h-10 items-center gap-2 rounded-xl px-5 text-xs font-semibold text-black bg-[#9D7CFF] hover:bg-[#b094ff] transition-colors cursor-pointer"
+                className="flex h-10 items-center gap-2 rounded-full px-5 text-xs font-semibold text-black bg-[#9D7CFF] hover:bg-[#b094ff] transition-colors cursor-pointer"
               >
                 <Download size={14} />
                 Baixar Estampa

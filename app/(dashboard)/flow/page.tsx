@@ -17,7 +17,7 @@ import {
   User,
   Check
 } from "lucide-react";
-
+import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
 
 
 interface GenerationResult {
@@ -586,18 +586,19 @@ export default function FlowDashboardPage() {
   };
 
   // Main Autopilot Execution
-  const handleExecuteAutopilot = async () => {
+  const handleExecuteAutopilot = async (overridePrompt?: string) => {
+    const promptToUse = overridePrompt !== undefined ? overridePrompt : agentPrompt;
     if (pendingPlan) {
       appendLog("Existe um plano pendente. Aplique ou cancele antes de planejar novamente.");
       return;
     }
 
-    if (!agentPrompt.trim()) {
+    if (!promptToUse.trim()) {
       appendLog("Aviso: Digite uma ideia para começar.");
       return;
     }
 
-    const explicitMediaType = inferExplicitMediaType(agentPrompt);
+    const explicitMediaType = inferExplicitMediaType(promptToUse);
     const executionType: AgentType = explicitMediaType ?? agentType;
     if (explicitMediaType && explicitMediaType !== agentType) {
       setAgentType(explicitMediaType);
@@ -610,14 +611,14 @@ export default function FlowDashboardPage() {
       setActiveJobId(null);
       setShowLogs(true);
       setLogs([]);
-      appendLog(`[Agente Autonomo] Pensando antes de aplicar: "${agentPrompt}"...`);
+      appendLog(`[Agente Autonomo] Pensando antes de aplicar: "${promptToUse}"...`);
       try {
         const res = await fetch("/api/flow/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "plan-project",
-            prompt: agentPrompt,
+            prompt: promptToUse,
             avatarId: selectedAvatarId,
             model: agentModel,
             aspectRatio: videoRatio,
@@ -630,8 +631,8 @@ export default function FlowDashboardPage() {
           setPendingPlan({
             kind: "project",
             flow: data.plan.flow || "project",
-            originalPrompt: agentPrompt,
-            prompt: data.plan.optimizedPrompt || agentPrompt,
+            originalPrompt: promptToUse,
+            prompt: data.plan.optimizedPrompt || promptToUse,
             explanation: data.plan.explanation || "Plano criado pelo agente.",
             model: agentModel,
             aspectRatio: videoRatio,
@@ -644,7 +645,7 @@ export default function FlowDashboardPage() {
             creativeSteps: data.plan.creativeSteps,
             visualReferenceInstructions: data.plan.visualReferenceInstructions
           });
-          setAgentResult(data.plan.optimizedPrompt || agentPrompt);
+          setAgentResult(data.plan.optimizedPrompt || promptToUse);
           appendLog("[Agente Autonomo] Plano pronto. Aguardando aprovacao para executar.");
         } else {
           setProjectResult({ success: false, error: data.error || "Erro desconhecido" });
@@ -663,7 +664,7 @@ export default function FlowDashboardPage() {
     setAgentResult(null);
     appendLog(`[Agente MrChicken] Conectando ao ${agentModel.toUpperCase()} para otimização...`);
 
-    let finalPrompt = agentPrompt;
+    let finalPrompt = promptToUse;
     let plannedFlow: PlannedFlow = executionType;
     let planExplanation = "O agente montou o plano. A geracao so comeca apos aprovacao.";
     let planStrategy: string | undefined;
@@ -678,7 +679,7 @@ export default function FlowDashboardPage() {
         body: JSON.stringify({
           action: "plan-agent",
           model: agentModel,
-          prompt: agentPrompt,
+          prompt: promptToUse,
         }),
       });
       const data = await res.json();
@@ -686,7 +687,7 @@ export default function FlowDashboardPage() {
       if (data.success && plan) {
         const agentFlow = plan.flow === "image" || plan.flow === "video" ? plan.flow : executionType;
         plannedFlow = agentFlow;
-        finalPrompt = plan.optimizedPrompt || agentPrompt;
+        finalPrompt = plan.optimizedPrompt || promptToUse;
         planExplanation = plan.strategy || plan.explanation || planExplanation;
         planStrategy = plan.strategy;
         planScriptOutline = plan.scriptOutline ?? null;
@@ -709,7 +710,7 @@ export default function FlowDashboardPage() {
     setPendingPlan({
       kind: directFlow,
       flow: directFlow,
-      originalPrompt: agentPrompt,
+      originalPrompt: promptToUse,
       prompt: finalPrompt,
       explanation: planExplanation,
       model: agentModel,
@@ -1306,78 +1307,63 @@ export default function FlowDashboardPage() {
           </button>
         </div>
 
-        {/* ── Main Input Pill ── */}
-        <div
-          className="liquid-input pointer-events-auto relative flex w-full max-w-[900px] flex-wrap items-end gap-3 overflow-visible p-3 pb-[22px] pl-5 sm:flex-nowrap"
-          style={{ minHeight: 88 }}
-          ref={popoverRef}
-        >
-          {/* Text input */}
-          <textarea
-            ref={promptTextareaRef}
-            rows={1}
-            value={agentPrompt}
-            onChange={(e) => {
-              setAgentPrompt(e.target.value);
+        {/* ── Claude Chat Input ── */}
+        <div className="relative w-full max-w-[900px] pointer-events-auto overflow-visible" ref={popoverRef}>
+          <ClaudeChatInput
+            disabled={isLoading}
+            placeholder="O que você quer criar hoje?"
+            models={[
+              { id: "gemini", name: "Gemini", description: "Google Gemini Model" },
+              { id: "chatgpt", name: "ChatGPT", description: "OpenAI ChatGPT Model" },
+              { id: "deepseek", name: "DeepSeek", description: "DeepSeek Model" },
+              { id: "claude", name: "Claude", description: "Anthropic Claude Model" }
+            ]}
+            defaultModel={agentModel}
+            onModelChange={(modelId) => {
               clearPendingPlan();
+              setAgentModel(modelId as any);
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !pendingPlan && !agentLoading && !imageLoading && !videoLoading && !projectLoading && !activeJobId && agentPrompt.trim()) {
-                e.preventDefault();
-                handleExecuteAutopilot();
+            onSendMessage={async (message, files, pastedContent) => {
+              setAgentPrompt(message);
+              clearPendingPlan();
+
+              // If there are files, convert to data url and set as reference
+              if (files.length > 0) {
+                const file = files[0].file;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  if (typeof event.target?.result === "string") {
+                    if (agentType === "image") {
+                      setImageReference(event.target.result);
+                      appendLog(`Imagem de referência selecionada (${(file.size / 1024).toFixed(1)} KB).`);
+                    } else {
+                      setVideoReference(event.target.result);
+                      appendLog(`Imagem de referência selecionada (${(file.size / 1024).toFixed(1)} KB).`);
+                    }
+                  }
+                };
+                reader.readAsDataURL(file);
+              }
+
+              // Also if there is pasted content, append it to the message
+              if (pastedContent.length > 0) {
+                let fullMessage = message;
+                pastedContent.forEach((p) => {
+                  fullMessage += "\n\n[Pasted Content]:\n" + p.content;
+                });
+                setAgentPrompt(fullMessage);
+                handleExecuteAutopilot(fullMessage);
+              } else {
+                handleExecuteAutopilot(message);
               }
             }}
-            placeholder="O que você quer criar hoje?"
-            className="min-h-[44px] min-w-0 flex-1 basis-full resize-none border-none bg-transparent px-2 py-3 text-[15px] leading-relaxed text-white outline-none placeholder:text-[#7B7B86] sm:basis-auto"
-            style={{ caretColor: "#9D7CFF" }}
-            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId}
-          />
-
-          {/* Attachment button */}
-          {agentType !== "project" && (
-            <label
-              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full"
-              style={{ border: "1px solid rgba(255,255,255,0.08)", color: "#7B7B86", transition: "color 200ms, background 200ms" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#B8B8C0"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#7B7B86"; }}
-            >
-              <ImageIcon size={15} />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  if (agentType === "image") {
-                    handleFileChange(e, setImageReference);
-                  } else {
-                    handleFileChange(e, setVideoReference);
-                  }
-                }}
-              />
-            </label>
-          )}
-
-          {/* Settings button + popover */}
-          <div className="relative shrink-0 overflow-visible">
-            <button
-              type="button"
-              onClick={() => setShowSettings(!showSettings)}
-              className="flex cursor-pointer items-center gap-2 rounded-full px-3 py-2 text-[11px] font-medium"
-              style={{
-                background: showSettings ? "#ffffff" : "rgba(255,255,255,0.035)",
-                color: showSettings ? "#080808" : "#B8B8C0",
-                border: showSettings ? "1px solid #ffffff" : "1px solid rgba(255,255,255,0.08)",
-                transition: "all 200ms ease-out",
-              }}
-            >
-              <Sliders size={11} style={{ color: showSettings ? "#080808" : "#7B7B86" }} />
-              {renderSettingsSummary()}
-            </button>
-
-            {/* Settings Popover */}
-            {showSettings && (
+            onOptionsClick={() => {
+              setShowSettings(!showSettings);
+            }}
+            showOptions={showSettings}
+            optionsContent={
               <div
-                className="absolute bottom-full right-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto"
+                className="absolute bottom-full left-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto"
                 style={{
                   background: "rgba(12,12,16,0.97)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -1609,21 +1595,8 @@ export default function FlowDashboardPage() {
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Send button */}
-          <button
-            type="button"
-            onClick={handleExecuteAutopilot}
-            disabled={agentLoading || imageLoading || videoLoading || projectLoading || !!activeJobId || !agentPrompt.trim()}
-            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-white disabled:opacity-40"
-            style={{ background: "#9D7CFF", transition: "background 200ms ease-out" }}
-            onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "#B195FF"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#9D7CFF"; }}
-          >
-            <ArrowRight size={16} />
-          </button>
+            }
+          />
         </div>
       </div>
     </div>
