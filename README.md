@@ -92,9 +92,12 @@ LIPSYNC_DOWNLOADS_DIR=.generated/jobs
 
 # Configurações do Flow & Automação Web (Playwright)
 FLOW_HEADLESS=false # Definir como false para rodar visível (necessário para ChatGPT/Claude/DeepSeek passarem pelo Cloudflare)
+FLOW_BROWSER_DRIVER=extension
 FLOW_TIMEOUT=300000
 FLOW_DOWNLOAD_PATH=storage/generated/
 FLOW_PROFILE_PATH=storage/browser-profile/
+FLOW_EXTENSION_TOKEN=
+FLOW_EXTENSION_TASK_TIMEOUT=300000
 FLOW_URL=https://flow.google
 ```
 

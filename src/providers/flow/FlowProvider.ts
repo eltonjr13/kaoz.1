@@ -5,7 +5,7 @@ import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
 import { FlowVideoGenerator } from './FlowVideoGenerator';
 import { FlowLLMAutomation } from './FlowLLMAutomation';
-import { FlowExtensionClient, isExtensionEnabled } from './FlowExtensionBridge';
+import { FlowExtensionClient, getFlowBrowserDriver, isExtensionEnabled } from './FlowExtensionBridge';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 
@@ -28,7 +28,7 @@ export class FlowProvider {
       downloadPath: process.env.FLOW_DOWNLOAD_PATH || 'storage/generated/',
       profilePath: process.env.FLOW_PROFILE_PATH || 'storage/browser-profile/',
       browserChannel: process.env.FLOW_BROWSER_CHANNEL || undefined,
-      browserDriver: process.env.FLOW_BROWSER_DRIVER === 'extension' ? 'extension' : 'playwright',
+      browserDriver: getFlowBrowserDriver() === 'extension' ? 'extension' : 'playwright',
       extensionTaskTimeout: process.env.FLOW_EXTENSION_TASK_TIMEOUT ? parseInt(process.env.FLOW_EXTENSION_TASK_TIMEOUT, 10) : 300000,
       flowUrl: process.env.FLOW_URL || 'https://flow.google',
       imageUrl: process.env.FLOW_IMAGE_URL || 'https://flow.google',

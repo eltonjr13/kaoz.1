@@ -67,13 +67,51 @@ function now() {
   return Date.now();
 }
 
+function readLocalEnvValue(key: string): string | undefined {
+  const envPath = path.resolve('.env.local');
+  if (!fs.existsSync(envPath)) {
+    return process.env[key];
+  }
+
+  try {
+    const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+    let value: string | undefined;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      const separatorIndex = trimmed.indexOf('=');
+      if (separatorIndex === -1) {
+        continue;
+      }
+
+      const name = trimmed.slice(0, separatorIndex).trim();
+      if (name !== key) {
+        continue;
+      }
+
+      value = trimmed.slice(separatorIndex + 1).trim();
+    }
+    return value || process.env[key];
+  } catch {
+    return process.env[key];
+  }
+}
+
+export function getFlowBrowserDriver() {
+  return readLocalEnvValue('FLOW_BROWSER_DRIVER');
+}
+
 function getExtensionToken(): string | null {
-  const token = process.env.FLOW_EXTENSION_TOKEN?.trim();
+  const token = readLocalEnvValue('FLOW_EXTENSION_TOKEN')?.trim();
   return token || null;
 }
 
 export function isExtensionEnabled(config?: Pick<FlowConfig, 'browserDriver'>) {
-  return (config?.browserDriver || process.env.FLOW_BROWSER_DRIVER) === 'extension';
+  const runtimeDriver = getFlowBrowserDriver();
+  return runtimeDriver === 'extension' || (!runtimeDriver && config?.browserDriver === 'extension');
 }
 
 export function verifyExtensionToken(token: unknown): boolean {
@@ -103,7 +141,7 @@ export function recordHeartbeat() {
 
 export function getBridgeStatus() {
   return {
-    enabled: process.env.FLOW_BROWSER_DRIVER === 'extension',
+    enabled: getFlowBrowserDriver() === 'extension',
     configured: !!getExtensionToken(),
     connected:
       state.lastHeartbeatAt !== null &&
@@ -131,6 +169,10 @@ export function pollExtensionTask() {
         task.status = 'timeout';
         task.updatedAt = timestamp;
         task.error = 'Tempo limite aguardando resposta da extensao.';
+        continue;
+      }
+
+      if (task.status !== 'queued') {
         continue;
       }
 
@@ -255,6 +297,28 @@ function taskError(task: ExtensionTask) {
   return task.error || String(task.result?.message || 'Tarefa da extensao falhou.');
 }
 
+function cleanExtensionText(response: string): string {
+  return response
+    .trim()
+    .replace(/```(markdown|text|json|plaintext)?/g, '')
+    .replace(/```/g, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
+}
+
+function extensionFromMime(mime: string, defaultExt: string) {
+  const mimeMap: Array<[string, string]> = [
+    ['png', '.png'],
+    ['jpeg', '.jpg'],
+    ['jpg', '.jpg'],
+    ['webp', '.webp'],
+    ['mp4', '.mp4'],
+    ['webm', '.webm']
+  ];
+
+  return mimeMap.find(([key]) => mime.includes(key))?.[1] || defaultExt;
+}
+
 function saveBase64Media(
   downloadPath: string,
   base64: string,
@@ -265,13 +329,7 @@ function saveBase64Media(
   const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
   const mime = matches?.[1] || '';
   const payload = matches?.[2] || base64;
-  const extFromMime =
-    mime.includes('png') ? '.png' :
-    mime.includes('jpeg') || mime.includes('jpg') ? '.jpg' :
-    mime.includes('webp') ? '.webp' :
-    mime.includes('mp4') ? '.mp4' :
-    mime.includes('webm') ? '.webm' :
-    defaultExt;
+  const extFromMime = extensionFromMime(mime, defaultExt);
 
   const subfolder = prefix === 'image' ? 'images' : 'videos';
   const targetDir = path.resolve(downloadPath, subfolder, folderName || '');
@@ -404,7 +462,7 @@ export class FlowExtensionClient {
       throw new Error(`Extensao nao retornou resposta do portal ${portal}.`);
     }
 
-    return text.trim();
+    return cleanExtensionText(text);
   }
 
   async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {

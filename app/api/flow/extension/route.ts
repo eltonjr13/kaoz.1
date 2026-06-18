@@ -88,6 +88,23 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "media") {
+      const taskId = typeof body?.taskId === "string" ? body.taskId : "";
+      if (!taskId) {
+        return jsonError("taskId obrigatorio.", 400);
+      }
+
+      const result =
+        body?.result && typeof body.result === "object"
+          ? (body.result as Record<string, unknown>)
+          : undefined;
+
+      const updated = completeExtensionTask(taskId, "completed", result);
+      return NextResponse.json({
+        success: updated
+      });
+    }
+
     return jsonError("Acao da extensao nao suportada.", 400);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);

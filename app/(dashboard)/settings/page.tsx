@@ -25,6 +25,14 @@ interface PortalConfig {
   color: string;
 }
 
+interface ExtensionStatus {
+  enabled: boolean;
+  configured: boolean;
+  connected: boolean;
+  lastHeartbeatAt: number | null;
+  pendingTasks: number;
+}
+
 const PORTALS: PortalConfig[] = [
   {
     id: "google",
@@ -72,6 +80,7 @@ export default function SettingsPage() {
   const [loadingPortal, setLoadingPortal] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [isCheckingAll, setIsCheckingAll] = useState(false);
+  const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus | null>(null);
 
   const [portalStatuses, setPortalStatuses] = useState<Record<string, 'connected' | 'disconnected' | 'checking'>>({
     google: 'disconnected',
@@ -98,6 +107,9 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: "check-status" })
       });
       const data = await res.json();
+      if (data.extension) {
+        setExtensionStatus(data.extension);
+      }
       if (data.success && data.statuses) {
         const updated: Record<string, 'connected' | 'disconnected' | 'checking'> = {};
         for (const [key, val] of Object.entries(data.statuses)) {
@@ -139,7 +151,7 @@ export default function SettingsPage() {
   const handleOpenLogin = async (portal: PortalConfig) => {
     setLoadingPortal(portal.id);
     setStatusMessage({
-      text: `Abrindo navegador para ${portal.name}. Faca o login na janela visivel e depois use Verificar Status.`,
+      text: `Solicitando abertura de aba para ${portal.name}. Faca o login ou resolva a verificacao manual e depois use Verificar Status.`,
       type: "info"
     });
 
@@ -151,6 +163,9 @@ export default function SettingsPage() {
       });
 
       const data = await res.json();
+      if (data.extension) {
+        setExtensionStatus(data.extension);
+      }
       if (data.success && data.started) {
         setStatusMessage({
           text: data.message || `Janela de login para ${portal.name} aberta. Conclua o login e depois use Verificar Status.`,
@@ -288,6 +303,42 @@ export default function SettingsPage() {
             Como os agentes rodam via automação de navegador em segundo plano, você só precisa fazer o login nas suas contas uma vez. O Playwright guardará a sua sessão de cookies permanentemente. Ao clicar em <strong>Fazer Login</strong>, uma janela de navegador visível será aberta para você logar na respectiva conta. O MrChicken fechará a janela automaticamente após detectar o sucesso da conexão.
           </p>
         </div>
+
+        {extensionStatus && (
+          <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-300">
+                Extensão Chrome
+              </span>
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                {extensionStatus.enabled
+                  ? "Driver de extensão ativo para abrir e controlar abas reais do Chrome."
+                  : "Driver Playwright ativo. Defina FLOW_BROWSER_DRIVER=extension para usar a extensão."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[9px] font-bold ${
+                extensionStatus.configured
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  : "bg-rose-500/10 border-rose-500/20 text-rose-400"
+              }`}>
+                {extensionStatus.configured ? "Token configurado" : "Token ausente"}
+              </span>
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[9px] font-bold ${
+                extensionStatus.connected
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  : "bg-white/5 border-white/10 text-zinc-400"
+              }`}>
+                {extensionStatus.connected ? "Extensão conectada" : "Sem heartbeat"}
+              </span>
+              {extensionStatus.pendingTasks > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-blue-500/10 border-blue-500/20 text-blue-400 text-[9px] font-bold">
+                  {extensionStatus.pendingTasks} tarefa(s)
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Portals Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
