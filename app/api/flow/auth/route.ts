@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { FlowPortal } from "@/src/providers/flow/FlowTypes";
+import { getBridgeStatus } from "@/src/providers/flow/FlowExtensionBridge";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -56,7 +57,8 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({
         success: true,
-        statuses
+        statuses,
+        extension: getBridgeStatus()
       });
     }
 
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
       }
 
       if (
+        process.env.FLOW_BROWSER_DRIVER !== "extension" &&
         process.env.FLOW_ALLOW_PROTECTED_LLM_WEB !== "true" &&
         (portal === "chatgpt" || portal === "claude" || portal === "deepseek")
       ) {
@@ -102,7 +105,10 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         started: true,
-        message: `Janela de login para ${portal} aberta. Conclua o login na janela visivel e depois use Verificar Status.`
+        extension: getBridgeStatus(),
+        message: process.env.FLOW_BROWSER_DRIVER === "extension"
+          ? `Nova aba do Chrome solicitada para ${portal}. Resolva login ou Cloudflare, se aparecer, e depois use Verificar Status.`
+          : `Janela de login para ${portal} aberta. Conclua o login na janela visivel e depois use Verificar Status.`
       });
     }
 

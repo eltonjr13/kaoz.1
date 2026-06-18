@@ -4,6 +4,8 @@ export interface FlowConfig {
   downloadPath: string;
   profilePath: string;
   browserChannel?: string;
+  browserDriver: 'playwright' | 'extension';
+  extensionTaskTimeout: number;
   flowUrl: string;
   imageUrl?: string;
   videoUrl?: string;
