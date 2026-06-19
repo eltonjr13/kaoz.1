@@ -489,22 +489,11 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
       }
 
       try {
-        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
-        let finalPrompt = imagePrompt;
-        if (memoryContext) {
-          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
-        }
-
-        await this.logAgentEvent(jobId, "researching", "Otimizando prompt da imagem com contexto de estilo do avatar...");
-        const optimized = await flowProvider.optimizePrompt(
-          options.model,
-          `Gere uma imagem de alta qualidade. Tema: "${finalPrompt}". Retorne apenas o prompt final em inglês.`,
-          'image'
-        );
+        const finalPrompt = imagePrompt;
         
-        await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt: "${optimized}"`);
+        await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt planejado: "${finalPrompt}"`);
         
-        const imageResult = await flowProvider.generateImage(optimized, {
+        const imageResult = await flowProvider.generateImage(finalPrompt, {
           aspectRatio: options.aspectRatio || '1:1',
           quantity: options.imageQuantity || 'x2',
           model: options.imageModel || 'Nano Banana Pro',
@@ -542,9 +531,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
           inputSummary: options.topic,
           outputSummary: `Imagem gerada com sucesso: ${uploadedPaths[0]}`,
           type: "success",
-          promptUsed: optimized,
+          promptUsed: finalPrompt,
           modelUsed: "ImageFX Nano Banana Pro",
-          learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Prompt: "${optimized}"`
+          learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Prompt: "${finalPrompt}"`
         });
 
         await this.logAgentEvent(jobId, "completed", "Geração de imagem autônoma concluída com sucesso!", {
@@ -607,22 +596,11 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
       }
 
       try {
-        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
-        let finalPrompt = videoPrompt;
-        if (memoryContext) {
-          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
-        }
-
-        await this.logAgentEvent(jobId, "researching", "Otimizando prompt do vídeo com contexto de estilo do avatar...");
-        const optimized = await flowProvider.optimizePrompt(
-          options.model,
-          `Gere um clipe de vídeo detalhado de alta qualidade. Tema: "${finalPrompt}". Retorne apenas o prompt final em inglês.`,
-          'video'
-        );
+        const finalPrompt = videoPrompt;
         
-        await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt: "${optimized}"`);
+        await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt planejado: "${finalPrompt}"`);
         
-        const videoResult = await flowProvider.generateVideo(optimized, {
+        const videoResult = await flowProvider.generateVideo(finalPrompt, {
           aspectRatio: options.aspectRatio || '16:9',
           quantity: options.videoQuantity || '1x',
           model: options.videoModel || 'Veo 3.1',
@@ -647,9 +625,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
           inputSummary: options.topic,
           outputSummary: `Vídeo gerado com sucesso: ${uploadedPath}`,
           type: "success",
-          promptUsed: optimized,
+          promptUsed: finalPrompt,
           modelUsed: options.videoModel || 'Veo 3.1',
-          learnings: `Vídeo gerado com sucesso para o tema "${options.topic}". Prompt: "${optimized}"`
+          learnings: `Vídeo gerado com sucesso para o tema "${options.topic}". Prompt: "${finalPrompt}"`
         });
 
         await this.logAgentEvent(jobId, "completed", "Geração de vídeo autônoma concluída com sucesso!", {
