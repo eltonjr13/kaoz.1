@@ -4,6 +4,7 @@ import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, ty
 import { logger } from "./FlowUtils";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
 import { getFfmpegPath, runCommand } from "@/lib/videos/render";
+import type { Agent, AgentExecutionContext, AgentResult, AgentTask } from "@/src/core/agents/Agent";
 import path from "node:path";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
@@ -26,7 +27,68 @@ export interface AgentTaskOptions {
   avatarReferenceImage?: string;
 }
 
-export class FlowAgent {
+function isAgentTaskOptions(value: unknown): value is AgentTaskOptions {
+  if (!value || typeof value !== "object") return false;
+
+  const input = value as Partial<AgentTaskOptions>;
+  return (
+    typeof input.topic === "string" &&
+    typeof input.avatarId === "string" &&
+    typeof input.model === "string" &&
+    typeof input.jobId === "string"
+  );
+}
+
+export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; videoPath?: string; imagePaths?: string[] }> {
+  readonly name = "flow";
+  readonly description = "Legacy Google Flow agent adapter for image, video, project, and refinement workflows.";
+
+  canHandle(task: AgentTask<AgentTaskOptions>): boolean {
+    return task.type.startsWith("flow.") && isAgentTaskOptions(task.input);
+  }
+
+  async execute(
+    task: AgentTask<AgentTaskOptions>,
+    context: AgentExecutionContext
+  ): Promise<AgentResult<{ jobId: string; videoPath?: string; imagePaths?: string[] }>> {
+    if (!this.canHandle(task)) {
+      return {
+        success: false,
+        error: `FlowAgent cannot handle task type "${task.type}".`
+      };
+    }
+
+    context.sharedContext.set("activeAgent", this.name);
+    context.sharedContext.set("activeJobId", task.input.jobId);
+    await context.events.publish({
+      jobId: task.input.jobId,
+      type: "AgentStarted",
+      message: "FlowAgent recebeu a tarefa via orquestrador multiagente.",
+      metadata: { taskId: task.id, taskType: task.type }
+    });
+
+    const result = await this.runAutonomousAgent(task.input);
+
+    await context.events.publish({
+      jobId: task.input.jobId,
+      type: result.success ? "AgentFinished" : "TaskFailed",
+      message: result.success
+        ? "FlowAgent concluiu a tarefa via orquestrador multiagente."
+        : `FlowAgent falhou: ${result.error || "erro desconhecido"}`,
+      metadata: { taskId: task.id, taskType: task.type }
+    });
+
+    return {
+      success: result.success,
+      output: {
+        jobId: result.jobId,
+        videoPath: result.videoPath,
+        imagePaths: result.imagePaths
+      },
+      error: result.error
+    };
+  }
+
   private async logAgentEvent(
     jobId: string,
     eventType: string,

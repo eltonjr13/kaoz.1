@@ -11,7 +11,7 @@ import {
   VideoGenerationOptions,
   VideoGenerationResult
 } from './FlowTypes';
-import { ensureDirExists, generateFilename, logger } from './FlowUtils';
+import { ensureDirExists, generateFilename, getSavedProjectUrl, logger } from './FlowUtils';
 
 export type ExtensionTaskType =
   | 'loginSession'
@@ -271,7 +271,7 @@ async function waitForTask(task: ExtensionTask): Promise<ExtensionTask> {
 function portalUrl(portal: FlowPortal, config: FlowConfig): string {
   switch (portal) {
     case 'google':
-      return config.flowUrl;
+      return getSavedProjectUrl() || readLocalEnvValue('FLOW_URL') || config.flowUrl;
     case 'gemini':
       return 'https://gemini.google.com';
     case 'chatgpt':
@@ -469,7 +469,7 @@ export class FlowExtensionClient {
     const result = await this.runTask({
       type: 'generateImage',
       portal: 'google',
-      url: this.config.imageUrl || this.config.flowUrl,
+      url: getSavedProjectUrl() || readLocalEnvValue('FLOW_IMAGE_URL') || this.config.imageUrl || this.config.flowUrl,
       payload: { prompt, options }
     });
 
@@ -499,7 +499,7 @@ export class FlowExtensionClient {
     const result = await this.runTask({
       type: 'generateVideo',
       portal: 'google',
-      url: this.config.videoUrl || this.config.flowUrl,
+      url: getSavedProjectUrl() || readLocalEnvValue('FLOW_VIDEO_URL') || this.config.videoUrl || this.config.flowUrl,
       payload: { prompt, options }
     });
 

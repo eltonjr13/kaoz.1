@@ -9,13 +9,8 @@ const eslintConfig = [
       reportUnusedDisableDirectives: "off"
     },
     rules: {
-      "@next/next/no-img-element": "off"
-    }
-  },
-  {
-    files: ["src/providers/flow/**/*.ts"],
-    rules: {
-      "complexity": ["error", 10]
+      "@next/next/no-img-element": "off",
+      complexity: ["error", 10]
     }
   }
 ];
