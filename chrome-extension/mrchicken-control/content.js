@@ -108,21 +108,94 @@ async function waitForManualLogin(task) {
   return !!authenticated;
 }
 
+function normalizeEditableText(text) {
+  return String(text || "")
+    .replace(/\u200b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function editableText(element) {
+  if (element.tagName === "TEXTAREA" || element.tagName === "INPUT") {
+    return normalizeEditableText(element.value);
+  }
+
+  return normalizeEditableText(element.innerText || element.textContent || "");
+}
+
+function dispatchEditableEvents(element, value, inputType = "insertText") {
+  try {
+    element.dispatchEvent(new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType,
+      data: value
+    }));
+  } catch {
+    element.dispatchEvent(new Event("beforeinput", { bubbles: true, cancelable: true }));
+  }
+
+  try {
+    element.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType,
+      data: value
+    }));
+  } catch {
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new KeyboardEvent("keyup", { key: " ", code: "Space", bubbles: true }));
+}
+
+function setNativeValue(element, value) {
+  const prototype = element.tagName === "TEXTAREA"
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+
+  if (descriptor?.set) {
+    descriptor.set.call(element, value);
+  } else {
+    element.value = value;
+  }
+}
+
+function selectEditableContents(element) {
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function setEditableValue(element, value) {
   element.focus();
 
   if (element.tagName === "TEXTAREA" || element.tagName === "INPUT") {
-    element.value = "";
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.value = value;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+    setNativeValue(element, "");
+    dispatchEditableEvents(element, "", "deleteContentBackward");
+    setNativeValue(element, value);
+    dispatchEditableEvents(element, value);
     return;
   }
 
-  document.execCommand("selectAll", false);
+  selectEditableContents(element);
   document.execCommand("delete", false);
-  element.textContent = value;
-  element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  const inserted = document.execCommand("insertText", false, value);
+  if (!inserted || !editableText(element)) {
+    element.textContent = value;
+  }
+  dispatchEditableEvents(element, value);
+}
+
+function assertPromptAccepted(input, prompt) {
+  const expected = normalizeEditableText(prompt);
+  const current = editableText(input);
+  if (!current || !current.includes(expected.slice(0, Math.min(80, expected.length)))) {
+    throw new Error("O campo de prompt nao aceitou o texto inserido.");
+  }
 }
 
 async function clickCandidate(selectors, textPattern) {
@@ -179,6 +252,7 @@ async function sendPrompt(portal, prompt, timeoutMs) {
 
   setEditableValue(input, prompt);
   await delay(500);
+  assertPromptAccepted(input, prompt);
 
   const clicked = await clickCandidate(
     [
