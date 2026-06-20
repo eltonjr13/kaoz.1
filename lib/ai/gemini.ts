@@ -315,7 +315,16 @@ export interface FlowDecision {
   visualReferenceInstructions?: string;
 }
 
-export async function classifyIntention(intention: string): Promise<FlowDecision> {
+export interface ClassificationContext {
+  intention: string;
+  avatarProfile?: {
+    name: string;
+    personality?: Record<string, unknown> | null;
+  } | null;
+  memoryContext?: string | null;
+}
+
+export async function classifyIntention(context: ClassificationContext): Promise<FlowDecision> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada no .env.local.");
@@ -328,15 +337,26 @@ export async function classifyIntention(intention: string): Promise<FlowDecision
 Modo agente autonomo:
 - Interprete o pedido, decida o fluxo, monte estrategia criativa e defina passos antes da execucao.
 - Nunca misture image e video quando o usuario pediu apenas um tipo.
-- Para "image", nao planeje nenhuma etapa de video.
-- Para "video", nao planeje nenhuma etapa de imagem final.
-- Para "project", planeje tambem estrutura de roteiro/reacao do avatar.
+- Para "image", nao planeje nenhuma etapa de video e deixe scriptOutline obrigatoriamente como null.
+- Para "video", nao planeje nenhuma etapa de imagem final. O scriptOutline pode ser uma fala ou roteiro se a intencao indicar a necessidade de falas/reacoes em audio, ou null se for puramente instrumental/background.
+- Para "project", planeje tambem a estrutura do roteiro/reacao do avatar no campo scriptOutline (em português).
 - Se houver avatar selecionado, considere que o Flow recebera uma imagem ou frame do avatar como referencia visual.
 - O prompt final deve pedir consistencia visual com a referencia do avatar sem trocar o tipo de midia.
 - Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
 - Para project/refine, escreva optimizedPrompt como briefing operacional em portugues.
-- Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions.
+- Inclua obrigatoriamente no JSON os campos: strategy, scriptOutline, creativeSteps e visualReferenceInstructions.
 `;
+
+  let avatarDetails = "Nenhum avatar selecionado.";
+  if (context.avatarProfile) {
+    avatarDetails = `Avatar selecionado: ${context.avatarProfile.name}.
+Personalidade: ${JSON.stringify(context.avatarProfile.personality)}`;
+  }
+
+  let memoryInfo = "Nenhum histórico de execuções anteriores disponível.";
+  if (context.memoryContext) {
+    memoryInfo = context.memoryContext;
+  }
 
   const prompt = `
 ${agentPlannerInstructions}
@@ -344,20 +364,24 @@ Você é o classificador central de intenções do agente autônomo do MrChicken
 MrChicken é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares.
 Sua tarefa é analisar o pedido/intenção do usuário e decidir qual é o melhor fluxo para atendê-lo.
 
-Os fluxos possíveis são:
-1. "image": Se o usuário quer gerar apenas uma imagem estática ou ilustrações (ex: "Gere uma imagem de...", "Crie uma foto de...", "Quero um avatar de frango...").
-2. "video": Se o usuário quer gerar apenas um vídeo estático/background (ex: "Gere um clipe de...", "Faça um vídeo curto de...", "Crie um vídeo em loop de...").
-3. "project": Se o usuário quer criar um projeto completo de vídeo react do zero (ex: "Crie um react sobre...", "Faça um vídeo do zero sobre...", "Faça o avatar falar sobre...", "Cria um novo projeto sobre...").
-4. "refine": Se o usuário quer refinar, corrigir ou alterar algum projeto, mídia ou roteiro que já foi criado ou está em andamento (ex: "Ajuste o roteiro de X...", "Refaça o vídeo anterior com...", "Corrija a geração do job 123...").
+Perfil do Avatar de Referência:
+${avatarDetails}
 
-Pedido do usuário: "${intention}"
+Histórico e Memória Contextual de Sucesso/Falha:
+${memoryInfo}
+
+Pedido do usuário: "${context.intention}"
 
 Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
 {
   "flow": "image" | "video" | "project" | "refine",
   "explanation": "Breve justificativa em português sobre a decisão de fluxo.",
   "optimizedPrompt": "O prompt otimizado (em inglês se for para image ou video, ou em português/instruções se for para project ou refine).",
-  "targetJobId": "ID do job a ser refinado se o fluxo for 'refine' e o usuário mencionou um ID (formato UUID comum), ou 'latest' se o usuário quer refinar o último projeto, ou null se não aplicável"
+  "targetJobId": "ID do job a ser refinado se o fluxo for 'refine' e o usuário mencionou um ID (formato UUID comum), ou 'latest' se o usuário quer refinar o último projeto, ou null se não aplicável",
+  "strategy": "Estratégia criativa baseada no perfil do avatar e memória, se aplicável.",
+  "scriptOutline": "Estrutura do roteiro de fala em português (se aplicável para project/refine/video), ou null se não aplicável",
+  "creativeSteps": ["Passo 1", "Passo 2", "etc"],
+  "visualReferenceInstructions": "Como utilizar a imagem de referência do avatar para consistência visual na geração da imagem/vídeo."
 }
 `;
 
@@ -374,7 +398,7 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
     const parsed = parseGeminiResponse<FlowDecision>(responseText, {
       flow: "project",
       explanation: "Fallback por falha de parser",
-      optimizedPrompt: intention,
+      optimizedPrompt: context.intention,
       targetJobId: null,
       strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
       scriptOutline: null,
@@ -387,7 +411,7 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
     return {
       flow: "project",
       explanation: "Fallback por erro de execução",
-      optimizedPrompt: intention,
+      optimizedPrompt: context.intention,
       targetJobId: null,
       strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
       scriptOutline: null,

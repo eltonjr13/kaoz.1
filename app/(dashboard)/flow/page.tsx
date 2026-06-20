@@ -680,6 +680,7 @@ export default function FlowDashboardPage() {
           action: "plan-agent",
           model: agentModel,
           prompt: promptToUse,
+          avatarId: selectedAvatarId,
         }),
       });
       const data = await res.json();

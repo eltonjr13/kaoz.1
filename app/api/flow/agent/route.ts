@@ -123,13 +123,23 @@ function validateModel(model: string): NextResponse | null {
 }
 
 async function handlePlanRequest(input: NormalizedAgentRequest) {
-  if (!input.prompt || (input.action === "plan-project" && !input.avatarId)) {
+  if (!input.prompt) {
+    return jsonError("Parametro 'prompt' (tema/ideia) e obrigatorio.");
+  }
+
+  if (input.action === "plan-project" && !input.avatarId) {
     return jsonError("Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para planejar um projeto.");
+  }
+
+  if (input.avatarId) {
+    console.log(`[API Agent Validation] Planejando fluxo para a acao "${input.action}" com o avatar ID: ${input.avatarId}`);
+  } else {
+    console.log(`[API Agent Validation] Planejando fluxo para a acao "${input.action}" sem avatar selecionado.`);
   }
 
   const plan = await mrChickenOrchestrator.planFlow({
     prompt: input.prompt,
-    avatarId: input.avatarId,
+    avatarId: input.avatarId || undefined,
     model: input.model as AgentModel,
     aspectRatio: input.aspectRatio,
     videoModel: input.videoModel

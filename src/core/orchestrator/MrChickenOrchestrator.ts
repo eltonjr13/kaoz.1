@@ -40,7 +40,10 @@ export class MrChickenOrchestrator {
   ) {}
 
   async planFlow(input: PlanFlowInput) {
-    const plan = await this.planner.createPlan({ topic: input.prompt });
+    const plan = await this.planner.createPlan({
+      topic: input.prompt,
+      avatarId: input.avatarId
+    });
 
     return {
       ...plan.decision,
