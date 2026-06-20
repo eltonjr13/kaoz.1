@@ -4,6 +4,7 @@ import {
   getBridgeStatus,
   markTaskWaitingManualVerification,
   pollExtensionTask,
+  recordTaskTrace,
   recordHeartbeat,
   verifyExtensionToken
 } from "@/src/providers/flow/FlowExtensionBridge";
@@ -16,6 +17,9 @@ type ExtensionRequestBody = {
   result?: unknown;
   error?: unknown;
   message?: unknown;
+  step?: unknown;
+  detail?: unknown;
+  trace?: unknown;
   extensionVersion?: unknown;
 };
 
@@ -40,10 +44,14 @@ function readResult(body: ExtensionRequestBody) {
     : undefined;
 }
 
-function handleHeartbeat(body: ExtensionRequestBody) {
-  const extensionVersion = typeof body.extensionVersion === "string"
+function readExtensionVersion(body: ExtensionRequestBody) {
+  return typeof body.extensionVersion === "string"
     ? body.extensionVersion
     : undefined;
+}
+
+function handleHeartbeat(body: ExtensionRequestBody) {
+  const extensionVersion = readExtensionVersion(body);
 
   return NextResponse.json({
     success: true,
@@ -58,7 +66,9 @@ function handleStatus() {
   });
 }
 
-function handlePoll() {
+function handlePoll(body: ExtensionRequestBody) {
+  recordHeartbeat(readExtensionVersion(body));
+
   return NextResponse.json({
     success: true,
     task: pollExtensionTask()
@@ -105,13 +115,33 @@ function handleMedia(body: ExtensionRequestBody) {
   });
 }
 
+function handleTrace(body: ExtensionRequestBody) {
+  const taskId = readTaskId(body);
+  if (!taskId) {
+    return jsonError("taskId obrigatorio.", 400);
+  }
+
+  const step = typeof body.step === "string" ? body.step : "unknown";
+  const detail = body.detail && typeof body.detail === "object"
+    ? body.detail as Record<string, unknown>
+    : {};
+  const trace = Array.isArray(body.trace)
+    ? body.trace.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    : undefined;
+
+  return NextResponse.json({
+    success: recordTaskTrace(taskId, step, detail, trace)
+  });
+}
+
 const handlers: Record<string, ExtensionHandler> = {
   heartbeat: handleHeartbeat,
   status: handleStatus,
   poll: handlePoll,
   waiting_manual_verification: handleWaitingManualVerification,
   result: handleResult,
-  media: handleMedia
+  media: handleMedia,
+  trace: handleTrace
 };
 
 export async function POST(request: Request) {

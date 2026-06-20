@@ -9,6 +9,9 @@ const LOGIN_URL_PATTERNS = [
   "sign-up"
 ];
 
+const flowTrace = [];
+let activeFlowTaskId = null;
+
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -25,6 +28,30 @@ function byText(pattern, selectors = "button,a,div,span") {
   return Array.from(document.querySelectorAll(selectors)).find(element =>
     visible(element) && regex.test((element.textContent || "").trim())
   );
+}
+
+function traceFlow(step, detail = {}) {
+  flowTrace.push({
+    step,
+    detail,
+    at: new Date().toISOString()
+  });
+  if (flowTrace.length > 40) {
+    flowTrace.shift();
+  }
+  if (activeFlowTaskId) {
+    void notifyFlowTrace(activeFlowTaskId, step, detail);
+  }
+}
+
+function traceSummary() {
+  return flowTrace.map(entry => `${entry.step}:${JSON.stringify(entry.detail)}`).join(" | ");
+}
+
+function errorWithTrace(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const trace = traceSummary();
+  return trace ? `${message} [FlowTrace] ${trace}` : message;
 }
 
 async function waitFor(condition, timeoutMs, intervalMs = 750) {
@@ -78,6 +105,21 @@ async function notifyTaskResult(taskId, response) {
     result: response?.result || {},
     error: response?.error
   });
+}
+
+async function notifyFlowTrace(taskId, step, detail) {
+  try {
+    await chrome.runtime.sendMessage({
+      source: "mrchicken-content",
+      type: "flow_trace",
+      taskId,
+      step,
+      detail,
+      trace: flowTrace.slice(-12)
+    });
+  } catch {
+    // Trace is diagnostic only; task execution should continue.
+  }
 }
 
 async function waitForManualVerification(task) {
@@ -720,6 +762,96 @@ function setFileInput(input, file) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+async function setFileInputWithDebugger(input, filePath) {
+  if (!filePath) {
+    return { success: false, error: "Caminho local da imagem nao recebido pela extensao." };
+  }
+
+  const marker = `mrchicken-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  input.setAttribute("data-mrchicken-upload-input", marker);
+  try {
+    const response = await chrome.runtime.sendMessage({
+      source: "mrchicken-content",
+      type: "set_file_input_files",
+      selector: `input[type="file"][data-mrchicken-upload-input="${marker}"]`,
+      filePath
+    });
+
+    return response || { success: false, error: "Sem resposta do background." };
+  } finally {
+    input.removeAttribute("data-mrchicken-upload-input");
+  }
+}
+
+function fileInputDetails(input) {
+  const owner = input.closest('[role="dialog"],[role="menu"],[data-state="open"],body');
+  return {
+    accept: input.getAttribute("accept") || "",
+    disabled: input.disabled === true,
+    files: input.files?.length || 0,
+    inPicker: owner ? /Pesquisar recursos|Search resources|Todas as m[ií]dias|All media/i.test(owner.textContent || "") : false
+  };
+}
+
+function fileInputCandidates() {
+  return Array.from(document.querySelectorAll('input[type="file"]'))
+    .filter(input => !input.disabled)
+    .map(input => ({ input, details: fileInputDetails(input) }))
+    .filter(item => !item.details.accept || /image|\*/i.test(item.details.accept));
+}
+
+function bestFileInput() {
+  const candidates = fileInputCandidates();
+  return candidates.find(item => item.details.inPicker)?.input ||
+    candidates[candidates.length - 1]?.input ||
+    null;
+}
+
+async function findReferenceFileInputAfterUploadClick() {
+  const uploadButton = visibleByText(/Enviar m[ií]dia|Upload media|Enviar|Upload/i, "button,[role='button']");
+  if (uploadButton) {
+    clickElement(clickableAncestor(uploadButton));
+    await delay(1000);
+  }
+
+  const fileInput = await waitFor(() => bestFileInput(), 10000, 500);
+  traceFlow("attach:file-input-after-upload", {
+    found: !!fileInput,
+    clickedUpload: !!uploadButton,
+    candidates: fileInputCandidates().map(item => item.details)
+  });
+  return fileInput;
+}
+
+async function findReferenceFileInput(filename) {
+  const fileInput = await waitFor(() => bestFileInput(), 10000, 500);
+  traceFlow("attach:file-input-page", {
+    found: !!fileInput,
+    filename,
+    candidates: fileInputCandidates().map(item => item.details)
+  });
+  if (fileInput) {
+    return fileInput;
+  }
+
+  const menuOpened = await openPromptMediaMenu();
+  traceFlow("attach:menu-fallback", { menuOpened, pickerOpen: resourcePickerOpen() });
+  return findReferenceFileInputAfterUploadClick();
+}
+
+async function setReferenceFileInput(fileInput, options, file) {
+  const debuggerUpload = await setFileInputWithDebugger(fileInput, options.referenceImagePath);
+  traceFlow("attach:file-set", {
+    method: debuggerUpload?.success ? "debugger" : "dataTransfer",
+    success: debuggerUpload?.success === true,
+    error: debuggerUpload?.error || "",
+    filePath: options.referenceImagePath ? "present" : "missing"
+  });
+  if (!debuggerUpload?.success) {
+    setFileInput(fileInput, file);
+  }
+}
+
 function promptMediaButton() {
   return Array.from(document.querySelectorAll("button")).find(button => {
     const text = button.textContent || "";
@@ -744,24 +876,62 @@ function visibleResourceItems() {
   return Array.from(document.querySelectorAll('button,div,[role="option"],[role="menuitem"],[role="listitem"]'))
     .filter(element => {
       const text = normalizeEditableText(element.textContent || "");
-      return visible(element) && /Imagem|Image|ref_image_|avatar_ref_/i.test(text);
+      const rect = element.getBoundingClientRect();
+      const resourceText = /Imagem|Image|image|ref_image_|avatar_ref_|Falha|Failed|\d{1,3}%/i.test(text);
+      const navigationText = /Todas as m[ií]dias|All media|Ver imagens|Pesquisar|Search resources|Ordenar|filter_list|dashboard|arrow_back/i.test(text);
+      return visible(element) && resourceText && !navigationText && rect.width >= 40 && rect.height >= 24 && rect.height <= 220;
     });
+}
+
+function resourceItemLabels() {
+  return visibleResourceItems()
+    .slice(0, 8)
+    .map(element => normalizeEditableText(element.textContent || "").slice(0, 80));
+}
+
+function unusableResourceItem(element) {
+  const text = normalizeEditableText(element.textContent || "");
+  return /Falha|Failed|warning|delete_forever|Excluir|\d{1,3}%|Uploading|Enviando|Carregando|Processando/i.test(text);
+}
+
+function readyResourceItems() {
+  return visibleResourceItems().filter(element => !unusableResourceItem(element));
+}
+
+function resourceUploadProblemLabels() {
+  return visibleResourceItems()
+    .filter(unusableResourceItem)
+    .slice(0, 5)
+    .map(element => normalizeEditableText(element.textContent || "").slice(0, 80));
 }
 
 function uploadedReferenceItem(filename) {
   const baseName = String(filename).replace(/\.[^.]+$/, "");
   const filePrefix = baseName.slice(0, Math.min(16, baseName.length));
-  return visibleResourceItems().find(element => {
+  return readyResourceItems().find(element => {
     const text = element.textContent || "";
     return text.includes(baseName) ||
       text.includes(filePrefix) ||
-      text.includes("ref_image_") ||
-      text.includes("avatar_ref_");
+      text.includes(filename);
   });
 }
 
-function newestReferenceItem() {
-  return visibleResourceItems()[0] || null;
+function resourceFingerprint(element) {
+  const text = normalizeEditableText(element.textContent || "");
+  const images = Array.from(element.querySelectorAll("img"))
+    .map(img => img.currentSrc || img.src || "")
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("|");
+  return `${text}|${images}`;
+}
+
+function resourceFingerprints() {
+  return new Set(visibleResourceItems().map(resourceFingerprint));
+}
+
+function newReadyResourceItem(beforeUpload) {
+  return readyResourceItems().find(element => !beforeUpload.has(resourceFingerprint(element)));
 }
 
 function includeReferenceButton() {
@@ -771,31 +941,56 @@ function includeReferenceButton() {
   return element ? clickableAncestor(element) : null;
 }
 
+function includeButtonLabels() {
+  return Array.from(document.querySelectorAll('button,[role="button"],div,span'))
+    .filter(visible)
+    .map(element => normalizeEditableText(element.textContent || ""))
+    .filter(text => /Incluir|Include|comando|prompt/i.test(text))
+    .slice(0, 8);
+}
+
 function resourcePickerOpen() {
   return !!visibleByText(/Pesquisar recursos|Search resources|Todas as m[ií]dias|All media/i, "div,span,input");
 }
 
-async function includeUploadedReference(filename) {
+async function includeUploadedReference(filename, beforeUpload, timeoutMs) {
+  traceFlow("include:start", { filename, pickerOpen: resourcePickerOpen() });
   const opened = await openPromptMediaMenu();
+  traceFlow("include:menu", { opened, pickerOpen: resourcePickerOpen(), items: resourceItemLabels() });
   if (!opened) {
     throw new Error("Menu de recursos do Google Flow nao abriu para anexar a imagem.");
   }
 
-  const item = await waitFor(() => uploadedReferenceItem(filename) || newestReferenceItem(), 15000, 750);
+  const item = await waitFor(() => uploadedReferenceItem(filename) || newReadyResourceItem(beforeUpload), timeoutMs, 1000);
+  traceFlow("include:item", { found: !!item, items: resourceItemLabels(), problems: resourceUploadProblemLabels() });
   if (!item) {
-    throw new Error("Imagem enviada nao foi localizada na lista de recursos do Google Flow.");
+    const problems = resourceUploadProblemLabels();
+    if (problems.length > 0) {
+      throw new Error(`Upload da imagem de referencia nao ficou pronto no Google Flow: ${problems.join(" | ")}`);
+    }
+    throw new Error("Imagem enviada nao foi localizada pronta na lista de recursos do Google Flow.");
   }
 
   clickElement(clickableAncestor(item));
   await delay(1000);
+  traceFlow("include:item-clicked", { pickerOpen: resourcePickerOpen(), includeButtons: includeButtonLabels() });
+
+  if (!resourcePickerOpen()) {
+    return;
+  }
 
   const includeButton = await waitFor(() => includeReferenceButton(), 10000, 500);
+  traceFlow("include:button", { found: !!includeButton, includeButtons: includeButtonLabels() });
   if (!includeButton) {
+    if (!resourcePickerOpen()) {
+      return;
+    }
     throw new Error("Botao 'Incluir no comando' nao foi encontrado apos selecionar a imagem.");
   }
 
   clickElement(includeButton);
   const closed = await waitFor(() => !resourcePickerOpen(), 8000, 500);
+  traceFlow("include:clicked", { closed, pickerOpen: resourcePickerOpen() });
   if (!closed) {
     closeFlowMenus();
     await delay(1000);
@@ -810,18 +1005,20 @@ async function attachReferenceImage(options, timeoutMs) {
   if (!options.referenceImage) return;
   const filename = options.referenceImageName || `ref_image_${Date.now()}.png`;
   const file = dataUrlToFile(options.referenceImage, filename);
-  let fileInput = await waitFor(() => document.querySelector('input[type="file"]'), 5000, 500);
-  if (!fileInput) {
-    await openPromptMediaMenu();
-    fileInput = await waitFor(() => document.querySelector('input[type="file"]'), 10000, 500);
-  }
+  const fileInput = await findReferenceFileInput(filename);
   if (!fileInput) {
     throw new Error("Input de upload do Google Flow nao encontrado para anexar a referencia.");
   }
 
-  setFileInput(fileInput, file);
+  const beforeUpload = resourceFingerprints();
+  await setReferenceFileInput(fileInput, options, file);
   await delay(Math.min(timeoutMs, 5000));
-  await includeUploadedReference(filename);
+  traceFlow("attach:uploaded", {
+    pickerOpen: resourcePickerOpen(),
+    items: resourceItemLabels(),
+    problems: resourceUploadProblemLabels()
+  });
+  await includeUploadedReference(filename, beforeUpload, Math.max(timeoutMs - 5000, 45000));
 }
 
 async function configureGoogleFlowTask(task) {
@@ -830,7 +1027,7 @@ async function configureGoogleFlowTask(task) {
 
   await enterGoogleFlowWorkspace(Math.min(task.timeoutMs || 300000, 60000));
   await configureFlowSettings(mediaType, options);
-  await attachReferenceImage(options, Math.min(task.timeoutMs || 300000, 30000));
+  await attachReferenceImage(options, Math.min(task.timeoutMs || 300000, 180000));
 
   return mediaType;
 }
@@ -1057,10 +1254,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .catch(err => {
       return notifyTaskResult(message.task.id, {
         status: "failed",
-        error: err instanceof Error ? err.message : String(err)
+        error: errorWithTrace(err)
       });
+    })
+    .finally(() => {
+      activeFlowTaskId = null;
     });
 
+  activeFlowTaskId = message.task.id;
   sendResponse({ status: "accepted" });
   return false;
 });

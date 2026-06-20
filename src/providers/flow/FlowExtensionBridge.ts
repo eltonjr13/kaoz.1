@@ -40,6 +40,7 @@ export interface ExtensionTask {
   payload?: Record<string, unknown>;
   result?: Record<string, unknown>;
   error?: string;
+  trace?: Array<Record<string, unknown>>;
 }
 
 type EnqueueInput = Pick<ExtensionTask, 'type' | 'portal' | 'url'> & {
@@ -51,6 +52,7 @@ type BridgeState = {
   tasks: Map<string, ExtensionTask>;
   lastHeartbeatAt: number | null;
   extensionVersion: string | null;
+  recentTraces: Array<Record<string, unknown>>;
 };
 
 const globalForFlowExtension = globalThis as unknown as {
@@ -60,10 +62,58 @@ const globalForFlowExtension = globalThis as unknown as {
 const state = globalForFlowExtension.flowExtensionBridgeState ?? {
   tasks: new Map<string, ExtensionTask>(),
   lastHeartbeatAt: null,
-  extensionVersion: null
+  extensionVersion: null,
+  recentTraces: []
 };
 
 globalForFlowExtension.flowExtensionBridgeState = state;
+
+state.recentTraces = state.recentTraces || [];
+
+function expectedExtensionVersion() {
+  try {
+    const manifestPath = path.resolve('chrome-extension/mrchicken-control/manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as { version?: string };
+    return manifest.version || null;
+  } catch {
+    return null;
+  }
+}
+
+function extensionVersionState() {
+  const expected = expectedExtensionVersion();
+  const actual = state.extensionVersion;
+  return {
+    expected,
+    actual,
+    mismatch: !!expected && !!actual && expected !== actual
+  };
+}
+
+function staleExtensionError(expected: string, actual: string) {
+  return [
+    `Extensao Chrome desatualizada: carregada ${actual}, esperada ${expected}.`,
+    'Recarregue a extensao em chrome://extensions e tente novamente.'
+  ].join(' ');
+}
+
+function failPendingTasksForStaleExtension(expected: string, actual: string) {
+  const timestamp = now();
+  for (const task of state.tasks.values()) {
+    if (task.status !== 'queued' && task.status !== 'claimed' && task.status !== 'waiting_manual_verification') {
+      continue;
+    }
+
+    task.status = 'failed';
+    task.updatedAt = timestamp;
+    task.error = staleExtensionError(expected, actual);
+    task.result = {
+      ...(task.result || {}),
+      expectedExtensionVersion: expected,
+      extensionVersion: actual
+    };
+  }
+}
 
 function now() {
   return Date.now();
@@ -144,6 +194,7 @@ export function recordHeartbeat(extensionVersion?: string) {
 }
 
 export function getBridgeStatus() {
+  const versionState = extensionVersionState();
   return {
     enabled: getFlowBrowserDriver() === 'extension',
     configured: !!getExtensionToken(),
@@ -152,6 +203,9 @@ export function getBridgeStatus() {
       now() - state.lastHeartbeatAt < 10000,
     lastHeartbeatAt: state.lastHeartbeatAt,
     extensionVersion: state.extensionVersion,
+    expectedExtensionVersion: versionState.expected,
+    extensionVersionMismatch: versionState.mismatch,
+    recentTraces: (state.recentTraces || []).slice(-5),
     pendingTasks: Array.from(state.tasks.values()).filter(task =>
       task.status === 'queued' ||
       task.status === 'claimed' ||
@@ -163,6 +217,12 @@ export function getBridgeStatus() {
 export function pollExtensionTask() {
   const timestamp = now();
   state.lastHeartbeatAt = timestamp;
+  const versionState = extensionVersionState();
+
+  if (versionState.mismatch && versionState.expected && versionState.actual) {
+    failPendingTasksForStaleExtension(versionState.expected, versionState.actual);
+    return null;
+  }
 
   for (const task of state.tasks.values()) {
     if (
@@ -202,6 +262,45 @@ export function markTaskWaitingManualVerification(taskId: string, message?: stri
     ...(task.result || {}),
     message: message || 'Aguardando verificacao manual no Chrome.'
   };
+  return true;
+}
+
+export function recordTaskTrace(
+  taskId: string,
+  step: string,
+  detail?: Record<string, unknown>,
+  trace?: Array<Record<string, unknown>>
+) {
+  const task = state.tasks.get(taskId);
+  if (!task) {
+    return false;
+  }
+
+  task.updatedAt = now();
+  task.trace = trace || [
+    ...(task.trace || []),
+    { step, detail: detail || {}, at: new Date().toISOString() }
+  ].slice(-20);
+  task.result = {
+    ...(task.result || {}),
+    trace: task.trace,
+    lastTraceStep: step
+  };
+  state.recentTraces = [
+    ...(state.recentTraces || []),
+    {
+      taskId,
+      type: task.type,
+      step,
+      detail: detail || {},
+      trace: task.trace,
+      at: new Date().toISOString()
+    }
+  ].slice(-20);
+  logger.info(`[FlowExtensionTrace] ${task.type}:${step}`, {
+    taskId,
+    detail: detail || {}
+  });
   return true;
 }
 
@@ -299,7 +398,12 @@ function normalizePortalStatus(result: Record<string, unknown> | undefined) {
 }
 
 function taskError(task: ExtensionTask) {
-  return task.error || String(task.result?.message || 'Tarefa da extensao falhou.');
+  const message = task.error || String(task.result?.message || 'Tarefa da extensao falhou.');
+  if (!task.trace || task.trace.length === 0) {
+    return message;
+  }
+
+  return `${message} [FlowTrace] ${JSON.stringify(task.trace.slice(-12))}`;
 }
 
 function cleanExtensionText(response: string): string {
@@ -354,7 +458,8 @@ function referenceImagePayload(referenceImage?: string) {
   const data = fs.readFileSync(referenceImage).toString('base64');
   return {
     referenceImage: `data:${mime};base64,${data}`,
-    referenceImageName: path.basename(referenceImage)
+    referenceImageName: path.basename(referenceImage),
+    referenceImagePath: path.resolve(referenceImage)
   };
 }
 
@@ -446,7 +551,14 @@ export class FlowExtensionClient {
       initialized: status.connected,
       authenticated: status.connected,
       activeTasks: status.pendingTasks,
-      profilePath: 'chrome-extension'
+      profilePath: 'chrome-extension',
+      extensionVersion: status.extensionVersion,
+      expectedExtensionVersion: status.expectedExtensionVersion,
+      extensionVersionMismatch: status.extensionVersionMismatch,
+      recentTraces: status.recentTraces,
+      connected: status.connected,
+      configured: status.configured,
+      lastHeartbeatAt: status.lastHeartbeatAt
     };
   }
 

@@ -162,41 +162,107 @@ async function fetchUrlAsDataUrl(url, timeoutMs) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+async function withDebugger(tabId, action) {
+  const target = { tabId };
+  await chrome.debugger.attach(target, "1.3");
+  try {
+    return await action(target);
+  } finally {
+    await chrome.debugger.detach(target).catch(() => undefined);
+  }
+}
+
+async function setFileInputFiles(tabId, selector, filePath) {
+  return withDebugger(tabId, async target => {
+    const documentNode = await chrome.debugger.sendCommand(target, "DOM.getDocument", {
+      depth: -1,
+      pierce: true
+    });
+    const match = await chrome.debugger.sendCommand(target, "DOM.querySelector", {
+      nodeId: documentNode.root.nodeId,
+      selector
+    });
+
+    if (!match.nodeId) {
+      throw new Error("Input de arquivo marcado nao foi encontrado pelo Chrome Debugger.");
+    }
+
+    await chrome.debugger.sendCommand(target, "DOM.setFileInputFiles", {
+      nodeId: match.nodeId,
+      files: [filePath]
+    });
+
+    return { success: true };
+  });
+}
+
+function handleFetchUrl(message, _sender, sendResponse) {
+  fetchUrlAsDataUrl(message.url, message.timeoutMs || 60000)
+    .then(dataUrl => sendResponse({ success: true, dataUrl }))
+    .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+  return true;
+}
+
+function handleSetFileInputFiles(message, sender, sendResponse) {
+  const tabId = sender.tab?.id;
+  if (!tabId) {
+    sendResponse({ success: false, error: "Aba da tarefa nao identificada para upload via debugger." });
+    return false;
+  }
+
+  setFileInputFiles(tabId, message.selector, message.filePath)
+    .then(result => sendResponse(result))
+    .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+  return true;
+}
+
+function handleWaitingManualVerification(message, _sender, sendResponse) {
+  postToApp("waiting_manual_verification", {
+    taskId: message.taskId,
+    message: message.message
+  }).then(sendResponse);
+  return true;
+}
+
+function handleFlowTrace(message, _sender, sendResponse) {
+  postToApp("trace", {
+    taskId: message.taskId,
+    step: message.step,
+    detail: message.detail,
+    trace: message.trace
+  }).then(sendResponse);
+  return true;
+}
+
+function handleTaskResult(message, _sender, sendResponse) {
+  postToApp("result", {
+    taskId: message.taskId,
+    status: message.status,
+    result: message.result || {},
+    error: message.error
+  }).then(result => {
+    activeTasks.delete(message.taskId);
+    activeTasks.delete(`${message.taskId}:accepted`);
+    sendResponse(result);
+  });
+  return true;
+}
+
+const contentMessageHandlers = {
+  fetch_url: handleFetchUrl,
+  set_file_input_files: handleSetFileInputFiles,
+  waiting_manual_verification: handleWaitingManualVerification,
+  flow_trace: handleFlowTrace,
+  task_result: handleTaskResult
+};
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.source !== "mrchicken-content") {
     return false;
   }
 
-  if (message.type === "fetch_url") {
-    fetchUrlAsDataUrl(message.url, message.timeoutMs || 60000)
-      .then(dataUrl => sendResponse({ success: true, dataUrl }))
-      .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
-    return true;
-  }
-
-  if (message.type === "waiting_manual_verification") {
-    postToApp("waiting_manual_verification", {
-      taskId: message.taskId,
-      message: message.message
-    }).then(sendResponse);
-    return true;
-  }
-
-  if (message.type === "task_result") {
-    postToApp("result", {
-      taskId: message.taskId,
-      status: message.status,
-      result: message.result || {},
-      error: message.error
-    }).then(result => {
-      activeTasks.delete(message.taskId);
-      activeTasks.delete(`${message.taskId}:accepted`);
-      sendResponse(result);
-    });
-    return true;
-  }
-
-  return false;
+  const handler = contentMessageHandlers[message.type];
+  return handler ? handler(message, sender, sendResponse) : false;
 });
 
 chrome.runtime.onInstalled.addListener(() => {

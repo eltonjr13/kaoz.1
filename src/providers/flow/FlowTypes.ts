@@ -39,6 +39,7 @@ export interface FlowStatus {
   authenticated: boolean;
   activeTasks: number;
   profilePath: string;
+  extension?: unknown;
 }
 
 export type FlowPortal = 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek';

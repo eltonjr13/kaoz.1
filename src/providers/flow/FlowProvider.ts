@@ -126,7 +126,8 @@ export class FlowProvider {
         initialized: status.initialized,
         authenticated: status.authenticated,
         activeTasks: this.activeTasksCount + status.activeTasks,
-        profilePath: status.profilePath
+        profilePath: status.profilePath,
+        extension: status
       };
     }
 
