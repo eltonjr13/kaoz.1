@@ -123,6 +123,23 @@ function editableText(element) {
   return normalizeEditableText(element.innerText || element.textContent || "");
 }
 
+function editableContains(element, value) {
+  const expected = normalizeEditableText(value);
+  return editableText(element).includes(expected.slice(0, Math.min(80, expected.length)));
+}
+
+function isTextControl(element) {
+  return element.tagName === "TEXTAREA" || element.tagName === "INPUT";
+}
+
+function resolveEditableElement(element) {
+  if (isTextControl(element) || element.isContentEditable) {
+    return element;
+  }
+
+  return element.querySelector("[contenteditable]") || element;
+}
+
 function dispatchEditableEvents(element, value, inputType = "insertText") {
   try {
     element.dispatchEvent(new InputEvent("beforeinput", {
@@ -170,30 +187,92 @@ function selectEditableContents(element) {
   selection.addRange(range);
 }
 
-function setEditableValue(element, value) {
-  element.focus();
+function textDataTransfer(value) {
+  try {
+    const data = new DataTransfer();
+    data.setData("text/plain", value);
+    return data;
+  } catch {
+    return null;
+  }
+}
 
-  if (element.tagName === "TEXTAREA" || element.tagName === "INPUT") {
-    setNativeValue(element, "");
-    dispatchEditableEvents(element, "", "deleteContentBackward");
-    setNativeValue(element, value);
-    dispatchEditableEvents(element, value);
-    return;
+function dispatchPasteEvents(element, value) {
+  const clipboardData = textDataTransfer(value);
+  if (!clipboardData) {
+    return false;
   }
 
-  selectEditableContents(element);
-  document.execCommand("delete", false);
-  const inserted = document.execCommand("insertText", false, value);
-  if (!inserted || !editableText(element)) {
-    element.textContent = value;
+  let handled = false;
+  try {
+    const beforeInput = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertFromPaste",
+      data: value,
+      dataTransfer: clipboardData
+    });
+    handled = !element.dispatchEvent(beforeInput) || handled;
+  } catch {
+    // Some browsers do not support dataTransfer on InputEventInit.
   }
-  dispatchEditableEvents(element, value);
+
+  try {
+    const paste = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData
+    });
+    handled = !element.dispatchEvent(paste) || handled;
+  } catch {
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: clipboardData });
+    handled = !element.dispatchEvent(paste) || handled;
+  }
+
+  return handled;
+}
+
+async function setEditableValue(element, value) {
+  const editableEl = resolveEditableElement(element);
+  editableEl.click();
+  editableEl.focus();
+
+  if (isTextControl(editableEl)) {
+    setNativeValue(editableEl, "");
+    dispatchEditableEvents(editableEl, "", "deleteContentBackward");
+    setNativeValue(editableEl, value);
+    dispatchEditableEvents(editableEl, value);
+    return editableEl;
+  }
+
+  selectEditableContents(editableEl);
+  try {
+    document.execCommand("delete", false);
+  } catch (e) {
+    console.error("execCommand delete failed:", e);
+  }
+  dispatchEditableEvents(editableEl, "", "deleteContentBackward");
+  await delay(50);
+
+  selectEditableContents(editableEl);
+  dispatchPasteEvents(editableEl, value);
+  await delay(100);
+
+  if (!editableContains(editableEl, value)) {
+    try {
+      document.execCommand("insertText", false, value);
+    } catch (e) {
+      console.error("execCommand insertText failed:", e);
+    }
+  }
+
+  dispatchEditableEvents(editableEl, value, "insertFromPaste");
+  return editableEl;
 }
 
 function assertPromptAccepted(input, prompt) {
-  const expected = normalizeEditableText(prompt);
-  const current = editableText(input);
-  if (!current || !current.includes(expected.slice(0, Math.min(80, expected.length)))) {
+  if (!editableContains(input, prompt)) {
     throw new Error("O campo de prompt nao aceitou o texto inserido.");
   }
 }
@@ -220,18 +299,18 @@ async function clickCandidate(selectors, textPattern) {
 
 function portalInputSelectors(portal) {
   if (portal === "gemini") {
-    return ['div[role="textbox"]', 'div[contenteditable="true"]', '[contenteditable="true"]', "textarea"];
+    return ['[contenteditable]', 'div[role="textbox"]', "textarea"];
   }
   if (portal === "chatgpt") {
-    return ["#prompt-textarea", "textarea", 'div[contenteditable="true"]'];
+    return ["#prompt-textarea", "textarea", '[contenteditable]'];
   }
   if (portal === "claude") {
-    return ['div[contenteditable="true"]', '[contenteditable="true"]', "textarea"];
+    return ['[contenteditable]', "textarea"];
   }
   if (portal === "deepseek") {
-    return ["#chat-input", "textarea", 'div[contenteditable="true"]'];
+    return ["#chat-input", "textarea", '[contenteditable]'];
   }
-  return ['div[contenteditable="true"]', '[role="textbox"]', "textarea"];
+  return ['[contenteditable]', 'div[role="textbox"]', "textarea"];
 }
 
 async function findInput(portal, timeoutMs) {
@@ -245,12 +324,12 @@ async function findInput(portal, timeoutMs) {
 }
 
 async function sendPrompt(portal, prompt, timeoutMs) {
-  const input = await findInput(portal, timeoutMs);
+  let input = await findInput(portal, timeoutMs);
   if (!input) {
     throw new Error(`Campo de prompt nao encontrado em ${portal}.`);
   }
 
-  setEditableValue(input, prompt);
+  input = await setEditableValue(input, prompt);
   await delay(500);
   assertPromptAccepted(input, prompt);
 
@@ -379,7 +458,7 @@ function isAuthenticated(portal) {
     if (byText(/Novo projeto|New project|Create with Google Flow|Criar com o Google Flow|Create with Flow|Criar com o Flow/i, "button,a,div")) {
       return true;
     }
-    return !!document.querySelector('div[contenteditable="true"], [role="textbox"]');
+    return !!document.querySelector('[contenteditable], [role="textbox"]');
   }
 
   if (portal === "gemini") {
@@ -457,10 +536,33 @@ async function configureGoogleFlowTask(task) {
 }
 
 async function dataUrlFromSource(src, timeoutMs) {
+  if (!src.startsWith("blob:")) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        source: "mrchicken-content",
+        type: "fetch_url",
+        url: src,
+        timeoutMs
+      }, (response) => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          reject(new Error(`Erro de comunicacao com a extensao: ${err.message}`));
+          return;
+        }
+        if (response && response.success) {
+          resolve(response.dataUrl);
+        } else {
+          reject(new Error(response?.error || `Falha ao buscar URL remota: ${src}`));
+        }
+      });
+    });
+  }
+
   const controller = new AbortController();
   const abort = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(src, { credentials: "include", signal: controller.signal });
+    const fetchOptions = { signal: controller.signal };
+    const response = await fetch(src, fetchOptions);
     const blob = await response.blob();
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();

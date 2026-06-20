@@ -7,7 +7,14 @@ const nextConfig: NextConfig = {
     "192.169.0.104",
     "192.169.0.104:3000",
     "localhost:3000"
-  ]
+  ],
+  logging: {
+    incomingRequests: {
+      ignore: [
+        /^\/api\/flow\/extension/
+      ]
+    }
+  }
 };
 
 export default nextConfig;

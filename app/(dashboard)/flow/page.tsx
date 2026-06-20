@@ -768,29 +768,7 @@ export default function FlowDashboardPage() {
       className="relative isolate min-h-screen overflow-y-auto bg-[#080808] pb-48 pt-10 text-white select-none"
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      {/* ── Background: Anime watermark ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: "65%",
-          minHeight: "100vh",
-          zIndex: 1,
-          backgroundImage: "url('/mrchicken-anime-bg.jpeg')",
-          backgroundSize: "cover",
-          backgroundPosition: "right 15% top",
-          backgroundAttachment: "local",
-          opacity: 0.25,
-          mixBlendMode: "luminosity",
-          maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
-          pointerEvents: "none",
-        }}
-      />
-      {/* ── Background: Dark gradient overlay ── */}
+      {/* ── Background: Watermark image layer ── */}
       <div
         aria-hidden="true"
         style={{
@@ -798,7 +776,11 @@ export default function FlowDashboardPage() {
           inset: 0,
           minHeight: "100vh",
           zIndex: 0,
-          background: "radial-gradient(ellipse 55% 50% at 82% 10%, rgba(157,124,255,0.065) 0%, transparent 100%), linear-gradient(180deg, rgba(8,8,8,0.30) 0%, rgba(8,8,8,0.72) 52%, #080808 100%)",
+          backgroundImage: "url('/mrchicken-anime-bg.jpeg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "local",
+          opacity: 0.05,
           pointerEvents: "none",
         }}
       />

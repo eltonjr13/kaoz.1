@@ -127,9 +127,45 @@ async function poll() {
   }
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  return btoa(binary);
+}
+
+async function fetchUrlAsDataUrl(url, timeoutMs) {
+  const controller = new AbortController();
+  const abort = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
+    return `data:${blob.type || "application/octet-stream"};base64,${base64}`;
+  } finally {
+    clearTimeout(abort);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.source !== "mrchicken-content") {
     return false;
+  }
+
+  if (message.type === "fetch_url") {
+    fetchUrlAsDataUrl(message.url, message.timeoutMs || 60000)
+      .then(dataUrl => sendResponse({ success: true, dataUrl }))
+      .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+    return true;
   }
 
   if (message.type === "waiting_manual_verification") {
