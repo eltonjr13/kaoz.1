@@ -277,6 +277,63 @@ function assertPromptAccepted(input, prompt) {
   }
 }
 
+function buttonDisabled(button) {
+  return button.disabled ||
+    button.getAttribute("aria-disabled") === "true" ||
+    button.closest("[aria-disabled='true']");
+}
+
+function buttonText(button) {
+  return [
+    button.textContent || "",
+    button.getAttribute("aria-label") || "",
+    button.getAttribute("title") || ""
+  ].join(" ");
+}
+
+function isGoogleFlowSubmitButton(button) {
+  const text = buttonText(button);
+  return visible(button) &&
+    !buttonDisabled(button) &&
+    (
+      /arrow_forward/i.test(text) ||
+      /Gerar|Criar|Generate|Create|Send|Enviar/i.test(text) ||
+      button.getAttribute("type") === "submit"
+    );
+}
+
+function elementCenter(element) {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+}
+
+function distanceBetweenElements(a, b) {
+  const aCenter = elementCenter(a);
+  const bCenter = elementCenter(b);
+  return Math.hypot(aCenter.x - bCenter.x, aCenter.y - bCenter.y);
+}
+
+function googleFlowSubmitButton(input) {
+  const buttons = Array.from(document.querySelectorAll("button"))
+    .filter(isGoogleFlowSubmitButton)
+    .sort((a, b) => distanceBetweenElements(a, input) - distanceBetweenElements(b, input));
+
+  return buttons[0] || null;
+}
+
+async function clickGoogleFlowSubmit(input, timeoutMs) {
+  const submitButton = await waitFor(() => googleFlowSubmitButton(input), timeoutMs, 500);
+  if (!submitButton) {
+    throw new Error("Botao de gerar do Google Flow nao ficou habilitado apos inserir o prompt.");
+  }
+
+  submitButton.click();
+  await delay(1000);
+}
+
 async function clickCandidate(selectors, textPattern) {
   for (const selector of selectors) {
     const element = Array.from(document.querySelectorAll(selector)).find(visible);
@@ -332,6 +389,11 @@ async function sendPrompt(portal, prompt, timeoutMs) {
   input = await setEditableValue(input, prompt);
   await delay(500);
   assertPromptAccepted(input, prompt);
+
+  if (portal === "google") {
+    await clickGoogleFlowSubmit(input, Math.min(timeoutMs, 15000));
+    return;
+  }
 
   const clicked = await clickCandidate(
     [
@@ -510,27 +572,265 @@ async function enterGoogleFlowWorkspace(timeoutMs = 30000) {
   return promptInput;
 }
 
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function clickableAncestor(element) {
+  return element.closest('button,[role="tab"],[role="menuitem"],[role="option"],[role="menuitemradio"]') || element;
+}
+
+function visibleText(element) {
+  return normalizeEditableText(element.textContent || "").replace(/\s+/g, "");
+}
+
+function visibleByText(pattern, selectors) {
+  return Array.from(document.querySelectorAll(selectors)).find(element =>
+    visible(element) && pattern.test((element.textContent || "").trim())
+  );
+}
+
+function clickFlowOption(pattern, selectors = 'button,[role="tab"],[role="menuitem"],[role="option"],[role="menuitemradio"],span,div') {
+  const element = visibleByText(pattern, selectors);
+  if (!element) return false;
+  clickElement(clickableAncestor(element));
+  return true;
+}
+
+function clickFlowOptionValue(values, selectors = 'button,[role="tab"],span,div') {
+  const normalizedValues = values.map(value => String(value).replace(/\s+/g, ""));
+  const element = Array.from(document.querySelectorAll(selectors)).find(candidate => {
+    if (!visible(candidate)) return false;
+    const text = visibleText(candidate);
+    return normalizedValues.some(value => text === value || text.includes(value));
+  });
+  if (!element) return false;
+  clickElement(clickableAncestor(element));
+  return true;
+}
+
+function quantityValues(quantity) {
+  if (!quantity) return [];
+  const raw = String(quantity).replace(/\s+/g, "");
+  const number = raw.replace(/[^\d]/g, "") || "1";
+  return number === "1" ? ["1", "1x"] : [number, `x${number}`, `${number}x`];
+}
+
+function modelSettingsButton() {
+  return visibleByText(/Veo|Banana|Imagen|Image|Imagem|Video|Vídeo/i, "button");
+}
+
+async function selectMediaType(mediaType) {
+  const pattern = mediaType === "video" ? /Video|Vídeo/i : /Imagem|Image/i;
+  if (clickFlowOption(pattern, '[role="tab"],button[role="tab"]')) {
+    await delay(700);
+  }
+}
+
+async function selectAspectRatio(aspectRatio) {
+  if (!aspectRatio) return;
+  const values = [String(aspectRatio), String(aspectRatio).replace(":", "")];
+  if (clickFlowOptionValue(values)) {
+    await delay(500);
+  }
+}
+
+async function selectQuantity(quantity) {
+  const values = quantityValues(quantity);
+  if (values.length > 0 && clickFlowOptionValue(values)) {
+    await delay(500);
+  }
+}
+
+async function selectModel(model) {
+  if (!model) return;
+  const modelPattern = new RegExp(escapeRegex(String(model)), "i");
+  if (clickFlowOption(modelPattern)) {
+    await delay(700);
+    return;
+  }
+
+  const dropdown = visibleByText(/Veo|Banana|Imagen/i, "button");
+  if (dropdown) {
+    dropdown.click();
+    await delay(700);
+  }
+
+  if (clickFlowOption(modelPattern)) {
+    await delay(700);
+  }
+}
+
+function closeFlowMenus() {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+  document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", code: "Escape", bubbles: true }));
+}
+
+function clickElement(element) {
+  element.scrollIntoView?.({ block: "center", inline: "center" });
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    element.dispatchEvent(new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    }));
+  }
+  element.click?.();
+}
+
+async function configureFlowSettings(mediaType, options) {
+  const settingsButton = modelSettingsButton();
+  if (!settingsButton) {
+    return;
+  }
+
+  settingsButton.click();
+  await delay(1000);
+  await selectMediaType(mediaType);
+  await selectAspectRatio(options.aspectRatio);
+  await selectQuantity(options.quantity);
+  await selectModel(options.model);
+  closeFlowMenus();
+  await delay(500);
+}
+
+function parseDataUrl(dataUrl) {
+  const matches = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!matches) {
+    throw new Error("Imagem de referencia invalida para anexar ao Flow.");
+  }
+  return { mime: matches[1], base64: matches[2] };
+}
+
+function dataUrlToFile(dataUrl, filename) {
+  const parsed = parseDataUrl(dataUrl);
+  const binary = atob(parsed.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: parsed.mime });
+}
+
+function setFileInput(input, file) {
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function promptMediaButton() {
+  return Array.from(document.querySelectorAll("button")).find(button => {
+    const text = button.textContent || "";
+    const label = button.getAttribute("aria-label") || "";
+    return visible(button) && /add_2|add|media|mídia|midia|upload|attach|anexar/i.test(`${text} ${label}`);
+  });
+}
+
+async function openPromptMediaMenu() {
+  if (resourcePickerOpen()) {
+    return true;
+  }
+
+  const button = promptMediaButton();
+  if (!button) return false;
+  clickElement(button);
+  await delay(1500);
+  return true;
+}
+
+function visibleResourceItems() {
+  return Array.from(document.querySelectorAll('button,div,[role="option"],[role="menuitem"],[role="listitem"]'))
+    .filter(element => {
+      const text = normalizeEditableText(element.textContent || "");
+      return visible(element) && /Imagem|Image|ref_image_|avatar_ref_/i.test(text);
+    });
+}
+
+function uploadedReferenceItem(filename) {
+  const baseName = String(filename).replace(/\.[^.]+$/, "");
+  const filePrefix = baseName.slice(0, Math.min(16, baseName.length));
+  return visibleResourceItems().find(element => {
+    const text = element.textContent || "";
+    return text.includes(baseName) ||
+      text.includes(filePrefix) ||
+      text.includes("ref_image_") ||
+      text.includes("avatar_ref_");
+  });
+}
+
+function newestReferenceItem() {
+  return visibleResourceItems()[0] || null;
+}
+
+function includeReferenceButton() {
+  const selectors = 'button,[role="button"],div,span';
+  const element = visibleByText(/^\s*(Incluir no comando|Include in prompt|Incluir)\s*$/i, selectors) ||
+    visibleByText(/Incluir no comando|Include in prompt/i, selectors);
+  return element ? clickableAncestor(element) : null;
+}
+
+function resourcePickerOpen() {
+  return !!visibleByText(/Pesquisar recursos|Search resources|Todas as m[ií]dias|All media/i, "div,span,input");
+}
+
+async function includeUploadedReference(filename) {
+  const opened = await openPromptMediaMenu();
+  if (!opened) {
+    throw new Error("Menu de recursos do Google Flow nao abriu para anexar a imagem.");
+  }
+
+  const item = await waitFor(() => uploadedReferenceItem(filename) || newestReferenceItem(), 15000, 750);
+  if (!item) {
+    throw new Error("Imagem enviada nao foi localizada na lista de recursos do Google Flow.");
+  }
+
+  clickElement(clickableAncestor(item));
+  await delay(1000);
+
+  const includeButton = await waitFor(() => includeReferenceButton(), 10000, 500);
+  if (!includeButton) {
+    throw new Error("Botao 'Incluir no comando' nao foi encontrado apos selecionar a imagem.");
+  }
+
+  clickElement(includeButton);
+  const closed = await waitFor(() => !resourcePickerOpen(), 8000, 500);
+  if (!closed) {
+    closeFlowMenus();
+    await delay(1000);
+  }
+
+  if (resourcePickerOpen()) {
+    throw new Error("A imagem foi selecionada, mas o modal de recursos nao fechou apos clicar em 'Incluir no comando'.");
+  }
+}
+
+async function attachReferenceImage(options, timeoutMs) {
+  if (!options.referenceImage) return;
+  const filename = options.referenceImageName || `ref_image_${Date.now()}.png`;
+  const file = dataUrlToFile(options.referenceImage, filename);
+  let fileInput = await waitFor(() => document.querySelector('input[type="file"]'), 5000, 500);
+  if (!fileInput) {
+    await openPromptMediaMenu();
+    fileInput = await waitFor(() => document.querySelector('input[type="file"]'), 10000, 500);
+  }
+  if (!fileInput) {
+    throw new Error("Input de upload do Google Flow nao encontrado para anexar a referencia.");
+  }
+
+  setFileInput(fileInput, file);
+  await delay(Math.min(timeoutMs, 5000));
+  await includeUploadedReference(filename);
+}
+
 async function configureGoogleFlowTask(task) {
   const options = task.payload?.options || {};
   const mediaType = task.type === "generateVideo" ? "video" : "image";
 
   await enterGoogleFlowWorkspace(Math.min(task.timeoutMs || 300000, 60000));
-
-  if (options.aspectRatio) {
-    const ratioButton = byText(new RegExp(String(options.aspectRatio).replace(":", "\\s*:\\s*"), "i"), "button,div,span");
-    if (ratioButton) {
-      ratioButton.click();
-      await delay(400);
-    }
-  }
-
-  if (options.model) {
-    const modelButton = byText(new RegExp(String(options.model), "i"), "button,div,span");
-    if (modelButton) {
-      modelButton.click();
-      await delay(400);
-    }
-  }
+  await configureFlowSettings(mediaType, options);
+  await attachReferenceImage(options, Math.min(task.timeoutMs || 300000, 30000));
 
   return mediaType;
 }
@@ -575,13 +875,51 @@ async function dataUrlFromSource(src, timeoutMs) {
   }
 }
 
-async function collectGoogleFlowMedia(mediaType, timeoutMs, expectedCount) {
+function flowMediaSelector(mediaType) {
+  return mediaType === "video" ? "video" : "img";
+}
+
+function mediaSource(element) {
+  return element.currentSrc || element.src || element.getAttribute("src") || "";
+}
+
+function isFlowMediaSource(src) {
+  return !!src && /googleusercontent|usercontent\.google|getMediaUrlRedirect|^blob:/i.test(src);
+}
+
+function isLikelyGeneratedMedia(element, mediaType) {
+  const src = mediaSource(element);
+  if (!isFlowMediaSource(src) || !visible(element)) {
+    return false;
+  }
+
+  if (mediaType === "video") {
+    return true;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return rect.width >= 96 && rect.height >= 96;
+}
+
+function currentFlowMediaSources(mediaType) {
+  const selector = flowMediaSelector(mediaType);
+  return Array.from(document.querySelectorAll(selector))
+    .filter(element => isLikelyGeneratedMedia(element, mediaType))
+    .map(mediaSource)
+    .filter(Boolean);
+}
+
+function flowMediaSnapshot(mediaType) {
+  return new Set(currentFlowMediaSources(mediaType));
+}
+
+async function collectGoogleFlowMedia(mediaType, timeoutMs, expectedCount, initialSources) {
   const selector = mediaType === "video" ? "video" : "img";
   const media = await waitFor(async () => {
     const candidates = Array.from(document.querySelectorAll(selector))
-      .filter(visible)
-      .map(element => element.currentSrc || element.src)
-      .filter(src => src && (/googleusercontent|usercontent\.google|getMediaUrlRedirect|^blob:/i.test(src)));
+      .filter(element => isLikelyGeneratedMedia(element, mediaType))
+      .map(mediaSource)
+      .filter(src => src && !initialSources.has(src));
 
     const unique = Array.from(new Set(candidates));
     return unique.length >= expectedCount ? unique.slice(-expectedCount) : null;
@@ -665,13 +1003,15 @@ async function handleGoogleFlowGeneration(task) {
 
   const mediaType = await configureGoogleFlowTask(task);
   const prompt = String(task.payload?.prompt || "");
+  const initialSources = flowMediaSnapshot(mediaType);
   await sendPrompt("google", prompt, Math.min(task.timeoutMs || 300000, 30000));
 
   const options = task.payload?.options || {};
   const media = await collectGoogleFlowMedia(
     mediaType,
     task.timeoutMs || 300000,
-    expectedQuantity(options)
+    expectedQuantity(options),
+    initialSources
   );
 
   return {

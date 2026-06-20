@@ -50,6 +50,7 @@ type EnqueueInput = Pick<ExtensionTask, 'type' | 'portal' | 'url'> & {
 type BridgeState = {
   tasks: Map<string, ExtensionTask>;
   lastHeartbeatAt: number | null;
+  extensionVersion: string | null;
 };
 
 const globalForFlowExtension = globalThis as unknown as {
@@ -58,7 +59,8 @@ const globalForFlowExtension = globalThis as unknown as {
 
 const state = globalForFlowExtension.flowExtensionBridgeState ?? {
   tasks: new Map<string, ExtensionTask>(),
-  lastHeartbeatAt: null
+  lastHeartbeatAt: null,
+  extensionVersion: null
 };
 
 globalForFlowExtension.flowExtensionBridgeState = state;
@@ -131,11 +133,13 @@ function publicTask(task: ExtensionTask) {
   };
 }
 
-export function recordHeartbeat() {
+export function recordHeartbeat(extensionVersion?: string) {
   state.lastHeartbeatAt = now();
+  state.extensionVersion = extensionVersion || state.extensionVersion;
   return {
     connected: true,
-    lastHeartbeatAt: state.lastHeartbeatAt
+    lastHeartbeatAt: state.lastHeartbeatAt,
+    extensionVersion: state.extensionVersion
   };
 }
 
@@ -147,6 +151,7 @@ export function getBridgeStatus() {
       state.lastHeartbeatAt !== null &&
       now() - state.lastHeartbeatAt < 10000,
     lastHeartbeatAt: state.lastHeartbeatAt,
+    extensionVersion: state.extensionVersion,
     pendingTasks: Array.from(state.tasks.values()).filter(task =>
       task.status === 'queued' ||
       task.status === 'claimed' ||
@@ -319,6 +324,58 @@ function extensionFromMime(mime: string, defaultExt: string) {
   return mimeMap.find(([key]) => mime.includes(key))?.[1] || defaultExt;
 }
 
+function mimeFromPath(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.mp4') return 'video/mp4';
+  if (ext === '.webm') return 'video/webm';
+  return 'image/png';
+}
+
+function referenceImagePayload(referenceImage?: string) {
+  if (!referenceImage) {
+    return {};
+  }
+
+  if (referenceImage.startsWith('data:')) {
+    return {
+      referenceImage,
+      referenceImageName: 'ref_image.png'
+    };
+  }
+
+  if (!fs.existsSync(referenceImage)) {
+    return { referenceImage: undefined };
+  }
+
+  const mime = mimeFromPath(referenceImage);
+  const data = fs.readFileSync(referenceImage).toString('base64');
+  return {
+    referenceImage: `data:${mime};base64,${data}`,
+    referenceImageName: path.basename(referenceImage)
+  };
+}
+
+function extensionGenerationOptions<T extends ImageGenerationOptions | VideoGenerationOptions>(options?: T) {
+  if (!options) {
+    return undefined;
+  }
+
+  return {
+    ...options,
+    ...referenceImagePayload(options.referenceImage)
+  };
+}
+
+function outputFolderName(options?: ImageGenerationOptions) {
+  if (options?.folderName && options.originalFilename) {
+    return `${options.folderName}/${options.originalFilename}`;
+  }
+  return options?.folderName;
+}
+
 function saveBase64Media(
   downloadPath: string,
   base64: string,
@@ -466,11 +523,12 @@ export class FlowExtensionClient {
   }
 
   async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
+    const taskOptions = extensionGenerationOptions(options);
     const result = await this.runTask({
       type: 'generateImage',
       portal: 'google',
       url: getSavedProjectUrl() || readLocalEnvValue('FLOW_IMAGE_URL') || this.config.imageUrl || this.config.flowUrl,
-      payload: { prompt, options }
+      payload: { prompt, options: taskOptions }
     });
 
     const saved = saveMediaList(
@@ -478,7 +536,7 @@ export class FlowExtensionClient {
       result.media,
       'image',
       '.png',
-      options?.folderName
+      outputFolderName(options)
     );
 
     if (saved.length === 0) {
@@ -496,11 +554,12 @@ export class FlowExtensionClient {
   }
 
   async generateVideo(prompt: string, options?: VideoGenerationOptions): Promise<VideoGenerationResult> {
+    const taskOptions = extensionGenerationOptions(options);
     const result = await this.runTask({
       type: 'generateVideo',
       portal: 'google',
       url: getSavedProjectUrl() || readLocalEnvValue('FLOW_VIDEO_URL') || this.config.videoUrl || this.config.flowUrl,
-      payload: { prompt, options }
+      payload: { prompt, options: taskOptions }
     });
 
     const saved = saveMediaList(this.config.downloadPath, result.media, 'video', '.mp4');

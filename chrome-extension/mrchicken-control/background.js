@@ -26,6 +26,7 @@ async function postToApp(action, payload = {}) {
     body: JSON.stringify({
       action,
       token: config.token,
+      extensionVersion: chrome.runtime.getManifest().version,
       ...payload
     })
   });
@@ -73,6 +74,28 @@ async function sendTaskToTab(tabId, task) {
   });
 }
 
+async function createTaskTab(task) {
+  const tab = await chrome.tabs.create({
+    url: task.url,
+    active: true
+  });
+
+  if (!tab.id) {
+    throw new Error("Chrome nao retornou o ID da nova aba.");
+  }
+
+  await waitForTabLoad(tab.id, Math.min(task.timeoutMs || 300000, 60000));
+  return tab;
+}
+
+async function postTaskFailure(taskId, error) {
+  await postToApp("result", {
+    taskId,
+    status: "failed",
+    error
+  });
+}
+
 async function runTask(task) {
   if (activeTasks.has(task.id)) {
     return;
@@ -81,16 +104,7 @@ async function runTask(task) {
   activeTasks.add(task.id);
 
   try {
-    const tab = await chrome.tabs.create({
-      url: task.url,
-      active: true
-    });
-
-    if (!tab.id) {
-      throw new Error("Chrome nao retornou o ID da nova aba.");
-    }
-
-    await waitForTabLoad(tab.id, Math.min(task.timeoutMs || 300000, 60000));
+    const tab = await createTaskTab(task);
     const response = await sendTaskToTab(tab.id, task);
 
     if (response?.status === "accepted") {
@@ -98,17 +112,9 @@ async function runTask(task) {
       return;
     }
 
-    await postToApp("result", {
-      taskId: task.id,
-      status: "failed",
-      error: response?.error || "Tarefa da extensao nao foi aceita."
-    });
+    await postTaskFailure(task.id, response?.error || "Tarefa da extensao nao foi aceita.");
   } catch (err) {
-    await postToApp("result", {
-      taskId: task.id,
-      status: "failed",
-      error: err instanceof Error ? err.message : String(err)
-    });
+    await postTaskFailure(task.id, err instanceof Error ? err.message : String(err));
   } finally {
     if (!activeTasks.has(`${task.id}:accepted`)) {
       activeTasks.delete(task.id);
