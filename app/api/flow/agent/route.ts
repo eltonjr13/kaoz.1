@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import type { FlowDecision } from "@/lib/ai/gemini";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
 type GenerationQuantity = 1 | 2 | 3 | 4 | "1x" | "x2" | "x3" | "x4";
+type ImagePackageMode = "turnaround3d";
+type TurnaroundView = "front" | "left" | "right" | "back" | "top" | "bottom";
+const TURNAROUND_VIEWS = new Set<TurnaroundView>(["front", "left", "right", "back", "top", "bottom"]);
 
 function parseQuantity(value: unknown): GenerationQuantity | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -15,6 +21,49 @@ function parseQuantity(value: unknown): GenerationQuantity | undefined {
   }
 
   return (/^\d+$/.test(quantity) ? Number(quantity) : quantity) as GenerationQuantity;
+}
+
+function parseImagePackageMode(value: unknown): ImagePackageMode | undefined {
+  return value === "turnaround3d" ? "turnaround3d" : undefined;
+}
+
+function parseTurnaroundViews(value: unknown): TurnaroundView[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const views = value.filter((view): view is TurnaroundView =>
+    typeof view === "string" && TURNAROUND_VIEWS.has(view as TurnaroundView)
+  );
+
+  return views.length > 0 ? Array.from(new Set(views)) : undefined;
+}
+
+function saveBase64ReferenceImage(base64Data: string): string {
+  const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  let buffer: Buffer;
+  let extension = ".png";
+
+  if (matches && matches.length === 3) {
+    const mimeType = matches[1];
+    const base64Str = matches[2];
+    buffer = Buffer.from(base64Str, "base64");
+
+    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
+      extension = ".jpg";
+    } else if (mimeType.includes("webp")) {
+      extension = ".webp";
+    }
+  } else {
+    buffer = Buffer.from(base64Data, "base64");
+  }
+
+  const tempDir = path.resolve("storage/temp_uploads");
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const filePath = path.join(tempDir, `agent_ref_image_${crypto.randomUUID()}${extension}`);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
 }
 
 function parseApprovedPlan(value: unknown): FlowDecision | undefined {
@@ -61,6 +110,9 @@ export async function POST(request: Request) {
       videoQuantity?: unknown;
       imageModel?: unknown;
       imageQuantity?: unknown;
+      imagePackageMode?: unknown;
+      turnaroundViews?: unknown;
+      referenceImage?: unknown;
       approvedPlan?: unknown;
     } | null;
 
@@ -74,6 +126,9 @@ export async function POST(request: Request) {
     const videoQuantity = parseQuantity(body?.videoQuantity);
     const imageModel = typeof body?.imageModel === "string" ? body.imageModel.trim() : "Nano Banana Pro";
     const imageQuantity = parseQuantity(body?.imageQuantity);
+    const imagePackageMode = parseImagePackageMode(body?.imagePackageMode);
+    const turnaroundViews = parseTurnaroundViews(body?.turnaroundViews);
+    const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
 
     if (!model) {
@@ -144,6 +199,12 @@ export async function POST(request: Request) {
       const jobId = localJob.id;
       await updateLocalJobStatus(jobId, "researching");
       await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autonomo inicializado no armazenamento local.");
+      const inputReferenceImage = referenceImageBase64 ? saveBase64ReferenceImage(referenceImageBase64) : undefined;
+      if (inputReferenceImage) {
+        await createLocalJobEvent(jobId, "planning", "Imagem de referencia enviada pelo usuario anexada ao agente.", {
+          referenceImage: inputReferenceImage
+        });
+      }
 
       void flowProvider.runAgentTask({
         topic: prompt,
@@ -154,6 +215,9 @@ export async function POST(request: Request) {
         aspectRatio: aspectRatio as "16:9" | "4:3" | "1:1" | "3:4" | "9:16",
         videoModel,
         videoQuantity,
+        imagePackageMode,
+        turnaroundViews,
+        inputReferenceImage,
         jobId,
         baseUrl,
         approvedPlan

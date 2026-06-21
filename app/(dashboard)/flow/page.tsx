@@ -40,6 +40,11 @@ interface Avatar {
 type AgentType = 'image' | 'video' | 'project';
 type DirectGenerationType = 'image' | 'video';
 type PlannedFlow = AgentType | 'refine';
+type ImagePackageMode = 'turnaround3d';
+type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
+
+const BASE_TURNAROUND_VIEWS: TurnaroundView[] = ['front', 'left', 'right', 'back'];
+const TOP_BOTTOM_VIEWS: TurnaroundView[] = ['top', 'bottom'];
 
 interface PendingPlan {
   kind: AgentType;
@@ -59,6 +64,8 @@ interface PendingPlan {
   scriptOutline?: string | null;
   creativeSteps?: string[];
   visualReferenceInstructions?: string;
+  imagePackageMode?: ImagePackageMode;
+  turnaroundViews?: TurnaroundView[];
 }
 
 const normalizePromptForIntent = (value: string) =>
@@ -72,6 +79,19 @@ const inferExplicitMediaType = (prompt: string): DirectGenerationType | null => 
   if (asksForImage && !asksForVideo) return "image";
   if (asksForVideo && !asksForImage) return "video";
   return null;
+};
+
+const inferTurnaround3dPackage = (prompt: string): { imagePackageMode: ImagePackageMode; turnaroundViews: TurnaroundView[] } | null => {
+  const normalized = normalizePromptForIntent(prompt);
+  const asksForTurnaround = /\b(3d|modelagem|angulos?|vistas?|turnaround|frente|traseira|lateral|produto final|peca 3d|objeto 3d)\b/.test(normalized);
+
+  if (!asksForTurnaround) return null;
+
+  const asksForTopBottom = /\b(topo|cima|baixo|base|embaixo|superior|inferior)\b/.test(normalized);
+  return {
+    imagePackageMode: 'turnaround3d',
+    turnaroundViews: asksForTopBottom ? [...BASE_TURNAROUND_VIEWS, ...TOP_BOTTOM_VIEWS] : BASE_TURNAROUND_VIEWS
+  };
 };
 
 const copyToClipboard = (text: string): boolean => {
@@ -104,6 +124,32 @@ const getResultFilename = (filePath: string) => {
 
 const extractImagePathsFromJob = (value?: string | null) => {
   if (!value) return [];
+
+  const marker = "Imagens salvas em:";
+  const markerIndex = value.indexOf(marker);
+  if (markerIndex >= 0) {
+    const jsonText = value.slice(markerIndex + marker.length).trim();
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.images)) {
+        return parsed.images
+          .map((item: unknown) => {
+            if (typeof item === "string") return item;
+            if (item && typeof item === "object" && typeof (item as { path?: unknown }).path === "string") {
+              return (item as { path: string }).path;
+            }
+            return null;
+          })
+          .filter((item: string | null): item is string => Boolean(item));
+      }
+    } catch {
+      // Fall through to the legacy array extraction below.
+    }
+  }
+
   const match = value.match(/\[[\s\S]*\]/);
   if (!match) return [];
 
@@ -137,6 +183,7 @@ export default function FlowDashboardPage() {
   const [imageRatio, setImageRatio] = useState("16:9");
   const [imageQty, setImageQty] = useState("x2");
   const [imageModel, setImageModel] = useState("Nano Banana 2");
+  const [image3dMode, setImage3dMode] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageResult, setImageResult] = useState<GenerationResult | null>(null);
   const [imageReference, setImageReference] = useState<string | null>(null);
@@ -425,6 +472,18 @@ export default function FlowDashboardPage() {
   };
 
   const executeDirectGenerationPlan = async (plan: PendingPlan) => {
+    if (plan.imagePackageMode === "turnaround3d" && !plan.avatarId) {
+      setImageResult({
+        success: false,
+        path: "",
+        filename: "",
+        createdAt: new Date().toISOString(),
+        error: "Selecione um avatar para executar o pacote 3D pelo agente."
+      });
+      appendLog("[Agente Autonomo] Pacote 3D precisa executar pelo agente com avatar selecionado.");
+      return;
+    }
+
     if (plan.avatarId) {
       const isImage = plan.kind === "image";
       const setLoading = isImage ? setImageLoading : setVideoLoading;
@@ -449,6 +508,9 @@ export default function FlowDashboardPage() {
             aspectRatio: plan.aspectRatio,
             imageModel: isImage ? plan.mediaModel : undefined,
             imageQuantity: isImage ? plan.quantity : undefined,
+            imagePackageMode: isImage ? plan.imagePackageMode : undefined,
+            turnaroundViews: isImage ? plan.turnaroundViews : undefined,
+            referenceImage: plan.referenceImage || undefined,
             videoModel: isImage ? undefined : plan.mediaModel,
             videoQuantity: isImage ? undefined : plan.quantity,
             approvedPlan: {
@@ -459,7 +521,9 @@ export default function FlowDashboardPage() {
               strategy: plan.strategy,
               scriptOutline: plan.scriptOutline ?? null,
               creativeSteps: plan.creativeSteps,
-              visualReferenceInstructions: plan.visualReferenceInstructions
+              visualReferenceInstructions: plan.visualReferenceInstructions,
+              imagePackageMode: plan.imagePackageMode,
+              turnaroundViews: plan.turnaroundViews
             }
           }),
         });
@@ -586,8 +650,11 @@ export default function FlowDashboardPage() {
   };
 
   // Main Autopilot Execution
-  const handleExecuteAutopilot = async (overridePrompt?: string) => {
+  const handleExecuteAutopilot = async (overridePrompt?: string, overrideReferenceImage?: string | null) => {
     const promptToUse = overridePrompt !== undefined ? overridePrompt : agentPrompt;
+    const referenceImageToUse = overrideReferenceImage !== undefined
+      ? overrideReferenceImage
+      : (agentType === "image" ? imageReference : videoReference);
     if (pendingPlan) {
       appendLog("Existe um plano pendente. Aplique ou cancele antes de planejar novamente.");
       return;
@@ -599,10 +666,25 @@ export default function FlowDashboardPage() {
     }
 
     const explicitMediaType = inferExplicitMediaType(promptToUse);
-    const executionType: AgentType = explicitMediaType ?? agentType;
+    const detectedTurnaroundPackage = explicitMediaType !== "video" ? inferTurnaround3dPackage(promptToUse) : null;
+    const manualTurnaroundPackage = explicitMediaType !== "video" && agentType === "image" && image3dMode
+      ? {
+          imagePackageMode: 'turnaround3d' as const,
+          turnaroundViews: detectedTurnaroundPackage?.turnaroundViews || BASE_TURNAROUND_VIEWS
+        }
+      : null;
+    const turnaroundPackage = manualTurnaroundPackage || detectedTurnaroundPackage;
+    let executionType: AgentType = explicitMediaType ?? agentType;
     if (explicitMediaType && explicitMediaType !== agentType) {
       setAgentType(explicitMediaType);
       appendLog(`[Flow] Tipo ajustado pelo pedido: ${explicitMediaType === "image" ? "Imagem" : "Vídeo"}.`);
+    }
+    if (turnaroundPackage) {
+      executionType = "image";
+      if (agentType !== "image") {
+        setAgentType("image");
+      }
+      appendLog("[Flow] Pacote 3D detectado: imagem principal + vistas do produto.");
     }
 
     if (executionType === "project") {
@@ -705,6 +787,24 @@ export default function FlowDashboardPage() {
       setAgentLoading(false);
     }
 
+    if (turnaroundPackage) {
+      plannedFlow = "image";
+      finalPrompt = [
+        finalPrompt,
+        "Create a product image package for 3D modeling: first a primary product image, then consistent orthographic views of the exact same product."
+      ].join(" ");
+      planExplanation = "Pacote 3D: o agente vai gerar uma imagem principal e depois vistas consistentes do mesmo produto.";
+      planStrategy = "Gerar imagem principal e reutiliza-la como referencia para vistas ortograficas do produto.";
+      planCreativeSteps = [
+        "Gerar imagem principal do produto",
+        "Usar a imagem principal como referencia",
+        "Gerar frente, lateral esquerda, lateral direita e traseira",
+        ...(turnaroundPackage.turnaroundViews.includes("top") ? ["Gerar topo e base"] : [])
+      ];
+      planVisualReferenceInstructions = "Manter exatamente o mesmo produto, materiais, cores, proporcoes e silhueta entre todos os angulos.";
+      setAgentResult(finalPrompt);
+    }
+
     const selectedAvatar = avatars.find((avatar) => avatar.id === selectedAvatarId);
     const directFlow = plannedFlow === "image" || plannedFlow === "video" ? plannedFlow : executionType;
     setPendingPlan({
@@ -715,15 +815,17 @@ export default function FlowDashboardPage() {
       explanation: planExplanation,
       model: agentModel,
       aspectRatio: directFlow === "image" ? imageRatio : videoRatio,
-      quantity: directFlow === "image" ? imageQty : videoQty,
+      quantity: turnaroundPackage ? "x4" : (directFlow === "image" ? imageQty : videoQty),
       mediaModel: directFlow === "image" ? imageModel : videoModel,
       avatarId: selectedAvatarId || undefined,
       avatarName: selectedAvatar?.name,
-      referenceImage: directFlow === "image" ? imageReference : videoReference,
+      referenceImage: directFlow === "image" || directFlow === "video" ? referenceImageToUse : null,
       strategy: planStrategy,
       scriptOutline: planScriptOutline ?? null,
       creativeSteps: planCreativeSteps,
-      visualReferenceInstructions: planVisualReferenceInstructions
+      visualReferenceInstructions: planVisualReferenceInstructions,
+      imagePackageMode: directFlow === "image" ? turnaroundPackage?.imagePackageMode : undefined,
+      turnaroundViews: directFlow === "image" ? turnaroundPackage?.turnaroundViews : undefined
     });
     appendLog("[Agente MrChicken] Plano pronto. Aguardando aprovacao para gerar.");
   };
@@ -742,6 +844,12 @@ export default function FlowDashboardPage() {
         <span className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: "#B8B8C0" }}>
           <span>Imagem</span>
           <span style={{ color: "#4A4A54" }}>·</span>
+          {image3dMode && (
+            <>
+              <span>3D</span>
+              <span style={{ color: "#4A4A54" }}>·</span>
+            </>
+          )}
           <span>{imageRatio}</span>
         </span>
       );
@@ -1212,6 +1320,12 @@ export default function FlowDashboardPage() {
                 {pendingPlan.quantity && (
                   <div>Quantidade: <span style={{ color: "#E8E8EF" }}>{pendingPlan.quantity}</span></div>
                 )}
+                {pendingPlan.imagePackageMode === "turnaround3d" && (
+                  <div>Pacote: <span style={{ color: "#E8E8EF" }}>Turnaround 3D</span></div>
+                )}
+                {pendingPlan.turnaroundViews && pendingPlan.turnaroundViews.length > 0 && (
+                  <div>Vistas: <span style={{ color: "#E8E8EF" }}>{pendingPlan.turnaroundViews.join(", ")}</span></div>
+                )}
                 {pendingPlan.avatarName && (
                   <div>Avatar: <span style={{ color: "#E8E8EF" }}>{pendingPlan.avatarName}</span></div>
                 )}
@@ -1321,15 +1435,36 @@ export default function FlowDashboardPage() {
             defaultModel={agentModel}
             onModelChange={(modelId) => {
               clearPendingPlan();
-              setAgentModel(modelId as any);
+              if (modelId === "gemini" || modelId === "chatgpt" || modelId === "deepseek" || modelId === "claude") {
+                setAgentModel(modelId);
+              }
             }}
             onSendMessage={async (message, files, pastedContent) => {
               setAgentPrompt(message);
               clearPendingPlan();
+              let uploadedReference: string | null = null;
 
               // If there are files, convert to data url and set as reference
               if (files.length > 0) {
                 const file = files[0].file;
+                uploadedReference = await new Promise<string | null>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    resolve(typeof event.target?.result === "string" ? event.target.result : null);
+                  };
+                  reader.onerror = () => resolve(null);
+                  reader.readAsDataURL(file);
+                });
+
+                if (uploadedReference) {
+                  if (agentType === "image") {
+                    setImageReference(uploadedReference);
+                  } else {
+                    setVideoReference(uploadedReference);
+                  }
+                  appendLog(`Imagem de referÃªncia selecionada (${(file.size / 1024).toFixed(1)} KB).`);
+                }
+                if (!uploadedReference) {
                 const reader = new FileReader();
                 reader.onload = (event) => {
                   if (typeof event.target?.result === "string") {
@@ -1343,6 +1478,7 @@ export default function FlowDashboardPage() {
                   }
                 };
                 reader.readAsDataURL(file);
+                }
               }
 
               // Also if there is pasted content, append it to the message
@@ -1352,9 +1488,9 @@ export default function FlowDashboardPage() {
                   fullMessage += "\n\n[Pasted Content]:\n" + p.content;
                 });
                 setAgentPrompt(fullMessage);
-                handleExecuteAutopilot(fullMessage);
+                handleExecuteAutopilot(fullMessage, uploadedReference);
               } else {
-                handleExecuteAutopilot(message);
+                handleExecuteAutopilot(message, uploadedReference);
               }
             }}
             onOptionsClick={() => {
@@ -1487,6 +1623,45 @@ export default function FlowDashboardPage() {
                   </div>
                 </div>
 
+                {/* Image mode */}
+                {agentType === "image" && (
+                  <div className="flex flex-col gap-2">
+                    <div className="px-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "#4A4A54" }}>
+                      Modo da Imagem
+                    </div>
+                    <div
+                      className="grid grid-cols-2 rounded-[14px] p-0.5"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      {[
+                        { id: "standard", label: "Normal" },
+                        { id: "turnaround3d", label: "3D" },
+                      ].map((mode) => {
+                        const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => {
+                              clearPendingPlan();
+                              const nextIs3d = mode.id === "turnaround3d";
+                              setImage3dMode(nextIs3d);
+                              if (nextIs3d) setImageQty("x4");
+                            }}
+                            className="rounded-xl py-1.5 text-[10px] font-semibold transition-all"
+                            style={{
+                              background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                              color: isActive ? "#ffffff" : "#4A4A54",
+                            }}
+                          >
+                            {mode.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Ratio + Quantity */}
                 {agentType !== "project" && (
                   <div className="grid grid-cols-2 gap-4">
@@ -1528,8 +1703,8 @@ export default function FlowDashboardPage() {
                         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                       >
                         {["1x", "x2", "x3", "x4"].map((q) => {
-                          const currentQty = agentType === "image" ? imageQty : videoQty;
-                          const isDisabled = agentType === "video" && (q === "x3" || q === "x4");
+                          const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                          const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
                           const isActive = currentQty === q && !isDisabled;
                           return (
                             <button
@@ -1538,6 +1713,7 @@ export default function FlowDashboardPage() {
                               disabled={isDisabled}
                               onClick={() => {
                                 clearPendingPlan();
+                                if (agentType === "image" && image3dMode) return;
                                 if (agentType === "image") setImageQty(q);
                                 else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
                               }}
