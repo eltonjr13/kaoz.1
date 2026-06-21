@@ -807,23 +807,38 @@ function bestFileInput() {
     null;
 }
 
-async function findReferenceFileInputAfterUploadClick() {
-  const uploadButton = visibleByText(/Enviar m[ií]dia|Upload media|Enviar|Upload/i, "button,[role='button']");
-  if (uploadButton) {
-    clickElement(clickableAncestor(uploadButton));
+function libraryAddMediaButton() {
+  return visibleByText(/Adicionar mídia|Add media/i, "button,[role='button']");
+}
+
+function libraryUploadMenuItem() {
+  return visibleByText(/Enviar mídia|Upload media/i, "button,[role='menuitem'],div,span");
+}
+
+async function openLibraryUploadMode() {
+  const addButton = libraryAddMediaButton();
+  if (!addButton) {
+    return { opened: false, uploadSelected: false };
+  }
+
+  clickElement(clickableAncestor(addButton));
+  await delay(1000);
+
+  const uploadMenuItem = libraryUploadMenuItem();
+  if (uploadMenuItem) {
+    clickElement(clickableAncestor(uploadMenuItem));
     await delay(1000);
   }
 
-  const fileInput = await waitFor(() => bestFileInput(), 10000, 500);
-  traceFlow("attach:file-input-after-upload", {
-    found: !!fileInput,
-    clickedUpload: !!uploadButton,
-    candidates: fileInputCandidates().map(item => item.details)
-  });
-  return fileInput;
+  return {
+    opened: true,
+    uploadSelected: !!uploadMenuItem
+  };
 }
 
 async function findReferenceFileInput(filename) {
+  const uploadMode = await openLibraryUploadMode();
+  traceFlow("attach:library-upload", uploadMode);
   const fileInput = await waitFor(() => bestFileInput(), 10000, 500);
   traceFlow("attach:file-input-page", {
     found: !!fileInput,
@@ -836,7 +851,7 @@ async function findReferenceFileInput(filename) {
 
   const menuOpened = await openPromptMediaMenu();
   traceFlow("attach:menu-fallback", { menuOpened, pickerOpen: resourcePickerOpen() });
-  return findReferenceFileInputAfterUploadClick();
+  return await waitFor(() => bestFileInput(), 10000, 500);
 }
 
 async function setReferenceFileInput(fileInput, options, file) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MrChicken Browser Control",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Controla abas reais do Chrome para o MrChicken Flow.",
   "permissions": ["alarms", "debugger", "scripting", "storage", "tabs"],
   "host_permissions": [
