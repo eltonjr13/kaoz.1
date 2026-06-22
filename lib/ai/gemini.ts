@@ -102,17 +102,35 @@ async function prepareContents(
 }
 
 function parseGeminiResponse<T>(responseText: string, fallback: T): T {
+  if (!responseText) return fallback;
+
+  // 1. Try direct parsing
   try {
-    const result = JSON.parse(responseText);
-    return result;
-  } catch (parseError) {
-    console.error("Falha ao analisar a resposta JSON do Gemini, tentando extração manual:", parseError);
-    const cleanedText = responseText.replace(/```json|```/g, "").trim();
+    return JSON.parse(responseText);
+  } catch {
+    // Keep going
+  }
+
+  // 2. Try to find the outermost JSON object braces
+  const firstBrace = responseText.indexOf("{");
+  const lastBrace = responseText.lastIndexOf("}");
+  
+  if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+    const candidate = responseText.slice(firstBrace, lastBrace + 1);
     try {
-      return JSON.parse(cleanedText) as T;
+      return JSON.parse(candidate) as T;
     } catch {
-      return fallback;
+      // Keep going
     }
+  }
+
+  // 3. Try to clean typical markdown wrappers and trim
+  try {
+    const cleanedText = responseText.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleanedText) as T;
+  } catch {
+    console.error("Falha ao analisar a resposta JSON do Gemini. Resposta original:\n", responseText);
+    return fallback;
   }
 }
 
@@ -331,11 +349,9 @@ Modo agente autonomo:
 - Para "image", nao planeje nenhuma etapa de video.
 - Para "video", nao planeje nenhuma etapa de imagem final.
 - Para "project", planeje tambem estrutura de roteiro/reacao do avatar.
-- Se houver avatar selecionado, considere que o Flow recebera uma imagem ou frame do avatar como referencia visual.
-- O prompt final deve pedir consistencia visual com a referencia do avatar sem trocar o tipo de midia.
 - Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
 - Para project/refine, escreva optimizedPrompt como briefing operacional em portugues.
-- Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions.
+- Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions (se houver avatar selecionado, defina brevemente como integrar o avatar ao vídeo, caso contrário defina como null).
 `;
 
   const prompt = `
@@ -397,4 +413,81 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
   }
 }
 
+export interface ChatMessagePart {
+  text: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  parts: ChatMessagePart[];
+}
+
+export interface ChatAgentResponse {
+  message: string;
+  action: FlowDecision | null;
+}
+
+export async function chatWithAgent(
+  messages: ChatMessage[],
+  avatarPersonality?: Record<string, unknown> | null,
+  executeWebQuery?: (compiledPrompt: string) => Promise<string>
+): Promise<ChatAgentResponse> {
+  let personalityContext = "Você é o Sr. Chicken, um assistente virtual e chatbot inteligente para o 'AI UGC Reaction Studio'. Responda em português.";
+  if (avatarPersonality) {
+    // Exclui campos específicos de roteirização que confundem o chatbot (como as instruções detalhadas de react)
+    const cleanPersonality = { ...avatarPersonality };
+    delete cleanPersonality.instructions;
+    delete cleanPersonality.target_audience;
+    personalityContext += `\n\nInstrução especial: O usuário selecionou um Avatar com a seguinte personalidade. Tente adaptar sutilmente seu tom de voz e estilo para sintonizar com ela, mantendo seu papel de assistente Sr. Chicken:\n${JSON.stringify(cleanPersonality, null, 2)}`;
+  }
+
+  const systemInstruction = `
+${personalityContext}
+
+Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
+1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
+2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo ou iniciar um projeto/react), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
+
+A estrutura de "action" (se aplicável) deve ser:
+{
+  "flow": "image" | "video" | "project" | "refine",
+  "optimizedPrompt": "O prompt otimizado em inglês (se flow for image/video) ou instruções detalhadas em português (se project/refine).",
+  "explanation": "Breve justificativa do plano de ação em português.",
+  "targetJobId": "ID do job alvo se for refine, 'latest' se pedir o último, ou null",
+  "strategy": "Estratégia criativa se for project/refine, senão omita",
+  "scriptOutline": "Esboço curto de roteiro se for project, senão null",
+  "creativeSteps": ["Passo 1", "Passo 2"]
+}
+
+MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`json). Retorne apenas o JSON bruto validável e nada mais.
+`;
+
+  let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n[HISTÓRICO DA CONVERSA]:\n`;
+  for (const m of messages) {
+    const roleName = m.role === 'user' ? 'USUÁRIO' : 'MR CHICKEN (VOCÊ)';
+    compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
+  }
+  compiledPrompt += `[INSTRUÇÃO FINAL]: Responda agora exclusivamente com o objeto JSON válido, baseado na última mensagem do histórico. Não escreva nenhum texto fora do JSON.`;
+
+  try {
+    let responseText = "{}";
+    if (executeWebQuery) {
+      responseText = await executeWebQuery(compiledPrompt);
+    } else {
+      throw new Error("O callback de Automação Web (Playwright) é obrigatório nesta arquitetura.");
+    }
+
+    const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
+      message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
+      action: null
+    });
+    return parsed;
+  } catch (err) {
+    console.error("Falha na interação com o chat via Playwright:", err);
+    return {
+      message: "Ops, ocorreu uma falha na minha conexão com o navegador web. Tente novamente.",
+      action: null
+    };
+  }
+}
 

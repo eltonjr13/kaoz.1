@@ -195,14 +195,57 @@ export class FlowLLMAutomation {
   }
 
   /**
+   * Força a execução de um query (como no chat) via Web Automation (Playwright), ignorando a API.
+   */
+  async queryWebLLM(model: LLMModel, prompt: string, referenceImagePath?: string): Promise<string> {
+    logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);
+
+    if (this.shouldSkipWebAutomation(model)) {
+      logger.warn(`[Agente MrChicken] Automacao web do ${model} esta restrita. Certifique-se de que FLOW_ALLOW_PROTECTED_LLM_WEB=true.`);
+    }
+
+    try {
+      const page = await this.session.getAutomationPage();
+      
+      switch (model) {
+        case 'gemini':
+          return await this.automateGemini(page, prompt, referenceImagePath);
+        case 'chatgpt':
+          return await this.automateChatGPT(page, prompt, referenceImagePath);
+        case 'deepseek':
+          return await this.automateDeepSeek(page, prompt, referenceImagePath);
+        case 'claude':
+          return await this.automateClaude(page, prompt, referenceImagePath);
+        default:
+          throw new Error(`Modelo ${model} não suportado.`);
+      }
+    } catch (err) {
+      logger.error(`[Agente MrChicken] Falha ao consultar ${model} via Playwright.`, err);
+      throw err;
+    }
+  }
+
+
+  /**
    * Gemini Web Automation
    */
-  private async automateGemini(page: Page, prompt: string): Promise<string> {
+  private async automateGemini(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://gemini.google.com';
     logger.info(`[Agente MrChicken] Navegando para Gemini: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'gemini');
+
+    if (referenceImagePath) {
+      logger.info(`[Agente MrChicken] Enviando imagem de referência no Gemini: ${referenceImagePath}`);
+      try {
+        const fileInput = page.locator('input[type="file"]').first();
+        await fileInput.setInputFiles(referenceImagePath);
+        await page.waitForTimeout(3000);
+      } catch (err) {
+        logger.error('Erro ao fazer upload de imagem no Gemini:', err);
+      }
+    }
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -249,6 +292,9 @@ export class FlowLLMAutomation {
     logger.info('[Agente MrChicken] Aguardando resposta do Gemini...');
     await page.waitForTimeout(6000);
 
+    let lastText = '';
+    let stableCount = 0;
+
     // Get the assistant response bubbles (Gemini usually uses class message-content or similar)
     const bubbles = page.locator('.message-content, .response-container, div[role="log"] div.assistant');
     await pollCondition(
@@ -256,11 +302,40 @@ export class FlowLLMAutomation {
       async () => {
         const count = await bubbles.count();
         if (count === 0) return false;
-        const lastText = await bubbles.last().innerText();
-        return lastText.trim().length > 15 && !lastText.includes('Digitando');
+
+        const currentText = (await bubbles.last().innerText()).trim();
+
+        // Se o texto for muito curto, ainda não começou a responder ou está vazio
+        if (currentText.length < 15) {
+          return false;
+        }
+
+        // Se ainda estiver com indicador de digitação
+        if (currentText.includes('Digitando') || currentText.includes('Typing')) {
+          return false;
+        }
+
+        // Verifica se há um botão de "Parar" / "Stop" ativo (indicativo de geração em andamento)
+        const stopBtn = page.locator('button[aria-label*="Stop"], button[aria-label*="Parar"], button[aria-label*="Cancel"], button[aria-label*="Interromper"]');
+        const isStopBtnVisible = await stopBtn.first().isVisible().catch(() => false);
+        if (isStopBtnVisible) {
+          stableCount = 0;
+          return false;
+        }
+
+        // Se o texto estabilizou entre iterações
+        if (currentText === lastText) {
+          stableCount++;
+        } else {
+          stableCount = 0;
+          lastText = currentText;
+        }
+
+        // Considera finalizado se o texto estiver estável por 2 iterações consecutivas (~3s)
+        return stableCount >= 2;
       },
       'Timeout aguardando resposta do Gemini.',
-      30000,
+      45000,
       1500
     );
 
@@ -271,12 +346,23 @@ export class FlowLLMAutomation {
   /**
    * ChatGPT Web Automation
    */
-  private async automateChatGPT(page: Page, prompt: string): Promise<string> {
+  private async automateChatGPT(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://chatgpt.com';
     logger.info(`[Agente MrChicken] Navegando para ChatGPT: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'chatgpt');
+
+    if (referenceImagePath) {
+      logger.info(`[Agente MrChicken] Enviando imagem de referência no ChatGPT: ${referenceImagePath}`);
+      try {
+        const fileInput = page.locator('input[type="file"]').first();
+        await fileInput.setInputFiles(referenceImagePath);
+        await page.waitForTimeout(3000);
+      } catch (err) {
+        logger.error('Erro ao fazer upload de imagem no ChatGPT:', err);
+      }
+    }
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -345,12 +431,23 @@ export class FlowLLMAutomation {
   /**
    * DeepSeek Web Automation
    */
-  private async automateDeepSeek(page: Page, prompt: string): Promise<string> {
+  private async automateDeepSeek(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://chat.deepseek.com';
     logger.info(`[Agente MrChicken] Navegando para DeepSeek: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'deepseek');
+
+    if (referenceImagePath) {
+      logger.info(`[Agente MrChicken] Enviando imagem de referência no DeepSeek: ${referenceImagePath}`);
+      try {
+        const fileInput = page.locator('input[type="file"]').first();
+        await fileInput.setInputFiles(referenceImagePath);
+        await page.waitForTimeout(3000);
+      } catch (err) {
+        logger.error('Erro ao fazer upload de imagem no DeepSeek:', err);
+      }
+    }
 
     // Verify if logged in
     const currentUrl = page.url();
@@ -419,12 +516,23 @@ export class FlowLLMAutomation {
   /**
    * Claude Web Automation
    */
-  private async automateClaude(page: Page, prompt: string): Promise<string> {
+  private async automateClaude(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://claude.ai';
     logger.info(`[Agente MrChicken] Navegando para Claude: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'claude');
+
+    if (referenceImagePath) {
+      logger.info(`[Agente MrChicken] Enviando imagem de referência no Claude: ${referenceImagePath}`);
+      try {
+        const fileInput = page.locator('input[type="file"]').first();
+        await fileInput.setInputFiles(referenceImagePath);
+        await page.waitForTimeout(3000);
+      } catch (err) {
+        logger.error('Erro ao fazer upload de imagem no Claude:', err);
+      }
+    }
 
     // Verify if logged in
     const currentUrl = page.url();
