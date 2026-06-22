@@ -5,20 +5,27 @@ import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectU
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
 export class FlowImageGenerator {
+  private lastUploadedReferenceImage: string | null = null;
+  private lastProjectUrl: string | null = null;
+
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
    * Uploads a reference image to the workspace.
    */
-  private async uploadReferenceImage(page: Page, referenceImage: string): Promise<void> {
-    logger.info(`Upload de imagem de referência solicitado: ${referenceImage}`);
+  private async uploadReferenceImage(page: Page, referenceImage: string, skipUpload = false): Promise<void> {
+    logger.info(`Upload de imagem de referência solicitado: ${referenceImage} (skipUpload: ${skipUpload})`);
     const fileInput = page.locator('input[type="file"]').first();
     try {
-      await fileInput.waitFor({ state: 'attached', timeout: 15000 });
-      logger.info('Input de arquivo de referência localizado. Fazendo upload...');
-      await fileInput.setInputFiles(referenceImage);
-      logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
-      await page.waitForTimeout(5000);
+      if (!skipUpload) {
+        await fileInput.waitFor({ state: 'attached', timeout: 15000 });
+        logger.info('Input de arquivo de referência localizado. Fazendo upload...');
+        await fileInput.setInputFiles(referenceImage);
+        logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
+        await page.waitForTimeout(5000);
+      } else {
+        logger.info('Imagem já enviada anteriormente nesta sessão do projeto. Pulando upload do arquivo físico.');
+      }
 
       logger.info('Abrindo menu de mídia do prompt...');
       const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
@@ -150,6 +157,13 @@ export class FlowImageGenerator {
       const activeUrl = page.url();
       if (activeUrl.includes('/project/')) {
         saveProjectUrl(activeUrl);
+      }
+
+      const currentProjectUrl = activeUrl.includes('/project/') ? activeUrl : null;
+      if (currentProjectUrl !== this.lastProjectUrl) {
+        logger.info(`URL do workspace alterada ou nova sessão detectada: ${currentProjectUrl}. Resetando cache de upload.`);
+        this.lastUploadedReferenceImage = null;
+        this.lastProjectUrl = currentProjectUrl;
       }
 
       // 3. Switch model mode to Image (Nano Banana) or configure popover options
@@ -302,7 +316,9 @@ export class FlowImageGenerator {
 
       // 4.5. Upload reference image if provided
       if (options?.referenceImage) {
-        await this.uploadReferenceImage(page, options.referenceImage);
+        const skipUpload = (options.referenceImage === this.lastUploadedReferenceImage);
+        await this.uploadReferenceImage(page, options.referenceImage, skipUpload);
+        this.lastUploadedReferenceImage = options.referenceImage;
       }
 
       const initialImageCount = await imageCards().count();

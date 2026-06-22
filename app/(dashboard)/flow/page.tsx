@@ -6,17 +6,16 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
+  Download,
   Trash2,
   Terminal,
-  Copy,
   ArrowRight,
-  Sliders,
   Film,
   Cpu,
-  Sparkles,
   User,
   Check,
-  Bot
+  Bot,
+  MessageSquarePlus
 } from "lucide-react";
 import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
 import ReactMarkdown from "react-markdown";
@@ -81,6 +80,102 @@ export interface ChatMessageState {
   showLogs?: boolean;
 }
 
+interface ChatConversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessageState[];
+}
+
+const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
+const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
+const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
+
+const createChatId = (prefix: string) => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const sanitizeChatMessages = (messages: ChatMessageState[]) =>
+  messages.map((msg) => {
+    if (!msg.plan?.referenceImage) return msg;
+    return {
+      ...msg,
+      plan: {
+        ...msg.plan,
+        referenceImage: null
+      }
+    };
+  });
+
+const getConversationTitle = (messages: ChatMessageState[]) => {
+  const firstUserMessage = messages.find((msg) => msg.role === "user")?.content.trim();
+  if (!firstUserMessage) return "Nova conversa";
+  const firstLine = firstUserMessage.split(/\r?\n/)[0].trim();
+  return firstLine.length > 48 ? `${firstLine.slice(0, 48)}...` : firstLine;
+};
+
+const createChatConversation = (messages: ChatMessageState[] = []): ChatConversation => {
+  const now = new Date().toISOString();
+  const sanitizedMessages = sanitizeChatMessages(messages);
+  return {
+    id: createChatId("chat"),
+    title: getConversationTitle(sanitizedMessages),
+    createdAt: now,
+    updatedAt: now,
+    messages: sanitizedMessages
+  };
+};
+
+const readJsonArray = <T,>(value: string | null): T[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const formatExportDate = (value: string) => new Date(value).toLocaleString("pt-BR");
+
+const formatChatExport = (conversation: ChatConversation, messages: ChatMessageState[]) => {
+  const lines = [
+    `# ${conversation.title}`,
+    "",
+    `Exportado em: ${formatExportDate(new Date().toISOString())}`,
+    `Criado em: ${formatExportDate(conversation.createdAt)}`,
+    `Mensagens: ${messages.length}`,
+    ""
+  ];
+
+  messages.forEach((msg) => {
+    const author = msg.role === "user" ? "Usuario" : "MrChicken";
+    lines.push(`## ${author} - ${formatExportDate(msg.timestamp)}`, "", msg.content, "");
+    if (msg.plan) {
+      lines.push("### Plano", "", `Tipo: ${msg.plan.kind}`, `Modelo: ${msg.plan.model}`, `Prompt: ${msg.plan.prompt}`, "");
+    }
+    if (msg.jobId) {
+      lines.push("### Job", "", `ID: ${msg.jobId}`, `Status: ${msg.jobStatus || "pendente"}`, "");
+    }
+  });
+
+  return lines.join("\n");
+};
+
+const downloadTextFile = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
 const getResultFilename = (filePath: string) => {
   if (!filePath) return "";
   const cleanPath = filePath.split("?")[0];
@@ -113,6 +208,8 @@ const extractImagePathsFromJob = (value?: string | null) => {
 
 export default function FlowDashboardPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
+  const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState("");
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   
@@ -140,32 +237,56 @@ export default function FlowDashboardPage() {
       if (list.length > 0) setSelectedAvatarId(list[0].id);
     });
 
-    const saved = localStorage.getItem("mrchicken:flow:chat_history");
-    if (saved) {
-      try { setChatMessages(JSON.parse(saved)); } catch (e) {}
-    }
+    const savedConversations = readJsonArray<ChatConversation>(localStorage.getItem(CHAT_CONVERSATIONS_KEY));
+    const legacyMessages = readJsonArray<ChatMessageState>(localStorage.getItem(CHAT_HISTORY_KEY));
+    const initialConversations = savedConversations.length > 0
+      ? savedConversations
+      : [createChatConversation(legacyMessages)];
+    const savedActiveId = localStorage.getItem(ACTIVE_CHAT_KEY);
+    const activeConversation = initialConversations.find((conversation) => conversation.id === savedActiveId) || initialConversations[0];
+
+    queueMicrotask(() => {
+      setChatConversations(initialConversations);
+      setActiveConversationId(activeConversation.id);
+      setChatMessages(activeConversation.messages);
+    });
   }, []);
 
   useEffect(() => {
+    if (!activeConversationId) return;
     try {
-      const sanitizedMessages = chatMessages.map((msg) => {
-        if (msg.plan && msg.plan.referenceImage) {
-          return {
-            ...msg,
-            plan: {
-              ...msg.plan,
-              referenceImage: null
-            }
-          };
-        }
-        return msg;
+      const sanitizedMessages = sanitizeChatMessages(chatMessages);
+      const updatedAt = new Date().toISOString();
+      queueMicrotask(() => {
+        setChatConversations((previous) =>
+          previous.map((conversation) =>
+            conversation.id === activeConversationId
+              ? {
+                  ...conversation,
+                  title: getConversationTitle(sanitizedMessages),
+                  updatedAt,
+                  messages: sanitizedMessages
+                }
+              : conversation
+          )
+        );
       });
-      localStorage.setItem("mrchicken:flow:chat_history", JSON.stringify(sanitizedMessages));
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(sanitizedMessages));
     } catch (e) {
       console.warn("Falha ao salvar o histórico de chat no LocalStorage:", e);
     }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  }, [chatMessages, activeConversationId]);
+
+  useEffect(() => {
+    if (chatConversations.length === 0) return;
+    localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(chatConversations));
+  }, [chatConversations]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    localStorage.setItem(ACTIVE_CHAT_KEY, activeConversationId);
+  }, [activeConversationId]);
 
   useEffect(() => {
     const mainEl = document.querySelector('main');
@@ -431,9 +552,41 @@ export default function FlowDashboardPage() {
     }
   };
 
+  const activeConversation = chatConversations.find((conversation) => conversation.id === activeConversationId) || null;
+
+  const handleSelectConversation = (conversationId: string) => {
+    const conversation = chatConversations.find((item) => item.id === conversationId);
+    if (!conversation) return;
+    setActiveConversationId(conversation.id);
+    setChatMessages(conversation.messages);
+  };
+
+  const handleCreateConversation = () => {
+    const conversation = createChatConversation();
+    setChatConversations((previous) => [conversation, ...previous]);
+    setActiveConversationId(conversation.id);
+    setChatMessages([]);
+  };
+
+  const handleExportConversation = () => {
+    if (!activeConversation) return;
+    const messages = sanitizeChatMessages(chatMessages);
+    const exportConversation = {
+      ...activeConversation,
+      title: getConversationTitle(messages)
+    };
+    const slug = exportConversation.title
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 48) || "chat";
+    downloadTextFile(formatChatExport(exportConversation, messages), `mrchicken-${slug}.md`);
+  };
+
   const clearChat = () => {
     setChatMessages([]);
-    localStorage.removeItem("mrchicken:flow:chat_history");
   };
 
   return (
@@ -461,7 +614,7 @@ export default function FlowDashboardPage() {
       />
 
       {/* ── Header ── */}
-      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-white/5 backdrop-blur-md bg-black/20">
+      <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-white/5 backdrop-blur-md bg-black/20">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-[#9D7CFF]/20 flex items-center justify-center border border-[#9D7CFF]/30">
             <Bot size={18} className="text-[#9D7CFF]" />
@@ -471,7 +624,23 @@ export default function FlowDashboardPage() {
             <p className="text-[10px] text-white/50">Assistente Autônomo AI UGC</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {chatConversations.length > 0 && (
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1">
+              <select
+                className="w-[170px] max-w-[42vw] bg-transparent text-xs text-white/80 outline-none cursor-pointer"
+                value={activeConversationId}
+                onChange={(e) => handleSelectConversation(e.target.value)}
+                title="Selecionar conversa"
+              >
+                {chatConversations.map((conversation) => (
+                  <option key={conversation.id} value={conversation.id} className="bg-[#080808] text-white">
+                    {conversation.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {avatars.length > 0 && (
              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1">
                <User size={12} className="text-white/60"/>
@@ -486,7 +655,18 @@ export default function FlowDashboardPage() {
                </select>
              </div>
           )}
-          <button onClick={clearChat} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Limpar chat">
+          <button onClick={handleCreateConversation} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Nova conversa">
+            <MessageSquarePlus size={14} />
+          </button>
+          <button
+            onClick={handleExportConversation}
+            disabled={chatMessages.length === 0}
+            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
+            title="Exportar conversa"
+          >
+            <Download size={14} />
+          </button>
+          <button onClick={clearChat} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Limpar conversa">
             <Trash2 size={14} />
           </button>
         </div>
