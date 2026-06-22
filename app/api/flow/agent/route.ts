@@ -11,6 +11,7 @@ type GenerationQuantity = 1 | 2 | 3 | 4 | "1x" | "x2" | "x3" | "x4";
 type ImagePackageMode = "turnaround3d";
 type TurnaroundView = "front" | "left" | "right" | "back" | "top" | "bottom";
 const TURNAROUND_VIEWS = new Set<TurnaroundView>(["front", "left", "right", "back", "top", "bottom"]);
+const DEFAULT_3D_REFERENCE_PROMPT = "Generate a multi-image 3D character reference package from the attached image.";
 
 function parseQuantity(value: unknown): GenerationQuantity | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -130,6 +131,8 @@ export async function POST(request: Request) {
     const turnaroundViews = parseTurnaroundViews(body?.turnaroundViews);
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
+    const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
+    const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
 
     if (!model) {
       return NextResponse.json({ error: "Parametro 'model' e obrigatorio." }, { status: 400 });
@@ -171,14 +174,14 @@ export async function POST(request: Request) {
     }
 
     if (action === "create-project") {
-      if (!prompt || !avatarId) {
+      if (!taskPrompt || !avatarId) {
         return NextResponse.json(
-          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para criar um projeto." },
+          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para criar um projeto, exceto no modo 3D com imagem de referencia." },
           { status: 400 }
         );
       }
 
-      console.log(`[API AGENT] Iniciando criacao autonoma para: "${prompt}" com o avatar: ${avatarId}...`);
+      console.log(`[API AGENT] Iniciando criacao autonoma para: "${taskPrompt}" com o avatar: ${avatarId}...`);
 
       const requestUrl = new URL(request.url);
       const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
@@ -191,7 +194,7 @@ export async function POST(request: Request) {
 
       const localJob = await createLocalJob({
         avatarId,
-        topic: prompt,
+        topic: taskPrompt,
         renderLayout: "balanced_split",
         expertBackgroundMode: "original"
       });
@@ -207,7 +210,7 @@ export async function POST(request: Request) {
       }
 
       void flowProvider.runAgentTask({
-        topic: prompt,
+        topic: taskPrompt,
         avatarId,
         model: model as "deepseek" | "claude" | "chatgpt" | "gemini",
         imageModel,

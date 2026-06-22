@@ -45,6 +45,7 @@ type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
 
 const BASE_TURNAROUND_VIEWS: TurnaroundView[] = ['front', 'left', 'right', 'back'];
 const TOP_BOTTOM_VIEWS: TurnaroundView[] = ['top', 'bottom'];
+const DEFAULT_3D_REFERENCE_PROMPT = "Generate a multi-image 3D character reference package from the attached image.";
 
 interface PendingPlan {
   kind: AgentType;
@@ -651,17 +652,19 @@ export default function FlowDashboardPage() {
 
   // Main Autopilot Execution
   const handleExecuteAutopilot = async (overridePrompt?: string, overrideReferenceImage?: string | null) => {
-    const promptToUse = overridePrompt !== undefined ? overridePrompt : agentPrompt;
+    const rawPrompt = overridePrompt !== undefined ? overridePrompt : agentPrompt;
     const referenceImageToUse = overrideReferenceImage !== undefined
       ? overrideReferenceImage
       : (agentType === "image" ? imageReference : videoReference);
+    const canUseReferenceOnly3d = agentType === "image" && image3dMode && Boolean(referenceImageToUse);
+    const promptToUse = rawPrompt.trim() || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : rawPrompt);
     if (pendingPlan) {
       appendLog("Existe um plano pendente. Aplique ou cancele antes de planejar novamente.");
       return;
     }
 
     if (!promptToUse.trim()) {
-      appendLog("Aviso: Digite uma ideia para começar.");
+      appendLog(image3dMode ? "Aviso: Anexe uma imagem para gerar o pacote 3D." : "Aviso: Digite uma ideia para começar.");
       return;
     }
 
@@ -791,17 +794,19 @@ export default function FlowDashboardPage() {
       plannedFlow = "image";
       finalPrompt = [
         finalPrompt,
-        "Create a product image package for 3D modeling: first a primary product image, then consistent orthographic views of the exact same product."
+        "Create angle versions from the attached image for 3D character generation: each generated image must preserve the same character, camera distance, crop, clothes, face, style, lighting, and background, changing only the viewing angle."
       ].join(" ");
-      planExplanation = "Pacote 3D: o agente vai gerar uma imagem principal e depois vistas consistentes do mesmo produto.";
-      planStrategy = "Gerar imagem principal e reutiliza-la como referencia para vistas ortograficas do produto.";
+      planExplanation = "Pacote 3D: o agente vai pegar a imagem anexada e gerar a mesma imagem em outros angulos, sem recriar o personagem.";
+      planStrategy = "Usar a imagem anexada como fonte exata e gerar uma chamada separada por angulo, mantendo distancia da camera, enquadramento, roupa, rosto, estilo e fundo.";
       planCreativeSteps = [
-        "Gerar imagem principal do produto",
-        "Usar a imagem principal como referencia",
-        "Gerar frente, lateral esquerda, lateral direita e traseira",
-        ...(turnaroundPackage.turnaroundViews.includes("top") ? ["Gerar topo e base"] : [])
+        "Usar a imagem anexada como fonte exata",
+        "Gerar a mesma imagem em angulo frontal",
+        "Gerar a mesma imagem em lateral esquerda",
+        "Gerar a mesma imagem em lateral direita",
+        "Gerar a mesma imagem de costas",
+        ...(turnaroundPackage.turnaroundViews.includes("top") ? ["Gerar uma imagem de topo e uma imagem de base"] : [])
       ];
-      planVisualReferenceInstructions = "Manter exatamente o mesmo produto, materiais, cores, proporcoes e silhueta entre todos os angulos.";
+      planVisualReferenceInstructions = "Nao alterar caracteristicas: manter personagem, rosto, roupa, proporcoes, distancia da camera, crop, luz e fundo; mudar apenas o angulo.";
       setAgentResult(finalPrompt);
     }
 
@@ -1321,7 +1326,7 @@ export default function FlowDashboardPage() {
                   <div>Quantidade: <span style={{ color: "#E8E8EF" }}>{pendingPlan.quantity}</span></div>
                 )}
                 {pendingPlan.imagePackageMode === "turnaround3d" && (
-                  <div>Pacote: <span style={{ color: "#E8E8EF" }}>Turnaround 3D</span></div>
+                  <div>Pacote: <span style={{ color: "#E8E8EF" }}>Turnaround 3D, 1 imagem por angulo</span></div>
                 )}
                 {pendingPlan.turnaroundViews && pendingPlan.turnaroundViews.length > 0 && (
                   <div>Vistas: <span style={{ color: "#E8E8EF" }}>{pendingPlan.turnaroundViews.join(", ")}</span></div>
@@ -1425,7 +1430,7 @@ export default function FlowDashboardPage() {
         <div className="relative w-full max-w-[900px] pointer-events-auto overflow-visible" ref={popoverRef}>
           <ClaudeChatInput
             disabled={isLoading}
-            placeholder="O que você quer criar hoje?"
+            placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D" : "O que você quer criar hoje?"}
             models={[
               { id: "gemini", name: "Gemini", description: "Google Gemini Model" },
               { id: "chatgpt", name: "ChatGPT", description: "OpenAI ChatGPT Model" },
