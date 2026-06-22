@@ -4,7 +4,6 @@ import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, ty
 import { logger } from "./FlowUtils";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
 import { getFfmpegPath, runCommand } from "@/lib/videos/render";
-import type { Agent, AgentExecutionContext, AgentResult, AgentTask } from "@/src/core/agents/Agent";
 import path from "node:path";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
@@ -42,68 +41,7 @@ export interface AgentTaskOptions {
   turnaroundViews?: TurnaroundView[];
 }
 
-function isAgentTaskOptions(value: unknown): value is AgentTaskOptions {
-  if (!value || typeof value !== "object") return false;
-
-  const input = value as Partial<AgentTaskOptions>;
-  return (
-    typeof input.topic === "string" &&
-    typeof input.avatarId === "string" &&
-    typeof input.model === "string" &&
-    typeof input.jobId === "string"
-  );
-}
-
-export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; videoPath?: string; imagePaths?: string[] }> {
-  readonly name = "flow";
-  readonly description = "Legacy Google Flow agent adapter for image, video, project, and refinement workflows.";
-
-  canHandle(task: AgentTask<AgentTaskOptions>): boolean {
-    return task.type.startsWith("flow.") && isAgentTaskOptions(task.input);
-  }
-
-  async execute(
-    task: AgentTask<AgentTaskOptions>,
-    context: AgentExecutionContext
-  ): Promise<AgentResult<{ jobId: string; videoPath?: string; imagePaths?: string[] }>> {
-    if (!this.canHandle(task)) {
-      return {
-        success: false,
-        error: `FlowAgent cannot handle task type "${task.type}".`
-      };
-    }
-
-    context.sharedContext.set("activeAgent", this.name);
-    context.sharedContext.set("activeJobId", task.input.jobId);
-    await context.events.publish({
-      jobId: task.input.jobId,
-      type: "AgentStarted",
-      message: "FlowAgent recebeu a tarefa via orquestrador multiagente.",
-      metadata: { taskId: task.id, taskType: task.type }
-    });
-
-    const result = await this.runAutonomousAgent(task.input);
-
-    await context.events.publish({
-      jobId: task.input.jobId,
-      type: result.success ? "AgentFinished" : "TaskFailed",
-      message: result.success
-        ? "FlowAgent concluiu a tarefa via orquestrador multiagente."
-        : `FlowAgent falhou: ${result.error || "erro desconhecido"}`,
-      metadata: { taskId: task.id, taskType: task.type }
-    });
-
-    return {
-      success: result.success,
-      output: {
-        jobId: result.jobId,
-        videoPath: result.videoPath,
-        imagePaths: result.imagePaths
-      },
-      error: result.error
-    };
-  }
-
+export class FlowAgent {
   private async logAgentEvent(
     jobId: string,
     eventType: string,
@@ -116,18 +54,15 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
 
   private async logCreativePlan(jobId: string, decision: FlowDecision) {
     if (decision.strategy) {
-      const summary = decision.strategy.length > 180 ? `${decision.strategy.slice(0, 180)}...` : decision.strategy;
-      await this.logAgentEvent(jobId, "planning", `Estrategia criativa: ${summary}`);
+      await this.logAgentEvent(jobId, "planning", `Estrategia criativa: ${decision.strategy}`);
     }
 
     if (decision.visualReferenceInstructions) {
-      const summary = decision.visualReferenceInstructions.length > 180 ? `${decision.visualReferenceInstructions.slice(0, 180)}...` : decision.visualReferenceInstructions;
-      await this.logAgentEvent(jobId, "planning", `Referencia visual: ${summary}`);
+      await this.logAgentEvent(jobId, "planning", `Referencia visual: ${decision.visualReferenceInstructions}`);
     }
 
     if (decision.scriptOutline) {
-      const summary = decision.scriptOutline.length > 180 ? `${decision.scriptOutline.slice(0, 180)}...` : decision.scriptOutline;
-      await this.logAgentEvent(jobId, "planning", `Estrutura/roteiro: ${summary}`);
+      await this.logAgentEvent(jobId, "planning", `Estrutura/roteiro: ${decision.scriptOutline}`);
     }
 
     if (decision.creativeSteps && decision.creativeSteps.length > 0) {
@@ -242,8 +177,7 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
     
     try {
       const videoPrompt = await flowProvider.optimizePrompt(model, llmPrompt, 'video');
-      const promptSummary = videoPrompt.length > 120 ? `${videoPrompt.slice(0, 120)}...` : videoPrompt;
-      await this.logAgentEvent(jobId, "researching", `Conceito visual otimizado pela IA: "${promptSummary}"`);
+      await this.logAgentEvent(jobId, "researching", `Conceito visual otimizado pela IA: "${videoPrompt}"`);
       return videoPrompt;
     } catch (err) {
       logger.warn(`[FlowAgent] Otimização de prompt falhou. Usando fallback.`, err);
@@ -694,7 +628,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
 
         const optimized = finalPrompt;
         
-        const imageResult = await flowProvider.generateImage(finalPrompt, {
+        await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt: "${optimized}"`);
+        
+        const imageResult = await flowProvider.generateImage(optimized, {
           aspectRatio: options.aspectRatio || '1:1',
           quantity: options.imageQuantity || 'x2',
           model: options.imageModel || 'Nano Banana Pro',
@@ -732,9 +668,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
           inputSummary: options.topic,
           outputSummary: `Imagem gerada com sucesso: ${uploadedPaths[0]}`,
           type: "success",
-          promptUsed: finalPrompt,
+          promptUsed: optimized,
           modelUsed: "ImageFX Nano Banana Pro",
-          learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Prompt: "${finalPrompt}"`
+          learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Prompt: "${optimized}"`
         });
 
         await this.logAgentEvent(jobId, "completed", "Geração de imagem autônoma concluída com sucesso!", {
@@ -805,7 +741,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
 
         const optimized = finalPrompt;
         
-        const videoResult = await flowProvider.generateVideo(finalPrompt, {
+        await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt: "${optimized}"`);
+        
+        const videoResult = await flowProvider.generateVideo(optimized, {
           aspectRatio: options.aspectRatio || '16:9',
           quantity: options.videoQuantity || '1x',
           model: options.videoModel || 'Veo 3.1',
@@ -830,9 +768,9 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
           inputSummary: options.topic,
           outputSummary: `Vídeo gerado com sucesso: ${uploadedPath}`,
           type: "success",
-          promptUsed: finalPrompt,
+          promptUsed: optimized,
           modelUsed: options.videoModel || 'Veo 3.1',
-          learnings: `Vídeo gerado com sucesso para o tema "${options.topic}". Prompt: "${finalPrompt}"`
+          learnings: `Vídeo gerado com sucesso para o tema "${options.topic}". Prompt: "${optimized}"`
         });
 
         await this.logAgentEvent(jobId, "completed", "Geração de vídeo autônoma concluída com sucesso!", {
@@ -1020,7 +958,7 @@ Retorne estritamente um JSON no formato:
       await this.logAgentEvent(jobId, "planning", "Plano aprovado pelo usuario. Iniciando execucao autorizada.");
     } else {
       await this.logAgentEvent(jobId, "researching_started", "Analisando intenção e classificando o fluxo ideal...");
-      decision = await this.planAutonomousAgent({ topic: options.topic, avatarId: options.avatarId });
+      decision = await this.planAutonomousAgent({ topic: options.topic });
     }
     await this.logAgentEvent(
       jobId, 
@@ -1052,23 +990,9 @@ Retorne estritamente um JSON no formato:
     }
 
     if (decision.flow === "image") {
-      // Technical validation check: Ensure image flow never passes video settings or invokes video generators
-      const imageOptions = {
-        ...executionOptions,
-        videoModel: undefined,
-        videoQuantity: undefined
-      };
-      await this.logAgentEvent(jobId, "planning", "Roteamento rígido: Desativando parâmetros de vídeo para o pipeline de Imagem.");
-      return this.executeImageFlow(imageOptions, decision.optimizedPrompt);
+      return this.executeImageFlow(executionOptions, decision.optimizedPrompt);
     } else if (decision.flow === "video") {
-      // Technical validation check: Ensure video flow never passes image settings or invokes image generators
-      const videoOptions = {
-        ...executionOptions,
-        imageModel: undefined,
-        imageQuantity: undefined
-      };
-      await this.logAgentEvent(jobId, "planning", "Roteamento rígido: Desativando parâmetros de imagem para o pipeline de Vídeo.");
-      return this.executeVideoFlow(videoOptions, decision.optimizedPrompt);
+      return this.executeVideoFlow(executionOptions, decision.optimizedPrompt);
     } else if (decision.flow === "refine") {
       return this.executeRefineFlow(executionOptions, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
     } else {
@@ -1080,30 +1004,9 @@ Retorne estritamente um JSON no formato:
     }
   }
 
-  async planAutonomousAgent(options: Pick<AgentTaskOptions, "topic" | "avatarId">): Promise<FlowDecision> {
+  async planAutonomousAgent(options: Pick<AgentTaskOptions, "topic">): Promise<FlowDecision> {
     logger.info(`[FlowAgent] Planejando intenção sem executar: "${options.topic}"`);
-    let avatarProfile = null;
-    let memoryContext = null;
-
-    if (options.avatarId) {
-      try {
-        const avatar = await this.findAvatar(options.avatarId);
-        avatarProfile = {
-          name: avatar.name,
-          personality: avatar.personality
-        };
-        const { getMemoryContextForPrompt } = await import("@/lib/agent-memory");
-        memoryContext = await getMemoryContextForPrompt(options.avatarId, options.topic);
-      } catch (err) {
-        logger.warn(`[FlowAgent] Falha ao carregar avatar/memoria para planejamento autonomo: ${options.avatarId}`, err);
-      }
-    }
-
-    return classifyIntention({
-      intention: options.topic,
-      avatarProfile,
-      memoryContext
-    });
+    return classifyIntention(options.topic);
   }
 }
 

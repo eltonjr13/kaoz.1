@@ -325,27 +325,20 @@ export class FlowImageGenerator {
       const tagName = await promptInput.evaluate(el => el.tagName.toLowerCase());
       const className = await promptInput.evaluate(el => el.className);
       logger.info(`Textbox de prompt localizado: tag=${tagName}, class=${className}`);
-
-      // Clean the prompt to remove surrounding quotes and markdown formatting
-      let cleanedPrompt = prompt.trim();
-      cleanedPrompt = cleanedPrompt.replace(/^```[a-z]*\n([\s\S]*?)\n```$/i, '$1');
-      if (cleanedPrompt.startsWith('"') && cleanedPrompt.endsWith('"')) {
-        cleanedPrompt = cleanedPrompt.slice(1, -1);
-      } else if (cleanedPrompt.startsWith("'") && cleanedPrompt.endsWith("'")) {
-        cleanedPrompt = cleanedPrompt.slice(1, -1);
+      await promptInput.focus();
+      
+      // Clear current content and type prompt
+      try {
+        logger.info('Preenchendo prompt via locator.fill...');
+        await promptInput.fill('');
+        await promptInput.fill(prompt);
+      } catch (err) {
+        logger.warn('Falha ao usar fill. Usando click e teclado virtual...', err);
+        await promptInput.click();
+        await page.keyboard.press('Control+A');
+        await page.keyboard.press('Backspace');
+        await page.keyboard.type(prompt, { delay: 10 });
       }
-      cleanedPrompt = cleanedPrompt.trim();
-
-      // Clear current content and insert/type prompt using reliable keyboard actions
-      logger.info('Preenchendo prompt via ações de teclado (foco, limpar e inserção rápida)...');
-      await promptInput.click();
-      await page.keyboard.press('Control+A');
-      await page.keyboard.press('Backspace');
-      await page.waitForTimeout(500);
-
-      // Insert text as a paste action (very fast and triggers contenteditable editor updates)
-      await page.keyboard.insertText(cleanedPrompt);
-      await page.waitForTimeout(1000);
 
       // 6. Execute generation
       logger.info('Iniciando geração.');

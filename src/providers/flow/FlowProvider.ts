@@ -5,7 +5,6 @@ import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
 import { FlowVideoGenerator } from './FlowVideoGenerator';
 import { FlowLLMAutomation } from './FlowLLMAutomation';
-import { FlowExtensionClient, getFlowBrowserDriver, isExtensionEnabled } from './FlowExtensionBridge';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 
@@ -16,7 +15,6 @@ export class FlowProvider {
   private imageGenerator: FlowImageGenerator;
   private videoGenerator: FlowVideoGenerator;
   private llmAutomation: FlowLLMAutomation;
-  private extensionClient: FlowExtensionClient;
   
   private activeTasksCount = 0;
 
@@ -28,8 +26,6 @@ export class FlowProvider {
       downloadPath: process.env.FLOW_DOWNLOAD_PATH || 'storage/generated/',
       profilePath: process.env.FLOW_PROFILE_PATH || 'storage/browser-profile/',
       browserChannel: process.env.FLOW_BROWSER_CHANNEL || undefined,
-      browserDriver: getFlowBrowserDriver() === 'extension' ? 'extension' : 'playwright',
-      extensionTaskTimeout: process.env.FLOW_EXTENSION_TASK_TIMEOUT ? parseInt(process.env.FLOW_EXTENSION_TASK_TIMEOUT, 10) : 300000,
       flowUrl: process.env.FLOW_URL || 'https://flow.google',
       imageUrl: process.env.FLOW_IMAGE_URL || 'https://flow.google',
       videoUrl: process.env.FLOW_VIDEO_URL || 'https://flow.google',
@@ -42,17 +38,12 @@ export class FlowProvider {
     this.imageGenerator = new FlowImageGenerator(this.downloader, this.config);
     this.videoGenerator = new FlowVideoGenerator(this.downloader, this.config);
     this.llmAutomation = new FlowLLMAutomation(this.session, this.config);
-    this.extensionClient = new FlowExtensionClient(this.config);
   }
 
   /**
    * Forces initialization of the browser session and triggers manual login fallback if needed.
    */
   async initialize(): Promise<FlowStatus> {
-    if (isExtensionEnabled(this.config)) {
-      return this.extensionClient.initialize();
-    }
-
     this.activeTasksCount++;
     try {
       const page = await this.session.getPage();
@@ -74,15 +65,6 @@ export class FlowProvider {
    * @param prompt Textual prompt describing the image.
    */
   async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
-    if (isExtensionEnabled(this.config)) {
-      this.activeTasksCount++;
-      try {
-        return await this.extensionClient.generateImage(prompt, options);
-      } finally {
-        this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
-      }
-    }
-
     this.activeTasksCount++;
     try {
       const page = await this.session.getPage();
@@ -98,15 +80,6 @@ export class FlowProvider {
    * @param prompt Textual prompt describing the video.
    */
   async generateVideo(prompt: string, options?: VideoGenerationOptions): Promise<VideoGenerationResult> {
-    if (isExtensionEnabled(this.config)) {
-      this.activeTasksCount++;
-      try {
-        return await this.extensionClient.generateVideo(prompt, options);
-      } finally {
-        this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
-      }
-    }
-
     this.activeTasksCount++;
     try {
       const page = await this.session.getPage();
@@ -120,17 +93,6 @@ export class FlowProvider {
    * Obtains the status of the current Flow session.
    */
   async getStatus(): Promise<FlowStatus> {
-    if (isExtensionEnabled(this.config)) {
-      const status = await this.extensionClient.getStatus();
-      return {
-        initialized: status.initialized,
-        authenticated: status.authenticated,
-        activeTasks: this.activeTasksCount + status.activeTasks,
-        profilePath: status.profilePath,
-        extension: status
-      };
-    }
-
     const sessionStatus = await this.session.getStatus();
     return {
       initialized: sessionStatus.initialized,
@@ -161,15 +123,6 @@ export class FlowProvider {
     prompt: string,
     type: 'image' | 'video'
   ): Promise<string> {
-    if (isExtensionEnabled(this.config)) {
-      this.activeTasksCount++;
-      try {
-        return await this.extensionClient.optimizePrompt(model, prompt, type);
-      } finally {
-        this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
-      }
-    }
-
     this.activeTasksCount++;
     try {
       return await this.llmAutomation.optimizePrompt(model, prompt, type);
@@ -211,10 +164,6 @@ export class FlowProvider {
    * Opens a visible, headful browser session for manual login to the specified portal.
    */
   async openLoginSession(portal: FlowPortal): Promise<PortalLoginResult> {
-    if (isExtensionEnabled(this.config)) {
-      return await this.extensionClient.openLoginSession(portal);
-    }
-
     return await this.session.openLoginSession(portal);
   }
 
@@ -222,10 +171,6 @@ export class FlowProvider {
    * Checks the login status of all portals in background.
    */
   async checkPortalsStatus(): Promise<Record<string, boolean>> {
-    if (isExtensionEnabled(this.config)) {
-      return await this.extensionClient.checkPortalsStatus();
-    }
-
     return await this.session.checkAllPortalsStatus();
   }
 
@@ -298,8 +243,5 @@ if (process.env.NODE_ENV !== 'production') {
   }
   if ((flowProvider as any).llmAutomation) {
     Object.setPrototypeOf((flowProvider as any).llmAutomation, FlowLLMAutomation.prototype);
-  }
-  if ((flowProvider as any).extensionClient) {
-    Object.setPrototypeOf((flowProvider as any).extensionClient, FlowExtensionClient.prototype);
   }
 }

@@ -4,8 +4,6 @@ export interface FlowConfig {
   downloadPath: string;
   profilePath: string;
   browserChannel?: string;
-  browserDriver: 'playwright' | 'extension';
-  extensionTaskTimeout: number;
   flowUrl: string;
   imageUrl?: string;
   videoUrl?: string;
@@ -39,7 +37,6 @@ export interface FlowStatus {
   authenticated: boolean;
   activeTasks: number;
   profilePath: string;
-  extension?: unknown;
 }
 
 export type FlowPortal = 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek';
