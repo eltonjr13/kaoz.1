@@ -10,7 +10,19 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
 
 type GenerationQuantity = 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+type ImagePackageMode = 'turnaround3d';
+type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
 const VIDEO_REFERENCE_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
+const BASE_TURNAROUND_VIEWS: TurnaroundView[] = ['front', 'left', 'right', 'back'];
+const TOP_BOTTOM_VIEWS: TurnaroundView[] = ['top', 'bottom'];
+const TURNAROUND_VIEW_LABELS: Record<TurnaroundView, string> = {
+  front: 'front view',
+  left: 'left side view',
+  right: 'right side view',
+  back: 'back view',
+  top: 'top view',
+  bottom: 'bottom view'
+};
 
 export interface AgentTaskOptions {
   topic: string;
@@ -25,6 +37,9 @@ export interface AgentTaskOptions {
   baseUrl?: string;
   approvedPlan?: FlowDecision;
   avatarReferenceImage?: string;
+  inputReferenceImage?: string;
+  imagePackageMode?: ImagePackageMode;
+  turnaroundViews?: TurnaroundView[];
 }
 
 function isAgentTaskOptions(value: unknown): value is AgentTaskOptions {
@@ -475,11 +490,189 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
     return avatarJobs.length > 0 ? avatarJobs[0] : null;
   }
 
+  private getTurnaroundViews(options: AgentTaskOptions): TurnaroundView[] {
+    const requested = options.turnaroundViews || [];
+    const includesTopBottom = requested.some(view => TOP_BOTTOM_VIEWS.includes(view));
+    return includesTopBottom ? [...BASE_TURNAROUND_VIEWS, ...TOP_BOTTOM_VIEWS] : BASE_TURNAROUND_VIEWS;
+  }
+
+  private buildPrimaryTurnaroundPrompt(prompt: string): string {
+    return [
+      "Create the primary character image for a 3D character modeling workflow.",
+      "Show one final character design clearly, centered, complete, and unobstructed.",
+      "Use a clean neutral studio background, sharp edges, consistent materials, and enough detail for later multi-image character reference.",
+      `Character brief: ${prompt}`
+    ].join(" ");
+  }
+
+  private buildSingleTurnaroundPrompt(prompt: string, view: TurnaroundView): string {
+    return [
+      "Image-to-image character turnaround task.",
+      "Use the attached reference image as the source of truth.",
+      "Do not invent, redesign, restyle, beautify, age, simplify, cartoonize, or change the character.",
+      `Generate exactly one standalone image showing that same exact character in ${TURNAROUND_VIEW_LABELS[view]}.`,
+      "Only rotate the camera/character angle around the vertical axis. Keep everything else as close to the reference image as possible.",
+      "Keep the same identity, face structure, hair, skin tone, body shape, clothing, shoes, colors, materials, wrinkles, accessories, and silhouette.",
+      "Keep the same camera distance, lens feeling, subject scale, crop/framing, pose energy, lighting direction, shadow softness, and background style from the reference.",
+      "If the reference is waist-up, generate waist-up with the same crop. If the reference is full-body, generate full-body with the same subject size.",
+      "Do not create a contact sheet, grid, collage, split-screen, thumbnails, labels, captions, or multiple angles inside one image.",
+      "Output one character only, one angle only, centered, with no extra props and no new environment.",
+      `Minimal instruction context: ${prompt}`
+    ].join(" ");
+  }
+
+  private getImageResultPaths(imageResult: { path?: string; paths?: string[] }): string[] {
+    return imageResult.paths && imageResult.paths.length > 0
+      ? imageResult.paths
+      : (imageResult.path ? [imageResult.path] : []);
+  }
+
+  private async uploadImagePaths(jobId: string, paths: string[]): Promise<string[]> {
+    const uploadedPaths: string[] = [];
+    for (const localPath of paths) {
+      const uploaded = await this.uploadMediaFile(jobId, localPath, "image/png");
+      uploadedPaths.push(uploaded);
+    }
+    return uploadedPaths;
+  }
+
+  // eslint-disable-next-line complexity
+  private async executeTurnaroundImageFlow(
+    options: AgentTaskOptions,
+    initialPrompt: string
+  ): Promise<{ success: boolean; jobId: string; imagePaths: string[] }> {
+    const { jobId, avatarId } = options;
+    const views = this.getTurnaroundViews(options);
+
+    await this.logAgentEvent(jobId, "researching", "Preparando pacote 3D: uma imagem separada por angulo do personagem.");
+
+    const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
+    const promptWithMemory = memoryContext
+      ? `${initialPrompt}\n\n(Ajuste com base em execucoes anteriores: ${memoryContext})`
+      : initialPrompt;
+
+    let referencePath = options.inputReferenceImage || options.avatarReferenceImage || "";
+    let promptUsed = promptWithMemory;
+    const uploadedPaths: string[] = [];
+    const imageRecords: Array<{ role: string; path: string }> = [];
+
+    if (!referencePath) {
+      const optimizedPrimary = await flowProvider.optimizePrompt(
+        options.model,
+        `Gere uma imagem de personagem de alta qualidade. Tema: "${this.buildPrimaryTurnaroundPrompt(promptWithMemory)}". Retorne apenas o prompt final em ingles.`,
+        'image'
+      );
+
+      await this.logAgentEvent(jobId, "researching", "Nenhuma imagem anexada encontrada. Gerando imagem base para o pacote 3D.");
+      const primaryResult = await flowProvider.generateImage(optimizedPrimary, {
+        aspectRatio: options.aspectRatio || '1:1',
+        quantity: '1x',
+        model: options.imageModel || 'Nano Banana Pro',
+        referenceImage: options.avatarReferenceImage
+      });
+
+      const primaryPaths = this.getImageResultPaths(primaryResult);
+      if (!primaryResult.success || primaryPaths.length === 0) {
+        throw new Error(`Falha ao gerar imagem base do pacote 3D: ${primaryResult.error || "Sem imagem retornada"}`);
+      }
+
+      const uploadedPrimaryPaths = await this.uploadImagePaths(jobId, primaryPaths.slice(0, 1));
+      referencePath = uploadedPrimaryPaths[0];
+      uploadedPaths.push(referencePath);
+      imageRecords.push({ role: 'primary', path: referencePath });
+      promptUsed = optimizedPrimary;
+    } else {
+      await this.logAgentEvent(jobId, "researching", "Usando a imagem anexada como base do personagem para gerar os angulos.");
+    }
+
+    for (const view of views) {
+      const viewPrompt = this.buildSingleTurnaroundPrompt(promptWithMemory, view);
+
+      promptUsed = viewPrompt;
+      await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
+      const viewResult = await flowProvider.generateImage(viewPrompt, {
+        aspectRatio: options.aspectRatio || '1:1',
+        quantity: '1x',
+        model: options.imageModel || 'Nano Banana Pro',
+        referenceImage: referencePath
+      });
+
+      const viewPaths = this.getImageResultPaths(viewResult);
+      if (!viewResult.success || viewPaths.length === 0) {
+        throw new Error(`Falha ao gerar angulo ${view} do pacote 3D: ${viewResult.error || "Sem imagem retornada"}`);
+      }
+
+      const uploadedViewPaths = await this.uploadImagePaths(jobId, viewPaths.slice(0, 1));
+      uploadedPaths.push(uploadedViewPaths[0]);
+      imageRecords.push({ role: view, path: uploadedViewPaths[0] });
+    }
+
+    const generatedViewCount = imageRecords.filter(record => record.role !== 'primary').length;
+    if (generatedViewCount < BASE_TURNAROUND_VIEWS.length) {
+      throw new Error(`Pacote 3D incompleto: ${generatedViewCount} angulos gerados.`);
+    }
+
+    await this.updateJobCompletion(jobId, uploadedPaths[0], {
+      status: "completed",
+      source_video_description: `Pacote 3D de personagem gerado pelo agente autonomo sobre: ${options.topic}`,
+      source_video_transcription: `Imagens salvas em: ${JSON.stringify({
+        mode: 'turnaround3d',
+        views,
+        images: imageRecords
+      })}`
+    });
+
+    await appendAgentMemory({
+      avatarId,
+      taskType: "image",
+      inputSummary: options.topic,
+      outputSummary: `Pacote 3D gerado com sucesso: ${uploadedPaths.length} imagens`,
+      type: "success",
+      promptUsed,
+      modelUsed: options.imageModel || "ImageFX Nano Banana Pro",
+      learnings: `Pacote 3D gerado com sucesso para o tema "${options.topic}". Vistas: ${views.join(", ")}`
+    });
+
+    await this.logAgentEvent(jobId, "completed", "Pacote 3D de imagens concluido com sucesso!", {
+      imagePaths: uploadedPaths,
+      views
+    });
+
+    return {
+      success: true,
+      jobId,
+      imagePaths: uploadedPaths
+    };
+  }
+
   // eslint-disable-next-line complexity
   private async executeImageFlow(
     options: AgentTaskOptions,
     initialPrompt: string
   ): Promise<{ success: boolean; jobId: string; imagePaths: string[] }> {
+    if (options.imagePackageMode === 'turnaround3d') {
+      try {
+        return await this.executeTurnaroundImageFlow(options, initialPrompt);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.error(`[FlowAgent] [${options.jobId}] Erro na geracao do pacote 3D:`, err);
+        await appendAgentMemory({
+          avatarId: options.avatarId,
+          taskType: "image",
+          inputSummary: options.topic,
+          outputSummary: "Falha na geracao do pacote 3D",
+          type: "failure",
+          promptUsed: initialPrompt,
+          modelUsed: options.imageModel || "ImageFX Nano Banana Pro",
+          errorMessage: errMsg,
+          learnings: `Falha ao gerar pacote 3D para o tema "${options.topic}": ${errMsg}`
+        });
+        await this.logAgentEvent(options.jobId, "failed", `Pacote 3D falhou. Erro final: ${errMsg}`);
+        await this.updateJobStatusToFailed(options.jobId, errMsg);
+        throw err;
+      }
+    }
+
     const { jobId, avatarId } = options;
     const maxRetries = 2;
     let attempt = 0;
@@ -493,9 +686,13 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
       }
 
       try {
-        const finalPrompt = imagePrompt;
-        const promptSummary = finalPrompt.length > 120 ? `${finalPrompt.slice(0, 120)}...` : finalPrompt;
-        await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt planejado: "${promptSummary}"`);
+        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
+        let finalPrompt = imagePrompt;
+        if (memoryContext) {
+          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
+        }
+
+        const optimized = finalPrompt;
         
         const imageResult = await flowProvider.generateImage(finalPrompt, {
           aspectRatio: options.aspectRatio || '1:1',
@@ -600,9 +797,13 @@ export class FlowAgent implements Agent<AgentTaskOptions, { jobId: string; video
       }
 
       try {
-        const finalPrompt = videoPrompt;
-        const promptSummary = finalPrompt.length > 120 ? `${finalPrompt.slice(0, 120)}...` : finalPrompt;
-        await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt planejado: "${promptSummary}"`);
+        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
+        let finalPrompt = videoPrompt;
+        if (memoryContext) {
+          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
+        }
+
+        const optimized = finalPrompt;
         
         const videoResult = await flowProvider.generateVideo(finalPrompt, {
           aspectRatio: options.aspectRatio || '16:9',
@@ -806,6 +1007,7 @@ Retorne estritamente um JSON no formato:
     };
   }
 
+  // eslint-disable-next-line complexity
   async runAutonomousAgent(
     options: AgentTaskOptions
   ): Promise<{ success: boolean; jobId: string; videoPath?: string; imagePaths?: string[]; error?: string }> {
@@ -843,8 +1045,11 @@ Retorne estritamente um JSON no formato:
 
     const executionOptions = {
       ...options,
-      avatarReferenceImage
+      avatarReferenceImage: options.inputReferenceImage || avatarReferenceImage
     };
+    if (options.inputReferenceImage) {
+      await this.logAgentEvent(jobId, "planning", "Usando a imagem anexada pelo usuario como referencia visual da geracao.");
+    }
 
     if (decision.flow === "image") {
       // Technical validation check: Ensure image flow never passes video settings or invokes video generators

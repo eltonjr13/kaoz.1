@@ -179,6 +179,22 @@ export class FlowProvider {
   }
 
   /**
+   * Força a execução de uma consulta direta ao LLM via Web Automation (Playwright), útil para chats.
+   */
+  async queryWebLLM(
+    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
+    prompt: string,
+    referenceImagePath?: string
+  ): Promise<string> {
+    this.activeTasksCount++;
+    try {
+      return await this.llmAutomation.queryWebLLM(model, prompt, referenceImagePath);
+    } finally {
+      this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
+    }
+  }
+
+  /**
    * Run the autonomous agent loop to create a complete project.
    */
   async runAgentTask(options: import('./FlowAgent').AgentTaskOptions): Promise<{ success: boolean; jobId: string; videoPath?: string; error?: string }> {

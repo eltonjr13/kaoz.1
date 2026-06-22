@@ -572,10 +572,13 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
           }
           if (
             acceptedFileTypes &&
-            !acceptedFileTypes.some(
-              (type) =>
-                file.type.includes(type) || type === file.name.split(".").pop()
-            )
+            !acceptedFileTypes.some((type) => {
+              if (type.endsWith("/*")) {
+                const prefix = type.slice(0, -1); // "image/"
+                return file.type.startsWith(prefix);
+              }
+              return file.type.includes(type) || type === file.name.split(".").pop();
+            })
           ) {
             alert(
               `File type for ${
