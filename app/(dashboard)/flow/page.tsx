@@ -147,7 +147,23 @@ export default function FlowDashboardPage() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("mrchicken:flow:chat_history", JSON.stringify(chatMessages));
+    try {
+      const sanitizedMessages = chatMessages.map((msg) => {
+        if (msg.plan && msg.plan.referenceImage) {
+          return {
+            ...msg,
+            plan: {
+              ...msg.plan,
+              referenceImage: null
+            }
+          };
+        }
+        return msg;
+      });
+      localStorage.setItem("mrchicken:flow:chat_history", JSON.stringify(sanitizedMessages));
+    } catch (e) {
+      console.warn("Falha ao salvar o histórico de chat no LocalStorage:", e);
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
