@@ -624,7 +624,8 @@ export default function FlowDashboardPage() {
         <div className="w-full max-w-[900px] relative" ref={popoverRef}>
           <ClaudeChatInput
             disabled={isLoading}
-            placeholder="Mande uma mensagem ou descreva o que quer criar..."
+            acceptedFileTypes={["image/*"]}
+            placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
             models={[
               { id: "gemini", name: "Gemini", description: "Google Gemini Model" },
               { id: "chatgpt", name: "ChatGPT", description: "OpenAI ChatGPT Model" },
@@ -657,6 +658,106 @@ export default function FlowDashboardPage() {
                      ))}
                    </div>
                  </div>
+
+                 {/* Image mode (3D turnaround toggle) */}
+                 {agentType === "image" && (
+                   <div className="flex flex-col gap-2">
+                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
+                       Modo da Imagem
+                     </div>
+                     <div className="grid grid-cols-2 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                       {[
+                         { id: "standard", label: "Normal" },
+                         { id: "turnaround3d", label: "3D" },
+                       ].map((mode) => {
+                         const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
+                         return (
+                           <button
+                             key={mode.id}
+                             type="button"
+                             onClick={() => {
+                               const nextIs3d = mode.id === "turnaround3d";
+                               setImage3dMode(nextIs3d);
+                               if (nextIs3d) setImageQty("x4");
+                             }}
+                             className="rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer"
+                             style={{
+                               background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                               color: isActive ? "#ffffff" : "#4A4A54",
+                             }}
+                           >
+                             {mode.label}
+                           </button>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Ratio + Quantity */}
+                 {agentType !== "project" && (
+                   <div className="grid grid-cols-2 gap-4">
+                     <div className="flex flex-col gap-2">
+                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Proporção</div>
+                       <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                         {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
+                           const currentRatio = agentType === "image" ? imageRatio : videoRatio;
+                           const isActive = currentRatio === r;
+                           return (
+                             <button
+                               key={r}
+                               type="button"
+                               onClick={() => {
+                                 if (agentType === "image") setImageRatio(r);
+                                 else setVideoRatio(r);
+                               }}
+                               className="rounded-xl py-1 font-mono text-[10px] transition-all cursor-pointer"
+                               style={{
+                                 background: isActive ? "#ffffff" : "transparent",
+                                 color: isActive ? "#080808" : "#7B7B86",
+                                 fontWeight: isActive ? 700 : 400,
+                               }}
+                             >
+                               {r}
+                             </button>
+                           );
+                         })}
+                       </div>
+                     </div>
+                     <div className="flex flex-col gap-2">
+                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Quantidade</div>
+                       <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                         {["1x", "x2", "x3", "x4"].map((q) => {
+                           const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                           const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
+                           const isActive = currentQty === q && !isDisabled;
+                           return (
+                             <button
+                               key={q}
+                               type="button"
+                               disabled={isDisabled}
+                               onClick={() => {
+                                 if (agentType === "image" && image3dMode) return;
+                                 if (agentType === "image") setImageQty(q);
+                                 else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
+                               }}
+                               className="rounded-xl py-1 font-mono text-[10px] transition-all"
+                               style={{
+                                 background: isActive ? "#ffffff" : "transparent",
+                                 color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
+                                 fontWeight: isActive ? 700 : 400,
+                                 cursor: isDisabled ? "not-allowed" : "pointer",
+                                 opacity: isDisabled ? 0.25 : 1,
+                               }}
+                             >
+                               {q}
+                             </button>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   </div>
+                 )}
               </div>
             }
           />

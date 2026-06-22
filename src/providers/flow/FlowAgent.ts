@@ -626,12 +626,7 @@ export class FlowAgent {
           finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
         }
 
-        await this.logAgentEvent(jobId, "researching", "Otimizando prompt da imagem com contexto de estilo do avatar...");
-        const optimized = await flowProvider.optimizePrompt(
-          options.model,
-          `Gere uma imagem de alta qualidade. Tema: "${finalPrompt}". Retorne apenas o prompt final em inglês.`,
-          'image'
-        );
+        const optimized = finalPrompt;
         
         await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt: "${optimized}"`);
         
@@ -744,12 +739,7 @@ export class FlowAgent {
           finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
         }
 
-        await this.logAgentEvent(jobId, "researching", "Otimizando prompt do vídeo com contexto de estilo do avatar...");
-        const optimized = await flowProvider.optimizePrompt(
-          options.model,
-          `Gere um clipe de vídeo detalhado de alta qualidade. Tema: "${finalPrompt}". Retorne apenas o prompt final em inglês.`,
-          'video'
-        );
+        const optimized = finalPrompt;
         
         await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt: "${optimized}"`);
         

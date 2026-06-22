@@ -430,7 +430,8 @@ export interface ChatAgentResponse {
 export async function chatWithAgent(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
-  executeWebQuery?: (compiledPrompt: string) => Promise<string>
+  executeWebQuery?: (compiledPrompt: string, referenceImagePath?: string) => Promise<string>,
+  referenceImagePath?: string
 ): Promise<ChatAgentResponse> {
   let personalityContext = "Você é o Sr. Chicken, um assistente virtual e chatbot inteligente para o 'AI UGC Reaction Studio'. Responda em português.";
   if (avatarPersonality) {
@@ -472,7 +473,7 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
   try {
     let responseText = "{}";
     if (executeWebQuery) {
-      responseText = await executeWebQuery(compiledPrompt);
+      responseText = await executeWebQuery(compiledPrompt, referenceImagePath);
     } else {
       throw new Error("O callback de Automação Web (Playwright) é obrigatório nesta arquitetura.");
     }
