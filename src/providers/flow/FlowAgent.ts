@@ -1,5 +1,5 @@
 import { flowProvider } from "./FlowProvider";
-import { listLocalAvatars, updateLocalJob, createLocalJobEvent, listLocalJobs } from "@/lib/local-store";
+import { findLocalJob, listLocalAvatars, updateLocalJob, createLocalJobEvent, listLocalJobs } from "@/lib/local-store";
 import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, type FlowDecision } from "@/lib/ai/gemini";
 import { logger } from "./FlowUtils";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
@@ -45,6 +45,13 @@ export interface AgentTaskOptions {
 }
 
 export class FlowAgent {
+  private async assertJobNotCancelled(jobId: string) {
+    const job = await findLocalJob(jobId);
+    if (job?.status === "failed" && /cancelad/i.test(job.error_message || "")) {
+      throw new Error(job.error_message || "Processo cancelado pelo usuario.");
+    }
+  }
+
   private async logAgentEvent(
     jobId: string,
     eventType: string,
@@ -393,6 +400,7 @@ export class FlowAgent {
     finalPath: string,
     details: { status: string; source_video_description: string; source_video_transcription: string }
   ) {
+    await this.assertJobNotCancelled(jobId);
     await updateLocalJob(jobId, {
       status: "completed",
       final_video_path: finalPath,
@@ -592,12 +600,20 @@ export class FlowAgent {
     return (count === 1 ? "1x" : `x${count}`) as GenerationQuantity;
   }
 
-  private buildScaleImagePrompt(prompt: string, batchIndex: number, totalBatches: number, totalImages: number): string {
+  private stripScaleCountFromImagePrompt(prompt: string): string {
+    return prompt
+      .replace(/\b(?:generate|create|produce|make)\s+(?:a\s+set\s+of\s+)?\d{1,3}\s+(?:images|image|photos|photo|pictures|picture)\b/gi, "generate an image")
+      .replace(/\b\d{1,3}\s+(?:images|image|photos|photo|pictures|picture)\b/gi, "one image")
+      .trim();
+  }
+
+  private buildScaleImagePrompt(prompt: string, batchIndex: number, totalBatches: number, totalImages: number, batchSize: number): string {
     return [
-      prompt,
-      `Batch ${batchIndex} of ${totalBatches} for a ${totalImages}-image set.`,
-      "Keep the same core brief, but create distinct variations in composition, camera angle, pose, lighting, color accents, and small visual details.",
-      "Do not repeat previous outputs from this set."
+      this.stripScaleCountFromImagePrompt(prompt),
+      `Production run item batch ${batchIndex} of ${totalBatches}. The full run target is ${totalImages} standalone files; this Flow submission should return ${batchSize} separate output file(s) via the quantity setting.`,
+      "Each output file must be exactly one complete standalone image with one composition only.",
+      "Do not place multiple variants, thumbnails, panels, grids, contact sheets, split screens, labels, comparisons, or alternate views inside a single image.",
+      "Keep the same core brief across the run, but make each separate output file subtly different in composition, camera angle, pose, lighting, color accents, or small visual details."
     ].join("\n\n");
   }
 
@@ -645,6 +661,8 @@ export class FlowAgent {
     }
 
     for (let batchIndex = 1; uploadedPaths.length < targetImageCount; batchIndex++) {
+      await this.assertJobNotCancelled(jobId);
+
       const remainingCount = targetImageCount - uploadedPaths.length;
       const batchSize = requestedImageCount ? Math.min(MAX_IMAGE_BATCH_SIZE, remainingCount) : targetImageCount;
       const batchQuantity = requestedImageCount
@@ -662,7 +680,7 @@ export class FlowAgent {
         try {
           const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
           const batchPrompt = requestedImageCount
-            ? this.buildScaleImagePrompt(imagePrompt, batchIndex, totalBatches, targetImageCount)
+            ? this.buildScaleImagePrompt(imagePrompt, batchIndex, totalBatches, targetImageCount, batchSize)
             : imagePrompt;
           let finalPrompt = batchPrompt;
           if (memoryContext) {
@@ -682,9 +700,10 @@ export class FlowAgent {
 
           const paths = this.getImageResultPaths(imageResult).slice(0, batchSize);
           if (!imageResult.success || paths.length === 0) {
-            throw new Error(`Falha no ImageFX: ${imageResult.error || "Sem imagem retornada"}`);
+            throw new Error(`Falha no ImageFX na rodada ${batchIndex}/${totalBatches} (${batchSize} imagem(ns) esperada(s)): ${imageResult.error || "Sem imagem retornada"}`);
           }
 
+          await this.assertJobNotCancelled(jobId);
           const uploadedBatchPaths = await this.uploadImagePaths(jobId, paths);
           uploadedPaths.push(...uploadedBatchPaths);
           await this.logAgentEvent(jobId, "researching", `Rodada ${batchIndex}/${totalBatches} concluida: ${uploadedPaths.length}/${targetImageCount} imagens acumuladas.`);
@@ -776,6 +795,7 @@ export class FlowAgent {
         
         await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt: "${optimized}"`);
         
+        await this.assertJobNotCancelled(jobId);
         const videoResult = await flowProvider.generateVideo(optimized, {
           aspectRatio: options.aspectRatio || '16:9',
           quantity: options.videoQuantity || '1x',
@@ -787,6 +807,7 @@ export class FlowAgent {
           throw new Error(`Falha no VideoFX: ${videoResult.error || "Sem vídeo retornado"}`);
         }
 
+        await this.assertJobNotCancelled(jobId);
         const uploadedPath = await this.uploadMediaFile(jobId, videoResult.path, "video/mp4");
 
         await this.updateJobCompletion(jobId, uploadedPath, {

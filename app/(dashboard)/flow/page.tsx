@@ -485,8 +485,8 @@ export default function FlowDashboardPage() {
           prompt: data.action.optimizedPrompt,
           explanation: data.action.explanation,
           model: agentModel,
-          aspectRatio: agentType === 'image' ? imageRatio : videoRatio,
-          mediaModel: agentType === 'image' ? imageModel : videoModel,
+          aspectRatio: plannedKind === 'image' ? imageRatio : videoRatio,
+          mediaModel: plannedKind === 'image' ? imageModel : videoModel,
           avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
           targetJobId: data.action.targetJobId,
@@ -494,8 +494,8 @@ export default function FlowDashboardPage() {
           scriptOutline: data.action.scriptOutline,
           creativeSteps: data.action.creativeSteps,
           requestedImageCount,
-          imagePackageMode: agentType === 'image' && image3dMode ? 'turnaround3d' : undefined,
-          quantity: agentType === 'image' ? imageQty : videoQty
+          imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
+          quantity: plannedKind === 'image' ? imageQty : videoQty
         };
       }
 
