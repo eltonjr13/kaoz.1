@@ -15,7 +15,9 @@ import {
   User,
   Check,
   Bot,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Square,
+  Undo2
 } from "lucide-react";
 import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
 import ReactMarkdown from "react-markdown";
@@ -63,6 +65,7 @@ interface PendingPlan {
   requestedImageCount?: number;
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
+  useAvatarPersonality?: boolean;
 }
 
 export interface ChatMessageState {
@@ -92,6 +95,7 @@ interface ChatConversation {
 const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
+const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
 const MAX_SCALE_IMAGE_COUNT = 40;
 
 const createChatId = (prefix: string) => {
@@ -200,6 +204,9 @@ const extractRequestedImageCount = (value: string) => {
   return counts.length > 0 ? Math.max(...counts) : undefined;
 };
 
+const canStepBackConversation = (messages: ChatMessageState[]) =>
+  messages.length > 0 && !messages.some((msg) => msg.jobStatus === "running");
+
 const extractImagePathsFromJob = (value?: string | null) => {
   if (!value) return [];
   const marker = "Imagens salvas em:";
@@ -233,6 +240,9 @@ export default function FlowDashboardPage() {
   
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState("");
+  const [useAvatarPersonality, setUseAvatarPersonality] = useState(() =>
+    typeof window === "undefined" ? true : localStorage.getItem(USE_AVATAR_PERSONALITY_KEY) !== "false"
+  );
   const [imageRatio, setImageRatio] = useState("16:9");
   const [imageQty, setImageQty] = useState("x2");
   const [imageModel, setImageModel] = useState("Nano Banana 2");
@@ -269,6 +279,10 @@ export default function FlowDashboardPage() {
       setChatMessages(activeConversation.messages);
     });
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(USE_AVATAR_PERSONALITY_KEY, String(useAvatarPersonality));
+  }, [useAvatarPersonality]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -393,6 +407,19 @@ export default function FlowDashboardPage() {
                   }
                 } else {
                   nextMessages[msgIndex].jobStatus = 'failed';
+                  const finalPath = job.final_video_path || "";
+                  const imagePaths = msg.jobType === "image"
+                    ? extractImagePathsFromJob(job.source_video_transcription)
+                    : [];
+                  if (msg.jobType === "image" && (imagePaths.length > 0 || finalPath)) {
+                    nextMessages[msgIndex].imageResult = {
+                      success: true,
+                      path: finalPath,
+                      filename: getResultFilename(finalPath),
+                      paths: imagePaths.length > 0 ? imagePaths : [finalPath],
+                      createdAt: job.updated_at
+                    };
+                  }
                   nextMessages[msgIndex].projectResult = {
                      success: false,
                      error: job.error_message || "Falha na execução."
@@ -460,6 +487,7 @@ export default function FlowDashboardPage() {
         body: JSON.stringify({
           messages: geminiMessages,
           avatarId: selectedAvatarId,
+          useAvatarPersonality,
           model: agentModel
         })
       });
@@ -495,7 +523,8 @@ export default function FlowDashboardPage() {
           creativeSteps: data.action.creativeSteps,
           requestedImageCount,
           imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
-          quantity: plannedKind === 'image' ? imageQty : videoQty
+          quantity: plannedKind === 'image' ? imageQty : videoQty,
+          useAvatarPersonality
         };
       }
 
@@ -527,6 +556,7 @@ export default function FlowDashboardPage() {
           action: "create-project",
           prompt: msg.plan.originalPrompt,
           avatarId: msg.plan.avatarId || selectedAvatarId,
+          useAvatarPersonality: msg.plan.useAvatarPersonality ?? useAvatarPersonality,
           model: msg.plan.model,
           aspectRatio: msg.plan.aspectRatio,
           imageModel: msg.plan.kind === 'image' ? msg.plan.mediaModel : undefined,
@@ -575,6 +605,53 @@ export default function FlowDashboardPage() {
     if (msgIndex >= 0) {
       nextMessages[msgIndex].plan = null;
       setChatMessages(nextMessages);
+    }
+  };
+
+  const canStepBack = canStepBackConversation(chatMessages);
+
+  const handleStepBackConversation = () => {
+    if (!canStepBack) return;
+
+    setChatMessages((previous) => {
+      const next = [...previous];
+      const removed = next.pop();
+      if (removed?.role === "assistant" && next[next.length - 1]?.role === "user" && !next[next.length - 1].jobId) {
+        next.pop();
+      }
+      return next;
+    });
+  };
+
+  const handleStopJob = async (msgId: string, jobId: string) => {
+    setChatMessages((previous) =>
+      previous.map((msg) =>
+        msg.id === msgId
+          ? {
+              ...msg,
+              jobStatus: "failed",
+              projectResult: {
+                ...(msg.projectResult || {}),
+                success: false,
+                error: "Cancelado pelo usuario."
+              },
+              jobLogs: [
+                ...(msg.jobLogs || []),
+                `[${new Date().toLocaleTimeString()}] Cancelamento solicitado pelo usuario.`
+              ]
+            }
+          : msg
+      )
+    );
+
+    try {
+      await fetch("/api/jobs/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId })
+      });
+    } catch (err) {
+      console.error("Falha ao cancelar job:", err);
     }
   };
 
@@ -681,6 +758,14 @@ export default function FlowDashboardPage() {
                </select>
              </div>
           )}
+          <button
+            onClick={handleStepBackConversation}
+            disabled={!canStepBack}
+            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
+            title="Voltar uma etapa"
+          >
+            <Undo2 size={14} />
+          </button>
           <button onClick={handleCreateConversation} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Nova conversa">
             <MessageSquarePlus size={14} />
           </button>
@@ -769,17 +854,27 @@ export default function FlowDashboardPage() {
                            msg.jobStatus === 'completed' ? 'Finalizado' : 'Falhou'}
                         </span>
                       </div>
-                      <button 
-                        onClick={() => {
-                          const next = [...chatMessages];
-                          const idx = next.findIndex(m => m.id === msg.id);
-                          next[idx].showLogs = !next[idx].showLogs;
-                          setChatMessages(next);
-                        }}
-                        className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white/80 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Terminal size={10} /> Logs
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {msg.jobStatus === "running" && msg.jobId && (
+                          <button
+                            onClick={() => handleStopJob(msg.id, msg.jobId!)}
+                            className="text-[10px] uppercase tracking-wider text-rose-300 hover:text-rose-200 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Square size={10} /> Parar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            const next = [...chatMessages];
+                            const idx = next.findIndex(m => m.id === msg.id);
+                            next[idx].showLogs = !next[idx].showLogs;
+                            setChatMessages(next);
+                          }}
+                          className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white/80 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Terminal size={10} /> Logs
+                        </button>
+                      </div>
                     </div>
 
                     {msg.showLogs && msg.jobLogs && (
@@ -920,6 +1015,19 @@ export default function FlowDashboardPage() {
                      </div>
                    </div>
                  )}
+
+                 <label className="flex items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
+                   <span className="flex flex-col gap-0.5">
+                     <span className="text-[10px] font-semibold text-white/80">Personalidade do avatar</span>
+                     <span className="text-[9px] leading-snug text-white/40">Usar o tom do avatar nas respostas e roteiros</span>
+                   </span>
+                   <input
+                     type="checkbox"
+                     checked={useAvatarPersonality}
+                     onChange={(e) => setUseAvatarPersonality(e.target.checked)}
+                     className="h-4 w-4 accent-[#9D7CFF]"
+                   />
+                 </label>
 
                  {/* Ratio + Quantity */}
                  {agentType !== "project" && (

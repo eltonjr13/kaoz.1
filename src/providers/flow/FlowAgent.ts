@@ -40,6 +40,7 @@ export interface AgentTaskOptions {
   approvedPlan?: FlowDecision;
   avatarReferenceImage?: string;
   inputReferenceImage?: string;
+  useAvatarPersonality?: boolean;
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
 }
@@ -200,6 +201,7 @@ export class FlowAgent {
   private async generateBackgroundVideo(prompt: string, options: AgentTaskOptions): Promise<string> {
     const { jobId } = options;
     await this.logAgentEvent(jobId, "researching", "Abrindo o VideoFX no Google Flow para renderizar o clipe de fundo...");
+    await this.assertJobNotCancelled(jobId);
     const videoResult = await flowProvider.generateVideo(prompt, {
       aspectRatio: options.aspectRatio || '16:9',
       quantity: options.videoQuantity || '1x',
@@ -211,6 +213,7 @@ export class FlowAgent {
       throw new Error(`Geração de vídeo no VideoFX falhou: ${videoResult.error || "Erro desconhecido"}`);
     }
 
+    await this.assertJobNotCancelled(jobId);
     await this.logAgentEvent(jobId, "researching", "Clipe de fundo gerado e baixado com sucesso!");
     return videoResult.path;
   }
@@ -236,7 +239,13 @@ export class FlowAgent {
       description = analysis.description;
       transcription = analysis.transcription;
 
-      await this.logAgentEvent(jobId, "scripting", "Vídeo analisado. Escrevendo o roteiro de reação com a personalidade do avatar...");
+      await this.logAgentEvent(
+        jobId,
+        "scripting",
+        personality
+          ? "Video analisado. Escrevendo o roteiro de reacao com a personalidade do avatar..."
+          : "Video analisado. Escrevendo o roteiro de reacao sem personalidade do avatar..."
+      );
       scriptText = await generateScriptFromAnalysis(
         topic,
         description,
@@ -298,7 +307,13 @@ export class FlowAgent {
 
       try {
         // 1. Find the avatar personality
-        await this.logAgentEvent(jobId, "researching_started", "Carregando o perfil e a personalidade do avatar...");
+        await this.logAgentEvent(
+          jobId,
+          "researching_started",
+          options.useAvatarPersonality === false
+            ? "Carregando o perfil do avatar sem usar a personalidade textual..."
+            : "Carregando o perfil e a personalidade do avatar..."
+        );
         const avatar = await this.findAvatar(options.avatarId);
 
         // 2. Generate prompt (injected with memory!)
@@ -311,7 +326,12 @@ export class FlowAgent {
         await this.updateJobVideoPath(jobId, videoPath);
 
         // 5. Analyze and create script
-        const details = await this.analyzeAndCreateScript(videoPath, options.topic, avatar.personality, jobId);
+        const details = await this.analyzeAndCreateScript(
+          videoPath,
+          options.topic,
+          options.useAvatarPersonality === false ? null : avatar.personality,
+          jobId
+        );
         scriptText = details.scriptText;
 
         if (!scriptText || scriptText.trim() === "") {
@@ -491,20 +511,17 @@ export class FlowAgent {
 
     await this.logAgentEvent(jobId, "researching", "Preparando pacote 3D: uma imagem separada por angulo do personagem.");
 
-    const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
-    const promptWithMemory = memoryContext
-      ? `${initialPrompt}\n\n(Ajuste com base em execucoes anteriores: ${memoryContext})`
-      : initialPrompt;
+    const cleanFlowPrompt = initialPrompt;
 
     let referencePath = options.inputReferenceImage || options.avatarReferenceImage || "";
-    let promptUsed = promptWithMemory;
+    let promptUsed = cleanFlowPrompt;
     const uploadedPaths: string[] = [];
     const imageRecords: Array<{ role: string; path: string }> = [];
 
     if (!referencePath) {
       const optimizedPrimary = await flowProvider.optimizePrompt(
         options.model,
-        `Gere uma imagem de personagem de alta qualidade. Tema: "${this.buildPrimaryTurnaroundPrompt(promptWithMemory)}". Retorne apenas o prompt final em ingles.`,
+        `Gere uma imagem de personagem de alta qualidade. Tema: "${this.buildPrimaryTurnaroundPrompt(cleanFlowPrompt)}". Retorne apenas o prompt final em ingles.`,
         'image'
       );
 
@@ -531,7 +548,7 @@ export class FlowAgent {
     }
 
     for (const view of views) {
-      const viewPrompt = this.buildSingleTurnaroundPrompt(promptWithMemory, view);
+      const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
 
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
@@ -607,14 +624,29 @@ export class FlowAgent {
       .trim();
   }
 
-  private buildScaleImagePrompt(prompt: string, batchIndex: number, totalBatches: number, totalImages: number, batchSize: number): string {
+  private buildScaleImagePrompt(prompt: string): string {
     return [
       this.stripScaleCountFromImagePrompt(prompt),
-      `Production run item batch ${batchIndex} of ${totalBatches}. The full run target is ${totalImages} standalone files; this Flow submission should return ${batchSize} separate output file(s) via the quantity setting.`,
-      "Each output file must be exactly one complete standalone image with one composition only.",
-      "Do not place multiple variants, thumbnails, panels, grids, contact sheets, split screens, labels, comparisons, or alternate views inside a single image.",
-      "Keep the same core brief across the run, but make each separate output file subtly different in composition, camera angle, pose, lighting, color accents, or small visual details."
+      "Create one complete standalone image with one composition only.",
+      "Do not create a collage, grid, contact sheet, split screen, thumbnail panel, label, comparison, or multiple variants inside the same image.",
+      "Use a fresh variation in composition, camera angle, pose, lighting, color accents, or small visual details while preserving the core subject and style."
     ].join("\n\n");
+  }
+
+  private isImageCollectionFailure(errorMessage: string): boolean {
+    return /download|baixad|coleta|preview|visualiza|locator\.waitFor[\s\S]*(download|baixar)/i.test(errorMessage);
+  }
+
+  private async updateImageJobProgress(jobId: string, imagePaths: string[], topic: string) {
+    if (imagePaths.length === 0) return;
+
+    await this.assertJobNotCancelled(jobId);
+    await updateLocalJob(jobId, {
+      status: "researching",
+      final_video_path: imagePaths[0],
+      source_video_description: `Imagem gerada pelo agente autonomo sobre: ${topic}`,
+      source_video_transcription: `Imagens salvas em: ${JSON.stringify(imagePaths)}`
+    });
   }
 
   // eslint-disable-next-line complexity
@@ -678,15 +710,10 @@ export class FlowAgent {
         }
 
         try {
-          const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
           const batchPrompt = requestedImageCount
-            ? this.buildScaleImagePrompt(imagePrompt, batchIndex, totalBatches, targetImageCount, batchSize)
+            ? this.buildScaleImagePrompt(imagePrompt)
             : imagePrompt;
-          let finalPrompt = batchPrompt;
-          if (memoryContext) {
-            finalPrompt += `\n\n(Ajuste com base em execucoes anteriores: ${memoryContext})`;
-          }
-
+          const finalPrompt = batchPrompt;
           lastPromptUsed = finalPrompt;
 
           await this.logAgentEvent(jobId, "researching", `Iniciando geracao de imagem via Playwright com prompt: "${finalPrompt}"`);
@@ -706,6 +733,7 @@ export class FlowAgent {
           await this.assertJobNotCancelled(jobId);
           const uploadedBatchPaths = await this.uploadImagePaths(jobId, paths);
           uploadedPaths.push(...uploadedBatchPaths);
+          await this.updateImageJobProgress(jobId, uploadedPaths, options.topic);
           await this.logAgentEvent(jobId, "researching", `Rodada ${batchIndex}/${totalBatches} concluida: ${uploadedPaths.length}/${targetImageCount} imagens acumuladas.`);
           break;
         } catch (err: unknown) {
@@ -724,6 +752,12 @@ export class FlowAgent {
             errorMessage: errMsg,
             learnings: `Falha ao gerar imagem para o tema "${options.topic}" na rodada ${batchIndex}, tentativa ${attempt}: ${errMsg}`
           });
+
+          if (this.isImageCollectionFailure(errMsg)) {
+            await this.logAgentEvent(jobId, "failed", `A rodada ${batchIndex}/${totalBatches} falhou na coleta/download do resultado. Nova tentativa bloqueada para evitar gerar imagens duplicadas. Erro final: ${errMsg}`);
+            await this.updateJobStatusToFailed(jobId, errMsg);
+            throw err;
+          }
 
           if (attempt > maxRetries) {
             await this.logAgentEvent(jobId, "failed", `A rodada ${batchIndex}/${totalBatches} falhou apos ${maxRetries + 1} tentativas. Erro final: ${errMsg}`);
@@ -785,13 +819,7 @@ export class FlowAgent {
       }
 
       try {
-        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
-        let finalPrompt = videoPrompt;
-        if (memoryContext) {
-          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
-        }
-
-        const optimized = finalPrompt;
+        const optimized = videoPrompt;
         
         await this.logAgentEvent(jobId, "researching", `Iniciando geração de vídeo via Playwright com prompt: "${optimized}"`);
         
@@ -893,6 +921,9 @@ export class FlowAgent {
     }
     const ai = new GoogleGenAI({ apiKey });
     const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const personalityText = personality
+      ? JSON.stringify(personality, null, 2)
+      : "Personalidade textual desativada pelo usuario. Use um tom neutro de assistente.";
 
     const refinePrompt = `
 Você é o módulo de refinamento de projetos do MrChicken.
@@ -903,8 +934,8 @@ Temos um projeto de react existente com os seguintes detalhes:
 - Descrição visual do vídeo atual: ${targetJob.source_video_description || "Não disponível"}
 
 Instruções do usuário para refinar/corrigir: "${refineInstructions}"
-Personalidade do Avatar a ser mantida:
-${JSON.stringify(personality, null, 2)}
+Personalidade do Avatar:
+${personalityText}
 
 Sua tarefa é planejar o refinamento e produzir o resultado necessário. Decida se precisamos:
 1. "rewrite_script": se o usuário quer apenas mudar o que o avatar diz ou o tom, sem precisar mudar o vídeo de fundo.
@@ -943,6 +974,7 @@ Retorne estritamente um JSON no formato:
 
     if (parsedResponse.refinementType === "regenerate_video" && parsedResponse.newVideoPrompt) {
       await this.logAgentEvent(jobId, "researching", "Iniciando regeneração de vídeo de fundo para o refinamento...");
+      await this.assertJobNotCancelled(jobId);
       const videoResult = await flowProvider.generateVideo(parsedResponse.newVideoPrompt, {
         aspectRatio: options.aspectRatio || '16:9',
         quantity: options.videoQuantity || '1x',
@@ -952,6 +984,7 @@ Retorne estritamente um JSON no formato:
       if (!videoResult.success || !videoResult.path) {
         throw new Error(`Geração do novo vídeo para refinamento falhou: ${videoResult.error}`);
       }
+      await this.assertJobNotCancelled(jobId);
       updatedVideoPath = await this.uploadMediaFile(jobId, videoResult.path, "video/mp4");
       
       await this.logAgentEvent(jobId, "scripting", "Analisando o novo vídeo gerado para atualizar o roteiro...");
@@ -1004,6 +1037,7 @@ Retorne estritamente um JSON no formato:
     options: AgentTaskOptions
   ): Promise<{ success: boolean; jobId: string; videoPath?: string; imagePaths?: string[]; error?: string }> {
     const { jobId } = options;
+    await this.assertJobNotCancelled(jobId);
     logger.info(`[FlowAgent] Iniciando agente autônomo para a intenção: "${options.topic}" (Job ID: ${jobId})`);
     
     let decision: FlowDecision;
@@ -1026,7 +1060,7 @@ Retorne estritamente um JSON no formato:
     let avatarReferenceImage: string | undefined;
     try {
       const avatar = await this.findAvatar(options.avatarId);
-      personality = avatar.personality;
+      personality = options.useAvatarPersonality === false ? null : avatar.personality;
       avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
       if (avatarReferenceImage) {
         await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);

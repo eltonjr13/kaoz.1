@@ -45,15 +45,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parâmetro 'messages' é obrigatório e deve ser um array." }, { status: 400 });
     }
 
-    const { messages, avatarId, model, referenceImage } = body as {
+    const { messages, avatarId, model, referenceImage, useAvatarPersonality } = body as {
       messages: ChatMessage[];
       avatarId?: string;
       model?: string;
       referenceImage?: string;
+      useAvatarPersonality?: boolean;
     };
 
     let personality: Record<string, unknown> | null = null;
-    if (avatarId) {
+    if (avatarId && useAvatarPersonality !== false) {
       const avatar = await findLocalAvatar(avatarId);
       if (avatar && avatar.personality) {
         personality = avatar.personality as Record<string, unknown>;

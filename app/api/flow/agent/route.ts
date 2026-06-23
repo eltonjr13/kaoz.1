@@ -124,6 +124,7 @@ export async function POST(request: Request) {
       turnaroundViews?: unknown;
       referenceImage?: unknown;
       approvedPlan?: unknown;
+      useAvatarPersonality?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
     const turnaroundViews = parseTurnaroundViews(body?.turnaroundViews);
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
+    const useAvatarPersonality = body?.useAvatarPersonality !== false;
     const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
     const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
@@ -233,6 +235,7 @@ export async function POST(request: Request) {
         imagePackageMode,
         turnaroundViews,
         inputReferenceImage,
+        useAvatarPersonality,
         jobId,
         baseUrl,
         approvedPlan

@@ -1,7 +1,8 @@
+import * as fs from 'fs';
 import * as path from 'path';
-import { Page } from 'playwright';
+import { Locator, Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
 export class FlowImageGenerator {
@@ -9,6 +10,66 @@ export class FlowImageGenerator {
   private lastProjectUrl: string | null = null;
 
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
+
+  private getImageExtension(mimeType: string): string {
+    if (/jpe?g/i.test(mimeType)) return '.jpg';
+    if (/webp/i.test(mimeType)) return '.webp';
+    return '.png';
+  }
+
+  private async saveImageCardFallback(
+    card: Locator,
+    itemNumber: number,
+    options?: ImageGenerationOptions
+  ): Promise<{ success: boolean; path: string; filename: string; createdAt: string } | null> {
+    try {
+      const imageData = await card.evaluate(async (el) => {
+        const image = el as HTMLImageElement;
+        const source = image.currentSrc || image.src || image.getAttribute('src') || '';
+        if (!source) {
+          throw new Error('Card sem src de imagem.');
+        }
+
+        const response = await fetch(source);
+        if (!response.ok) {
+          throw new Error(`Falha ao buscar imagem do card: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        return {
+          bytes: Array.from(new Uint8Array(arrayBuffer)),
+          mimeType: blob.type || response.headers.get('content-type') || 'image/png'
+        };
+      });
+
+      const ext = this.getImageExtension(imageData.mimeType);
+      const customFolder = options?.folderName && options?.originalFilename
+        ? `${options.folderName}/${options.originalFilename}`
+        : undefined;
+      const filename = options?.originalFilename
+        ? `${options.originalFilename}_${itemNumber}${ext}`
+        : generateFilename('image', ext);
+      const targetDir = customFolder
+        ? path.resolve(this.config.downloadPath, 'patterns', customFolder)
+        : path.resolve(this.config.downloadPath, 'images');
+
+      ensureDirExists(targetDir);
+      const targetPath = path.join(targetDir, filename);
+      await fs.promises.writeFile(targetPath, Buffer.from(imageData.bytes));
+      logger.info('Imagem salva por fallback direto do card.', { filename, targetPath });
+
+      return {
+        success: true,
+        path: targetPath,
+        filename,
+        createdAt: new Date().toISOString()
+      };
+    } catch (fallbackErr) {
+      logger.warn('Fallback de download direto do card falhou.', fallbackErr);
+      return null;
+    }
+  }
 
   /**
    * Uploads a reference image to the workspace.
@@ -459,12 +520,6 @@ export class FlowImageGenerator {
         
         const card = imageCards().nth(index);
         await card.waitFor({ state: 'visible', timeout: 15000 });
-        await card.click({ force: true });
-        await page.waitForTimeout(2000); // Settling time for preview overlay
-
-        // Find download button in preview drawer/overlay
-        const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
-        await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
 
         const customFolder = options?.folderName && options?.originalFilename 
           ? `${options.folderName}/${options.originalFilename}` 
@@ -473,17 +528,30 @@ export class FlowImageGenerator {
           ? `${options.originalFilename}_${i + 1}` 
           : undefined;
 
-        const downloadResult = await this.downloader.downloadFile(
-          page,
-          downloadBtn,
-          'image',
-          'images',
-          '.png',
-          customFolder,
-          customFilename
-        );
+        let downloadResult: { success: boolean; path: string; filename: string; createdAt: string } | null = null;
+        try {
+          await card.click({ force: true });
+          await page.waitForTimeout(2000); // Settling time for preview overlay
 
-        if (downloadResult.success) {
+          // Find download button in preview drawer/overlay
+          const downloadBtn = page.locator('button').filter({ hasText: /download|baixar/i }).first();
+          await downloadBtn.waitFor({ state: 'visible', timeout: 10000 });
+
+          downloadResult = await this.downloader.downloadFile(
+            page,
+            downloadBtn,
+            'image',
+            'images',
+            '.png',
+            customFolder,
+            customFilename
+          );
+        } catch (downloadErr) {
+          logger.warn(`Download pelo preview falhou no item ${i + 1}. Tentando fallback direto do card.`, downloadErr);
+          downloadResult = await this.saveImageCardFallback(card, i + 1, options);
+        }
+
+        if (downloadResult?.success) {
           downloadedPaths.push(downloadResult.path);
           downloadedFilenames.push(downloadResult.filename);
           if (i === 0) {
@@ -515,7 +583,7 @@ export class FlowImageGenerator {
       }
 
       if (downloadedPaths.length === 0) {
-        throw new Error('Nenhuma imagem foi baixada com sucesso.');
+        throw new Error('As imagens foram geradas, mas nenhuma foi baixada com sucesso apos falha de coleta/download.');
       }
 
       return {
