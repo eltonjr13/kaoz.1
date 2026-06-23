@@ -11,6 +11,8 @@ import { GoogleGenAI } from "@google/genai";
 type GenerationQuantity = 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
+const MAX_IMAGE_BATCH_SIZE = 4;
+const MAX_SCALE_IMAGE_COUNT = 40;
 const VIDEO_REFERENCE_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
 const BASE_TURNAROUND_VIEWS: TurnaroundView[] = ['front', 'left', 'right', 'back'];
 const TOP_BOTTOM_VIEWS: TurnaroundView[] = ['top', 'bottom'];
@@ -29,6 +31,7 @@ export interface AgentTaskOptions {
   model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
   imageModel?: string;
   imageQuantity?: GenerationQuantity;
+  requestedImageCount?: number;
   videoModel?: string;
   videoQuantity?: GenerationQuantity;
   aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
@@ -579,6 +582,25 @@ export class FlowAgent {
     };
   }
 
+  private getQuantityCount(quantity: GenerationQuantity | undefined, fallback: number): number {
+    if (!quantity) return fallback;
+    const parsed = Number(String(quantity).replace(/^x/, "").replace(/x$/, ""));
+    return Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, MAX_IMAGE_BATCH_SIZE) : fallback;
+  }
+
+  private getImageBatchQuantity(count: number): GenerationQuantity {
+    return (count === 1 ? "1x" : `x${count}`) as GenerationQuantity;
+  }
+
+  private buildScaleImagePrompt(prompt: string, batchIndex: number, totalBatches: number, totalImages: number): string {
+    return [
+      prompt,
+      `Batch ${batchIndex} of ${totalBatches} for a ${totalImages}-image set.`,
+      "Keep the same core brief, but create distinct variations in composition, camera angle, pose, lighting, color accents, and small visual details.",
+      "Do not repeat previous outputs from this set."
+    ].join("\n\n");
+  }
+
   // eslint-disable-next-line complexity
   private async executeImageFlow(
     options: AgentTaskOptions,
@@ -609,109 +631,120 @@ export class FlowAgent {
 
     const { jobId, avatarId } = options;
     const maxRetries = 2;
-    let attempt = 0;
     const imagePrompt = initialPrompt;
+    const requestedImageCount = options.requestedImageCount && options.requestedImageCount > MAX_IMAGE_BATCH_SIZE
+      ? Math.min(options.requestedImageCount, MAX_SCALE_IMAGE_COUNT)
+      : undefined;
+    const targetImageCount = requestedImageCount || this.getQuantityCount(options.imageQuantity, 2);
+    const totalBatches = requestedImageCount ? Math.ceil(targetImageCount / MAX_IMAGE_BATCH_SIZE) : 1;
+    const uploadedPaths: string[] = [];
+    let lastPromptUsed = imagePrompt;
 
-    while (attempt <= maxRetries) {
-      if (attempt > 0) {
-        await this.logAgentEvent(jobId, "researching", `Tentativa ${attempt}/${maxRetries} de geração de imagem devido a falha...`);
-      } else {
-        await this.logAgentEvent(jobId, "researching", "Preparando geração de imagem no ImageFX...");
-      }
+    if (requestedImageCount) {
+      await this.logAgentEvent(jobId, "planning", `Modo escala ativado: ${targetImageCount} imagens em ${totalBatches} rodadas sequenciais.`);
+    }
 
-      try {
-        const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
-        let finalPrompt = imagePrompt;
-        if (memoryContext) {
-          finalPrompt += `\n\n(Ajuste com base em execuções anteriores: ${memoryContext})`;
+    for (let batchIndex = 1; uploadedPaths.length < targetImageCount; batchIndex++) {
+      const remainingCount = targetImageCount - uploadedPaths.length;
+      const batchSize = requestedImageCount ? Math.min(MAX_IMAGE_BATCH_SIZE, remainingCount) : targetImageCount;
+      const batchQuantity = requestedImageCount
+        ? this.getImageBatchQuantity(batchSize)
+        : options.imageQuantity || 'x2';
+      let attempt = 0;
+
+      while (attempt <= maxRetries) {
+        if (attempt > 0) {
+          await this.logAgentEvent(jobId, "researching", `Tentativa ${attempt}/${maxRetries} da rodada ${batchIndex}/${totalBatches} devido a falha...`);
+        } else {
+          await this.logAgentEvent(jobId, "researching", `Preparando rodada ${batchIndex}/${totalBatches} no ImageFX...`);
         }
 
-        const optimized = finalPrompt;
-        
-        await this.logAgentEvent(jobId, "researching", `Iniciando geração de imagem via Playwright com prompt: "${optimized}"`);
-        
-        const imageResult = await flowProvider.generateImage(optimized, {
-          aspectRatio: options.aspectRatio || '1:1',
-          quantity: options.imageQuantity || 'x2',
-          model: options.imageModel || 'Nano Banana Pro',
-          referenceImage: options.avatarReferenceImage
-        });
+        try {
+          const memoryContext = await getMemoryContextForPrompt(avatarId, options.topic);
+          const batchPrompt = requestedImageCount
+            ? this.buildScaleImagePrompt(imagePrompt, batchIndex, totalBatches, targetImageCount)
+            : imagePrompt;
+          let finalPrompt = batchPrompt;
+          if (memoryContext) {
+            finalPrompt += `\n\n(Ajuste com base em execucoes anteriores: ${memoryContext})`;
+          }
 
-        if (!imageResult.success || (!imageResult.path && (!imageResult.paths || imageResult.paths.length === 0))) {
-          throw new Error(`Falha no ImageFX: ${imageResult.error || "Sem imagem retornada"}`);
-        }
+          lastPromptUsed = finalPrompt;
 
-        const paths = imageResult.paths && imageResult.paths.length > 0 
-          ? imageResult.paths 
-          : (imageResult.path ? [imageResult.path] : []);
+          await this.logAgentEvent(jobId, "researching", `Iniciando geracao de imagem via Playwright com prompt: "${finalPrompt}"`);
 
-        if (paths.length === 0) {
-          throw new Error("Nenhuma imagem gerada.");
-        }
+          const imageResult = await flowProvider.generateImage(finalPrompt, {
+            aspectRatio: options.aspectRatio || '1:1',
+            quantity: batchQuantity,
+            model: options.imageModel || 'Nano Banana Pro',
+            referenceImage: options.avatarReferenceImage
+          });
 
-        const uploadedPaths: string[] = [];
-        for (const localPath of paths) {
-          const uploaded = await this.uploadMediaFile(jobId, localPath, "image/png");
-          uploadedPaths.push(uploaded);
-        }
+          const paths = this.getImageResultPaths(imageResult).slice(0, batchSize);
+          if (!imageResult.success || paths.length === 0) {
+            throw new Error(`Falha no ImageFX: ${imageResult.error || "Sem imagem retornada"}`);
+          }
 
-        const finalPathListStr = JSON.stringify(uploadedPaths);
-        await this.updateJobCompletion(jobId, uploadedPaths[0], {
-          status: "completed",
-          source_video_description: `Imagem gerada pelo agente autônomo sobre: ${options.topic}`,
-          source_video_transcription: `Imagens salvas em: ${finalPathListStr}`
-        });
+          const uploadedBatchPaths = await this.uploadImagePaths(jobId, paths);
+          uploadedPaths.push(...uploadedBatchPaths);
+          await this.logAgentEvent(jobId, "researching", `Rodada ${batchIndex}/${totalBatches} concluida: ${uploadedPaths.length}/${targetImageCount} imagens acumuladas.`);
+          break;
+        } catch (err: unknown) {
+          attempt++;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.error(`[FlowAgent] [${jobId}] Erro na geracao de imagem (rodada ${batchIndex}, tentativa ${attempt}):`, err);
 
-        await appendAgentMemory({
-          avatarId,
-          taskType: "image",
-          inputSummary: options.topic,
-          outputSummary: `Imagem gerada com sucesso: ${uploadedPaths[0]}`,
-          type: "success",
-          promptUsed: optimized,
-          modelUsed: "ImageFX Nano Banana Pro",
-          learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Prompt: "${optimized}"`
-        });
+          await appendAgentMemory({
+            avatarId,
+            taskType: "image",
+            inputSummary: options.topic,
+            outputSummary: "Falha na geracao de imagem",
+            type: "failure",
+            promptUsed: lastPromptUsed,
+            modelUsed: "ImageFX Nano Banana Pro",
+            errorMessage: errMsg,
+            learnings: `Falha ao gerar imagem para o tema "${options.topic}" na rodada ${batchIndex}, tentativa ${attempt}: ${errMsg}`
+          });
 
-        await this.logAgentEvent(jobId, "completed", "Geração de imagem autônoma concluída com sucesso!", {
-          imagePaths: uploadedPaths
-        });
-
-        return {
-          success: true,
-          jobId,
-          imagePaths: uploadedPaths
-        };
-
-      } catch (err: unknown) {
-        attempt++;
-        const errMsg = err instanceof Error ? err.message : String(err);
-        logger.error(`[FlowAgent] [${jobId}] Erro na geração de imagem (tentativa ${attempt}):`, err);
-
-        await appendAgentMemory({
-          avatarId,
-          taskType: "image",
-          inputSummary: options.topic,
-          outputSummary: `Falha na geração de imagem`,
-          type: "failure",
-          promptUsed: imagePrompt,
-          modelUsed: "ImageFX Nano Banana Pro",
-          errorMessage: errMsg,
-          learnings: `Falha ao gerar imagem para o tema "${options.topic}" na tentativa ${attempt}: ${errMsg}`
-        });
-
-        if (attempt > maxRetries) {
-          await this.logAgentEvent(jobId, "failed", `Todas as tentativas de geração de imagem falharam. Erro final: ${errMsg}`);
-          await this.updateJobStatusToFailed(jobId, errMsg);
-          throw err;
+          if (attempt > maxRetries) {
+            await this.logAgentEvent(jobId, "failed", `A rodada ${batchIndex}/${totalBatches} falhou apos ${maxRetries + 1} tentativas. Erro final: ${errMsg}`);
+            await this.updateJobStatusToFailed(jobId, errMsg);
+            throw err;
+          }
         }
       }
     }
 
+    if (uploadedPaths.length === 0) {
+      throw new Error("Nenhuma imagem gerada.");
+    }
+
+    const finalImagePaths = uploadedPaths.slice(0, targetImageCount);
+    await this.updateJobCompletion(jobId, finalImagePaths[0], {
+      status: "completed",
+      source_video_description: `Imagem gerada pelo agente autonomo sobre: ${options.topic}`,
+      source_video_transcription: `Imagens salvas em: ${JSON.stringify(finalImagePaths)}`
+    });
+
+    await appendAgentMemory({
+      avatarId,
+      taskType: "image",
+      inputSummary: options.topic,
+      outputSummary: `Imagens geradas com sucesso: ${finalImagePaths.length}`,
+      type: "success",
+      promptUsed: lastPromptUsed,
+      modelUsed: "ImageFX Nano Banana Pro",
+      learnings: `Imagem gerada com sucesso para o tema "${options.topic}". Total: ${finalImagePaths.length}.`
+    });
+
+    await this.logAgentEvent(jobId, "completed", "Geracao de imagem autonoma concluida com sucesso!", {
+      imagePaths: finalImagePaths
+    });
+
     return {
-      success: false,
+      success: true,
       jobId,
-      imagePaths: []
+      imagePaths: finalImagePaths
     };
   }
 

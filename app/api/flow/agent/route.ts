@@ -12,6 +12,7 @@ type ImagePackageMode = "turnaround3d";
 type TurnaroundView = "front" | "left" | "right" | "back" | "top" | "bottom";
 const TURNAROUND_VIEWS = new Set<TurnaroundView>(["front", "left", "right", "back", "top", "bottom"]);
 const DEFAULT_3D_REFERENCE_PROMPT = "Generate a multi-image 3D character reference package from the attached image.";
+const MAX_SCALE_IMAGE_COUNT = 40;
 
 function parseQuantity(value: unknown): GenerationQuantity | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -26,6 +27,12 @@ function parseQuantity(value: unknown): GenerationQuantity | undefined {
 
 function parseImagePackageMode(value: unknown): ImagePackageMode | undefined {
   return value === "turnaround3d" ? "turnaround3d" : undefined;
+}
+
+function parseRequestedImageCount(value: unknown): number | undefined {
+  const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isInteger(count) || count < 5) return undefined;
+  return Math.min(count, MAX_SCALE_IMAGE_COUNT);
 }
 
 function parseTurnaroundViews(value: unknown): TurnaroundView[] | undefined {
@@ -83,6 +90,7 @@ function parseApprovedPlan(value: unknown): FlowDecision | undefined {
       flow,
       optimizedPrompt: optimizedPrompt.trim(),
       explanation: typeof plan.explanation === "string" ? plan.explanation : "Plano aprovado pelo usuario.",
+      requestedImageCount: parseRequestedImageCount(plan.requestedImageCount),
       targetJobId: typeof plan.targetJobId === "string" ? plan.targetJobId : null,
       strategy: typeof plan.strategy === "string" ? plan.strategy : undefined,
       scriptOutline: typeof plan.scriptOutline === "string" ? plan.scriptOutline : null,
@@ -111,6 +119,7 @@ export async function POST(request: Request) {
       videoQuantity?: unknown;
       imageModel?: unknown;
       imageQuantity?: unknown;
+      requestedImageCount?: unknown;
       imagePackageMode?: unknown;
       turnaroundViews?: unknown;
       referenceImage?: unknown;
@@ -127,10 +136,12 @@ export async function POST(request: Request) {
     const videoQuantity = parseQuantity(body?.videoQuantity);
     const imageModel = typeof body?.imageModel === "string" ? body.imageModel.trim() : "Nano Banana Pro";
     const imageQuantity = parseQuantity(body?.imageQuantity);
+    const requestedImageCountFromBody = parseRequestedImageCount(body?.requestedImageCount);
     const imagePackageMode = parseImagePackageMode(body?.imagePackageMode);
     const turnaroundViews = parseTurnaroundViews(body?.turnaroundViews);
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
+    const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
     const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
 
@@ -215,6 +226,7 @@ export async function POST(request: Request) {
         model: model as "deepseek" | "claude" | "chatgpt" | "gemini",
         imageModel,
         imageQuantity,
+        requestedImageCount,
         aspectRatio: aspectRatio as "16:9" | "4:3" | "1:1" | "3:4" | "9:16",
         videoModel,
         videoQuantity,

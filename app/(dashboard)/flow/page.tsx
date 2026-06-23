@@ -60,6 +60,7 @@ interface PendingPlan {
   scriptOutline?: string | null;
   creativeSteps?: string[];
   visualReferenceInstructions?: string;
+  requestedImageCount?: number;
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
 }
@@ -91,6 +92,7 @@ interface ChatConversation {
 const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
+const MAX_SCALE_IMAGE_COUNT = 40;
 
 const createChatId = (prefix: string) => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -180,6 +182,22 @@ const getResultFilename = (filePath: string) => {
   if (!filePath) return "";
   const cleanPath = filePath.split("?")[0];
   return cleanPath.split(/[\\/]/).pop() || cleanPath;
+};
+
+const normalizeRequestedImageCount = (value: unknown) => {
+  const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isInteger(count) || count < 5) return undefined;
+  return Math.min(count, MAX_SCALE_IMAGE_COUNT);
+};
+
+const extractRequestedImageCount = (value: string) => {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const matches = [...normalized.matchAll(/\b(\d{1,3})\s+(?:imagens|imagem|fotos|foto|images|image)\b/g)];
+  const counts = matches
+    .map((match) => normalizeRequestedImageCount(match[1]))
+    .filter((count): count is number => typeof count === "number");
+
+  return counts.length > 0 ? Math.max(...counts) : undefined;
 };
 
 const extractImagePathsFromJob = (value?: string | null) => {
@@ -455,8 +473,13 @@ export default function FlowDashboardPage() {
       };
 
       if (data.action && data.action.flow) {
+        const plannedKind = data.action.flow === 'refine' ? 'project' : data.action.flow;
+        const requestedImageCount = plannedKind === 'image' && !image3dMode
+          ? normalizeRequestedImageCount(data.action.requestedImageCount) || extractRequestedImageCount(message)
+          : undefined;
+
         agentMsg.plan = {
-          kind: data.action.flow === 'refine' ? 'project' : data.action.flow, 
+          kind: plannedKind, 
           flow: data.action.flow,
           originalPrompt: message,
           prompt: data.action.optimizedPrompt,
@@ -470,6 +493,7 @@ export default function FlowDashboardPage() {
           strategy: data.action.strategy,
           scriptOutline: data.action.scriptOutline,
           creativeSteps: data.action.creativeSteps,
+          requestedImageCount,
           imagePackageMode: agentType === 'image' && image3dMode ? 'turnaround3d' : undefined,
           quantity: agentType === 'image' ? imageQty : videoQty
         };
@@ -507,6 +531,7 @@ export default function FlowDashboardPage() {
           aspectRatio: msg.plan.aspectRatio,
           imageModel: msg.plan.kind === 'image' ? msg.plan.mediaModel : undefined,
           imageQuantity: msg.plan.kind === 'image' ? msg.plan.quantity : undefined,
+          requestedImageCount: msg.plan.kind === 'image' ? msg.plan.requestedImageCount : undefined,
           imagePackageMode: msg.plan.imagePackageMode,
           turnaroundViews: msg.plan.turnaroundViews,
           referenceImage: msg.plan.referenceImage || undefined,
@@ -521,6 +546,7 @@ export default function FlowDashboardPage() {
             scriptOutline: msg.plan.scriptOutline ?? null,
             creativeSteps: msg.plan.creativeSteps,
             visualReferenceInstructions: msg.plan.visualReferenceInstructions,
+            requestedImageCount: msg.plan.requestedImageCount,
             imagePackageMode: msg.plan.imagePackageMode,
             turnaroundViews: msg.plan.turnaroundViews
           }
@@ -710,6 +736,11 @@ export default function FlowDashboardPage() {
                   <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">Plano do Agente</div>
                      <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
+                     {msg.plan.requestedImageCount && (
+                       <div className="text-[11px] text-white/60 mb-3">
+                         Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
+                       </div>
+                     )}
                      <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
                        <strong className="text-white/80 block mb-1">Prompt:</strong>
                        {msg.plan.prompt}

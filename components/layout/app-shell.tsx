@@ -7,8 +7,6 @@ import {
   Briefcase,
   Compass,
   Cpu,
-  Database,
-  LineChart,
   Menu,
   Rss,
   Settings,
@@ -26,8 +24,6 @@ const navItems = [
   { href: "/jobs/new", label: "Generation", icon: Cpu },
   { href: "/flow", label: "AgenteMrChicken", icon: Sparkles },
   { href: "/patterns", label: "Estampas", icon: Shirt },
-  { href: "#library", label: "Library", icon: Database },
-  { href: "#analytics", label: "Analytics", icon: LineChart },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -138,50 +134,6 @@ export function AppShell({
         })}
       </nav>
 
-      {/* Bottom user profile */}
-      <div
-        className="mt-4 pt-4"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
-      >
-        <div
-          className="flex items-center gap-3 rounded-[20px] p-2.5 px-3"
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.07)",
-          }}
-        >
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
-            style={{
-              background: "rgba(157,124,255,0.15)",
-              border: "1px solid rgba(157,124,255,0.25)",
-            }}
-          >
-            N
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium text-white leading-tight">
-              Nexus
-            </div>
-            <div
-              className="mt-0.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-              style={{
-                background: "rgba(157,124,255,0.1)",
-                color: "#9D7CFF",
-                border: "1px solid rgba(157,124,255,0.18)",
-              }}
-            >
-              Pro
-            </div>
-          </div>
-        </div>
-        <div
-          className="mt-3 px-1 text-[10px] tracking-[0.06em] uppercase"
-          style={{ color: "#4A4A54" }}
-        >
-          by BM4E Studio
-        </div>
-      </div>
     </aside>
   );
 

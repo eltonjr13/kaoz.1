@@ -326,6 +326,7 @@ export interface FlowDecision {
   flow: 'image' | 'video' | 'project' | 'refine';
   explanation: string;
   optimizedPrompt: string;
+  requestedImageCount?: number;
   targetJobId?: string | null;
   strategy?: string;
   scriptOutline?: string | null;
@@ -350,6 +351,7 @@ Modo agente autonomo:
 - Para "video", nao planeje nenhuma etapa de imagem final.
 - Para "project", planeje tambem estrutura de roteiro/reacao do avatar.
 - Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
+- Se o usuario pedir mais de 4 imagens, mantenha flow como "image" e retorne requestedImageCount com a quantidade numerica solicitada.
 - Para project/refine, escreva optimizedPrompt como briefing operacional em portugues.
 - Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions (se houver avatar selecionado, defina brevemente como integrar o avatar ao vídeo, caso contrário defina como null).
 `;
