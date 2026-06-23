@@ -486,6 +486,14 @@ export class FlowAgent {
     ].join(" ");
   }
 
+  private prepareAdCreativePrompt(visualPrompt: string): string {
+    const suffix = "Single unified scene, single composition. Avoid any collage, split-screen, grid, diptych, or side-by-side comparisons.";
+    if (!visualPrompt.toLowerCase().includes("single unified scene")) {
+      return `${visualPrompt} ${suffix}`;
+    }
+    return visualPrompt;
+  }
+
   private getImageResultPaths(imageResult: { path?: string; paths?: string[] }): string[] {
     return imageResult.paths && imageResult.paths.length > 0
       ? imageResult.paths
@@ -1068,7 +1076,7 @@ Retorne estritamente um JSON no formato:
         }
 
         try {
-          const imageResult = await flowProvider.generateImage(concept.visualPrompt, {
+          const imageResult = await flowProvider.generateImage(this.prepareAdCreativePrompt(concept.visualPrompt), {
             aspectRatio: options.aspectRatio || '1:1',
             quantity: 'x4',
             model: options.imageModel || 'Nano Banana Pro',
