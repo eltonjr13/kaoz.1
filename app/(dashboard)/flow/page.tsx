@@ -1012,7 +1012,20 @@ export default function FlowDashboardPage() {
                       ].map((t) => (
                         <button
                           key={t.id}
-                          onClick={() => setAgentType(t.id as AgentType)}
+                          onClick={() => {
+                            setAgentType(t.id as AgentType);
+                            if (t.id === "ad-creative") {
+                              const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 2;
+                              if (currentNum < 4 || currentNum > 40) {
+                                setImageQty("x20");
+                              }
+                            } else if (t.id === "image") {
+                              const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20;
+                              if (currentNum > 4) {
+                                setImageQty("x2");
+                              }
+                            }
+                          }}
                           className="flex items-center justify-center gap-1 rounded-xl py-1.5 text-[9px] font-semibold transition-all cursor-pointer text-center"
                           style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
                         >
@@ -1104,59 +1117,59 @@ export default function FlowDashboardPage() {
                        <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
                          {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
                        </div>
-                       <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
-                         {agentType === "ad-creative" ? (
-                           [20, 30].map((qtyVal) => {
-                             const isActive = (qtyVal === 20 && imageQty !== "x30") || (qtyVal === 30 && imageQty === "x30");
-                             return (
-                               <button
-                                 key={qtyVal}
-                                 type="button"
-                                 onClick={() => {
-                                   setImageQty(qtyVal === 20 ? "x20" : "x30");
-                                 }}
-                                 className="rounded-xl py-1 font-mono text-[9px] transition-all cursor-pointer text-center"
-                                 style={{
-                                   background: isActive ? "#ffffff" : "transparent",
-                                   color: isActive ? "#080808" : "#7B7B86",
-                                   fontWeight: isActive ? 700 : 400,
-                                 }}
-                               >
-                                 {qtyVal} imgs
-                               </button>
-                             );
-                           })
-                         ) : (
-                           ["1x", "x2", "x3", "x4"].map((q) => {
-                             const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
-                             const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
-                             const isActive = currentQty === q && !isDisabled;
-                             return (
-                               <button
-                                 key={q}
-                                 type="button"
-                                 disabled={isDisabled}
-                                 onClick={() => {
-                                   if (agentType === "image" && image3dMode) return;
-                                   if (agentType === "image") setImageQty(q);
-                                   else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
-                                 }}
-                                 className="rounded-xl py-1 font-mono text-[10px] transition-all"
-                                 style={{
-                                   background: isActive ? "#ffffff" : "transparent",
-                                   color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
-                                   fontWeight: isActive ? 700 : 400,
-                                   cursor: isDisabled ? "not-allowed" : "pointer",
-                                   opacity: isDisabled ? 0.25 : 1,
-                                 }}
-                               >
-                                 {q}
-                               </button>
-                             );
-                           })
-                         )}
+                        {agentType === "ad-creative" ? (
+                          <div className="flex flex-col gap-2 rounded-[14px] p-2.5 bg-white/5 border border-white/10">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[12px] font-bold text-white font-mono">
+                                {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
+                              </span>
+                              <span className="text-[9px] text-[#7B7B86] uppercase tracking-wider font-mono">Imagens</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={4}
+                              max={40}
+                              step={1}
+                              value={imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20}
+                              onChange={(e) => {
+                                setImageQty(`x${e.target.value}`);
+                              }}
+                              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                            {/* eslint-disable-next-line complexity */}
+                            {["1x", "x2", "x3", "x4"].map((q) => {
+                              const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                              const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
+                              const isActive = currentQty === q && !isDisabled;
+                              return (
+                                <button
+                                  key={q}
+                                  type="button"
+                                  disabled={isDisabled}
+                                  onClick={() => {
+                                    if (agentType === "image" && image3dMode) return;
+                                    if (agentType === "image") setImageQty(q);
+                                    else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
+                                  }}
+                                  className="rounded-xl py-1 font-mono text-[10px] transition-all"
+                                  style={{
+                                    background: isActive ? "#ffffff" : "transparent",
+                                    color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
+                                    fontWeight: isActive ? 700 : 400,
+                                    cursor: isDisabled ? "not-allowed" : "pointer",
+                                    opacity: isDisabled ? 0.25 : 1,
+                                  }}
+                                >
+                                  {q}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                        </div>
-                     </div>
                    </div>
                  )}
               </div>
