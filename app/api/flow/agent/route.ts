@@ -82,7 +82,7 @@ function parseApprovedPlan(value: unknown): FlowDecision | undefined {
   const optimizedPrompt = typeof plan.optimizedPrompt === "string" ? plan.optimizedPrompt : plan.prompt;
 
   if (
-    (flow === "image" || flow === "video" || flow === "project" || flow === "refine") &&
+    (flow === "image" || flow === "video" || flow === "project" || flow === "refine" || flow === "ad-creative") &&
     typeof optimizedPrompt === "string" &&
     optimizedPrompt.trim()
   ) {
@@ -99,6 +99,9 @@ function parseApprovedPlan(value: unknown): FlowDecision | undefined {
         : undefined,
       visualReferenceInstructions: typeof plan.visualReferenceInstructions === "string"
         ? plan.visualReferenceInstructions
+        : undefined,
+      adCreativePlan: typeof plan.adCreativePlan === "object" && plan.adCreativePlan
+        ? (plan.adCreativePlan as any)
         : undefined
     };
   }

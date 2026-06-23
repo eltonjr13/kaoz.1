@@ -1033,6 +1033,133 @@ Retorne estritamente um JSON no formato:
   }
 
   // eslint-disable-next-line complexity
+  private async executeAdCreativeFlow(
+    options: AgentTaskOptions,
+    decision: FlowDecision
+  ): Promise<{ success: boolean; jobId: string; imagePaths: string[] }> {
+    const { jobId, avatarId } = options;
+    await this.logAgentEvent(jobId, "researching_started", "Iniciando criacao de criativos de imagem para anuncios em escala...");
+
+    const concepts = decision.adCreativePlan?.concepts || [];
+    if (concepts.length === 0) {
+      throw new Error("Nenhum conceito de criativo foi planejado no plano aprovado.");
+    }
+
+    await this.logAgentEvent(jobId, "planning", `Total de conceitos planejados: ${concepts.length}. Executando rodadas sequenciais.`);
+
+    const allUploadedPaths: string[] = [];
+    const conceptRecords: Array<{ conceptName: string; copyText: string; images: string[] }> = [];
+
+    for (let i = 0; i < concepts.length; i++) {
+      await this.assertJobNotCancelled(jobId);
+      const concept = concepts[i];
+      const roundNum = i + 1;
+      await this.logAgentEvent(jobId, "researching", `[Rodada ${roundNum}/${concepts.length}] Iniciando conceito: "${concept.conceptName}"...`);
+      await this.logAgentEvent(jobId, "researching", `Copy planejada: "${concept.copyText}"`);
+      await this.logAgentEvent(jobId, "researching", `Prompt visual: "${concept.visualPrompt}"`);
+
+      let attempt = 0;
+      const maxRetries = 2;
+      let success = false;
+
+      while (attempt <= maxRetries && !success) {
+        if (attempt > 0) {
+          await this.logAgentEvent(jobId, "researching", `Tentativa ${attempt}/${maxRetries} do conceito "${concept.conceptName}"...`);
+        }
+
+        try {
+          const imageResult = await flowProvider.generateImage(concept.visualPrompt, {
+            aspectRatio: options.aspectRatio || '1:1',
+            quantity: 'x4',
+            model: options.imageModel || 'Nano Banana Pro',
+            referenceImage: options.avatarReferenceImage
+          });
+
+          const paths = this.getImageResultPaths(imageResult);
+          if (!imageResult.success || paths.length === 0) {
+            throw new Error(`Falha ao gerar imagens para o conceito "${concept.conceptName}": ${imageResult.error || "Sem imagem retornada"}`);
+          }
+
+          await this.assertJobNotCancelled(jobId);
+          const uploadedBatchPaths = await this.uploadImagePaths(jobId, paths);
+          allUploadedPaths.push(...uploadedBatchPaths);
+          conceptRecords.push({
+            conceptName: concept.conceptName,
+            copyText: concept.copyText,
+            images: uploadedBatchPaths
+          });
+
+          success = true;
+          await this.logAgentEvent(
+            jobId,
+            "researching",
+            `Conceito "${concept.conceptName}" gerado com sucesso! ${uploadedBatchPaths.length} imagens adicionadas.`
+          );
+
+          await updateLocalJob(jobId, {
+            status: "researching",
+            final_video_path: allUploadedPaths[0],
+            source_video_description: `Criativos de imagem em progresso (${allUploadedPaths.length} imagens geradas)`,
+            source_video_transcription: JSON.stringify({
+              mode: 'ad-creative',
+              concepts: conceptRecords
+            })
+          });
+
+        } catch (err: unknown) {
+          attempt++;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.error(`[FlowAgent] [${jobId}] Erro na geracao do conceito ${concept.conceptName} (tentativa ${attempt}):`, err);
+
+          if (attempt > maxRetries) {
+            await this.logAgentEvent(
+              jobId,
+              "researching",
+              `Falha ao gerar o conceito "${concept.conceptName}" apos todas as tentativas (Erro: ${errMsg}). Continuando com os demais conceitos.`
+            );
+            break;
+          }
+        }
+      }
+    }
+
+    if (allUploadedPaths.length === 0) {
+      throw new Error("Nenhum criativo de imagem foi gerado com sucesso.");
+    }
+
+    await this.updateJobCompletion(jobId, allUploadedPaths[0], {
+      status: "completed",
+      source_video_description: `Criativos de anúncios em escala sobre: ${options.topic}`,
+      source_video_transcription: JSON.stringify({
+        mode: 'ad-creative',
+        concepts: conceptRecords
+      })
+    });
+
+    await appendAgentMemory({
+      avatarId,
+      taskType: "image",
+      inputSummary: options.topic,
+      outputSummary: `Campanha de criativos de imagem gerada com sucesso: ${allUploadedPaths.length} imagens em ${concepts.length} conceitos.`,
+      type: "success",
+      promptUsed: decision.optimizedPrompt,
+      modelUsed: options.imageModel || "ImageFX Nano Banana Pro",
+      learnings: `Geracao de criativos em escala de sucesso para: "${options.topic}". Conceitos gerados: ${concepts.map(c => c.conceptName).join(", ")}`
+    });
+
+    await this.logAgentEvent(jobId, "completed", "Campanha de criativos de anúncio em escala concluída com sucesso!", {
+      imagePaths: allUploadedPaths,
+      concepts: conceptRecords
+    });
+
+    return {
+      success: true,
+      jobId,
+      imagePaths: allUploadedPaths
+    };
+  }
+
+  // eslint-disable-next-line complexity
   async runAutonomousAgent(
     options: AgentTaskOptions
   ): Promise<{ success: boolean; jobId: string; videoPath?: string; imagePaths?: string[]; error?: string }> {
@@ -1083,6 +1210,8 @@ Retorne estritamente um JSON no formato:
       return this.executeVideoFlow(executionOptions, decision.optimizedPrompt);
     } else if (decision.flow === "refine") {
       return this.executeRefineFlow(executionOptions, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
+    } else if (decision.flow === "ad-creative") {
+      return this.executeAdCreativeFlow(executionOptions, decision);
     } else {
       const projectOptions = {
         ...executionOptions,

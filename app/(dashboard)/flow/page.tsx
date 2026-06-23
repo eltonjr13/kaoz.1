@@ -39,7 +39,7 @@ interface Avatar {
   image_path: string;
 }
 
-type AgentType = 'image' | 'video' | 'project';
+type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
 type PlannedFlow = AgentType | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
@@ -66,6 +66,13 @@ interface PendingPlan {
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
   useAvatarPersonality?: boolean;
+  adCreativePlan?: {
+    concepts: {
+      conceptName: string;
+      copyText: string;
+      visualPrompt: string;
+    }[];
+  } | null;
 }
 
 export interface ChatMessageState {
@@ -209,6 +216,18 @@ const canStepBackConversation = (messages: ChatMessageState[]) =>
 
 const extractImagePathsFromJob = (value?: string | null) => {
   if (!value) return [];
+  
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object") {
+      if (parsed.mode === 'ad-creative' && Array.isArray(parsed.concepts)) {
+        return parsed.concepts.flatMap((c: any) => c.images || []).filter((item: any) => typeof item === 'string');
+      }
+      if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string");
+      if (Array.isArray(parsed.images)) return parsed.images.map((item: any) => item.path || item).filter((item: any) => Boolean(item));
+    }
+  } catch {}
+
   const marker = "Imagens salvas em:";
   const markerIndex = value.indexOf(marker);
   if (markerIndex >= 0) {
@@ -382,7 +401,7 @@ export default function FlowDashboardPage() {
                 if (job.status === "completed") {
                   nextMessages[msgIndex].jobStatus = 'completed';
                   const finalPath = job.final_video_path || "";
-                  if (msg.jobType === "image") {
+                  if (msg.jobType === "image" || msg.jobType === "ad-creative") {
                      const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
                      nextMessages[msgIndex].imageResult = {
                        success: true,
@@ -408,10 +427,10 @@ export default function FlowDashboardPage() {
                 } else {
                   nextMessages[msgIndex].jobStatus = 'failed';
                   const finalPath = job.final_video_path || "";
-                  const imagePaths = msg.jobType === "image"
+                  const imagePaths = (msg.jobType === "image" || msg.jobType === "ad-creative")
                     ? extractImagePathsFromJob(job.source_video_transcription)
                     : [];
-                  if (msg.jobType === "image" && (imagePaths.length > 0 || finalPath)) {
+                  if ((msg.jobType === "image" || msg.jobType === "ad-creative") && (imagePaths.length > 0 || finalPath)) {
                     nextMessages[msgIndex].imageResult = {
                       success: true,
                       path: finalPath,
@@ -502,8 +521,9 @@ export default function FlowDashboardPage() {
 
       if (data.action && data.action.flow) {
         const plannedKind = data.action.flow === 'refine' ? 'project' : data.action.flow;
-        const requestedImageCount = plannedKind === 'image' && !image3dMode
-          ? normalizeRequestedImageCount(data.action.requestedImageCount) || extractRequestedImageCount(message)
+        const isAdCreative = plannedKind === 'ad-creative';
+        const requestedImageCount = (plannedKind === 'image' || isAdCreative) && !image3dMode
+          ? normalizeRequestedImageCount(data.action.requestedImageCount) || (isAdCreative ? (imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20) : undefined) || extractRequestedImageCount(message)
           : undefined;
 
         agentMsg.plan = {
@@ -513,8 +533,8 @@ export default function FlowDashboardPage() {
           prompt: data.action.optimizedPrompt,
           explanation: data.action.explanation,
           model: agentModel,
-          aspectRatio: plannedKind === 'image' ? imageRatio : videoRatio,
-          mediaModel: plannedKind === 'image' ? imageModel : videoModel,
+          aspectRatio: (plannedKind === 'image' || isAdCreative) ? imageRatio : videoRatio,
+          mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
           avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
           targetJobId: data.action.targetJobId,
@@ -523,8 +543,9 @@ export default function FlowDashboardPage() {
           creativeSteps: data.action.creativeSteps,
           requestedImageCount,
           imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
-          quantity: plannedKind === 'image' ? imageQty : videoQty,
-          useAvatarPersonality
+          quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
+          useAvatarPersonality,
+          adCreativePlan: data.action.adCreativePlan
         };
       }
 
@@ -559,9 +580,9 @@ export default function FlowDashboardPage() {
           useAvatarPersonality: msg.plan.useAvatarPersonality ?? useAvatarPersonality,
           model: msg.plan.model,
           aspectRatio: msg.plan.aspectRatio,
-          imageModel: msg.plan.kind === 'image' ? msg.plan.mediaModel : undefined,
-          imageQuantity: msg.plan.kind === 'image' ? msg.plan.quantity : undefined,
-          requestedImageCount: msg.plan.kind === 'image' ? msg.plan.requestedImageCount : undefined,
+          imageModel: (msg.plan.kind === 'image' || msg.plan.kind === 'ad-creative') ? msg.plan.mediaModel : undefined,
+          imageQuantity: (msg.plan.kind === 'image' || msg.plan.kind === 'ad-creative') ? msg.plan.quantity : undefined,
+          requestedImageCount: (msg.plan.kind === 'image' || msg.plan.kind === 'ad-creative') ? msg.plan.requestedImageCount : undefined,
           imagePackageMode: msg.plan.imagePackageMode,
           turnaroundViews: msg.plan.turnaroundViews,
           referenceImage: msg.plan.referenceImage || undefined,
@@ -578,7 +599,8 @@ export default function FlowDashboardPage() {
             visualReferenceInstructions: msg.plan.visualReferenceInstructions,
             requestedImageCount: msg.plan.requestedImageCount,
             imagePackageMode: msg.plan.imagePackageMode,
-            turnaroundViews: msg.plan.turnaroundViews
+            turnaroundViews: msg.plan.turnaroundViews,
+            adCreativePlan: msg.plan.adCreativePlan
           }
         })
       });
@@ -819,25 +841,43 @@ export default function FlowDashboardPage() {
                 {/* Plan Card */}
                 {msg.plan && !msg.jobId && (
                   <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
-                     <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">Plano do Agente</div>
-                     <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
-                     {msg.plan.requestedImageCount && (
-                       <div className="text-[11px] text-white/60 mb-3">
-                         Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
-                       </div>
-                     )}
-                     <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
-                       <strong className="text-white/80 block mb-1">Prompt:</strong>
-                       {msg.plan.prompt}
-                     </div>
-                     <div className="flex items-center gap-2">
-                       <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 bg-white text-black py-2 rounded-full text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer">
-                         <Check size={14}/> Aprovar
-                       </button>
-                       <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 bg-white/10 border border-white/10 py-2 rounded-full text-xs font-medium hover:bg-white/20 cursor-pointer">
-                         Cancelar
-                       </button>
-                     </div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
+                        {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
+                      </div>
+                      <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
+                      {msg.plan.requestedImageCount && (
+                        <div className="text-[11px] text-white/60 mb-3">
+                          Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
+                        </div>
+                      )}
+                      
+                      {msg.plan.kind === 'ad-creative' && msg.plan.adCreativePlan?.concepts && (
+                        <div className="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto pr-1">
+                          {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
+                            <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
+                              <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
+                              <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> "{concept.copyText}"</div>
+                              <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {msg.plan.kind !== 'ad-creative' && (
+                        <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
+                          <strong className="text-white/80 block mb-1">Prompt:</strong>
+                          {msg.plan.prompt}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 bg-white text-black py-2 rounded-full text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer">
+                          <Check size={14}/> Aprovar
+                        </button>
+                        <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 bg-white/10 border border-white/10 py-2 rounded-full text-xs font-medium hover:bg-white/20 cursor-pointer">
+                          Cancelar
+                        </button>
+                      </div>
                   </div>
                 )}
 
@@ -961,25 +1001,26 @@ export default function FlowDashboardPage() {
             showOptions={showSettings}
             optionsContent={
               <div className="absolute bottom-full left-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto bg-[#0c0c10] border border-white/10 backdrop-blur-xl">
-                 <div className="flex flex-col gap-2">
-                   <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Tipo Preferido</div>
-                   <div className="grid grid-cols-3 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
-                     {[
-                       { id: "image", label: "Imagem", icon: <ImageIcon size={10} /> },
-                       { id: "video", label: "Vídeo", icon: <Film size={10} /> },
-                       { id: "project", label: "React", icon: <Cpu size={10} /> },
-                     ].map((t) => (
-                       <button
-                         key={t.id}
-                         onClick={() => setAgentType(t.id as AgentType)}
-                         className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer"
-                         style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
-                       >
-                         {t.icon} <span>{t.label}</span>
-                       </button>
-                     ))}
-                   </div>
-                 </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Tipo Preferido</div>
+                    <div className="grid grid-cols-4 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                      {[
+                        { id: "image", label: "Imagem", icon: <ImageIcon size={10} /> },
+                        { id: "video", label: "Vídeo", icon: <Film size={10} /> },
+                        { id: "project", label: "React", icon: <Cpu size={10} /> },
+                        { id: "ad-creative", label: "Anúncio", icon: <Bot size={10} /> },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => setAgentType(t.id as AgentType)}
+                          className="flex items-center justify-center gap-1 rounded-xl py-1.5 text-[9px] font-semibold transition-all cursor-pointer text-center"
+                          style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
+                        >
+                          {t.icon} <span>{t.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                  {/* Image mode (3D turnaround toggle) */}
                  {agentType === "image" && (
@@ -1036,14 +1077,14 @@ export default function FlowDashboardPage() {
                        <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Proporção</div>
                        <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
                          {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
-                           const currentRatio = agentType === "image" ? imageRatio : videoRatio;
+                           const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
                            const isActive = currentRatio === r;
                            return (
                              <button
                                key={r}
                                type="button"
                                onClick={() => {
-                                 if (agentType === "image") setImageRatio(r);
+                                 if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
                                  else setVideoRatio(r);
                                }}
                                className="rounded-xl py-1 font-mono text-[10px] transition-all cursor-pointer"
@@ -1060,35 +1101,60 @@ export default function FlowDashboardPage() {
                        </div>
                      </div>
                      <div className="flex flex-col gap-2">
-                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Quantidade</div>
+                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
+                         {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
+                       </div>
                        <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
-                         {["1x", "x2", "x3", "x4"].map((q) => {
-                           const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
-                           const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
-                           const isActive = currentQty === q && !isDisabled;
-                           return (
-                             <button
-                               key={q}
-                               type="button"
-                               disabled={isDisabled}
-                               onClick={() => {
-                                 if (agentType === "image" && image3dMode) return;
-                                 if (agentType === "image") setImageQty(q);
-                                 else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
-                               }}
-                               className="rounded-xl py-1 font-mono text-[10px] transition-all"
-                               style={{
-                                 background: isActive ? "#ffffff" : "transparent",
-                                 color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
-                                 fontWeight: isActive ? 700 : 400,
-                                 cursor: isDisabled ? "not-allowed" : "pointer",
-                                 opacity: isDisabled ? 0.25 : 1,
-                               }}
-                             >
-                               {q}
-                             </button>
-                           );
-                         })}
+                         {agentType === "ad-creative" ? (
+                           [20, 30].map((qtyVal) => {
+                             const isActive = (qtyVal === 20 && imageQty !== "x30") || (qtyVal === 30 && imageQty === "x30");
+                             return (
+                               <button
+                                 key={qtyVal}
+                                 type="button"
+                                 onClick={() => {
+                                   setImageQty(qtyVal === 20 ? "x20" : "x30");
+                                 }}
+                                 className="rounded-xl py-1 font-mono text-[9px] transition-all cursor-pointer text-center"
+                                 style={{
+                                   background: isActive ? "#ffffff" : "transparent",
+                                   color: isActive ? "#080808" : "#7B7B86",
+                                   fontWeight: isActive ? 700 : 400,
+                                 }}
+                               >
+                                 {qtyVal} imgs
+                               </button>
+                             );
+                           })
+                         ) : (
+                           ["1x", "x2", "x3", "x4"].map((q) => {
+                             const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                             const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
+                             const isActive = currentQty === q && !isDisabled;
+                             return (
+                               <button
+                                 key={q}
+                                 type="button"
+                                 disabled={isDisabled}
+                                 onClick={() => {
+                                   if (agentType === "image" && image3dMode) return;
+                                   if (agentType === "image") setImageQty(q);
+                                   else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
+                                 }}
+                                 className="rounded-xl py-1 font-mono text-[10px] transition-all"
+                                 style={{
+                                   background: isActive ? "#ffffff" : "transparent",
+                                   color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
+                                   fontWeight: isActive ? 700 : 400,
+                                   cursor: isDisabled ? "not-allowed" : "pointer",
+                                   opacity: isDisabled ? 0.25 : 1,
+                                 }}
+                               >
+                                 {q}
+                               </button>
+                             );
+                           })
+                         )}
                        </div>
                      </div>
                    </div>

@@ -58,6 +58,7 @@ interface ChatInputProps {
     files: FileWithPreview[],
     pastedContent: PastedContent[]
   ) => void;
+  initialMessage?: string;
   disabled?: boolean;
   placeholder?: string;
   maxFiles?: number;
@@ -503,13 +504,14 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
   maxFileSize = MAX_FILE_SIZE,
   acceptedFileTypes,
   models = DEFAULT_MODELS_INTERNAL,
+  initialMessage = "",
   defaultModel,
   onModelChange,
   onOptionsClick,
   showOptions = false,
   optionsContent,
 }) => {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage);
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [pastedContent, setPastedContent] = useState<PastedContent[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -801,6 +803,7 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
+          autoFocus={Boolean(initialMessage)}
           className="flex-1 min-h-[100px] w-full p-4 focus-within:border-none focus:outline-none focus:border-none border-none outline-none focus-within:ring-0 focus-within:ring-offset-0 focus-within:outline-none max-h-[120px] resize-none border-0 bg-transparent text-zinc-100 shadow-none focus-visible:ring-0 placeholder:text-zinc-500 text-sm sm:text-base custom-scrollbar"
           rows={1}
         />
