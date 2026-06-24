@@ -14,6 +14,7 @@ import {
   Sparkles,
   UserRound,
   X,
+  Brain,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
   { href: "/flow", label: "AgenteMrChicken", icon: Sparkles },
+  { href: "/cortex", label: "Córtex", icon: Brain },
   { href: "/patterns", label: "Estampas", icon: Shirt },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

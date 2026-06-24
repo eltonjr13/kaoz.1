@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, ExternalLink, RefreshCw, X } from "lucide-react";
+import { Download, ExternalLink, RefreshCw, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 import type { JobListItem } from "@/app/(dashboard)/jobs/page";
 
@@ -111,12 +111,14 @@ function JobActionsCell({
   job,
   loadingJobId,
   onRestart,
-  onColabSync
+  onColabSync,
+  onEvaluate
 }: {
   job: JobListItem;
   loadingJobId: string | null;
   onRestart: (jobId: string, startFrom?: "lipsync") => void;
   onColabSync: (job: JobListItem) => void;
+  onEvaluate: (jobId: string, feedback: 'good' | 'bad') => void;
 }) {
   const isLipSyncing = job.status === "lip_syncing";
   const showRestart = !job.final_video_path && !isLipSyncing;
@@ -192,6 +194,53 @@ function JobActionsCell({
           {loadingJobId === `${job.id}-lipsync` ? "Iniciando..." : "Refazer LipSync"}
         </button>
       )}
+
+      {job.status === "completed" && (
+        <div style={{ display: "flex", gap: "4px", borderLeft: "1px solid var(--line)", paddingLeft: "8px", marginLeft: "4px" }}>
+          <button
+            type="button"
+            title="Amei o resultado (👍)"
+            style={{
+              border: "none",
+              background: job.feedback === "good" ? "rgba(16, 185, 129, 0.15)" : "transparent",
+              color: job.feedback === "good" ? "#10b981" : "var(--muted)",
+              cursor: "pointer",
+              borderRadius: "6px",
+              padding: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "transform 0.15s ease, background 0.2s",
+            }}
+            onClick={() => onEvaluate(job.id, "good")}
+            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.15)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <ThumbsUp size={15} fill={job.feedback === "good" ? "#10b981" : "none"} />
+          </button>
+          <button
+            type="button"
+            title="Não gostei do resultado (👎)"
+            style={{
+              border: "none",
+              background: job.feedback === "bad" ? "rgba(239, 68, 68, 0.15)" : "transparent",
+              color: job.feedback === "bad" ? "#ef4444" : "var(--muted)",
+              cursor: "pointer",
+              borderRadius: "6px",
+              padding: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "transform 0.15s ease, background 0.2s",
+            }}
+            onClick={() => onEvaluate(job.id, "bad")}
+            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.15)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <ThumbsDown size={15} fill={job.feedback === "bad" ? "#ef4444" : "none"} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -200,12 +249,14 @@ function JobRow({
   job,
   loadingJobId,
   onRestart,
-  onColabSync
+  onColabSync,
+  onEvaluate
 }: {
   job: JobListItem;
   loadingJobId: string | null;
   onRestart: (jobId: string, startFrom?: "lipsync") => void;
   onColabSync: (job: JobListItem) => void;
+  onEvaluate: (jobId: string, feedback: 'good' | 'bad') => void;
 }) {
   const avatar = getRelatedOne(job.avatars);
   const sourceVideo = getRelatedOne(job.viral_videos);
@@ -229,6 +280,7 @@ function JobRow({
           loadingJobId={loadingJobId}
           onRestart={onRestart}
           onColabSync={onColabSync}
+          onEvaluate={onEvaluate}
         />
       </td>
     </tr>
@@ -243,10 +295,18 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [colabMode, setColabMode] = useState<"auto" | "manual">("auto");
+  const [evaluations, setEvaluations] = useState<Record<string, 'good' | 'bad'>>({});
   const hasActiveJobs = useMemo(
     () => jobs.some((job) => ["queued", "researching", "scripting", "voice_generating", "lip_syncing", "rendering"].includes(job.status)),
     [jobs]
   );
+
+  const renderedJobs = useMemo(() => {
+    return jobs.map((job) => ({
+      ...job,
+      feedback: evaluations[job.id] !== undefined ? evaluations[job.id] : job.feedback
+    }));
+  }, [jobs, evaluations]);
 
   useEffect(() => {
     if (!hasActiveJobs) {
@@ -315,6 +375,23 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
     }
   }
 
+  async function handleEvaluate(jobId: string, feedback: 'good' | 'bad') {
+    setEvaluations((prev) => ({ ...prev, [jobId]: feedback }));
+    try {
+      const response = await fetch("/api/jobs/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, feedback })
+      });
+      if (!response.ok) {
+        console.error("Falha ao enviar avaliação para o servidor.");
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("Erro ao enviar avaliação:", err);
+    }
+  }
+
   return (
     <>
       <div className="table-wrap">
@@ -343,13 +420,14 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
           </tr>
         </thead>
         <tbody>
-          {jobs.map((job) => (
+          {renderedJobs.map((job) => (
             <JobRow
               key={job.id}
               job={job}
               loadingJobId={loadingJobId}
               onRestart={handleRestart}
               onColabSync={setColabJob}
+              onEvaluate={handleEvaluate}
             />
           ))}
         </tbody>

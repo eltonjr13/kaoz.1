@@ -1053,16 +1053,26 @@ Retorne estritamente um JSON no formato:
       throw new Error("Nenhum conceito de criativo foi planejado no plano aprovado.");
     }
 
-    await this.logAgentEvent(jobId, "planning", `Total de conceitos planejados: ${concepts.length}. Executando rodadas sequenciais.`);
+    const targetImageCount = Math.min(
+      options.requestedImageCount || decision.requestedImageCount || concepts.length * MAX_IMAGE_BATCH_SIZE,
+      MAX_SCALE_IMAGE_COUNT
+    );
+    const conceptsToRun = concepts.slice(0, Math.ceil(targetImageCount / MAX_IMAGE_BATCH_SIZE));
+
+    await this.logAgentEvent(jobId, "planning", `Total de conceitos planejados: ${concepts.length}. Executando ${conceptsToRun.length} conceito(s) ate atingir ${targetImageCount} imagem(ns).`);
 
     const allUploadedPaths: string[] = [];
     const conceptRecords: Array<{ conceptName: string; copyText: string; images: string[] }> = [];
 
-    for (let i = 0; i < concepts.length; i++) {
+    for (let i = 0; i < conceptsToRun.length && allUploadedPaths.length < targetImageCount; i++) {
       await this.assertJobNotCancelled(jobId);
-      const concept = concepts[i];
+      const concept = conceptsToRun[i];
       const roundNum = i + 1;
-      await this.logAgentEvent(jobId, "researching", `[Rodada ${roundNum}/${concepts.length}] Iniciando conceito: "${concept.conceptName}"...`);
+      const remainingCount = targetImageCount - allUploadedPaths.length;
+      const batchSize = Math.min(MAX_IMAGE_BATCH_SIZE, remainingCount);
+      const batchQuantity = this.getImageBatchQuantity(batchSize);
+
+      await this.logAgentEvent(jobId, "researching", `[Rodada ${roundNum}/${conceptsToRun.length}] Iniciando conceito: "${concept.conceptName}"...`);
       await this.logAgentEvent(jobId, "researching", `Copy planejada: "${concept.copyText}"`);
       await this.logAgentEvent(jobId, "researching", `Prompt visual: "${concept.visualPrompt}"`);
 
@@ -1078,12 +1088,12 @@ Retorne estritamente um JSON no formato:
         try {
           const imageResult = await flowProvider.generateImage(this.prepareAdCreativePrompt(concept.visualPrompt), {
             aspectRatio: options.aspectRatio || '1:1',
-            quantity: 'x4',
+            quantity: batchQuantity,
             model: options.imageModel || 'Nano Banana Pro',
             referenceImage: options.avatarReferenceImage
           });
 
-          const paths = this.getImageResultPaths(imageResult);
+          const paths = this.getImageResultPaths(imageResult).slice(0, batchSize);
           if (!imageResult.success || paths.length === 0) {
             throw new Error(`Falha ao gerar imagens para o conceito "${concept.conceptName}": ${imageResult.error || "Sem imagem retornada"}`);
           }
@@ -1148,11 +1158,11 @@ Retorne estritamente um JSON no formato:
       avatarId,
       taskType: "image",
       inputSummary: options.topic,
-      outputSummary: `Campanha de criativos de imagem gerada com sucesso: ${allUploadedPaths.length} imagens em ${concepts.length} conceitos.`,
+      outputSummary: `Campanha de criativos de imagem gerada com sucesso: ${allUploadedPaths.length} imagens em ${conceptRecords.length} conceitos.`,
       type: "success",
       promptUsed: decision.optimizedPrompt,
       modelUsed: options.imageModel || "ImageFX Nano Banana Pro",
-      learnings: `Geracao de criativos em escala de sucesso para: "${options.topic}". Conceitos gerados: ${concepts.map(c => c.conceptName).join(", ")}`
+      learnings: `Geracao de criativos em escala de sucesso para: "${options.topic}". Conceitos gerados: ${conceptRecords.map(record => record.conceptName).join(", ")}`
     });
 
     await this.logAgentEvent(jobId, "completed", "Campanha de criativos de anúncio em escala concluída com sucesso!", {

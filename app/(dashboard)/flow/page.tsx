@@ -17,7 +17,8 @@ import {
   Bot,
   MessageSquarePlus,
   Square,
-  Undo2
+  Undo2,
+  Pencil
 } from "lucide-react";
 import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
 import ReactMarkdown from "react-markdown";
@@ -103,6 +104,7 @@ const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
 const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
+const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
 
 const createChatId = (prefix: string) => {
@@ -131,12 +133,17 @@ const getConversationTitle = (messages: ChatMessageState[]) => {
   return firstLine.length > 48 ? `${firstLine.slice(0, 48)}...` : firstLine;
 };
 
-const createChatConversation = (messages: ChatMessageState[] = []): ChatConversation => {
+const getConversationTitleWithBranch = (messages: ChatMessageState[], currentTitle: string) => {
+  const title = getConversationTitle(messages);
+  return currentTitle.startsWith(BRANCH_TITLE_PREFIX) ? `${BRANCH_TITLE_PREFIX}${title}` : title;
+};
+
+const createChatConversation = (messages: ChatMessageState[] = [], title?: string): ChatConversation => {
   const now = new Date().toISOString();
   const sanitizedMessages = sanitizeChatMessages(messages);
   return {
     id: createChatId("chat"),
-    title: getConversationTitle(sanitizedMessages),
+    title: title || getConversationTitle(sanitizedMessages),
     createdAt: now,
     updatedAt: now,
     messages: sanitizedMessages
@@ -211,9 +218,6 @@ const extractRequestedImageCount = (value: string) => {
   return counts.length > 0 ? Math.max(...counts) : undefined;
 };
 
-const canStepBackConversation = (messages: ChatMessageState[]) =>
-  messages.length > 0 && !messages.some((msg) => msg.jobStatus === "running");
-
 const extractImagePathsFromJob = (value?: string | null) => {
   if (!value) return [];
   
@@ -250,6 +254,9 @@ const extractImagePathsFromJob = (value?: string | null) => {
   }
 };
 
+const getEditableMessageContent = (content: string) =>
+  content.replace(/\n\n\[Imagem de refer(?:ência|Ãªncia) anexada\]$/i, "");
+
 export default function FlowDashboardPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
@@ -273,6 +280,7 @@ export default function FlowDashboardPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -314,7 +322,7 @@ export default function FlowDashboardPage() {
             conversation.id === activeConversationId
               ? {
                   ...conversation,
-                  title: getConversationTitle(sanitizedMessages),
+                  title: getConversationTitleWithBranch(sanitizedMessages, conversation.title),
                   updatedAt,
                   messages: sanitizedMessages
                 }
@@ -523,7 +531,7 @@ export default function FlowDashboardPage() {
         const plannedKind = data.action.flow === 'refine' ? 'project' : data.action.flow;
         const isAdCreative = plannedKind === 'ad-creative';
         const requestedImageCount = (plannedKind === 'image' || isAdCreative) && !image3dMode
-          ? normalizeRequestedImageCount(data.action.requestedImageCount) || (isAdCreative ? (imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20) : undefined) || extractRequestedImageCount(message)
+          ? normalizeRequestedImageCount(data.action.requestedImageCount) || extractRequestedImageCount(message) || (isAdCreative ? (imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20) : undefined)
           : undefined;
 
         agentMsg.plan = {
@@ -630,19 +638,50 @@ export default function FlowDashboardPage() {
     }
   };
 
-  const canStepBack = canStepBackConversation(chatMessages);
+  const canBranchConversation = !isLoading && !chatMessages.some((msg) => msg.jobStatus === "running");
 
-  const handleStepBackConversation = () => {
-    if (!canStepBack) return;
+  const createConversationBranch = (branchMessages: ChatMessageState[]) => {
+    const sanitizedBranchMessages = sanitizeChatMessages(branchMessages);
+    const branchTitle = `${BRANCH_TITLE_PREFIX}${getConversationTitle(sanitizedBranchMessages)}`;
+    const branchConversation = createChatConversation(sanitizedBranchMessages, branchTitle);
+    const currentMessages = sanitizeChatMessages(chatMessages);
+    const updatedAt = new Date().toISOString();
 
-    setChatMessages((previous) => {
-      const next = [...previous];
-      const removed = next.pop();
-      if (removed?.role === "assistant" && next[next.length - 1]?.role === "user" && !next[next.length - 1].jobId) {
-        next.pop();
-      }
-      return next;
-    });
+    setChatConversations((previous) => [
+      branchConversation,
+      ...previous.map((conversation) =>
+        conversation.id === activeConversationId
+          ? {
+              ...conversation,
+              title: getConversationTitleWithBranch(currentMessages, conversation.title),
+              updatedAt,
+              messages: currentMessages
+            }
+          : conversation
+      )
+    ]);
+    setActiveConversationId(branchConversation.id);
+    setChatMessages(branchConversation.messages);
+  };
+
+  const handleReturnToMessage = (messageId: string) => {
+    if (!canBranchConversation) return;
+
+    const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId);
+    if (messageIndex < 0) return;
+
+    createConversationBranch(chatMessages.slice(0, messageIndex + 1));
+  };
+
+  const handleEditMessage = (messageId: string) => {
+    if (!canBranchConversation) return;
+
+    const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId);
+    const message = chatMessages[messageIndex];
+    if (!message || message.role !== "user") return;
+
+    setDraftMessage(getEditableMessageContent(message.content));
+    createConversationBranch(chatMessages.slice(0, messageIndex));
   };
 
   const handleStopJob = async (msgId: string, jobId: string) => {
@@ -780,14 +819,6 @@ export default function FlowDashboardPage() {
                </select>
              </div>
           )}
-          <button
-            onClick={handleStepBackConversation}
-            disabled={!canStepBack}
-            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
-            title="Voltar uma etapa"
-          >
-            <Undo2 size={14} />
-          </button>
           <button onClick={handleCreateConversation} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Nova conversa">
             <MessageSquarePlus size={14} />
           </button>
@@ -837,6 +868,31 @@ export default function FlowDashboardPage() {
                     {msg.content}
                   </ReactMarkdown>
                 </div>
+
+                {canBranchConversation && (
+                  <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleReturnToMessage(msg.id)}
+                      className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
+                      title="Criar ramificação até esta mensagem"
+                    >
+                      <Undo2 size={11} />
+                      Voltar
+                    </button>
+                    {msg.role === "user" && (
+                      <button
+                        type="button"
+                        onClick={() => handleEditMessage(msg.id)}
+                        className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
+                        title="Criar ramificação editando esta mensagem"
+                      >
+                        <Pencil size={11} />
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Plan Card */}
                 {msg.plan && !msg.jobId && (
@@ -997,6 +1053,8 @@ export default function FlowDashboardPage() {
             defaultModel={agentModel}
             onModelChange={(modelId) => setAgentModel(modelId as any)}
             onSendMessage={handleSendMessage}
+            messageValue={draftMessage}
+            onMessageChange={setDraftMessage}
             onOptionsClick={() => setShowSettings(!showSettings)}
             showOptions={showSettings}
             optionsContent={

@@ -185,6 +185,7 @@ export async function createLocalJob(input: NewLocalJobInput): Promise<ReactionJ
     source_video_transcription: merged.sourceVideoTranscription,
     trim_start: merged.trimStart,
     trim_end: merged.trimEnd,
+    feedback: null,
     created_at: now,
     updated_at: now
   };

@@ -58,6 +58,8 @@ interface ChatInputProps {
     files: FileWithPreview[],
     pastedContent: PastedContent[]
   ) => void;
+  messageValue?: string;
+  onMessageChange?: (message: string) => void;
   initialMessage?: string;
   disabled?: boolean;
   placeholder?: string;
@@ -498,6 +500,8 @@ const TextualFilePreviewCard: React.FC<{
 // Main ChatInput Component
 export const ClaudeChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
+  messageValue,
+  onMessageChange,
   disabled = false,
   placeholder = "How can I help you today?",
   maxFiles = MAX_FILES,
@@ -511,7 +515,7 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
   showOptions = false,
   optionsContent,
 }) => {
-  const [message, setMessage] = useState(initialMessage);
+  const [internalMessage, setInternalMessage] = useState(initialMessage);
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [pastedContent, setPastedContent] = useState<PastedContent[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -521,10 +525,29 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMessageControlled = messageValue !== undefined;
+  const message = messageValue ?? internalMessage;
+
+  const setMessage = useCallback(
+    (nextMessage: string) => {
+      if (isMessageControlled) {
+        onMessageChange?.(nextMessage);
+      } else {
+        setInternalMessage(nextMessage);
+      }
+    },
+    [isMessageControlled, onMessageChange]
+  );
 
   useEffect(() => {
     setSelectedModel(defaultModel || models[0]?.id || "");
   }, [defaultModel, models]);
+
+  useEffect(() => {
+    if ((messageValue || initialMessage) && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [messageValue, initialMessage]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -709,7 +732,7 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
         setPastedContent((prev) => [...prev, pastedItem]);
       }
     },
-    [handleFileSelect, files.length, maxFiles, pastedContent.length, message]
+    [handleFileSelect, files.length, maxFiles, pastedContent.length, message, setMessage]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -751,7 +774,7 @@ export const ClaudeChatInput: React.FC<ChatInputProps> = ({
     setFiles([]);
     setPastedContent([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [message, files, pastedContent, disabled, onSendMessage]);
+  }, [message, files, pastedContent, disabled, onSendMessage, setMessage]);
 
   const handleModelChangeInternal = useCallback(
     (modelId: string) => {

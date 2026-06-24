@@ -72,10 +72,53 @@ export class FlowImageGenerator {
   }
 
   /**
+   * Checks if a reference image is already attached to the prompt input.
+   */
+  private async isReferenceImageAttached(page: Page): Promise<boolean> {
+    try {
+      // eslint-disable-next-line complexity
+      const isAttached = await page.evaluate(() => {
+        const textbox = document.querySelector('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea');
+        if (!textbox) return false;
+
+        const imgs = Array.from(document.querySelectorAll('div[role="textbox"] img, div[contenteditable="true"] img, [contenteditable="true"] img'));
+        if (imgs.length > 0) return true;
+
+        let parent = textbox.parentElement;
+        for (let i = 0; i < 3 && parent; i++) {
+          const containerImgs = parent.querySelectorAll('img');
+          for (const img of Array.from(containerImgs)) {
+            const src = img.src || '';
+            const isRef = /blob|googleusercontent|usercontent\.google|data:image/i.test(src);
+            const rect = img.getBoundingClientRect();
+            if (isRef || (rect.width > 20 && rect.height > 20)) {
+              return true;
+            }
+          }
+          parent = parent.parentElement;
+        }
+        return false;
+      });
+      return isAttached;
+    } catch (err) {
+      logger.warn('Falha ao verificar se imagem de referência já está anexada:', err);
+      return false;
+    }
+  }
+
+  /**
    * Uploads a reference image to the workspace.
    */
   private async uploadReferenceImage(page: Page, referenceImage: string, skipUpload = false): Promise<void> {
     logger.info(`Upload de imagem de referência solicitado: ${referenceImage} (skipUpload: ${skipUpload})`);
+
+    // Check if an image is already attached to avoid attaching again
+    const alreadyAttached = await this.isReferenceImageAttached(page);
+    if (alreadyAttached) {
+      logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
+      return;
+    }
+
     const fileInput = page.locator('input[type="file"]').first();
     try {
       if (!skipUpload) {
@@ -316,6 +359,7 @@ export class FlowImageGenerator {
 
       const imageCardSelector = 'img:not([role="dialog"] img):not(aside img)';
       const imageCards = () => page.locator(imageCardSelector);
+      const initialImageMarker = 'data-mrchicken-initial-image';
       const getImageIdentity = async (index: number): Promise<string> => {
         return await imageCards().nth(index).evaluate((el) => {
           const image = el as HTMLImageElement;
@@ -347,18 +391,16 @@ export class FlowImageGenerator {
         const count = await cards.count();
         const indexes: number[] = [];
         for (let i = 0; i < count; i++) {
+          const isInitialCard = await cards.nth(i).evaluate((el, marker) => {
+            return (el as HTMLElement).getAttribute(marker) === 'true';
+          }, initialImageMarker).catch(() => i < initialCount);
+          if (isInitialCard) {
+            continue;
+          }
+
           const identity = await getImageIdentity(i);
           if (identity && !initialIdentities.has(identity)) {
             indexes.push(i);
-          }
-        }
-
-        const countDelta = Math.max(0, count - initialCount);
-        if (countDelta > indexes.length) {
-          for (let i = initialCount; i < count; i++) {
-            if (!indexes.includes(i)) {
-              indexes.push(i);
-            }
           }
         }
 
@@ -382,6 +424,9 @@ export class FlowImageGenerator {
         this.lastUploadedReferenceImage = options.referenceImage;
       }
 
+      await imageCards().evaluateAll((images, marker) => {
+        images.forEach((image) => (image as HTMLElement).setAttribute(marker, 'true'));
+      }, initialImageMarker);
       const initialImageCount = await imageCards().count();
       const initialImageIdentities = await getImageIdentities();
       logger.info(`Imagens existentes no workspace antes da geracao: ${initialImageCount}`);
@@ -497,10 +542,14 @@ export class FlowImageGenerator {
       // 8. Open and download only the generated image cards
       logger.info('Geração concluída. Iniciando download de todas as novas imagens...');
       
-      const newImageIndexes = await getNewImageIndexes(initialImageIdentities, initialImageCount);
+      const detectedNewImageIndexes = await getNewImageIndexes(initialImageIdentities, initialImageCount);
+      const newImageIndexes = detectedNewImageIndexes.slice(0, expectedNewItemsCount);
       const newItemsCount = newImageIndexes.length;
       const finalImageCount = await imageCards().count();
       logger.info(`Total de novas imagens detectadas: ${newItemsCount} (Contagem: ${initialImageCount} -> ${finalImageCount})`);
+      if (detectedNewImageIndexes.length > expectedNewItemsCount) {
+        logger.warn(`Detectadas ${detectedNewImageIndexes.length} imagens novas, mas o download foi limitado a ${expectedNewItemsCount} para respeitar o pedido.`);
+      }
 
       if (newItemsCount <= 0) {
         throw new Error('Nenhuma imagem nova foi detectada apos a geracao. Download bloqueado para evitar baixar imagens antigas do workspace.');

@@ -7,10 +7,53 @@ export class FlowVideoGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
   /**
+   * Checks if a reference image is already attached to the prompt input.
+   */
+  private async isReferenceImageAttached(page: Page): Promise<boolean> {
+    try {
+      // eslint-disable-next-line complexity
+      const isAttached = await page.evaluate(() => {
+        const textbox = document.querySelector('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea');
+        if (!textbox) return false;
+
+        const imgs = Array.from(document.querySelectorAll('div[role="textbox"] img, div[contenteditable="true"] img, [contenteditable="true"] img'));
+        if (imgs.length > 0) return true;
+
+        let parent = textbox.parentElement;
+        for (let i = 0; i < 3 && parent; i++) {
+          const containerImgs = parent.querySelectorAll('img');
+          for (const img of Array.from(containerImgs)) {
+            const src = img.src || '';
+            const isRef = /blob|googleusercontent|usercontent\.google|data:image/i.test(src);
+            const rect = img.getBoundingClientRect();
+            if (isRef || (rect.width > 20 && rect.height > 20)) {
+              return true;
+            }
+          }
+          parent = parent.parentElement;
+        }
+        return false;
+      });
+      return isAttached;
+    } catch (err) {
+      logger.warn('Falha ao verificar se imagem de referência já está anexada:', err);
+      return false;
+    }
+  }
+
+  /**
    * Uploads a reference image to the workspace.
    */
   private async uploadReferenceImage(page: Page, referenceImage: string): Promise<void> {
     logger.info(`Upload de imagem de referência solicitado para vídeo: ${referenceImage}`);
+    
+    // Check if an image is already attached to avoid attaching again
+    const alreadyAttached = await this.isReferenceImageAttached(page);
+    if (alreadyAttached) {
+      logger.info('Imagem de referência já detectada como anexada no prompt para vídeo. Pulando upload e anexo.');
+      return;
+    }
+
     const fileInput = page.locator('input[type="file"]').first();
     try {
       await fileInput.waitFor({ state: 'attached', timeout: 15000 });

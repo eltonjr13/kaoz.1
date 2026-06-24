@@ -21,6 +21,7 @@ export type JobListItem = {
   audio_path?: string | null;
   latest_event_message?: string | null;
   latest_event_at?: string | null;
+  feedback?: 'good' | 'bad' | null;
 };
 
 export default async function JobsPage() {

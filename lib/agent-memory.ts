@@ -1,9 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { existsSync } from "node:fs";
-
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
-const MEMORY_FILE = path.join(DATA_DIR, "agent-memory.json");
+import { memoryManager } from "./cognitive-memory/core/MemoryManager";
+import type { EpisodicMemoryNode, TaskType } from "./cognitive-memory/types/memory";
 
 export interface AgentMemoryEntry {
   id: string;
@@ -20,33 +16,18 @@ export interface AgentMemoryEntry {
   topic?: string;
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    if (!existsSync(filePath)) {
-      return fallback;
-    }
-    const content = await readFile(filePath, "utf8");
-    return JSON.parse(content) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonFile<T>(filePath: string, data: T) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-}
-
 export async function loadAgentMemory(avatarId: string, topic?: string): Promise<AgentMemoryEntry[]> {
-  const memories = await readJsonFile<AgentMemoryEntry[]>(MEMORY_FILE, []);
-  let filtered = memories.filter((m) => m.avatarId === avatarId);
+  const episodes = await memoryManager.episodic.getRecentEpisodes(avatarId, 50);
+  let mapped = episodes.map(mapNodeToEntry);
+
   if (topic) {
     const searchTopic = topic.toLowerCase().trim();
-    filtered = filtered.filter(
+    mapped = mapped.filter(
       (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() === searchTopic
     );
   }
-  return filtered.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+
+  return mapped;
 }
 
 export async function appendAgentMemory(
@@ -57,70 +38,61 @@ export async function appendAgentMemory(
     taskType?: "image" | "video" | "project" | "refine";
   }
 ): Promise<AgentMemoryEntry> {
-  const inputSummary = entry.inputSummary || entry.topic || "N/A";
+  const taskType: TaskType = entry.taskType || "project";
+  const inputPrompt = entry.promptUsed || entry.inputSummary || "N/A";
   const outputSummary = entry.outputSummary || entry.learnings || "N/A";
-  const taskType = entry.taskType || "project";
 
-  const newEntry: AgentMemoryEntry = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(),
-    timestamp: new Date().toISOString(),
+  const newEpisode = await memoryManager.recordEpisode({
     avatarId: entry.avatarId,
     taskType,
-    inputSummary,
+    inputPrompt,
     outputSummary,
-    type: entry.type,
-    promptUsed: entry.promptUsed,
+    status: entry.type,
     modelUsed: entry.modelUsed,
     errorMessage: entry.errorMessage || null,
-    learnings: entry.learnings,
-    topic: entry.topic || inputSummary
-  };
+    executionTimeMs: 0,
+    projectId: entry.topic || entry.inputSummary || undefined,
+    rawDetails: {
+      jobId: entry.topic || entry.inputSummary || undefined
+    }
+  });
 
-  const memories = await readJsonFile<AgentMemoryEntry[]>(MEMORY_FILE, []);
-  memories.push(newEntry);
-  await writeJsonFile(MEMORY_FILE, memories);
-
-  // Auto-prune to keep memory size reasonable
-  await pruneOldMemory(entry.avatarId);
-
-  return newEntry;
+  return mapNodeToEntry(newEpisode);
 }
 
 export async function getMemoryContextForPrompt(avatarId: string, topic: string): Promise<string> {
-  // Load general avatar learnings and topic-specific learnings
-  const generalMemories = await loadAgentMemory(avatarId);
-  const topicMemories = generalMemories.filter(
-    (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() === topic.toLowerCase().trim()
-  );
+  // 1. Obtém instruções consolidadas do resolvedor hierárquico ACME
+  const instructions = await memoryManager.getActiveInstructions(avatarId, topic, "project", {
+    projectId: topic
+  });
 
-  // Filter out general memories that match the same topic (avoiding duplicates)
-  const otherMemories = generalMemories.filter(
-    (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() !== topic.toLowerCase().trim()
-  );
+  let context = "";
 
-  const combinedMemories = [...topicMemories, ...otherMemories];
-  
-  // Prioritize failures to avoid repeating mistakes, and successes to repeat achievements
-  const failures = combinedMemories.filter((m) => m.type === "failure").slice(0, 3);
-  const successes = combinedMemories.filter((m) => m.type === "success").slice(0, 3);
-
-  if (failures.length === 0 && successes.length === 0) {
-    return "";
+  if (instructions.length > 0) {
+    context += "Instruções e aprendizados refinados da memória cognitiva:\n";
+    instructions.forEach((ins) => {
+      context += `- ${ins}\n`;
+    });
+    context += "\n";
   }
 
-  let context = "Informações e aprendizados de execuções anteriores:\n";
+  // 2. Fallback Híbrido: Obtém histórico recente de sucessos/falhas para guiar o LLM com exemplos reais
+  const recentEpisodes = await memoryManager.episodic.getRecentEpisodes(avatarId, 15);
+  
+  const successes = recentEpisodes.filter((e) => e.status === "success").slice(0, 3);
+  const failures = recentEpisodes.filter((e) => e.status === "failure").slice(0, 3);
 
   if (successes.length > 0) {
     context += "- EXEMPLOS DE SUCESSO (essas abordagens funcionaram):\n";
-    successes.forEach((m) => {
-      context += `  * No tema "${m.topic || m.inputSummary}", usou o prompt: "${m.promptUsed}". Aprendizado: ${m.learnings}\n`;
+    successes.forEach((e) => {
+      context += `  * No tema "${e.projectId || e.inputPrompt}", usou o prompt: "${e.inputPrompt}". Aprendizado: ${e.outputSummary}\n`;
     });
   }
 
   if (failures.length > 0) {
     context += "- ERROS A EVITAR (essas abordagens falharam):\n";
-    failures.forEach((m) => {
-      context += `  * No tema "${m.topic || m.inputSummary}", usou o prompt: "${m.promptUsed}". Falhou com o erro: "${m.errorMessage || m.learnings}"\n`;
+    failures.forEach((e) => {
+      context += `  * No tema "${e.projectId || e.inputPrompt}", usou o prompt: "${e.inputPrompt}". Falhou com o erro: "${e.errorMessage || e.outputSummary}"\n`;
     });
   }
 
@@ -128,19 +100,27 @@ export async function getMemoryContextForPrompt(avatarId: string, topic: string)
 }
 
 export async function pruneOldMemory(avatarId: string, maxEntries = 20): Promise<void> {
-  const memories = await readJsonFile<AgentMemoryEntry[]>(MEMORY_FILE, []);
-  
-  // Separate target avatar memories from the rest
-  const avatarMemories = memories.filter((m) => m.avatarId === avatarId);
-  const otherMemories = memories.filter((m) => m.avatarId !== avatarId);
+  // O pruner assíncrono já faz a poda reativa no evento de gravação, 
+  // mas expomos a assinatura para compatibilidade legada
+  const { graphPruner } = await import("./cognitive-memory/background/GraphPruner");
+  await graphPruner.compressEpisodicMemory(avatarId, maxEntries);
+  await graphPruner.decaySemanticGraph(avatarId);
+}
 
-  if (avatarMemories.length <= maxEntries) {
-    return;
-  }
-
-  // Sort by date descending, keep the first 'maxEntries', discard the rest
-  const sorted = avatarMemories.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
-  const kept = sorted.slice(0, maxEntries);
-
-  await writeJsonFile(MEMORY_FILE, [...otherMemories, ...kept]);
+// Auxiliar de mapeamento
+function mapNodeToEntry(node: EpisodicMemoryNode): AgentMemoryEntry {
+  return {
+    id: node.id,
+    avatarId: node.avatarId,
+    taskType: node.taskType === "ad-creative" ? "image" : node.taskType,
+    inputSummary: node.inputPrompt,
+    outputSummary: node.outputSummary,
+    timestamp: node.timestamp,
+    type: node.status,
+    promptUsed: node.inputPrompt,
+    modelUsed: node.modelUsed,
+    errorMessage: node.errorMessage,
+    learnings: node.outputSummary,
+    topic: node.projectId
+  };
 }

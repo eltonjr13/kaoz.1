@@ -75,6 +75,7 @@ export type ReactionJob = {
   source_video_transcription?: string | null;
   trim_start?: string | null;
   trim_end?: string | null;
+  feedback?: 'good' | 'bad' | null;
   created_at: string;
   updated_at: string;
 };
