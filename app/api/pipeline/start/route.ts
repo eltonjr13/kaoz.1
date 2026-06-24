@@ -299,14 +299,16 @@ export async function POST(request: Request) {
 
         // 5. Completion
         await completeLocalJob(jobId, publicVideoPath);
-        await appendAgentMemory({
-          avatarId: localJobRecord.avatar_id,
-          topic: localJobRecord.topic,
-          type: "success",
-          promptUsed: localJobRecord.script_text || "",
-          modelUsed: "Pipeline Local Render",
-          learnings: `Renderização de vídeo finalizada com sucesso. Vídeo salvo em: ${publicVideoPath}`
-        });
+        if (localJobRecord.use_cortex_memory !== false) {
+          await appendAgentMemory({
+            avatarId: localJobRecord.avatar_id,
+            topic: localJobRecord.topic,
+            type: "success",
+            promptUsed: localJobRecord.script_text || "",
+            modelUsed: "Pipeline Local Render",
+            learnings: `Renderização de vídeo finalizada com sucesso. Vídeo salvo em: ${publicVideoPath}`
+          });
+        }
         console.log(`[Local Pipeline] Job ${jobId} COMPLETO com sucesso!`);
       } catch (renderError) {
         console.error("Erro no processamento local do pipeline em segundo plano:", renderError);
@@ -315,15 +317,17 @@ export async function POST(request: Request) {
           status: "failed",
           error_message: errMsg
         });
-        await appendAgentMemory({
-          avatarId: localJobRecord.avatar_id,
-          topic: localJobRecord.topic,
-          type: "failure",
-          promptUsed: localJobRecord.script_text || "",
-          modelUsed: "Pipeline Local Render",
-          errorMessage: errMsg,
-          learnings: `Falha na renderização do vídeo local: ${errMsg}`
-        });
+        if (localJobRecord.use_cortex_memory !== false) {
+          await appendAgentMemory({
+            avatarId: localJobRecord.avatar_id,
+            topic: localJobRecord.topic,
+            type: "failure",
+            promptUsed: localJobRecord.script_text || "",
+            modelUsed: "Pipeline Local Render",
+            errorMessage: errMsg,
+            learnings: `Falha na renderização do vídeo local: ${errMsg}`
+          });
+        }
       }
     })();
 

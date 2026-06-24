@@ -20,10 +20,13 @@ import {
   Undo2,
   Pencil,
   ThumbsUp,
-  ThumbsDown
+  ThumbsDown,
+  ChevronDown,
+  X
 } from "lucide-react";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import ReactMarkdown from "react-markdown";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface GenerationResult {
   success: boolean;
@@ -69,6 +72,7 @@ interface PendingPlan {
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
   useAvatarPersonality?: boolean;
+  useCortexMemory?: boolean;
   adCreativePlan?: {
     concepts: {
       conceptName: string;
@@ -107,6 +111,7 @@ const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
 const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
+const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
 const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
 
@@ -272,6 +277,9 @@ export default function FlowDashboardPage() {
   const [useAvatarPersonality, setUseAvatarPersonality] = useState(() =>
     typeof window === "undefined" ? true : localStorage.getItem(USE_AVATAR_PERSONALITY_KEY) !== "false"
   );
+  const [useCortexMemory, setUseCortexMemory] = useState(() =>
+    typeof window === "undefined" ? true : localStorage.getItem(USE_CORTEX_MEMORY_KEY) !== "false"
+  );
   const [imageRatio, setImageRatio] = useState("16:9");
   const [imageQty, setImageQty] = useState("x2");
   const [imageModel, setImageModel] = useState("Nano Banana 2");
@@ -283,12 +291,14 @@ export default function FlowDashboardPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedResultImage, setExpandedResultImage] = useState<{ src: string; alt: string; downloadUrl: string } | null>(null);
   const [draftMessage] = [""];
   const setDraftMessage = (_: string) => {};
   void draftMessage; void setDraftMessage;
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/avatars").then(res => res.json()).then(data => {
@@ -315,6 +325,10 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     localStorage.setItem(USE_AVATAR_PERSONALITY_KEY, String(useAvatarPersonality));
   }, [useAvatarPersonality]);
+
+  useEffect(() => {
+    localStorage.setItem(USE_CORTEX_MEMORY_KEY, String(useCortexMemory));
+  }, [useCortexMemory]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -362,14 +376,30 @@ export default function FlowDashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!showSettings) return;
+
     function handleClickOutside(event: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
         setShowSettings(false);
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [showSettings]);
+
+  useEffect(() => {
+    if (!expandedResultImage) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setExpandedResultImage(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [expandedResultImage]);
 
   // Polling events
   useEffect(() => {
@@ -520,6 +550,7 @@ export default function FlowDashboardPage() {
           messages: geminiMessages,
           avatarId: selectedAvatarId,
           useAvatarPersonality,
+          useCortexMemory,
           model: agentModel
         })
       });
@@ -558,6 +589,7 @@ export default function FlowDashboardPage() {
           imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
           quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
           useAvatarPersonality,
+          useCortexMemory,
           adCreativePlan: data.action.adCreativePlan
         };
       }
@@ -591,6 +623,7 @@ export default function FlowDashboardPage() {
           prompt: msg.plan.originalPrompt,
           avatarId: msg.plan.avatarId || selectedAvatarId,
           useAvatarPersonality: msg.plan.useAvatarPersonality ?? useAvatarPersonality,
+          useCortexMemory: msg.plan.useCortexMemory ?? useCortexMemory,
           model: msg.plan.model,
           aspectRatio: msg.plan.aspectRatio,
           imageModel: (msg.plan.kind === 'image' || msg.plan.kind === 'ad-creative') ? msg.plan.mediaModel : undefined,
@@ -613,6 +646,7 @@ export default function FlowDashboardPage() {
             requestedImageCount: msg.plan.requestedImageCount,
             imagePackageMode: msg.plan.imagePackageMode,
             turnaroundViews: msg.plan.turnaroundViews,
+            useCortexMemory: msg.plan.useCortexMemory ?? useCortexMemory,
             adCreativePlan: msg.plan.adCreativePlan
           }
         })
@@ -789,7 +823,7 @@ export default function FlowDashboardPage() {
   };
 
   return (
-    <div className="relative isolate min-h-screen flex flex-col bg-[#080808] text-white select-none overflow-hidden" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="relative isolate flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-screen" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
       <div
         aria-hidden="true"
@@ -813,7 +847,7 @@ export default function FlowDashboardPage() {
       />
 
       {/* ── Header ── */}
-      <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-white/5 backdrop-blur-md bg-black/20">
+      <header className="relative z-20 flex flex-wrap items-center justify-between gap-4 px-6 py-3 border-b border-white/5 backdrop-blur-md bg-black/20">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-[#9D7CFF]/20 flex items-center justify-center border border-[#9D7CFF]/30">
             <Bot size={18} className="text-[#9D7CFF]" />
@@ -823,11 +857,11 @@ export default function FlowDashboardPage() {
             <p className="text-[10px] text-white/50">Assistente Autônomo AI UGC</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {chatConversations.length > 0 && (
-            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1">
+            <div className="relative flex items-center bg-white/5 border border-white/10 rounded-full pl-3 pr-8 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]">
               <select
-                className="w-[170px] max-w-[42vw] bg-transparent text-xs text-white/80 outline-none cursor-pointer"
+                className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5"
                 value={activeConversationId}
                 onChange={(e) => handleSelectConversation(e.target.value)}
                 title="Selecionar conversa"
@@ -838,13 +872,14 @@ export default function FlowDashboardPage() {
                   </option>
                 ))}
               </select>
+              <ChevronDown size={12} className="absolute right-3 text-white/40 group-hover:text-white/80 pointer-events-none transition-colors" />
             </div>
           )}
           {avatars.length > 0 && (
-             <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1">
-               <User size={12} className="text-white/60"/>
+             <div className="relative flex items-center bg-white/5 border border-white/10 rounded-full pl-3 pr-8 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group w-[120px] sm:w-[150px]">
+               <User size={12} className="text-white/50 shrink-0"/>
                <select 
-                 className="bg-transparent text-xs text-white/80 outline-none cursor-pointer"
+                 className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5 pl-1.5"
                  value={selectedAvatarId}
                  onChange={(e) => setSelectedAvatarId(e.target.value)}
                >
@@ -852,27 +887,30 @@ export default function FlowDashboardPage() {
                    <option key={a.id} value={a.id} className="bg-[#080808] text-white">{a.name}</option>
                  ))}
                </select>
+               <ChevronDown size={12} className="absolute right-3 text-white/40 group-hover:text-white/80 pointer-events-none transition-colors" />
              </div>
           )}
-          <button onClick={handleCreateConversation} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Nova conversa">
-            <MessageSquarePlus size={14} />
-          </button>
-          <button
-            onClick={handleExportConversation}
-            disabled={chatMessages.length === 0}
-            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
-            title="Exportar conversa"
-          >
-            <Download size={14} />
-          </button>
-          <button onClick={clearChat} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/60 cursor-pointer" title="Limpar conversa">
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={handleCreateConversation} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Nova conversa">
+              <MessageSquarePlus size={16} />
+            </button>
+            <button
+              onClick={handleExportConversation}
+              disabled={chatMessages.length === 0}
+              className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
+              title="Exportar conversa"
+            >
+              <Download size={16} />
+            </button>
+            <button onClick={clearChat} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Limpar conversa">
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       </header>
 
       {/* ── Chat Area ── */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-4 md:px-10 lg:px-32 py-8 flex flex-col gap-6 pb-48">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-8 pb-48 md:px-10 lg:px-32">
         {chatMessages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
             <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
@@ -947,7 +985,7 @@ export default function FlowDashboardPage() {
                           {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
                             <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
                               <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
-                              <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> "{concept.copyText}"</div>
+                              <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
                               <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
                             </div>
                           ))}
@@ -988,10 +1026,13 @@ export default function FlowDashboardPage() {
                       <div className="flex items-center gap-2">
                         {msg.jobStatus === "running" && msg.jobId && (
                           <button
+                            type="button"
                             onClick={() => handleStopJob(msg.id, msg.jobId!)}
-                            className="text-[10px] uppercase tracking-wider text-rose-300 hover:text-rose-200 flex items-center gap-1 cursor-pointer"
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/15 text-white/55 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-200 hover:border-white/25 hover:bg-white/25 hover:text-white/80 cursor-pointer"
+                            title="Parar geração"
+                            aria-label="Parar geração"
                           >
-                            <Square size={10} /> Parar
+                            <Square size={12} fill="currentColor" />
                           </button>
                         )}
                         <button
@@ -1019,29 +1060,54 @@ export default function FlowDashboardPage() {
                     {/* Media Output - Image */}
                     {msg.imageResult?.success && (
                       <div className="grid grid-cols-2 gap-2 mt-3">
-                        {(msg.imageResult.paths || [msg.imageResult.path]).map((p, idx) => (
-                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-black/50 border border-white/10 group">
-                            <img src={`/api/flow/media?path=${encodeURIComponent(p)}`} alt="Result" className="w-full h-full object-cover" />
-                            <a href={`/api/flow/media?path=${encodeURIComponent(p)}`} download className="absolute bottom-2 right-2 p-1.5 bg-black/60 rounded-full text-white/80 hover:text-white border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <ArrowRight size={12} className="rotate-90"/>
-                            </a>
-                          </div>
-                        ))}
+                        {(msg.imageResult.paths || [msg.imageResult.path]).map((p, idx) => {
+                          const mediaUrl = `/api/flow/media?path=${encodeURIComponent(p)}`;
+                          const alt = `Resultado ${idx + 1}`;
+
+                          return (
+                            <div key={idx} className="relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/50 group">
+                              <button
+                                type="button"
+                                className="block h-full w-full cursor-zoom-in"
+                                onClick={() => setExpandedResultImage({ src: mediaUrl, alt, downloadUrl: mediaUrl })}
+                                title="Visualizar imagem"
+                              >
+                                <img src={mediaUrl} alt={alt} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+                              </button>
+                              <a href={mediaUrl} download className="absolute bottom-2 right-2 z-10 p-1.5 bg-black/60 rounded-full text-white/80 hover:text-white border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ArrowRight size={12} className="rotate-90"/>
+                              </a>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
                     {/* Media Output - Video or Project */}
                     {(msg.videoResult?.success || msg.projectResult?.success) && (
                       <div className="grid grid-cols-1 gap-2 mt-3">
-                         {((msg.videoResult?.paths || (msg.projectResult?.videoPath ? [msg.projectResult.videoPath] : []))).map((p, idx) => (
-                           <div key={idx} className="relative aspect-video rounded-xl overflow-hidden bg-black/50 border border-white/10">
-                             {/\.(png|jpe?g|webp)$/i.test(p) ? (
-                               <img src={p.startsWith("http") ? p : `/api/flow/media?path=${encodeURIComponent(p)}`} alt="Result" className="w-full h-full object-contain" />
-                             ) : (
-                               <video src={p.startsWith("http") ? p : `/api/flow/media?path=${encodeURIComponent(p)}`} controls className="w-full h-full object-contain" />
-                             )}
-                           </div>
-                         ))}
+                         {((msg.videoResult?.paths || (msg.projectResult?.videoPath ? [msg.projectResult.videoPath] : []))).map((p, idx) => {
+                           const mediaUrl = p.startsWith("http") ? p : `/api/flow/media?path=${encodeURIComponent(p)}`;
+                           const isImage = /\.(png|jpe?g|webp)$/i.test(p);
+                           const alt = `Resultado ${idx + 1}`;
+
+                           return (
+                             <div key={idx} className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-black/50">
+                               {isImage ? (
+                                 <button
+                                   type="button"
+                                   className="block h-full w-full cursor-zoom-in"
+                                   onClick={() => setExpandedResultImage({ src: mediaUrl, alt, downloadUrl: mediaUrl })}
+                                   title="Visualizar imagem"
+                                 >
+                                   <img src={mediaUrl} alt={alt} className="h-full w-full object-contain transition-transform duration-200 hover:scale-[1.02]" />
+                                 </button>
+                               ) : (
+                                 <video src={mediaUrl} controls className="w-full h-full object-contain" />
+                               )}
+                             </div>
+                           );
+                         })}
                       </div>
                     )}
                     
@@ -1104,6 +1170,68 @@ export default function FlowDashboardPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      <AnimatePresence>
+        {showSettings && (
+          <motion.button
+            type="button"
+            className="absolute inset-0 z-30 cursor-default bg-black/25 backdrop-blur-[2px]"
+            aria-label="Fechar menu de opções"
+            onMouseDown={() => setShowSettings(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {expandedResultImage && (
+          <motion.div
+            className="absolute inset-0 z-[70] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md md:p-8"
+            onMouseDown={() => setExpandedResultImage(null)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+          >
+            <motion.div
+              className="relative flex max-h-full w-full max-w-6xl items-center justify-center"
+              onMouseDown={(event) => event.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 8 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <img
+                src={expandedResultImage.src}
+                alt={expandedResultImage.alt}
+                className="max-h-[82vh] max-w-full rounded-2xl border border-white/10 bg-black/50 object-contain shadow-2xl shadow-black/60"
+              />
+              <div className="absolute right-3 top-3 flex items-center gap-2">
+                <a
+                  href={expandedResultImage.downloadUrl}
+                  download
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white/75 transition-colors hover:bg-black/75 hover:text-white"
+                  title="Baixar imagem"
+                >
+                  <Download size={16} />
+                </a>
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white/75 transition-colors hover:bg-black/75 hover:text-white"
+                  onClick={() => setExpandedResultImage(null)}
+                  title="Fechar visualização"
+                  aria-label="Fechar visualização"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Input Bar ── */}
       <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
         <div className="w-full max-w-[900px] relative" ref={popoverRef}>
@@ -1113,17 +1241,27 @@ export default function FlowDashboardPage() {
             onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
             onOptionsClick={() => setShowSettings(!showSettings)}
             showOptions={showSettings}
+            useCortexMemory={useCortexMemory}
+            onCortexMemoryChange={setUseCortexMemory}
           />
+          <AnimatePresence>
           {showSettings && (
-            <div className="absolute bottom-full left-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto bg-[#0c0c10] border border-white/10 backdrop-blur-xl">
+            <motion.div
+              ref={settingsMenuRef}
+              className="absolute bottom-full left-0 z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] origin-bottom-left flex-col gap-5 rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto"
+              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            >
                 <div className="flex flex-col gap-2">
-                  <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Tipo Preferido</div>
-                  <div className="grid grid-cols-4 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                  <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Tipo preferido</div>
+                  <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:grid-cols-4">
                     {[
-                      { id: "image", label: "Imagem", icon: <ImageIcon size={10} /> },
-                      { id: "video", label: "Vídeo", icon: <Film size={10} /> },
-                      { id: "project", label: "React", icon: <Cpu size={10} /> },
-                      { id: "ad-creative", label: "Anúncio", icon: <Bot size={10} /> },
+                      { id: "image", label: "Imagem", icon: <ImageIcon size={13} /> },
+                      { id: "video", label: "Vídeo", icon: <Film size={13} /> },
+                      { id: "project", label: "React", icon: <Cpu size={13} /> },
+                      { id: "ad-creative", label: "Anúncio", icon: <Bot size={13} /> },
                     ].map((t) => (
                       <button
                         key={t.id}
@@ -1141,8 +1279,8 @@ export default function FlowDashboardPage() {
                             }
                           }
                         }}
-                        className="flex items-center justify-center gap-1 rounded-xl py-1.5 text-[9px] font-semibold transition-all cursor-pointer text-center"
-                        style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
+                        className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer text-center"
+                        style={{ background: agentType === t.id ? "rgba(255,255,255,0.14)" : "transparent", color: agentType === t.id ? "#ffffff" : "rgba(255,255,255,0.42)" }}
                       >
                         {t.icon} <span>{t.label}</span>
                       </button>
@@ -1153,10 +1291,10 @@ export default function FlowDashboardPage() {
                {/* Image mode (3D turnaround toggle) */}
                {agentType === "image" && (
                  <div className="flex flex-col gap-2">
-                   <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
-                     Modo da Imagem
+                   <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+                     Modo da imagem
                    </div>
-                   <div className="grid grid-cols-2 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                   <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
                      {[
                        { id: "standard", label: "Normal" },
                        { id: "turnaround3d", label: "3D" },
@@ -1171,10 +1309,10 @@ export default function FlowDashboardPage() {
                              setImage3dMode(nextIs3d);
                              if (nextIs3d) setImageQty("x4");
                            }}
-                           className="rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer"
+                           className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
                            style={{
-                             background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
-                             color: isActive ? "#ffffff" : "#4A4A54",
+                             background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
+                             color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
                            }}
                          >
                            {mode.label}
@@ -1185,25 +1323,40 @@ export default function FlowDashboardPage() {
                  </div>
                )}
 
-               <label className="flex items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
+               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
                  <span className="flex flex-col gap-0.5">
-                   <span className="text-[10px] font-semibold text-white/80">Personalidade do avatar</span>
-                   <span className="text-[9px] leading-snug text-white/40">Usar o tom do avatar nas respostas e roteiros</span>
+                   <span className="text-[12px] font-semibold text-white/85">Personalidade do avatar</span>
+                   <span className="text-[10px] leading-snug text-white/45">Usar o tom do avatar nas respostas e roteiros</span>
                  </span>
                  <input
                    type="checkbox"
                    checked={useAvatarPersonality}
                    onChange={(e) => setUseAvatarPersonality(e.target.checked)}
-                   className="h-4 w-4 accent-[#9D7CFF]"
+                   className="peer sr-only"
                  />
+                 <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+               </label>
+
+               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
+                 <span className="flex flex-col gap-0.5">
+                   <span className="text-[12px] font-semibold text-white/85">Cortex</span>
+                   <span className="text-[10px] leading-snug text-white/45">Usar e gravar memoria cognitiva nas execucoes</span>
+                 </span>
+                 <input
+                   type="checkbox"
+                   checked={useCortexMemory}
+                   onChange={(e) => setUseCortexMemory(e.target.checked)}
+                   className="peer sr-only"
+                 />
+                 <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#8B5CF6]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
                </label>
 
                {/* Ratio + Quantity */}
                {agentType !== "project" && (
                  <div className="grid grid-cols-2 gap-4">
                    <div className="flex flex-col gap-2">
-                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Proporção</div>
-                     <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                     <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Proporção</div>
+                     <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
                        {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
                          const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
                          const isActive = currentRatio === r;
@@ -1215,10 +1368,10 @@ export default function FlowDashboardPage() {
                                if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
                                else setVideoRatio(r);
                              }}
-                             className="rounded-xl py-1 font-mono text-[10px] transition-all cursor-pointer"
+                             className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all cursor-pointer"
                              style={{
                                background: isActive ? "#ffffff" : "transparent",
-                               color: isActive ? "#080808" : "#7B7B86",
+                               color: isActive ? "#080808" : "rgba(255,255,255,0.42)",
                                fontWeight: isActive ? 700 : 400,
                              }}
                            >
@@ -1229,16 +1382,16 @@ export default function FlowDashboardPage() {
                      </div>
                    </div>
                    <div className="flex flex-col gap-2">
-                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
+                     <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
                        {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
                      </div>
                       {agentType === "ad-creative" ? (
-                        <div className="flex flex-col gap-2 rounded-[14px] p-2.5 bg-white/5 border border-white/10">
+                        <div className="flex min-h-[116px] flex-col justify-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-[12px] font-bold text-white font-mono">
+                            <span className="font-mono text-[16px] font-bold text-white">
                               {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
                             </span>
-                            <span className="text-[9px] text-[#7B7B86] uppercase tracking-wider font-mono">Imagens</span>
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-white/45">Imagens</span>
                           </div>
                           <input
                             type="range"
@@ -1253,7 +1406,7 @@ export default function FlowDashboardPage() {
                           />
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                        <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
                           {/* eslint-disable-next-line complexity */}
                           {["1x", "x2", "x3", "x4"].map((q) => {
                             const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
@@ -1269,10 +1422,10 @@ export default function FlowDashboardPage() {
                                   if (agentType === "image") setImageQty(q);
                                   else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
                                 }}
-                                className="rounded-xl py-1 font-mono text-[10px] transition-all"
+                                className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all"
                                 style={{
                                   background: isActive ? "#ffffff" : "transparent",
-                                  color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
+                                  color: isActive ? "#080808" : isDisabled ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.42)",
                                   fontWeight: isActive ? 700 : 400,
                                   cursor: isDisabled ? "not-allowed" : "pointer",
                                   opacity: isDisabled ? 0.25 : 1,
@@ -1287,8 +1440,9 @@ export default function FlowDashboardPage() {
                    </div>
                  </div>
                )}
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

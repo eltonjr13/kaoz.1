@@ -30,6 +30,7 @@ type NewLocalJobInput = {
   trimStart?: string | null;
   trimEnd?: string | null;
   scriptText?: string | null;
+  useCortexMemory?: boolean;
 };
 
 
@@ -157,7 +158,8 @@ const defaultJobOptions = {
   sourceVideoTranscription: null,
   trimStart: null,
   trimEnd: null,
-  scriptText: null
+  scriptText: null,
+  useCortexMemory: true
 };
 
 export async function createLocalJob(input: NewLocalJobInput): Promise<ReactionJob> {
@@ -185,6 +187,7 @@ export async function createLocalJob(input: NewLocalJobInput): Promise<ReactionJ
     source_video_transcription: merged.sourceVideoTranscription,
     trim_start: merged.trimStart,
     trim_end: merged.trimEnd,
+    use_cortex_memory: merged.useCortexMemory,
     feedback: null,
     created_at: now,
     updated_at: now

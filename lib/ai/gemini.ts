@@ -345,6 +345,89 @@ export interface FlowDecision {
   adCreativePlan?: AdCreativePlan | null;
 }
 
+const UNREQUESTED_CREATIVE_FORMAT_TERMS = [
+  "ugc",
+  "user-generated content",
+  "user generated content",
+  "selfie",
+  "influencer",
+  "tiktok",
+  "instagram reel",
+  "testimonial",
+  "phone camera",
+  "smartphone camera",
+  "handheld phone",
+  "ad creative"
+];
+
+const AD_CREATIVE_INTENT_TERMS = [
+  "anuncio",
+  "anuncios",
+  "ads",
+  "advertising",
+  "campanha",
+  "criativo",
+  "criativos",
+  "copy",
+  "oferta",
+  "conversao",
+  "conversão",
+  "vendas"
+];
+
+function normalizeIntentText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function hasAnyTerm(value: string, terms: string[]) {
+  const normalized = normalizeIntentText(value);
+  return terms.some((term) => normalized.includes(normalizeIntentText(term)));
+}
+
+function hasUnrequestedCreativeFormat(sourcePrompt: string, optimizedPrompt: string) {
+  const source = normalizeIntentText(sourcePrompt);
+  const optimized = normalizeIntentText(optimizedPrompt);
+
+  return UNREQUESTED_CREATIVE_FORMAT_TERMS.some((term) => {
+    const normalizedTerm = normalizeIntentText(term);
+    return optimized.includes(normalizedTerm) && !source.includes(normalizedTerm);
+  });
+}
+
+function preservePromptFidelity(decision: FlowDecision, sourcePrompt: string): FlowDecision {
+  if (decision.flow === "ad-creative" && !hasAnyTerm(sourcePrompt, AD_CREATIVE_INTENT_TERMS)) {
+    return {
+      ...decision,
+      flow: "image",
+      optimizedPrompt: sourcePrompt,
+      explanation: "O pedido nao solicitou anuncio ou criativo comercial. Mantive como geracao de imagem comum para evitar adicionar estilo nao pedido.",
+      requestedImageCount: decision.requestedImageCount,
+      adCreativePlan: null
+    };
+  }
+
+  if (
+    (decision.flow === "image" || decision.flow === "video") &&
+    hasUnrequestedCreativeFormat(sourcePrompt, decision.optimizedPrompt)
+  ) {
+    return {
+      ...decision,
+      optimizedPrompt: sourcePrompt,
+      explanation: `${decision.explanation} Mantive o prompt original porque a otimizacao adicionou formato criativo nao solicitado.`
+    };
+  }
+
+  return decision;
+}
+
+function getLatestUserText(messages: ChatMessage[]) {
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  return latestUserMessage?.parts.map((part) => part.text).join("\n").trim() || "";
+}
+
 export async function classifyIntention(intention: string): Promise<FlowDecision> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -367,6 +450,9 @@ Modo agente autonomo:
     2. COMPOSIÇÃO ÚNICA E COESA: A imagem deve representar um único cenário unificado. Nunca use divisores, colagens, "split-screen", "diptych", "before/after" ou comparações lado a lado.
     3. DESIGN E COMPOSIÇÃO PREMIUM: Descreva um enquadramento publicitário profissional (ex: "depth of field", "cinematic lighting", "studio product photography"). O texto (copyText) deve ser integrado de forma limpa na imagem, especificando a tipografia e posição (ex: "with a clean, bold sans-serif text overlay in the top-third area reading '...'").
 - Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
+- Para image/video, preserve estritamente a intenção do usuário. Não adicione UGC, selfie, influencer, TikTok, anúncio, depoimento, câmera de celular ou formato comercial/social se o usuário não pediu explicitamente.
+- Imagem anexada é referência visual, personagem ou estilo. Ela não autoriza transformar o pedido em UGC, selfie ou anúncio.
+- Só use "ad-creative" quando o usuário pedir claramente anúncio, criativo comercial, campanha, copy, oferta, conversão ou vendas.
 - Se o usuario pedir mais de 4 imagens comuns (nao anuncios), mantenha flow como "image" e retorne requestedImageCount com a quantidade numerica solicitada.
 - Para project/refine/ad-creative, escreva optimizedPrompt como briefing operacional em portugues.
 - Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions (se houver avatar selecionado, defina brevemente como integrar o avatar ao vídeo, caso contrário defina como null).
@@ -419,7 +505,7 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
       visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel.",
       adCreativePlan: null
     });
-    return parsed;
+    return preservePromptFidelity(parsed, intention);
   } catch (err) {
     console.error("Falha ao classificar intenção do usuário:", err);
     return {
@@ -454,7 +540,8 @@ export async function chatWithAgent(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
   executeWebQuery?: (compiledPrompt: string, referenceImagePath?: string) => Promise<string>,
-  referenceImagePath?: string
+  referenceImagePath?: string,
+  options?: { useCortexMemory?: boolean }
 ): Promise<ChatAgentResponse> {
   let personalityContext = "Você é o Sr. Chicken, um assistente virtual e chatbot inteligente para o 'AI UGC Reaction Studio'. Responda em português.";
   if (avatarPersonality) {
@@ -467,6 +554,9 @@ export async function chatWithAgent(
 
   const systemInstruction = `
 ${personalityContext}
+
+Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
+Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
 
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
@@ -484,6 +574,12 @@ A estrutura de "action" (se aplicável) deve ser:
   "scriptOutline": "Esboço curto de roteiro se for project, senão null",
   "creativeSteps": ["Passo 1", "Passo 2"]
 }
+
+Regras de fidelidade do prompt:
+- Para image/video, preserve estritamente a intenção do usuário. Você pode traduzir e detalhar qualidade visual, mas não pode adicionar formato criativo/social/comercial não pedido.
+- Não adicione UGC, selfie, influencer, TikTok, anúncio, depoimento, câmera de celular ou ad creative se isso não estiver explícito no último pedido do usuário.
+- Imagem anexada é referência visual, personagem ou estilo. Ela não autoriza transformar o pedido em UGC, selfie ou anúncio.
+- Só use "ad-creative" quando o usuário pedir claramente anúncio, criativo comercial, campanha, copy, oferta, conversão ou vendas.
 
 MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`json). Retorne apenas o JSON bruto validável e nada mais.
 `;
@@ -507,6 +603,9 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
       message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
       action: null
     });
+    if (parsed.action) {
+      parsed.action = preservePromptFidelity(parsed.action, getLatestUserText(messages));
+    }
     return parsed;
   } catch (err) {
     console.error("Falha na interação com o chat via Playwright:", err);

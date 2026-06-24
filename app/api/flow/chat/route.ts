@@ -45,13 +45,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parâmetro 'messages' é obrigatório e deve ser um array." }, { status: 400 });
     }
 
-    const { messages, avatarId, model, referenceImage, useAvatarPersonality } = body as {
+    const { messages, avatarId, model, referenceImage, useAvatarPersonality, useCortexMemory } = body as {
       messages: ChatMessage[];
       avatarId?: string;
       model?: string;
       referenceImage?: string;
       useAvatarPersonality?: boolean;
+      useCortexMemory?: boolean;
     };
+    const cortexMemoryEnabled = useCortexMemory !== false;
 
     let personality: Record<string, unknown> | null = null;
     if (avatarId && useAvatarPersonality !== false) {
@@ -79,7 +81,10 @@ export async function POST(request: Request) {
       async (compiledPrompt: string, imagePath?: string) => {
         return await flowProvider.queryWebLLM(modelName, compiledPrompt, imagePath);
       },
-      referenceImagePath
+      referenceImagePath,
+      {
+        useCortexMemory: cortexMemoryEnabled
+      }
     );
 
     return NextResponse.json({

@@ -41,6 +41,7 @@ export interface AgentTaskOptions {
   avatarReferenceImage?: string;
   inputReferenceImage?: string;
   useAvatarPersonality?: boolean;
+  useCortexMemory?: boolean;
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
 }
@@ -51,6 +52,18 @@ export class FlowAgent {
     if (job?.status === "failed" && /cancelad/i.test(job.error_message || "")) {
       throw new Error(job.error_message || "Processo cancelado pelo usuario.");
     }
+  }
+
+  private isCortexMemoryEnabled(options: Pick<AgentTaskOptions, "useCortexMemory">) {
+    return options.useCortexMemory !== false;
+  }
+
+  private async appendMemory(
+    options: Pick<AgentTaskOptions, "useCortexMemory">,
+    entry: Parameters<typeof appendAgentMemory>[0]
+  ) {
+    if (!this.isCortexMemoryEnabled(options)) return;
+    await appendAgentMemory(entry);
   }
 
   private async logAgentEvent(
@@ -171,12 +184,12 @@ export class FlowAgent {
     model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
     topic: string,
     jobId: string,
-    avatarId: string
+    avatarId: string,
+    useCortexMemory: boolean
   ): Promise<string> {
     await this.logAgentEvent(jobId, "researching", "Conectando ao modelo de IA para planejar e expandir o conceito visual...");
     
-    // Fetch learnings from persistent memory to optimize prompt
-    const memoryContext = await getMemoryContextForPrompt(avatarId, topic);
+    const memoryContext = useCortexMemory ? await getMemoryContextForPrompt(avatarId, topic) : "";
 
     let llmPrompt = `Escreva um prompt detalhado em inglês para o VideoFX do Google Flow criar um clipe de vídeo de fundo curto de alta qualidade sobre o tema: "${topic}". O vídeo deve ser cinematic, dinâmico e visualmente rico.`;
     
@@ -316,8 +329,14 @@ export class FlowAgent {
         );
         const avatar = await this.findAvatar(options.avatarId);
 
-        // 2. Generate prompt (injected with memory!)
-        videoPrompt = await this.generateBackgroundVideoPrompt(options.model, options.topic, jobId, options.avatarId);
+        // 2. Generate prompt with optional Cortex memory context
+        videoPrompt = await this.generateBackgroundVideoPrompt(
+          options.model,
+          options.topic,
+          jobId,
+          options.avatarId,
+          this.isCortexMemoryEnabled(options)
+        );
 
         // 3. Generate background video via Playwright VideoFX
         videoPath = await this.generateBackgroundVideo(videoPrompt, options);
@@ -342,7 +361,7 @@ export class FlowAgent {
         await this.finalizeJob(jobId, details);
 
         // Save SUCCESS memory entry
-        await appendAgentMemory({
+        await this.appendMemory(options, {
           avatarId: options.avatarId,
           topic: options.topic,
           type: "success",
@@ -369,7 +388,7 @@ export class FlowAgent {
         logger.error(`[FlowAgent] [${jobId}] Erro na tentativa ${attempt - 1} do agente:`, error);
 
         // Save FAILURE memory entry so the next retry loop learns from this mistake
-        await appendAgentMemory({
+        await this.appendMemory(options, {
           avatarId: options.avatarId,
           topic: options.topic,
           type: "failure",
@@ -592,7 +611,7 @@ export class FlowAgent {
       })}`
     });
 
-    await appendAgentMemory({
+    await this.appendMemory(options, {
       avatarId,
       taskType: "image",
       inputSummary: options.topic,
@@ -668,7 +687,7 @@ export class FlowAgent {
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         logger.error(`[FlowAgent] [${options.jobId}] Erro na geracao do pacote 3D:`, err);
-        await appendAgentMemory({
+        await this.appendMemory(options, {
           avatarId: options.avatarId,
           taskType: "image",
           inputSummary: options.topic,
@@ -749,7 +768,7 @@ export class FlowAgent {
           const errMsg = err instanceof Error ? err.message : String(err);
           logger.error(`[FlowAgent] [${jobId}] Erro na geracao de imagem (rodada ${batchIndex}, tentativa ${attempt}):`, err);
 
-          await appendAgentMemory({
+          await this.appendMemory(options, {
             avatarId,
             taskType: "image",
             inputSummary: options.topic,
@@ -787,7 +806,7 @@ export class FlowAgent {
       source_video_transcription: `Imagens salvas em: ${JSON.stringify(finalImagePaths)}`
     });
 
-    await appendAgentMemory({
+    await this.appendMemory(options, {
       avatarId,
       taskType: "image",
       inputSummary: options.topic,
@@ -852,7 +871,7 @@ export class FlowAgent {
           source_video_transcription: `Vídeo salvo em: ${uploadedPath}`
         });
 
-        await appendAgentMemory({
+        await this.appendMemory(options, {
           avatarId,
           taskType: "video",
           inputSummary: options.topic,
@@ -878,7 +897,7 @@ export class FlowAgent {
         const errMsg = err instanceof Error ? err.message : String(err);
         logger.error(`[FlowAgent] [${jobId}] Erro na geração de vídeo (tentativa ${attempt}):`, err);
 
-        await appendAgentMemory({
+        await this.appendMemory(options, {
           avatarId,
           taskType: "video",
           inputSummary: options.topic,
@@ -1015,7 +1034,7 @@ Retorne estritamente um JSON no formato:
     await this.logAgentEvent(jobId, "rendering", `Projeto alvo "${targetJob.id}" atualizado. Disparando pipeline para renderização final...`);
     this.triggerPipelineStart(targetJob.id, options.baseUrl);
 
-    await appendAgentMemory({
+    await this.appendMemory(options, {
       avatarId,
       taskType: "refine",
       inputSummary: refineInstructions,
@@ -1154,7 +1173,7 @@ Retorne estritamente um JSON no formato:
       })
     });
 
-    await appendAgentMemory({
+    await this.appendMemory(options, {
       avatarId,
       taskType: "image",
       inputSummary: options.topic,

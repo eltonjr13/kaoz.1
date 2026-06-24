@@ -128,6 +128,7 @@ export async function POST(request: Request) {
       referenceImage?: unknown;
       approvedPlan?: unknown;
       useAvatarPersonality?: unknown;
+      useCortexMemory?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
@@ -146,6 +147,7 @@ export async function POST(request: Request) {
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
     const useAvatarPersonality = body?.useAvatarPersonality !== false;
+    const useCortexMemory = body?.useCortexMemory !== false;
     const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
     const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
@@ -212,7 +214,8 @@ export async function POST(request: Request) {
         avatarId,
         topic: taskPrompt,
         renderLayout: "balanced_split",
-        expertBackgroundMode: "original"
+        expertBackgroundMode: "original",
+        useCortexMemory
       });
 
       const jobId = localJob.id;
@@ -239,6 +242,7 @@ export async function POST(request: Request) {
         turnaroundViews,
         inputReferenceImage,
         useAvatarPersonality,
+        useCortexMemory,
         jobId,
         baseUrl,
         approvedPlan

@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Briefcase,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   Cpu,
   Menu,
@@ -38,45 +40,64 @@ export function AppShell({
 }>) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const sidebar = (
     <aside
-      className="flex h-full w-[248px] shrink-0 flex-col bg-[#080808] px-3 py-5 text-white"
+      className={`flex h-full w-[248px] shrink-0 flex-col bg-[#080808] px-3 py-5 text-white transition-[width] duration-200 ease-out ${sidebarCollapsed ? "md:w-[76px]" : "md:w-[248px]"}`}
       style={{
         borderRight: "1px solid rgba(255,255,255,0.06)",
       }}
     >
       {/* Logo */}
-      <Link
-        href="/dashboard"
-        className="group flex items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03]"
-        onClick={() => setSidebarOpen(false)}
-        style={{ marginBottom: "4px" }}
-      >
-        <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px]"
-          style={{
-            background: "rgba(157,124,255,0.12)",
-            border: "1px solid rgba(157,124,255,0.2)",
-          }}
+      <div className={`mb-1 flex items-center gap-2 ${sidebarCollapsed ? "md:flex-col" : ""}`}>
+        <Link
+          href="/dashboard"
+          className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
+          onClick={() => setSidebarOpen(false)}
+          title={sidebarCollapsed ? "AgenteMrChicken" : undefined}
         >
-          <Sparkles size={15} className="text-[#9D7CFF]" />
-        </span>
-        <span className="min-w-0">
           <span
-            className="block text-[13px] font-semibold leading-tight text-white tracking-[-0.01em]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px]"
+            style={{
+              background: "rgba(157,124,255,0.12)",
+              border: "1px solid rgba(157,124,255,0.2)",
+            }}
           >
-            AgenteMrChicken
+            <Sparkles size={15} className="text-[#9D7CFF]" />
           </span>
-          <span className="block truncate text-[11px] font-normal text-[#7B7B86] mt-0.5">
-            {workspaceLabel}
+          <span
+            className={`min-w-0 overflow-hidden transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}
+          >
+            <span
+              className="block text-[13px] font-semibold leading-tight text-white tracking-[-0.01em]"
+            >
+              AgenteMrChicken
+            </span>
+            <span className="block truncate text-[11px] font-normal text-[#7B7B86] mt-0.5">
+              {workspaceLabel}
+            </span>
           </span>
-        </span>
-      </Link>
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((value) => !value)}
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#9CA3AF] transition-colors hover:bg-white/[0.05] hover:text-white md:flex"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(255,255,255,0.03)",
+          }}
+          aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Retrair menu lateral"}
+          title={sidebarCollapsed ? "Expandir menu" : "Retrair menu"}
+        >
+          {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+      </div>
 
       {/* Separator */}
       <div
-        className="mx-3 my-3"
+        className={sidebarCollapsed ? "mx-2 my-3" : "mx-3 my-3"}
         style={{ height: "1px", background: "rgba(255,255,255,0.05)" }}
       />
 
@@ -91,7 +112,8 @@ export function AppShell({
               href={item.href}
               key={item.label}
               onClick={() => setSidebarOpen(false)}
-              className="group relative flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline transition-all duration-200"
+              className={`group relative flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline transition-all duration-200 ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
+              title={sidebarCollapsed ? item.label : undefined}
               style={{
                 background: isActive
                   ? "rgba(255,255,255,0.035)"
@@ -130,7 +152,9 @@ export function AppShell({
                   transition: "color 200ms ease-out",
                 }}
               />
-              <span>{item.label}</span>
+              <span className={`truncate transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}>
+                {item.label}
+              </span>
             </Link>
           );
         })}
@@ -189,7 +213,7 @@ export function AppShell({
         {sidebar}
       </div>
 
-      <main className="min-h-screen pt-14 md:ml-[248px] md:pt-0">{children}</main>
+      <main className={`min-h-screen pt-14 transition-[margin] duration-200 ease-out md:pt-0 ${sidebarCollapsed ? "md:ml-[76px]" : "md:ml-[248px]"}`}>{children}</main>
     </div>
   );
 }

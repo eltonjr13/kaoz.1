@@ -22,8 +22,10 @@ export async function POST(request: Request) {
     // 1. Atualiza o feedback no banco de dados local do Job
     await updateLocalJob(jobId, { feedback });
 
-    // 2. Propaga o feedback para a memória cognitiva (ACME)
-    await memoryManager.submitUserFeedback(jobId, feedback);
+    // 2. Propaga o feedback para a memória cognitiva (ACME) quando Cortex estiver ativo
+    if (job.use_cortex_memory !== false) {
+      await memoryManager.submitUserFeedback(jobId, feedback);
+    }
 
     console.info(`[Evaluation API] Job ${jobId} avaliado como: ${feedback}`);
 

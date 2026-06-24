@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, SlidersHorizontal, BrainCog, FolderCode } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, SlidersHorizontal, BrainCog, FolderCode } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Utility function for className merging
@@ -444,22 +444,32 @@ interface PromptInputBoxProps {
   className?: string;
   onOptionsClick?: () => void;
   showOptions?: boolean;
+  useCortexMemory?: boolean;
+  onCortexMemoryChange?: (value: boolean) => void;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => {}, isLoading = false, placeholder = "Type your message here...", className, onOptionsClick, showOptions = false } = props;
+  const {
+    onSend = () => {},
+    isLoading = false,
+    placeholder = "Type your message here...",
+    className,
+    onOptionsClick,
+    showOptions = false,
+    useCortexMemory = true,
+    onCortexMemoryChange
+  } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
   const [isRecording, setIsRecording] = React.useState(false);
-  const [showThink, setShowThink] = React.useState(false);
   const [showCanvas, setShowCanvas] = React.useState(false);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const promptBoxRef = React.useRef<HTMLDivElement>(null);
 
   const handleToggleChange = (value: string) => {
-    if (value === "think") {
-      setShowThink((prev) => !prev);
+    if (value === "cortex") {
+      onCortexMemoryChange?.(!useCortexMemory);
     }
   };
 
@@ -531,8 +541,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const handleSubmit = () => {
     if (input.trim() || files.length > 0) {
       let messagePrefix = "";
-      if (showThink) messagePrefix = "[Think: ";
-      else if (showCanvas) messagePrefix = "[Canvas: ";
+      if (showCanvas) messagePrefix = "[Canvas: ";
       const formattedInput = messagePrefix ? `${messagePrefix}${input}]` : input;
       onSend(formattedInput, files);
       setInput("");
@@ -607,9 +616,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         >
           <PromptInputTextarea
             placeholder={
-              showThink
-                ? "Think deeply..."
-                : showCanvas
+              showCanvas
                 ? "Create on canvas..."
                 : placeholder
             }
@@ -691,25 +698,26 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
               <button
                 type="button"
-                onClick={() => handleToggleChange("think")}
+                onClick={() => handleToggleChange("cortex")}
                 className={cn(
                   "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
-                  showThink
+                  useCortexMemory
                     ? "bg-[#8B5CF6]/15 border-[#8B5CF6] text-[#8B5CF6]"
                     : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
                 )}
+                title={useCortexMemory ? "Cortex ligado: usa e grava memoria" : "Cortex desligado: nao usa nem grava memoria"}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
-                    animate={{ rotate: showThink ? 360 : 0, scale: showThink ? 1.1 : 1 }}
-                    whileHover={{ rotate: showThink ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
+                    animate={{ rotate: useCortexMemory ? 360 : 0, scale: useCortexMemory ? 1.1 : 1 }}
+                    whileHover={{ rotate: useCortexMemory ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
                     transition={{ type: "spring", stiffness: 260, damping: 25 }}
                   >
-                    <BrainCog className={cn("w-4 h-4", showThink ? "text-[#8B5CF6]" : "text-inherit")} />
+                    <BrainCog className={cn("w-4 h-4", useCortexMemory ? "text-[#8B5CF6]" : "text-inherit")} />
                   </motion.div>
                 </div>
                 <AnimatePresence>
-                  {showThink && (
+                  {useCortexMemory && (
                     <motion.span
                       initial={{ width: 0, opacity: 0 }}
                       animate={{ width: "auto", opacity: 1 }}
@@ -717,7 +725,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                       transition={{ duration: 0.2 }}
                       className="text-xs overflow-hidden whitespace-nowrap text-[#8B5CF6] flex-shrink-0"
                     >
-                      Think
+                      Cortex
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -761,41 +769,31 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             </div>
           </div>
 
-          <PromptInputAction
-            tooltip={
-              isLoading
-                ? "Stop generation"
-                : isRecording
-                ? "Stop recording"
-                : hasContent
-                ? "Send message"
-                : "Voice message"
-            }
-          >
+          <PromptInputAction tooltip={hasContent ? "Send message" : "Type a message to send"}>
             <Button
               variant="default"
               size="icon"
               className={cn(
-                "h-8 w-8 rounded-full transition-all duration-200",
-                isRecording
-                  ? "bg-transparent hover:bg-gray-600/30 text-red-500 hover:text-red-400"
-                  : "bg-white hover:bg-white/80 text-[#1F2023]"
+                "h-8 w-8 rounded-full border border-white/20 bg-white text-[#1F2023] shadow-[0_0_0_1px_rgba(255,255,255,0.08)] transition-all duration-200 hover:bg-white/85 disabled:opacity-100",
+                !hasContent && "cursor-not-allowed bg-white/25 text-white/45 hover:bg-white/25"
               )}
               onClick={() => {
-                if (isRecording) setIsRecording(false);
-                else if (hasContent) handleSubmit();
-                else setIsRecording(true);
+                if (hasContent) handleSubmit();
               }}
-              disabled={isLoading && !hasContent}
+              disabled={isLoading || !hasContent}
+              style={{
+                backgroundColor: hasContent ? "#ffffff" : "rgba(255,255,255,0.22)",
+                borderColor: hasContent ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.14)",
+                color: hasContent ? "#1F2023" : "rgba(255,255,255,0.56)",
+                opacity: 1,
+              }}
             >
               {isLoading ? (
-                <Square className="h-4 w-4 fill-[#1F2023] animate-pulse" />
-              ) : isRecording ? (
-                <StopCircle className="h-5 w-5 text-red-500" />
+                <Square className="h-4 w-4 animate-pulse fill-current" />
               ) : hasContent ? (
-                <ArrowUp className="h-4 w-4 text-[#1F2023]" />
+                <ArrowUp className="h-4 w-4 text-current" />
               ) : (
-                <Mic className="h-5 w-5 text-[#1F2023] transition-colors" />
+                <ArrowUp className="h-4 w-4 text-current" />
               )}
             </Button>
           </PromptInputAction>
