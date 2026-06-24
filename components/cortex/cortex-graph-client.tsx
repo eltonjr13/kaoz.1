@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { 
   Maximize2, 
   Minus, 
@@ -14,7 +14,22 @@ import {
   AlertTriangle,
   Award,
   Layers,
-  Activity
+  Activity,
+  RefreshCw,
+  Clock,
+  Cpu,
+  GitBranch,
+  ChevronDown,
+  ChevronUp,
+  ThumbsUp,
+  ThumbsDown,
+  CheckCircle,
+  Edit3,
+  PlusCircle,
+  Trash2,
+  Zap,
+  BookOpen,
+  Shield
 } from "lucide-react";
 
 interface NodeData {
@@ -45,16 +60,103 @@ interface EdgeData {
   lastReinforced: string;
 }
 
+interface StatsData {
+  semanticNodesCount: number;
+  semanticEdgesCount: number;
+  episodicCount: number;
+  proceduralRulesCount: number;
+  lastUpdated: string | null;
+  recentEpisodes: EpisodeEntry[];
+  activeRules: RuleEntry[];
+}
+
+interface EpisodeEntry {
+  id: string;
+  avatarId: string;
+  taskType: string;
+  status: 'success' | 'failure';
+  inputPrompt: string;
+  outputSummary: string;
+  modelUsed: string;
+  errorMessage?: string | null;
+  timestamp: string;
+  userFeedback?: 'good' | 'bad' | null;
+}
+
+interface RuleEntry {
+  id: string;
+  avatarId: string;
+  projectId?: string;
+  scope: string;
+  triggerPattern: string;
+  actionType?: string;
+  instruction: string;
+  confidenceScore: number;
+  successCount: number;
+  failureCount: number;
+  lastUpdated: string;
+}
+
+// Mapeamento de relações para cores de arestas
+const EDGE_RELATION_COLORS: Record<string, { color: string; dash: boolean }> = {
+  causes_failure: { color: 'rgba(239,68,68,', dash: true },
+  improves_quality: { color: 'rgba(16,185,129,', dash: false },
+  uses_model: { color: 'rgba(157, 124, 255,', dash: false },
+  uses_tool: { color: 'rgba(251, 191, 36,', dash: false },
+  supports: { color: 'rgba(6, 182, 212,', dash: false },
+  controls: { color: 'rgba(168, 85, 247,', dash: false },
+};
+
+function getEdgeStyle(relation: string) {
+  return EDGE_RELATION_COLORS[relation] || { color: 'rgba(157, 124, 255,', dash: false };
+}
+
+function isNewNode(lastObserved: string): boolean {
+  const ms = Date.now() - new Date(lastObserved).getTime();
+  return ms < 24 * 60 * 60 * 1000; // últimas 24h
+}
+
+function formatRelativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return `${secs}s atrás`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m atrás`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h atrás`;
+  const days = Math.floor(hours / 24);
+  return `${days}d atrás`;
+}
+
 export function CortexGraphClient() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pulseTimeRef = useRef<number>(0);
+  const dashOffsetRef = useRef<number>(0);
 
   const [nodes, setNodes] = useState<NodeData[]>([]);
   const [edges, setEdges] = useState<EdgeData[]>([]);
+  const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+
+  // Modal de edição/criação de nó
+  const [showNodeModal, setShowNodeModal] = useState(false);
+  const [editingNode, setEditingNode] = useState<Partial<NodeData> | null>(null);
+  const [isCreatingNode, setIsCreatingNode] = useState(false);
+
+  // Modal de edição/criação de regra procedimental
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [editingRule, setEditingRule] = useState<Partial<RuleEntry> | null>(null);
+  const [isCreatingRule, setIsCreatingRule] = useState(false);
 
   // Parâmetros da simulação física ajustáveis
   const [repulsionForce, setRepulsionForce] = useState(600);
@@ -71,16 +173,24 @@ export function CortexGraphClient() {
   const isPanningRef = useRef(false);
   const startPanXRef = useRef(0);
   const startPanYRef = useRef(0);
+  const lastClickTimeRef = useRef<number>(0);
+  const lastClickNodeRef = useRef<string | null>(null);
 
   // Carrega dados da API
-  async function fetchGraphData() {
+  const fetchGraphData = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
-      const res = await fetch("/api/memory/graph");
-      const data = await res.json();
+      if (!silent) setLoading(true);
+      else setIsSyncing(true);
+
+      const [graphRes, statsRes] = await Promise.all([
+        fetch("/api/memory/graph"),
+        fetch("/api/memory/graph/stats")
+      ]);
+      const graphData = await graphRes.json();
+      const statsData = await statsRes.json();
       
       // Inicializa posições dos nós de forma circular se não existirem
-      const initializedNodes = (data.nodes || []).map((node: NodeData, index: number, arr: NodeData[]) => {
+      const initializedNodes = (graphData.nodes || []).map((node: NodeData, index: number, arr: NodeData[]) => {
         const angle = (index / arr.length) * Math.PI * 2;
         const radius = 180 + Math.random() * 50;
         return {
@@ -89,37 +199,47 @@ export function CortexGraphClient() {
           y: node.y ?? (300 + Math.sin(angle) * radius),
           vx: 0,
           vy: 0,
-          radius: 12 // Padrão
+          radius: 12
         };
       }) as NodeData[];
 
       // Calcula os raios dinamicamente com base no número de conexões (grau)
       initializedNodes.forEach((node) => {
-        const degree = (data.edges || []).filter(
+        const degree = (graphData.edges || []).filter(
           (e: EdgeData) => e.source === node.id || e.target === node.id
         ).length;
         node.radius = Math.min(26, 10 + degree * 2);
       });
 
       setNodes(initializedNodes);
-      setEdges(data.edges || []);
+      setEdges(graphData.edges || []);
+      setStats(statsData);
+      setLastSyncTime(new Date());
     } catch (err) {
       console.error("Falha ao carregar grafo de córtex:", err);
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchGraphData();
-  }, []);
+  }, [fetchGraphData]);
+
+  // Auto-polling a cada 30 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchGraphData(true);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchGraphData]);
 
   // Centraliza o grafo na tela
   const handleResetLayout = () => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     
-    // Distribui em círculo centrado
     const updatedNodes = nodes.map((node, index, arr) => {
       const angle = (index / arr.length) * Math.PI * 2;
       const dist = 180 + Math.random() * 40;
@@ -149,7 +269,6 @@ export function CortexGraphClient() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Redimensiona o canvas para caber no container
     const resizeCanvas = () => {
       const container = containerRef.current;
       if (container) {
@@ -160,13 +279,14 @@ export function CortexGraphClient() {
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
-    // Loop da animação
     const tick = () => {
-      // 1. APLICA FORÇAS DA SIMULAÇÃO
+      pulseTimeRef.current += 0.05;
+      dashOffsetRef.current -= 0.5;
+
       const currentNodes = [...nodes];
       const n = currentNodes.length;
 
-      // 1.A. Repulsão entre pares de nós (Fórmula eletrostática simplificada)
+      // 1.A. Repulsão entre pares de nós
       for (let i = 0; i < n; i++) {
         const u = currentNodes[i];
         for (let j = i + 1; j < n; j++) {
@@ -179,7 +299,6 @@ export function CortexGraphClient() {
           const dist = Math.sqrt(distSq);
 
           if (dist < 400) {
-            // Força inversamente proporcional à distância
             const force = repulsionForce / distSq;
             const fx = (dx / dist) * force;
             const fy = (dy / dist) * force;
@@ -196,7 +315,7 @@ export function CortexGraphClient() {
         }
       }
 
-      // 1.B. Atração ao longo das arestas (Lei de Hooke simplificada)
+      // 1.B. Atração ao longo das arestas
       for (const edge of edges) {
         const sourceNode = currentNodes.find((x) => x.id === edge.source);
         const targetNode = currentNodes.find((x) => x.id === edge.target);
@@ -208,7 +327,6 @@ export function CortexGraphClient() {
         const dy = targetNode.y - sourceNode.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
         
-        // Distância de repouso confortável
         const restLength = 120;
         const displacement = dist - restLength;
         const force = displacement * attractionForce * edge.weight;
@@ -234,19 +352,16 @@ export function CortexGraphClient() {
         if (node.x === undefined || node.y === undefined) continue;
 
         if (draggedNodeRef.current?.id === node.id) {
-          // Mantém as velocidades zeradas enquanto arrasta
           node.vx = 0;
           node.vy = 0;
           continue;
         }
 
-        // Puxa levemente para o centro da tela
         const dx = centerX - node.x;
         const dy = centerY - node.y;
         node.vx = (node.vx || 0) + dx * centerGravity;
         node.vy = (node.vy || 0) + dy * centerGravity;
 
-        // Atualiza posição + fricção
         node.x += node.vx;
         node.y += node.vy;
         node.vx *= 0.82;
@@ -257,15 +372,13 @@ export function CortexGraphClient() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
-      // Aplica Panning e Zooming
       ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
       ctx.scale(zoom, zoom);
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
-      // 2.A. Desenha a grade de fundo (dots) baseada na câmera virtual
+      // Grade de fundo (dots)
       ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
       const gridSize = 40;
-      // Calcula limites da tela visível pós-transformação
       const startX = -panX / zoom - canvas.width;
       const endX = -panX / zoom + canvas.width * 2;
       const startY = -panY / zoom - canvas.height;
@@ -279,10 +392,9 @@ export function CortexGraphClient() {
         }
       }
 
-      // Filtro de Busca Ativo
       const q = searchQuery.toLowerCase().trim();
 
-      // 2.B. Desenha as Arestas (Edges)
+      // 2.B. Arestas
       for (const edge of edges) {
         const sourceNode = currentNodes.find((x) => x.id === edge.source);
         const targetNode = currentNodes.find((x) => x.id === edge.target);
@@ -290,50 +402,100 @@ export function CortexGraphClient() {
         if (!sourceNode || !targetNode) continue;
         if (sourceNode.x === undefined || sourceNode.y === undefined || targetNode.x === undefined || targetNode.y === undefined) continue;
 
-        // Opacidade diminui se houver query e os nós não baterem com o filtro
         let opacity = 0.15 + edge.weight * 0.45;
         if (q && !sourceNode.label.toLowerCase().includes(q) && !targetNode.label.toLowerCase().includes(q)) {
           opacity = 0.04;
         }
 
-        ctx.strokeStyle = `rgba(157, 124, 255, ${opacity})`;
+        const edgeStyle = getEdgeStyle(edge.relation);
+        ctx.strokeStyle = `${edgeStyle.color}${opacity})`;
         ctx.lineWidth = 1 + edge.weight * 3;
+
+        if (edgeStyle.dash) {
+          ctx.setLineDash([6, 4]);
+          ctx.lineDashOffset = dashOffsetRef.current;
+        } else {
+          ctx.setLineDash([]);
+        }
+
         ctx.beginPath();
         ctx.moveTo(sourceNode.x, sourceNode.y);
         ctx.lineTo(targetNode.x, targetNode.y);
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        // Rótulo da relação (desenhado apenas se zoom for grande)
-        if (zoom > 0.8 && !q) {
+        // Seta direcional no centro da aresta
+        if (zoom > 0.7 && !q) {
           const midX = (sourceNode.x + targetNode.x) / 2;
           const midY = (sourceNode.y + targetNode.y) / 2;
-          ctx.fillStyle = "rgba(184, 184, 192, 0.4)";
-          ctx.font = "8px 'Inter', sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(edge.relation, midX, midY - 4);
+          const angle = Math.atan2(targetNode.y - sourceNode.y, targetNode.x - sourceNode.x);
+          const arrowSize = 5;
+          ctx.save();
+          ctx.translate(midX, midY);
+          ctx.rotate(angle);
+          ctx.fillStyle = `${edgeStyle.color}${opacity * 1.5})`;
+          ctx.beginPath();
+          ctx.moveTo(arrowSize, 0);
+          ctx.lineTo(-arrowSize, arrowSize * 0.6);
+          ctx.lineTo(-arrowSize, -arrowSize * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Rótulo da relação
+          if (zoom > 0.8) {
+            ctx.fillStyle = `rgba(184, 184, 192, 0.35)`;
+            ctx.font = "8px 'Inter', sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(edge.relation, midX, midY - 8);
+          }
         }
       }
 
-      // 2.C. Desenha os Nós (Nodes)
+      // 2.C. Nós
+      const pulse = Math.sin(pulseTimeRef.current) * 0.5 + 0.5; // 0 a 1
+
       for (const node of currentNodes) {
         if (node.x === undefined || node.y === undefined || node.radius === undefined) continue;
 
         const isHighlighted = q && node.label.toLowerCase().includes(q);
         const isSelected = selectedNode?.id === node.id;
+        const isHovered = hoveredNode?.id === node.id;
         const isFaded = q && !isHighlighted;
+        const isNew = isNewNode(node.lastObserved);
 
-        let nodeColor = "#a855f7"; // default violet
-        if (node.type === 'entity') nodeColor = "#06b6d4";      // cyan
-        if (node.type === 'error-pattern') nodeColor = "#ef4444"; // red
-        if (node.type === 'tool-outcome') nodeColor = "#10b981";  // green
+        let nodeColor = "#a855f7"; // concept
+        if (node.type === 'entity') nodeColor = "#06b6d4";
+        if (node.type === 'error-pattern') nodeColor = "#ef4444";
+        if (node.type === 'tool-outcome') nodeColor = "#10b981";
 
         ctx.save();
 
-        // Efeito de brilho/glow
-        ctx.shadowColor = nodeColor;
-        ctx.shadowBlur = isSelected ? 18 : isHighlighted ? 12 : 6;
+        // Anel de pulse para nós novos
+        if (isNew && !isFaded) {
+          const pulseRadius = node.radius + 6 + pulse * 8;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, pulseRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `${nodeColor.replace('#', 'rgba(')}${pulse * 0.3})`.replace('rgba(', 'rgba(').replace(/^rgba\((.+)\)$/, (_, c) => {
+            // Converte hex para rgba com alpha
+            const r = parseInt(nodeColor.slice(1, 3), 16);
+            const g = parseInt(nodeColor.slice(3, 5), 16);
+            const b = parseInt(nodeColor.slice(5, 7), 16);
+            return `rgba(${r},${g},${b},${pulse * 0.35})`;
+          });
+          // Workaround simples para pulse ring
+          const r = parseInt(nodeColor.slice(1, 3), 16);
+          const g = parseInt(nodeColor.slice(3, 5), 16);
+          const b = parseInt(nodeColor.slice(5, 7), 16);
+          ctx.strokeStyle = `rgba(${r},${g},${b},${pulse * 0.35})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
 
-        // Radial gradient para dar efeito 3D esfereificado
+        ctx.shadowColor = nodeColor;
+        ctx.shadowBlur = isSelected ? 20 : isHovered ? 15 : isHighlighted ? 12 : isNew ? 10 : 6;
+
+        // Radial gradient 3D
         const grad = ctx.createRadialGradient(
           node.x - node.radius * 0.25,
           node.y - node.radius * 0.25,
@@ -347,32 +509,44 @@ export function CortexGraphClient() {
         grad.addColorStop(1, "rgba(0, 0, 0, 0.85)");
 
         ctx.fillStyle = grad;
-        ctx.globalAlpha = isFaded ? 0.25 : 1.0;
+        ctx.globalAlpha = isFaded ? 0.2 : 1.0;
         
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Borda circular do nó
-        ctx.strokeStyle = isSelected ? "#ffffff" : "rgba(255,255,255,0.15)";
-        ctx.lineWidth = isSelected ? 2 : 1;
+        // Borda
+        ctx.strokeStyle = isSelected ? "#ffffff" : isHovered ? nodeColor : "rgba(255,255,255,0.15)";
+        ctx.lineWidth = isSelected ? 2.5 : isHovered ? 1.5 : 1;
         ctx.stroke();
 
         ctx.restore();
 
-        // Desenha Rótulo de Texto
-        let showLabel = zoom > 0.6 || isSelected || isHighlighted;
+        // Rótulo
+        const showLabel = zoom > 0.6 || isSelected || isHighlighted || isHovered;
         if (showLabel) {
-          ctx.fillStyle = isSelected ? "#ffffff" : isHighlighted ? nodeColor : "#B8B8C0";
+          ctx.fillStyle = isSelected ? "#ffffff" : isHighlighted || isHovered ? nodeColor : "#B8B8C0";
           ctx.font = isSelected ? "bold 11px 'Inter', sans-serif" : "10px 'Inter', sans-serif";
           ctx.textAlign = "center";
+          ctx.globalAlpha = isFaded ? 0.2 : 1.0;
           ctx.fillText(node.label, node.x, node.y + node.radius + 14);
+          ctx.globalAlpha = 1.0;
+        }
+
+        // Badge "NOVO" para nós recentes
+        if (isNew && !isFaded && zoom > 0.5) {
+          const r2 = parseInt(nodeColor.slice(1, 3), 16);
+          const g2 = parseInt(nodeColor.slice(3, 5), 16);
+          const b2 = parseInt(nodeColor.slice(5, 7), 16);
+          ctx.fillStyle = `rgba(${r2},${g2},${b2},0.9)`;
+          ctx.font = "bold 7px 'Inter', sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("NOVO", node.x, node.y - node.radius - 4);
         }
       }
 
       ctx.restore();
 
-      // Solicita o próximo frame
       animId = requestAnimationFrame(tick);
     };
 
@@ -382,9 +556,9 @@ export function CortexGraphClient() {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [nodes, edges, loading, repulsionForce, attractionForce, centerGravity, zoom, panX, panY, searchQuery, selectedNode]);
+  }, [nodes, edges, loading, repulsionForce, attractionForce, centerGravity, zoom, panX, panY, searchQuery, selectedNode, hoveredNode]);
 
-  // Filtro inteligente de nós no painel lateral
+  // Nós e arestas conectados ao nó selecionado
   const connectedEdges = useMemo(() => {
     if (!selectedNode) return [];
     return edges.filter(
@@ -400,41 +574,70 @@ export function CortexGraphClient() {
       return {
         node: neighbor,
         relation: e.relation,
-        weight: e.weight
+        weight: e.weight,
+        direction: e.source === selectedNode.id ? 'out' : 'in'
       };
-    }).filter((x) => x.node !== undefined) as Array<{ node: NodeData; relation: string; weight: number }>;
+    }).filter((x) => x.node !== undefined) as Array<{ node: NodeData; relation: string; weight: number; direction: string }>;
   }, [connectedEdges, selectedNode, nodes]);
 
-  // EVENTOS MOUSE E GESTOS (Canvas interaction)
+  // Regras procedimentais do nó selecionado
+  const relatedRules = useMemo(() => {
+    if (!selectedNode || !stats) return [];
+    const nodeType = selectedNode.type;
+    const taskType = selectedNode.metadata?.taskType;
+    return stats.activeRules.filter((r) => {
+      if (taskType && r.scope === taskType) return true;
+      if (nodeType === 'error-pattern') return r.failureCount > 0;
+      return false;
+    }).slice(0, 3);
+  }, [selectedNode, stats]);
+
+  // Converte coordenadas de tela para virtuais
+  const screenToVirtual = (mouseX: number, mouseY: number, canvas: HTMLCanvasElement) => {
+    return {
+      virtualX: (mouseX - canvas.width / 2 - panX) / zoom + canvas.width / 2,
+      virtualY: (mouseY - canvas.height / 2 - panY) / zoom + canvas.height / 2
+    };
+  };
+
+  const getNodeAt = (virtualX: number, virtualY: number): NodeData | null => {
+    for (const node of [...nodes].reverse()) {
+      if (node.x === undefined || node.y === undefined || node.radius === undefined) continue;
+      const dx = virtualX - node.x;
+      const dy = virtualY - node.y;
+      if (dx * dx + dy * dy < node.radius * node.radius) {
+        return node;
+      }
+    }
+    return null;
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const { virtualX, virtualY } = screenToVirtual(e.clientX - rect.left, e.clientY - rect.top, canvas);
 
-    // Traduz coordenadas de tela para coordenadas virtuais (Canvas transform)
-    const virtualX = (mouseX - canvas.width / 2 - panX) / zoom + canvas.width / 2;
-    const virtualY = (mouseY - canvas.height / 2 - panY) / zoom + canvas.height / 2;
-
-    // Verifica se colidiu com algum nó (clique sobre esfera)
-    let clickedNode: NodeData | null = null;
-    for (const node of nodes) {
-      if (node.x === undefined || node.y === undefined || node.radius === undefined) continue;
-      const dx = virtualX - node.x;
-      const dy = virtualY - node.y;
-      if (dx * dx + dy * dy < node.radius * node.radius) {
-        clickedNode = node;
-        break;
-      }
-    }
+    const clickedNode = getNodeAt(virtualX, virtualY);
 
     if (clickedNode) {
       draggedNodeRef.current = clickedNode;
-      setSelectedNode(clickedNode);
+
+      // Detecta duplo clique
+      const now = Date.now();
+      if (now - lastClickTimeRef.current < 350 && lastClickNodeRef.current === clickedNode.id) {
+        // Duplo clique → abre modal de edição
+        setEditingNode({ ...clickedNode });
+        setIsCreatingNode(false);
+        setShowNodeModal(true);
+      } else {
+        setSelectedNode(clickedNode);
+      }
+      lastClickTimeRef.current = now;
+      lastClickNodeRef.current = clickedNode.id;
     } else {
-      // Inicia Panning no fundo
+      setSelectedNode(null);
       isPanningRef.current = true;
       startPanXRef.current = e.clientX - panX;
       startPanYRef.current = e.clientY - panY;
@@ -445,16 +648,10 @@ export function CortexGraphClient() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const rect = canvas.getBoundingClientRect();
+    const { virtualX, virtualY } = screenToVirtual(e.clientX - rect.left, e.clientY - rect.top, canvas);
+
     if (draggedNodeRef.current) {
-      // Movendo nó arrastado
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      // Converte para espaço virtual
-      const virtualX = (mouseX - canvas.width / 2 - panX) / zoom + canvas.width / 2;
-      const virtualY = (mouseY - canvas.height / 2 - panY) / zoom + canvas.height / 2;
-
       const draggedId = draggedNodeRef.current.id;
       setNodes((prevNodes) =>
         prevNodes.map((n) =>
@@ -462,9 +659,17 @@ export function CortexGraphClient() {
         )
       );
     } else if (isPanningRef.current) {
-      // Movendo a câmera virtual
       setPanX(e.clientX - startPanXRef.current);
       setPanY(e.clientY - startPanYRef.current);
+    } else {
+      // Hover detection para tooltip
+      const hovered = getNodeAt(virtualX, virtualY);
+      setHoveredNode(hovered);
+      if (hovered) {
+        setTooltipPos({ x: e.clientX, y: e.clientY });
+      } else {
+        setTooltipPos(null);
+      }
     }
   };
 
@@ -480,478 +685,1214 @@ export function CortexGraphClient() {
     
     setZoom((prevZoom) => {
       let nextZoom = prevZoom - scrollDelta * zoomIntensity * 0.01;
-      nextZoom = Math.max(0.15, Math.min(4.0, nextZoom)); // limitador de escala
+      nextZoom = Math.max(0.15, Math.min(4.0, nextZoom));
       return nextZoom;
     });
   };
 
+  // Ações da UI
+  const handleResolveNode = async (nodeId: string) => {
+    try {
+      await fetch("/api/memory/graph", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: nodeId, action: "resolve" })
+      });
+      await fetchGraphData(true);
+      setSelectedNode(null);
+    } catch (err) {
+      console.error("Erro ao resolver nó:", err);
+    }
+  };
+
+  const handleDeleteNode = async (nodeId: string) => {
+    if (!confirm("Tem certeza que deseja remover este nó e todas as suas conexões?")) return;
+    try {
+      await fetch(`/api/memory/graph?id=${encodeURIComponent(nodeId)}&type=node`, {
+        method: "DELETE"
+      });
+      await fetchGraphData(true);
+      setSelectedNode(null);
+    } catch (err) {
+      console.error("Erro ao deletar nó:", err);
+    }
+  };
+
+  const handleSaveFeedback = async (jobId: string, feedback: 'good' | 'bad') => {
+    try {
+      await fetch("/api/memory/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, feedback })
+      });
+      await fetchGraphData(true);
+    } catch (err) {
+      console.error("Erro ao enviar feedback:", err);
+    }
+  };
+
+  const handleSaveNode = async () => {
+    if (!editingNode?.id || !editingNode?.label || !editingNode?.type) return;
+    try {
+      await fetch("/api/memory/graph", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "node",
+          data: {
+            id: isCreatingNode ? `concept:${editingNode.id?.replace(/\s+/g, '-').toLowerCase()}` : editingNode.id,
+            label: editingNode.label,
+            type: editingNode.type || 'concept',
+            description: editingNode.description || "",
+            confidenceScore: editingNode.confidenceScore ?? 0.8,
+            lastObserved: new Date().toISOString(),
+            metadata: editingNode.metadata || {}
+          }
+        })
+      });
+      await fetchGraphData(true);
+      setShowNodeModal(false);
+      setEditingNode(null);
+    } catch (err) {
+      console.error("Erro ao salvar nó:", err);
+    }
+  };
+
+  const handleSaveRule = async () => {
+    if (!editingRule?.instruction) return;
+    try {
+      await fetch("/api/memory/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingRule)
+      });
+      await fetchGraphData(true);
+      setShowRuleModal(false);
+      setEditingRule(null);
+    } catch (err) {
+      console.error("Erro ao salvar regra procedimental:", err);
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    if (!confirm("Tem certeza que deseja remover esta regra procedimental?")) return;
+    try {
+      await fetch(`/api/memory/rules?id=${encodeURIComponent(ruleId)}`, {
+        method: "DELETE"
+      });
+      await fetchGraphData(true);
+    } catch (err) {
+      console.error("Erro ao deletar regra procedimental:", err);
+    }
+  };
+
+  const nodeTypeColor = (type: string) => {
+    if (type === 'entity') return '#06b6d4';
+    if (type === 'error-pattern') return '#ef4444';
+    if (type === 'tool-outcome') return '#10b981';
+    return '#a855f7';
+  };
+
   return (
-    <div 
-      ref={containerRef}
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "calc(100vh - 160px)",
-        borderRadius: "16px",
-        overflow: "hidden",
-        background: "#09090b",
-        border: "1px solid rgba(255,255,255,0.06)",
-        fontFamily: "'Inter', sans-serif"
-      }}
-    >
-      {/* Canvas principal */}
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-          cursor: isPanningRef.current ? "grabbing" : "grab"
-        }}
-      />
-
-      {/* Rótulo de instrução de navegação */}
-      <div style={{
-        position: "absolute",
-        bottom: "16px",
-        left: "16px",
-        fontSize: "11px",
-        color: "rgba(255,255,255,0.35)",
-        display: "flex",
-        alignItems: "center",
-        gap: "4px",
-        pointerEvents: "none"
-      }}>
-        <HelpCircle size={12} />
-        Arraste nós para mover. Arraste o fundo para navegar. Use Scroll para zoom.
-      </div>
-
-      {/* Barra de Ferramentas Flutuante Superior Esquerda */}
-      <div style={{
-        position: "absolute",
-        top: "16px",
-        left: "16px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        zIndex: 5
-      }}>
-        {/* Controle de Zoom */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "calc(100vh - 140px)" }}>
+      
+      {/* HUD de Estatísticas */}
+      {stats && (
         <div style={{
           display: "flex",
-          background: "rgba(18, 18, 24, 0.8)",
-          backdropFilter: "blur(8px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "10px",
-          padding: "4px",
-          gap: "2px"
+          gap: "10px",
+          flexWrap: "wrap"
         }}>
-          <button
-            onClick={() => setZoom(z => Math.max(0.15, z - 0.1))}
-            style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex" }}
-            title="Diminuir zoom"
-          >
-            <Minus size={14} />
-          </button>
-          <span style={{ fontSize: "11px", color: "var(--muted)", alignSelf: "center", minWidth: "32px", textAlign: "center" }}>
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            onClick={() => setZoom(z => Math.min(4.0, z + 0.1))}
-            style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex" }}
-            title="Aumentar zoom"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-
-        {/* Botão de reset de layout */}
-        <button
-          onClick={handleResetLayout}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            background: "rgba(18, 18, 24, 0.8)",
-            backdropFilter: "blur(8px)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            color: "#fff",
-            borderRadius: "10px",
-            padding: "8px 12px",
-            fontSize: "12px",
-            cursor: "pointer",
-            transition: "all 0.2s"
-          }}
-          title="Recentralizar e simular layout circular"
-        >
-          <RotateCcw size={13} />
-          Recentralizar
-        </button>
-
-        {/* Botão para abrir configuração de forças */}
-        <button
-          onClick={() => setShowConfig(!showConfig)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            background: showConfig ? "rgba(157, 124, 255, 0.15)" : "rgba(18, 18, 24, 0.8)",
-            backdropFilter: "blur(8px)",
-            border: showConfig ? "1px solid rgba(157, 124, 255, 0.3)" : "1px solid rgba(255,255,255,0.08)",
-            color: showConfig ? "#9D7CFF" : "#fff",
-            borderRadius: "10px",
-            padding: "8px 12px",
-            fontSize: "12px",
-            cursor: "pointer",
-            transition: "all 0.2s"
-          }}
-        >
-          <Sliders size={13} />
-          Simulação
-        </button>
-      </div>
-
-      {/* Caixa de Ajustes Físicos da Simulação */}
-      {showConfig && (
-        <div style={{
-          position: "absolute",
-          top: "120px",
-          left: "16px",
-          width: "220px",
-          background: "rgba(18, 18, 24, 0.9)",
-          backdropFilter: "blur(12px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "12px",
-          padding: "16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          zIndex: 5
-        }}>
-          <h4 style={{ margin: 0, fontSize: "12px", color: "#fff", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px" }}>Físicas do Córtex</h4>
+          {[
+            { icon: <GitBranch size={13} />, label: "Nós", value: stats.semanticNodesCount, color: "#a855f7" },
+            { icon: <Activity size={13} />, label: "Arestas", value: stats.semanticEdgesCount, color: "#06b6d4" },
+            { icon: <Brain size={13} />, label: "Episódios", value: stats.episodicCount, color: "#10b981" },
+            { icon: <Shield size={13} />, label: "Regras", value: stats.proceduralRulesCount, color: "#f59e0b" },
+          ].map((stat) => (
+            <div key={stat.label} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: "10px",
+              padding: "8px 14px",
+              flex: "1",
+              minWidth: "120px"
+            }}>
+              <span style={{ color: stat.color }}>{stat.icon}</span>
+              <div>
+                <div style={{ fontSize: "18px", fontWeight: "bold", color: "#fff", lineHeight: 1 }}>{stat.value}</div>
+                <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>{stat.label}</div>
+              </div>
+            </div>
+          ))}
           
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted)" }}>
-              <span>Repulsão</span>
-              <span>{repulsionForce}</span>
-            </div>
-            <input 
-              type="range" 
-              min="100" 
-              max="1500" 
-              value={repulsionForce}
-              onChange={(e) => setRepulsionForce(Number(e.target.value))}
-              style={{ width: "100%" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted)" }}>
-              <span>Atração (Mola)</span>
-              <span>{attractionForce.toFixed(3)}</span>
-            </div>
-            <input 
-              type="range" 
-              min="0.005" 
-              max="0.1" 
-              step="0.005"
-              value={attractionForce}
-              onChange={(e) => setAttractionForce(Number(e.target.value))}
-              style={{ width: "100%" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted)" }}>
-              <span>Gravidade Central</span>
-              <span>{centerGravity.toFixed(3)}</span>
-            </div>
-            <input 
-              type="range" 
-              min="0.005" 
-              max="0.1" 
-              step="0.005"
-              value={centerGravity}
-              onChange={(e) => setCenterGravity(Number(e.target.value))}
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Barra de pesquisa superior direita */}
-      <div style={{
-        position: "absolute",
-        top: "16px",
-        right: "16px",
-        width: "280px",
-        display: "flex",
-        background: "rgba(18, 18, 24, 0.8)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "10px",
-        padding: "4px 8px",
-        alignItems: "center",
-        gap: "6px",
-        zIndex: 5
-      }}>
-        <Search size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
-        <input
-          type="text"
-          placeholder="Buscar no Córtex..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#fff",
-            fontSize: "12px",
-            width: "100%",
-            outline: "none"
-          }}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            style={{ border: "none", background: "none", color: "var(--muted)", cursor: "pointer", display: "flex", padding: 2 }}
-          >
-            <X size={12} />
-          </button>
-        )}
-      </div>
-
-      {/* Legenda inferior direita */}
-      <div style={{
-        position: "absolute",
-        bottom: "16px",
-        right: "16px",
-        background: "rgba(18, 18, 24, 0.8)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "10px",
-        padding: "10px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-        pointerEvents: "none"
-      }}>
-        <div style={{ fontSize: "10px", fontWeight: "bold", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>Estrutura Cognitiva</div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#8b5cf6" }} />
-          <span>Conceito</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#06b6d4" }} />
-          <span>Entidade / Modelo</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} />
-          <span>Sucesso</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444" }} />
-          <span>Assinatura de Erro</span>
-        </div>
-      </div>
-
-      {/* PAINEL LATERAL DE DETALHES DO NÓ SELECIONADO (Obsidian style) */}
-      {selectedNode && (
-        <div style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "360px",
-          background: "rgba(18, 18, 24, 0.85)",
-          backdropFilter: "blur(16px)",
-          borderLeft: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "-10px 0 25px rgba(0,0,0,0.5)",
-          zIndex: 10,
-          padding: "24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "20px",
-          color: "#fff",
-          overflowY: "auto"
-        }}>
-          {/* Header do painel */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              {selectedNode.type === 'concept' && <Brain size={18} className="text-[#a855f7]" />}
-              {selectedNode.type === 'entity' && <Layers size={18} className="text-[#06b6d4]" />}
-              {selectedNode.type === 'tool-outcome' && <Award size={18} className="text-[#10b981]" />}
-              {selectedNode.type === 'error-pattern' && <AlertTriangle size={18} className="text-[#ef4444]" />}
-              <span style={{ 
-                fontSize: "10px", 
-                textTransform: "uppercase", 
-                color: "var(--muted)", 
-                fontWeight: "bold",
-                letterSpacing: "0.05em"
-              }}>
-                {selectedNode.type === 'concept' && 'Conceito'}
-                {selectedNode.type === 'entity' && 'Entidade/Modelo'}
-                {selectedNode.type === 'tool-outcome' && 'Sucesso'}
-                {selectedNode.type === 'error-pattern' && 'Falha'}
-              </span>
+          {/* Status de sincronização */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: "10px",
+            padding: "8px 14px",
+            marginLeft: "auto"
+          }}>
+            <Clock size={12} style={{ color: "var(--muted)" }} />
+            <div style={{ fontSize: "10px", color: "var(--muted)" }}>
+              {lastSyncTime ? (
+                <>Sync: {lastSyncTime.toLocaleTimeString("pt-BR")}</>
+              ) : "Carregando..."}
             </div>
             <button
-              onClick={() => setSelectedNode(null)}
+              onClick={() => fetchGraphData(true)}
+              disabled={isSyncing}
               style={{
                 background: "none",
                 border: "none",
-                color: "var(--muted)",
-                cursor: "pointer",
-                padding: "4px",
+                color: isSyncing ? "#a855f7" : "var(--muted)",
+                cursor: isSyncing ? "not-allowed" : "pointer",
+                padding: "2px",
                 display: "flex",
-                borderRadius: "50%",
-                transition: "background 0.2s"
+                transition: "color 0.2s"
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              title="Sincronizar agora"
             >
-              <X size={16} />
+              <RefreshCw size={13} style={{ animation: isSyncing ? "spin 1s linear infinite" : "none" }} />
             </button>
           </div>
+        </div>
+      )}
 
-          <div>
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "1.25rem", fontWeight: 800 }}>{selectedNode.label}</h3>
-            <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)", lineHeight: 1.5 }}>
-              {selectedNode.description || "Nenhuma descrição disponível para este conceito."}
-            </p>
-          </div>
-
-          {/* Métricas e Confiança */}
-          <div style={{
-            background: "rgba(255,255,255,0.03)",
-            borderRadius: "10px",
+      {/* Container Principal */}
+      <div style={{ display: "flex", gap: "0", flex: 1, minHeight: 0 }}>
+        
+        {/* Canvas Container */}
+        <div 
+          ref={containerRef}
+          style={{
+            position: "relative",
+            flex: 1,
+            borderRadius: selectedNode ? "16px 0 0 16px" : "16px",
+            overflow: "hidden",
+            background: "#09090b",
             border: "1px solid rgba(255,255,255,0.06)",
-            padding: "14px",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px"
-          }}>
-            <div>
-              <div style={{ fontSize: "10px", color: "var(--muted)", display: "flex", alignItems: "center", gap: 3 }}>
-                <Activity size={10} />
-                CONFIANÇA
-              </div>
-              <div style={{ fontSize: "16px", fontWeight: "bold", marginTop: "2px", color: selectedNode.confidenceScore >= 0.7 ? "#10b981" : "#ef4444" }}>
-                {Math.round(selectedNode.confidenceScore * 100)}%
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: "10px", color: "var(--muted)" }}>OBSERVADO EM</div>
-              <div style={{ fontSize: "11px", fontWeight: "medium", marginTop: "4px", color: "#fff" }}>
-                {new Date(selectedNode.lastObserved).toLocaleDateString("pt-BR")}
-              </div>
-            </div>
-          </div>
+            fontFamily: "'Inter', sans-serif",
+            transition: "border-radius 0.3s"
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={() => { handleMouseUp(); setHoveredNode(null); setTooltipPos(null); }}
+            onWheel={handleWheel}
+            style={{
+              display: "block",
+              width: "100%",
+              height: "100%",
+              cursor: isPanningRef.current ? "grabbing" : (hoveredNode ? "pointer" : "grab")
+            }}
+          />
 
-          {/* Nós Conectados */}
-          <div>
-            <h4 style={{ margin: "0 0 10px 0", fontSize: "12px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Relações no Córtex</h4>
-            {connectedNodes.length === 0 ? (
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>Conceito isolado sem relacionamentos ativos.</span>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {connectedNodes.map((neighbor, idx) => {
-                  let badgeBg = "rgba(168, 85, 247, 0.1)";
-                  let badgeBorder = "rgba(168, 85, 247, 0.2)";
-                  let badgeText = "#a855f7";
-
-                  if (neighbor.node.type === 'entity') {
-                    badgeBg = "rgba(6, 182, 212, 0.1)";
-                    badgeBorder = "rgba(6, 182, 212, 0.2)";
-                    badgeText = "#06b6d4";
-                  } else if (neighbor.node.type === 'error-pattern') {
-                    badgeBg = "rgba(239, 68, 68, 0.1)";
-                    badgeBorder = "rgba(239, 68, 68, 0.2)";
-                    badgeText = "#ef4444";
-                  } else if (neighbor.node.type === 'tool-outcome') {
-                    badgeBg = "rgba(16, 185, 129, 0.1)";
-                    badgeBorder = "rgba(16, 185, 129, 0.2)";
-                    badgeText = "#10b981";
-                  }
-
-                  return (
-                    <div 
-                      key={idx}
-                      onClick={() => setSelectedNode(neighbor.node)}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "rgba(255,255,255,0.02)",
-                        border: "1px solid rgba(255,255,255,0.04)",
-                        borderRadius: "8px",
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                        transition: "all 0.2s"
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                        e.currentTarget.style.borderColor = badgeBorder;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "rgba(255,255,255,0.02)";
-                        e.currentTarget.style.borderColor = "rgba(255,255,255,0.04)";
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <span style={{ fontSize: "12px", fontWeight: "bold" }}>{neighbor.node.label}</span>
-                        <span style={{ fontSize: "10px", color: "var(--muted)" }}>{neighbor.relation}</span>
-                      </div>
-                      <span style={{
-                        fontSize: "9px",
-                        fontWeight: "bold",
-                        background: badgeBg,
-                        border: `1px solid ${badgeBorder}`,
-                        color: badgeText,
-                        padding: "2px 6px",
-                        borderRadius: "4px"
-                      }}>
-                        {neighbor.node.type === 'concept' && 'Conceito'}
-                        {neighbor.node.type === 'entity' && 'Entidade'}
-                        {neighbor.node.type === 'error-pattern' && 'Falha'}
-                        {neighbor.node.type === 'tool-outcome' && 'Sucesso'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          
-          {/* Metadata Extra */}
-          {selectedNode.metadata && Object.keys(selectedNode.metadata).length > 0 && (
-            <div>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "12px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Metadados Operacionais</h4>
-              <div style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "6px",
-                background: "rgba(255,255,255,0.02)",
+          {/* Tooltip no hover */}
+          {hoveredNode && tooltipPos && !selectedNode && (
+            <div
+              style={{
+                position: "fixed",
+                left: tooltipPos.x + 14,
+                top: tooltipPos.y - 10,
+                background: "rgba(18,18,24,0.95)",
+                border: `1px solid ${nodeTypeColor(hoveredNode.type)}40`,
                 borderRadius: "8px",
-                padding: "10px"
-              }}>
-                {Object.entries(selectedNode.metadata).map(([key, val]) => (
-                  <div key={key} style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", paddingBottom: "4px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                    <span style={{ color: "var(--muted)", textTransform: "capitalize" }}>{key.replace(/([A-Z])/g, ' $1')}</span>
-                    <span style={{ color: "#fff", fontWeight: "bold", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={String(val)}>
-                      {String(val)}
-                    </span>
-                  </div>
-                ))}
+                padding: "8px 12px",
+                maxWidth: "220px",
+                zIndex: 9999,
+                pointerEvents: "none",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: "bold", color: nodeTypeColor(hoveredNode.type) }}>
+                {hoveredNode.label}
+              </div>
+              <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.55)", marginTop: "4px", lineHeight: 1.4 }}>
+                {hoveredNode.description?.substring(0, 80)}{hoveredNode.description && hoveredNode.description.length > 80 ? "..." : ""}
+              </div>
+              <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>
+                Confiança: {Math.round(hoveredNode.confidenceScore * 100)}% · {formatRelativeTime(hoveredNode.lastObserved)}
               </div>
             </div>
           )}
+
+          {/* Loading overlay */}
+          {loading && (
+            <div style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(9,9,11,0.85)",
+              backdropFilter: "blur(4px)",
+              zIndex: 20
+            }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                <div style={{
+                  width: "40px", height: "40px",
+                  border: "2px solid rgba(168,85,247,0.2)",
+                  borderTop: "2px solid #a855f7",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite"
+                }} />
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>Carregando Córtex...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Instrução de navegação */}
+          <div style={{
+            position: "absolute",
+            bottom: "16px",
+            left: "16px",
+            fontSize: "11px",
+            color: "rgba(255,255,255,0.3)",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            pointerEvents: "none"
+          }}>
+            <HelpCircle size={12} />
+            Arraste nós · Scroll para zoom · Clique duplo para editar
+          </div>
+
+          {/* Toolbar superior esquerda */}
+          <div style={{
+            position: "absolute",
+            top: "16px",
+            left: "16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            zIndex: 5
+          }}>
+            {/* Controle de Zoom */}
+            <div style={{
+              display: "flex",
+              background: "rgba(18, 18, 24, 0.85)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "10px",
+              padding: "4px",
+              gap: "2px"
+            }}>
+              <button
+                onClick={() => setZoom(z => Math.max(0.15, z - 0.1))}
+                style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex" }}
+                title="Diminuir zoom"
+              >
+                <Minus size={14} />
+              </button>
+              <span style={{ fontSize: "11px", color: "var(--muted)", alignSelf: "center", minWidth: "32px", textAlign: "center" }}>
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={() => setZoom(z => Math.min(4.0, z + 0.1))}
+                style={{ border: "none", background: "none", color: "#fff", cursor: "pointer", padding: "6px", borderRadius: "6px", display: "flex" }}
+                title="Aumentar zoom"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+
+            {/* Recentralizar */}
+            <button
+              onClick={handleResetLayout}
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: "rgba(18, 18, 24, 0.85)", backdropFilter: "blur(8px)",
+                border: "1px solid rgba(255,255,255,0.08)", color: "#fff",
+                borderRadius: "10px", padding: "8px 12px", fontSize: "12px", cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              <RotateCcw size={13} />
+              Recentralizar
+            </button>
+
+            {/* Adicionar nó */}
+            <button
+              onClick={() => {
+                setEditingNode({ type: 'concept', confidenceScore: 0.8, description: "", label: "", id: "", metadata: {} });
+                setIsCreatingNode(true);
+                setShowNodeModal(true);
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: "rgba(168, 85, 247, 0.1)", backdropFilter: "blur(8px)",
+                border: "1px solid rgba(168,85,247,0.2)", color: "#a855f7",
+                borderRadius: "10px", padding: "8px 12px", fontSize: "12px", cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              <PlusCircle size={13} />
+              Novo Nó
+            </button>
+
+            {/* Simulação */}
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: showConfig ? "rgba(157, 124, 255, 0.15)" : "rgba(18, 18, 24, 0.85)",
+                backdropFilter: "blur(8px)",
+                border: showConfig ? "1px solid rgba(157, 124, 255, 0.3)" : "1px solid rgba(255,255,255,0.08)",
+                color: showConfig ? "#9D7CFF" : "#fff",
+                borderRadius: "10px", padding: "8px 12px", fontSize: "12px", cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              <Sliders size={13} />
+              Simulação
+            </button>
+
+            {/* Timeline */}
+            <button
+              onClick={() => setShowTimeline(!showTimeline)}
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: showTimeline ? "rgba(16,185,129, 0.1)" : "rgba(18, 18, 24, 0.85)",
+                backdropFilter: "blur(8px)",
+                border: showTimeline ? "1px solid rgba(16,185,129, 0.3)" : "1px solid rgba(255,255,255,0.08)",
+                color: showTimeline ? "#10b981" : "#fff",
+                borderRadius: "10px", padding: "8px 12px", fontSize: "12px", cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              <Clock size={13} />
+              Timeline
+              {stats && stats.episodicCount > 0 && (
+                <span style={{
+                  background: "#10b981", color: "#000", borderRadius: "4px",
+                  fontSize: "9px", fontWeight: "bold", padding: "1px 4px"
+                }}>
+                  {stats.recentEpisodes.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Painel de físicas */}
+          {showConfig && (
+            <div style={{
+              position: "absolute", top: "224px", left: "16px", width: "220px",
+              background: "rgba(18, 18, 24, 0.92)", backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px",
+              padding: "16px", display: "flex", flexDirection: "column", gap: "12px", zIndex: 5
+            }}>
+              <h4 style={{ margin: 0, fontSize: "12px", color: "#fff", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px" }}>Físicas do Córtex</h4>
+              
+              {[
+                { label: "Repulsão", val: repulsionForce, setter: setRepulsionForce, min: 100, max: 1500, step: 1, fmt: (v: number) => v.toString() },
+                { label: "Atração (Mola)", val: attractionForce, setter: setAttractionForce, min: 0.005, max: 0.1, step: 0.005, fmt: (v: number) => v.toFixed(3) },
+                { label: "Gravidade Central", val: centerGravity, setter: setCenterGravity, min: 0.005, max: 0.1, step: 0.005, fmt: (v: number) => v.toFixed(3) },
+              ].map((ctrl) => (
+                <div key={ctrl.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted)" }}>
+                    <span>{ctrl.label}</span>
+                    <span>{ctrl.fmt(ctrl.val)}</span>
+                  </div>
+                  <input
+                    type="range" min={ctrl.min} max={ctrl.max} step={ctrl.step} value={ctrl.val}
+                    onChange={(e) => ctrl.setter(Number(e.target.value))}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Mini-timeline de episódios */}
+          {showTimeline && stats && (
+            <div style={{
+              position: "absolute", bottom: "40px", left: "16px", width: "280px",
+              background: "rgba(18, 18, 24, 0.92)", backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px",
+              padding: "12px", display: "flex", flexDirection: "column", gap: "8px", zIndex: 5,
+              maxHeight: "280px", overflowY: "auto"
+            }}>
+              <div style={{ fontSize: "10px", fontWeight: "bold", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Episódios Recentes
+              </div>
+              {stats.recentEpisodes.length === 0 ? (
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>Nenhum episódio registrado ainda.</span>
+              ) : (
+                stats.recentEpisodes.map((ep) => (
+                  <div key={ep.id} style={{
+                    display: "flex", gap: "8px", alignItems: "flex-start",
+                    padding: "8px", borderRadius: "8px",
+                    background: ep.status === 'success' ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
+                    border: `1px solid ${ep.status === 'success' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}`
+                  }}>
+                    <span style={{ fontSize: "14px", flexShrink: 0 }}>
+                      {ep.status === 'success' ? '✅' : '❌'}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "10px", fontWeight: "bold", color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {ep.taskType} · {ep.modelUsed}
+                      </div>
+                      <div style={{ fontSize: "9px", color: "var(--muted)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {ep.inputPrompt}
+                      </div>
+                      <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", marginTop: "2px" }}>
+                        {formatRelativeTime(ep.timestamp)}
+                      </div>
+                    </div>
+                    {/* Botões de feedback */}
+                    <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleSaveFeedback(ep.id, 'good')}
+                        title="Feedback positivo"
+                        style={{
+                          background: ep.userFeedback === 'good' ? "rgba(16,185,129,0.2)" : "none",
+                          border: ep.userFeedback === 'good' ? "1px solid rgba(16,185,129,0.4)" : "1px solid transparent",
+                          color: ep.userFeedback === 'good' ? "#10b981" : "rgba(255,255,255,0.25)",
+                          cursor: "pointer", padding: "3px", borderRadius: "4px",
+                          display: "flex", transition: "all 0.2s"
+                        }}
+                      >
+                        <ThumbsUp size={10} />
+                      </button>
+                      <button
+                        onClick={() => handleSaveFeedback(ep.id, 'bad')}
+                        title="Feedback negativo"
+                        style={{
+                          background: ep.userFeedback === 'bad' ? "rgba(239,68,68,0.2)" : "none",
+                          border: ep.userFeedback === 'bad' ? "1px solid rgba(239,68,68,0.4)" : "1px solid transparent",
+                          color: ep.userFeedback === 'bad' ? "#ef4444" : "rgba(255,255,255,0.25)",
+                          cursor: "pointer", padding: "3px", borderRadius: "4px",
+                          display: "flex", transition: "all 0.2s"
+                        }}
+                      >
+                        <ThumbsDown size={10} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Barra de pesquisa */}
+          <div style={{
+            position: "absolute", top: "16px", right: "16px", width: "280px",
+            display: "flex", background: "rgba(18, 18, 24, 0.85)", backdropFilter: "blur(8px)",
+            border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px",
+            padding: "4px 8px", alignItems: "center", gap: "6px", zIndex: 5
+          }}>
+            <Search size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Buscar no Córtex..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                background: "none", border: "none", color: "#fff",
+                fontSize: "12px", width: "100%", outline: "none"
+              }}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} style={{ border: "none", background: "none", color: "var(--muted)", cursor: "pointer", display: "flex", padding: 2 }}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Legenda inferior direita */}
+          <div style={{
+            position: "absolute", bottom: "16px", right: "16px",
+            background: "rgba(18, 18, 24, 0.85)", backdropFilter: "blur(8px)",
+            border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px",
+            padding: "10px 14px", display: "flex", flexDirection: "column", gap: "5px",
+            pointerEvents: "none"
+          }}>
+            <div style={{ fontSize: "9px", fontWeight: "bold", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>Estrutura Cognitiva</div>
+            {[
+              { color: "#8b5cf6", label: "Conceito" },
+              { color: "#06b6d4", label: "Entidade / Modelo" },
+              { color: "#10b981", label: "Sucesso (Aprendizado)" },
+              { color: "#ef4444", label: "Padrão de Erro" },
+            ].map((item) => (
+              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px" }}>
+                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                <span style={{ color: "rgba(255,255,255,0.6)" }}>{item.label}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "4px", paddingTop: "4px", display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ fontSize: "9px", color: "var(--muted)" }}>Arestas</div>
+              {[
+                { color: "#ef4444", label: "causes_failure", dash: true },
+                { color: "#10b981", label: "improves_quality", dash: false },
+                { color: "#a855f7", label: "uses_model / controls", dash: false },
+              ].map((item) => (
+                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "9px" }}>
+                  <svg width="14" height="6">
+                    <line x1="0" y1="3" x2="14" y2="3" stroke={item.color} strokeWidth="1.5"
+                      strokeDasharray={item.dash ? "4 2" : "none"} />
+                  </svg>
+                  <span style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* PAINEL LATERAL DE DETALHES DO NÓ SELECIONADO */}
+        {selectedNode && (
+          <div style={{
+            width: "380px",
+            flexShrink: 0,
+            background: "rgba(14, 14, 20, 0.97)",
+            backdropFilter: "blur(16px)",
+            borderRadius: "0 16px 16px 0",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderLeft: "none",
+            boxShadow: "0 0 40px rgba(0,0,0,0.4)",
+            display: "flex",
+            flexDirection: "column",
+            color: "#fff",
+            overflowY: "auto",
+            overflowX: "hidden"
+          }}>
+            {/* Gradiente de tipo no topo */}
+            <div style={{
+              height: "3px",
+              background: `linear-gradient(90deg, ${nodeTypeColor(selectedNode.type)}, transparent)`,
+              flexShrink: 0
+            }} />
+
+            <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "18px", flex: 1 }}>
+              
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div style={{
+                    width: "28px", height: "28px", borderRadius: "8px",
+                    background: `${nodeTypeColor(selectedNode.type)}20`,
+                    border: `1px solid ${nodeTypeColor(selectedNode.type)}40`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: nodeTypeColor(selectedNode.type), flexShrink: 0
+                  }}>
+                    {selectedNode.type === 'concept' && <Brain size={14} />}
+                    {selectedNode.type === 'entity' && <Layers size={14} />}
+                    {selectedNode.type === 'tool-outcome' && <Award size={14} />}
+                    {selectedNode.type === 'error-pattern' && <AlertTriangle size={14} />}
+                  </div>
+                  <span style={{
+                    fontSize: "9px", textTransform: "uppercase",
+                    color: nodeTypeColor(selectedNode.type),
+                    fontWeight: "bold", letterSpacing: "0.06em"
+                  }}>
+                    {selectedNode.type === 'concept' && 'Conceito'}
+                    {selectedNode.type === 'entity' && 'Entidade / Modelo'}
+                    {selectedNode.type === 'tool-outcome' && 'Aprendizado de Sucesso'}
+                    {selectedNode.type === 'error-pattern' && 'Padrão de Falha'}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <button
+                    onClick={() => { setEditingNode({ ...selectedNode }); setIsCreatingNode(false); setShowNodeModal(true); }}
+                    style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: "4px", display: "flex", borderRadius: "6px", transition: "background 0.2s" }}
+                    title="Editar nó"
+                  >
+                    <Edit3 size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteNode(selectedNode.id)}
+                    style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", padding: "4px", display: "flex", borderRadius: "6px", transition: "all 0.2s" }}
+                    title="Remover nó"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: "4px", display: "flex", borderRadius: "6px" }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Nome e descrição */}
+              <div>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: "1.1rem", fontWeight: 800, lineHeight: 1.3 }}>{selectedNode.label}</h3>
+                <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+                  {selectedNode.description || "Nenhuma descrição disponível para este conceito."}
+                </p>
+              </div>
+
+              {/* Métricas */}
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                borderRadius: "10px",
+                border: "1px solid rgba(255,255,255,0.05)",
+                padding: "12px",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px"
+              }}>
+                <div>
+                  <div style={{ fontSize: "9px", color: "var(--muted)", display: "flex", alignItems: "center", gap: 3, marginBottom: "3px" }}>
+                    <Activity size={9} /> CONFIANÇA
+                  </div>
+                  <div style={{
+                    fontSize: "20px", fontWeight: "bold",
+                    color: selectedNode.confidenceScore >= 0.7 ? "#10b981" : selectedNode.confidenceScore >= 0.4 ? "#f59e0b" : "#ef4444"
+                  }}>
+                    {Math.round(selectedNode.confidenceScore * 100)}%
+                  </div>
+                  {/* Barra de confiança */}
+                  <div style={{ height: "3px", background: "rgba(255,255,255,0.06)", borderRadius: "2px", marginTop: "4px" }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${selectedNode.confidenceScore * 100}%`,
+                      background: selectedNode.confidenceScore >= 0.7 ? "#10b981" : selectedNode.confidenceScore >= 0.4 ? "#f59e0b" : "#ef4444",
+                      borderRadius: "2px",
+                      transition: "width 0.5s"
+                    }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "9px", color: "var(--muted)", marginBottom: "3px" }}>OBSERVADO</div>
+                  <div style={{ fontSize: "11px", fontWeight: "medium", color: "#fff" }}>
+                    {formatRelativeTime(selectedNode.lastObserved)}
+                  </div>
+                  <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", marginTop: "2px" }}>
+                    {new Date(selectedNode.lastObserved).toLocaleDateString("pt-BR")}
+                  </div>
+                </div>
+                {isNewNode(selectedNode.lastObserved) && (
+                  <div style={{
+                    gridColumn: "1 / -1",
+                    background: "rgba(168,85,247,0.08)",
+                    border: "1px solid rgba(168,85,247,0.2)",
+                    borderRadius: "6px", padding: "5px 8px",
+                    display: "flex", alignItems: "center", gap: "6px",
+                    fontSize: "9px", color: "#a855f7"
+                  }}>
+                    <Zap size={10} />
+                    Nó recém-adicionado ao córtex (últimas 24h)
+                  </div>
+                )}
+              </div>
+
+              {/* Ações para nó de erro */}
+              {selectedNode.type === 'error-pattern' && (
+                <div style={{
+                  background: "rgba(239,68,68,0.05)",
+                  border: "1px solid rgba(239,68,68,0.12)",
+                  borderRadius: "10px", padding: "12px",
+                  display: "flex", flexDirection: "column", gap: "10px"
+                }}>
+                  <div style={{ fontSize: "10px", color: "#ef4444", fontWeight: "bold", display: "flex", alignItems: "center", gap: "5px" }}>
+                    <AlertTriangle size={11} /> Padrão de Falha Ativo
+                  </div>
+                  <p style={{ margin: 0, fontSize: "11px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                    Este padrão foi detectado automaticamente pelo Reflector Engine. Marque como resolvido se o erro foi corrigido.
+                  </p>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => handleResolveNode(selectedNode.id)}
+                      style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                        background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)",
+                        color: "#10b981", borderRadius: "8px", padding: "8px",
+                        fontSize: "11px", cursor: "pointer", transition: "all 0.2s"
+                      }}
+                    >
+                      <CheckCircle size={12} /> Resolver
+                    </button>
+                    <button
+                      onClick={() => handleDeleteNode(selectedNode.id)}
+                      style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                        background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)",
+                        color: "#ef4444", borderRadius: "8px", padding: "8px",
+                        fontSize: "11px", cursor: "pointer", transition: "all 0.2s"
+                      }}
+                    >
+                      <Trash2 size={12} /> Remover
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Regras procedimentais relacionadas */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <h4 style={{ margin: 0, fontSize: "10px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "5px" }}>
+                    <BookOpen size={10} /> Regras Procedimentais
+                  </h4>
+                  <button
+                    onClick={() => {
+                      setEditingRule({
+                        avatarId: selectedNode.metadata?.avatarId || 'mrchicken-system',
+                        scope: selectedNode.metadata?.taskType || 'general',
+                        triggerPattern: selectedNode.metadata?.taskType || 'general',
+                        confidenceScore: 0.8,
+                        successCount: 0,
+                        failureCount: 0
+                      });
+                      setIsCreatingRule(true);
+                      setShowRuleModal(true);
+                    }}
+                    style={{
+                      background: "none", border: "none", color: "#9D7CFF", cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "bold"
+                    }}
+                  >
+                    <PlusCircle size={10} /> Nova Regra
+                  </button>
+                </div>
+                {relatedRules.length === 0 ? (
+                  <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", padding: "10px", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: "8px", textAlign: "center" }}>
+                    Nenhuma regra procedimental associada a este nó.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {relatedRules.map((rule) => (
+                      <div key={rule.id} style={{
+                        background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)",
+                        borderRadius: "8px", padding: "10px"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <div style={{ fontSize: "10px", color: "#fff", lineHeight: 1.5, marginBottom: "6px", flex: 1 }}>
+                            {rule.instruction}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                            <button
+                              onClick={() => {
+                                setEditingRule(rule);
+                                setIsCreatingRule(false);
+                                setShowRuleModal(true);
+                              }}
+                              style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", display: "flex", padding: "2px" }}
+                              title="Editar regra"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRule(rule.id)}
+                              style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", display: "flex", padding: "2px" }}
+                              title="Excluir regra"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}>
+                            Confiança: {Math.round(rule.confidenceScore * 100)}%
+                          </span>
+                          <span style={{ fontSize: "9px", color: "#10b981" }}>✓ {rule.successCount}</span>
+                          <span style={{ fontSize: "9px", color: "#ef4444" }}>✗ {rule.failureCount}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Replicable instruction para tool-outcome */}
+              {selectedNode.type === 'tool-outcome' && selectedNode.metadata?.replicableInstruction && (
+                <div style={{
+                  background: "rgba(16,185,129,0.05)",
+                  border: "1px solid rgba(16,185,129,0.12)",
+                  borderRadius: "10px", padding: "12px"
+                }}>
+                  <div style={{ fontSize: "10px", color: "#10b981", fontWeight: "bold", display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
+                    <Zap size={11} /> Instrução Replicável
+                  </div>
+                  <p style={{ margin: 0, fontSize: "11px", color: "rgba(255,255,255,0.7)", lineHeight: 1.5 }}>
+                    {selectedNode.metadata.replicableInstruction}
+                  </p>
+                </div>
+              )}
+
+              {/* Nós conectados */}
+              <div>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: "10px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>
+                  Relações no Córtex ({connectedNodes.length})
+                </h4>
+                {connectedNodes.length === 0 ? (
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)" }}>Conceito isolado sem relacionamentos ativos.</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {connectedNodes.map((neighbor, idx) => {
+                      const color = nodeTypeColor(neighbor.node.type);
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setSelectedNode(neighbor.node)}
+                          style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center",
+                            background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)",
+                            borderRadius: "8px", padding: "8px 10px", cursor: "pointer",
+                            transition: "all 0.2s"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                            e.currentTarget.style.borderColor = `${color}30`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                            e.currentTarget.style.borderColor = "rgba(255,255,255,0.04)";
+                          }}
+                        >
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                            <span style={{ fontSize: "11px", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {neighbor.direction === 'in' ? '← ' : '→ '}{neighbor.node.label}
+                            </span>
+                            <span style={{ fontSize: "9px", color: "var(--muted)" }}>{neighbor.relation}</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px", flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: "9px", fontWeight: "bold",
+                              background: `${color}15`, border: `1px solid ${color}30`,
+                              color: color, padding: "2px 6px", borderRadius: "4px"
+                            }}>
+                              {neighbor.node.type === 'concept' && 'Conceito'}
+                              {neighbor.node.type === 'entity' && 'Entidade'}
+                              {neighbor.node.type === 'error-pattern' && 'Falha'}
+                              {neighbor.node.type === 'tool-outcome' && 'Sucesso'}
+                            </span>
+                            <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)" }}>
+                              {Math.round(neighbor.weight * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Metadados extras */}
+              {selectedNode.metadata && Object.keys(selectedNode.metadata).filter((k) => !['system', 'replicableInstruction', 'fromUserFeedback'].includes(k)).length > 0 && (
+                <div>
+                  <h4 style={{ margin: "0 0 8px 0", fontSize: "10px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Metadados</h4>
+                  <div style={{
+                    display: "flex", flexDirection: "column", gap: "5px",
+                    background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "8px"
+                  }}>
+                    {Object.entries(selectedNode.metadata)
+                      .filter(([k]) => !['system', 'replicableInstruction', 'fromUserFeedback'].includes(k))
+                      .map(([key, val]) => (
+                        <div key={key} style={{
+                          display: "flex", justifyContent: "space-between", fontSize: "10px",
+                          paddingBottom: "4px", borderBottom: "1px solid rgba(255,255,255,0.03)"
+                        }}>
+                          <span style={{ color: "var(--muted)", textTransform: "capitalize" }}>
+                            {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')}
+                          </span>
+                          <span style={{
+                            color: "#fff", fontWeight: "bold", maxWidth: "160px",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                          }} title={String(val)}>
+                            {String(val)}
+                          </span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
+
+              {/* ID do nó */}
+              <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.15)", fontFamily: "monospace", wordBreak: "break-all", borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "8px" }}>
+                {selectedNode.id}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal de edição / criação de nó */}
+      {showNodeModal && editingNode && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+          backdropFilter: "blur(6px)", zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNodeModal(false); }}
+        >
+          <div style={{
+            width: "480px", maxWidth: "90vw",
+            background: "rgba(14,14,20,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "16px", padding: "24px",
+            display: "flex", flexDirection: "column", gap: "16px"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#fff" }}>
+                {isCreatingNode ? "Adicionar Nó ao Córtex" : "Editar Nó"}
+              </h3>
+              <button onClick={() => setShowNodeModal(false)} style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", display: "flex" }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {isCreatingNode ? "ID (slug)" : "ID"}
+                </label>
+                <input
+                  value={editingNode.id || ""}
+                  onChange={(e) => setEditingNode((prev) => ({ ...prev, id: e.target.value }))}
+                  disabled={!isCreatingNode}
+                  placeholder={isCreatingNode ? "ex: modelo-novo" : ""}
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px",
+                    outline: "none", opacity: !isCreatingNode ? 0.5 : 1
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Tipo</label>
+                <select
+                  value={editingNode.type || 'concept'}
+                  onChange={(e) => setEditingNode((prev) => ({ ...prev, type: e.target.value as any }))}
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                  }}
+                >
+                  <option value="concept">Conceito</option>
+                  <option value="entity">Entidade / Modelo</option>
+                  <option value="tool-outcome">Sucesso (Aprendizado)</option>
+                  <option value="error-pattern">Padrão de Erro</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Label (nome exibível)</label>
+              <input
+                value={editingNode.label || ""}
+                onChange={(e) => setEditingNode((prev) => ({ ...prev, label: e.target.value }))}
+                placeholder="Ex: Novo Modelo de IA"
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Descrição</label>
+              <textarea
+                value={editingNode.description || ""}
+                onChange={(e) => setEditingNode((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Descreva o papel deste nó no sistema..."
+                rows={3}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none",
+                  resize: "vertical", fontFamily: "inherit"
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Score de Confiança: {Math.round((editingNode.confidenceScore ?? 0.8) * 100)}%
+              </label>
+              <input
+                type="range" min={0} max={1} step={0.05}
+                value={editingNode.confidenceScore ?? 0.8}
+                onChange={(e) => setEditingNode((prev) => ({ ...prev, confidenceScore: Number(e.target.value) }))}
+                style={{ width: "100%" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowNodeModal(false)}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--muted)", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: "pointer"
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveNode}
+                style={{
+                  background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.3)",
+                  color: "#a855f7", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: "pointer", fontWeight: "bold"
+                }}
+              >
+                {isCreatingNode ? "Adicionar ao Córtex" : "Salvar Alterações"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Modal de edição / criação de regra procedimental */}
+      {showRuleModal && editingRule && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+          backdropFilter: "blur(6px)", zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowRuleModal(false); }}
+        >
+          <div style={{
+            width: "480px", maxWidth: "90vw",
+            background: "rgba(14,14,20,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "16px", padding: "24px",
+            display: "flex", flexDirection: "column", gap: "16px"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#fff" }}>
+                {isCreatingRule ? "Adicionar Regra Procedimental" : "Editar Regra Procedimental"}
+              </h3>
+              <button onClick={() => setShowRuleModal(false)} style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", display: "flex" }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Avatar ID</label>
+                <input
+                  value={editingRule.avatarId || ""}
+                  onChange={(e) => setEditingRule((prev) => ({ ...prev, avatarId: e.target.value }))}
+                  placeholder="ex: mrchicken-system"
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Projeto / Tema ID</label>
+                <input
+                  value={editingRule.projectId || ""}
+                  onChange={(e) => setEditingRule((prev) => ({ ...prev, projectId: e.target.value || undefined }))}
+                  placeholder="Opcional (ex: tema-especifico)"
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Escopo (Tarefa)</label>
+                <select
+                  value={editingRule.scope || 'general'}
+                  onChange={(e) => setEditingRule((prev) => ({ ...prev, scope: e.target.value as any }))}
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                  }}
+                >
+                  <option value="general">Geral / Todos</option>
+                  <option value="image">Geração de Imagem</option>
+                  <option value="video">Geração de Vídeo</option>
+                  <option value="project">Projeto</option>
+                  <option value="refine">Refinamento</option>
+                </select>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Comportamento (Ação)</label>
+                <select
+                  value={editingRule.actionType || 'modify_prompt'}
+                  onChange={(e) => setEditingRule((prev) => ({ ...prev, actionType: e.target.value as any }))}
+                  style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"
+                  }}
+                >
+                  <option value="modify_prompt">Modificar / Ajustar Prompt</option>
+                  <option value="retry_behavior">Comportamento de Retransmissão</option>
+                  <option value="block_execution">Bloquear Execução</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Instrução (Diretiva para o LLM)</label>
+              <textarea
+                value={editingRule.instruction || ""}
+                onChange={(e) => setEditingRule((prev) => ({ ...prev, instruction: e.target.value }))}
+                placeholder="Instrução que o agente seguirá para esta tarefa (ex: Sempre adicione iluminação dramática se o tema for noturno)..."
+                rows={4}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none",
+                  resize: "vertical", fontFamily: "inherit"
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Score de Confiança: {Math.round((editingRule.confidenceScore ?? 0.8) * 100)}%
+              </label>
+              <input
+                type="range" min={0} max={1} step={0.05}
+                value={editingRule.confidenceScore ?? 0.8}
+                onChange={(e) => setEditingRule((prev) => ({ ...prev, confidenceScore: Number(e.target.value) }))}
+                style={{ width: "100%" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowRuleModal(false)}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--muted)", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: "pointer"
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveRule}
+                disabled={!editingRule.instruction}
+                style={{
+                  background: "linear-gradient(135deg, #9D7CFF 0%, #7B5CFF 100%)",
+                  border: "none", color: "#fff", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: editingRule.instruction ? "pointer" : "not-allowed",
+                  fontWeight: "bold", opacity: editingRule.instruction ? 1 : 0.6
+                }}
+              >
+                Salvar Regra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSS global para animação de spin */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
