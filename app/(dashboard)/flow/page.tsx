@@ -22,7 +22,7 @@ import {
   ThumbsUp,
   ThumbsDown
 } from "lucide-react";
-import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
+import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import ReactMarkdown from "react-markdown";
 
 interface GenerationResult {
@@ -283,7 +283,9 @@ export default function FlowDashboardPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [draftMessage, setDraftMessage] = useState("");
+  const [draftMessage] = [""];
+  const setDraftMessage = (_: string) => {};
+  void draftMessage; void setDraftMessage;
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -1105,199 +1107,188 @@ export default function FlowDashboardPage() {
       {/* ── Input Bar ── */}
       <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
         <div className="w-full max-w-[900px] relative" ref={popoverRef}>
-          <ClaudeChatInput
-            disabled={isLoading}
-            acceptedFileTypes={["image/*"]}
+          <PromptInputBox
+            isLoading={isLoading}
             placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
-            models={[
-              { id: "gemini", name: "Gemini", description: "Google Gemini Model" },
-              { id: "chatgpt", name: "ChatGPT", description: "OpenAI ChatGPT Model" },
-              { id: "deepseek", name: "DeepSeek", description: "DeepSeek Model" },
-              { id: "claude", name: "Claude", description: "Anthropic Claude Model" }
-            ]}
-            defaultModel={agentModel}
-            onModelChange={(modelId) => setAgentModel(modelId as any)}
-            onSendMessage={handleSendMessage}
-            messageValue={draftMessage}
-            onMessageChange={setDraftMessage}
+            onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
             onOptionsClick={() => setShowSettings(!showSettings)}
             showOptions={showSettings}
-            optionsContent={
-              <div className="absolute bottom-full left-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto bg-[#0c0c10] border border-white/10 backdrop-blur-xl">
-                  <div className="flex flex-col gap-2">
-                    <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Tipo Preferido</div>
-                    <div className="grid grid-cols-4 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
-                      {[
-                        { id: "image", label: "Imagem", icon: <ImageIcon size={10} /> },
-                        { id: "video", label: "Vídeo", icon: <Film size={10} /> },
-                        { id: "project", label: "React", icon: <Cpu size={10} /> },
-                        { id: "ad-creative", label: "Anúncio", icon: <Bot size={10} /> },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => {
-                            setAgentType(t.id as AgentType);
-                            if (t.id === "ad-creative") {
-                              const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 2;
-                              if (currentNum < 4 || currentNum > 40) {
-                                setImageQty("x20");
-                              }
-                            } else if (t.id === "image") {
-                              const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20;
-                              if (currentNum > 4) {
-                                setImageQty("x2");
-                              }
+          />
+          {showSettings && (
+            <div className="absolute bottom-full left-0 z-50 mb-3 flex w-[332px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-[28px] p-5 pointer-events-auto bg-[#0c0c10] border border-white/10 backdrop-blur-xl">
+                <div className="flex flex-col gap-2">
+                  <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Tipo Preferido</div>
+                  <div className="grid grid-cols-4 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                    {[
+                      { id: "image", label: "Imagem", icon: <ImageIcon size={10} /> },
+                      { id: "video", label: "Vídeo", icon: <Film size={10} /> },
+                      { id: "project", label: "React", icon: <Cpu size={10} /> },
+                      { id: "ad-creative", label: "Anúncio", icon: <Bot size={10} /> },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          setAgentType(t.id as AgentType);
+                          if (t.id === "ad-creative") {
+                            const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 2;
+                            if (currentNum < 4 || currentNum > 40) {
+                              setImageQty("x20");
                             }
-                          }}
-                          className="flex items-center justify-center gap-1 rounded-xl py-1.5 text-[9px] font-semibold transition-all cursor-pointer text-center"
-                          style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
-                        >
-                          {t.icon} <span>{t.label}</span>
-                        </button>
-                      ))}
-                    </div>
+                          } else if (t.id === "image") {
+                            const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20;
+                            if (currentNum > 4) {
+                              setImageQty("x2");
+                            }
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1 rounded-xl py-1.5 text-[9px] font-semibold transition-all cursor-pointer text-center"
+                        style={{ background: agentType === t.id ? "rgba(255,255,255,0.1)" : "transparent", color: agentType === t.id ? "#ffffff" : "#4A4A54" }}
+                      >
+                        {t.icon} <span>{t.label}</span>
+                      </button>
+                    ))}
                   </div>
+                </div>
 
-                 {/* Image mode (3D turnaround toggle) */}
-                 {agentType === "image" && (
+               {/* Image mode (3D turnaround toggle) */}
+               {agentType === "image" && (
+                 <div className="flex flex-col gap-2">
+                   <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
+                     Modo da Imagem
+                   </div>
+                   <div className="grid grid-cols-2 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
+                     {[
+                       { id: "standard", label: "Normal" },
+                       { id: "turnaround3d", label: "3D" },
+                     ].map((mode) => {
+                       const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
+                       return (
+                         <button
+                           key={mode.id}
+                           type="button"
+                           onClick={() => {
+                             const nextIs3d = mode.id === "turnaround3d";
+                             setImage3dMode(nextIs3d);
+                             if (nextIs3d) setImageQty("x4");
+                           }}
+                           className="rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer"
+                           style={{
+                             background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                             color: isActive ? "#ffffff" : "#4A4A54",
+                           }}
+                         >
+                           {mode.label}
+                         </button>
+                       );
+                     })}
+                   </div>
+                 </div>
+               )}
+
+               <label className="flex items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
+                 <span className="flex flex-col gap-0.5">
+                   <span className="text-[10px] font-semibold text-white/80">Personalidade do avatar</span>
+                   <span className="text-[9px] leading-snug text-white/40">Usar o tom do avatar nas respostas e roteiros</span>
+                 </span>
+                 <input
+                   type="checkbox"
+                   checked={useAvatarPersonality}
+                   onChange={(e) => setUseAvatarPersonality(e.target.checked)}
+                   className="h-4 w-4 accent-[#9D7CFF]"
+                 />
+               </label>
+
+               {/* Ratio + Quantity */}
+               {agentType !== "project" && (
+                 <div className="grid grid-cols-2 gap-4">
                    <div className="flex flex-col gap-2">
-                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
-                       Modo da Imagem
-                     </div>
-                     <div className="grid grid-cols-2 rounded-[14px] p-0.5 bg-white/5 border border-white/10">
-                       {[
-                         { id: "standard", label: "Normal" },
-                         { id: "turnaround3d", label: "3D" },
-                       ].map((mode) => {
-                         const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
+                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Proporção</div>
+                     <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                       {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
+                         const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
+                         const isActive = currentRatio === r;
                          return (
                            <button
-                             key={mode.id}
+                             key={r}
                              type="button"
                              onClick={() => {
-                               const nextIs3d = mode.id === "turnaround3d";
-                               setImage3dMode(nextIs3d);
-                               if (nextIs3d) setImageQty("x4");
+                               if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
+                               else setVideoRatio(r);
                              }}
-                             className="rounded-xl py-1.5 text-[10px] font-semibold transition-all cursor-pointer"
+                             className="rounded-xl py-1 font-mono text-[10px] transition-all cursor-pointer"
                              style={{
-                               background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
-                               color: isActive ? "#ffffff" : "#4A4A54",
+                               background: isActive ? "#ffffff" : "transparent",
+                               color: isActive ? "#080808" : "#7B7B86",
+                               fontWeight: isActive ? 700 : 400,
                              }}
                            >
-                             {mode.label}
+                             {r}
                            </button>
                          );
                        })}
                      </div>
                    </div>
-                 )}
-
-                 <label className="flex items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
-                   <span className="flex flex-col gap-0.5">
-                     <span className="text-[10px] font-semibold text-white/80">Personalidade do avatar</span>
-                     <span className="text-[9px] leading-snug text-white/40">Usar o tom do avatar nas respostas e roteiros</span>
-                   </span>
-                   <input
-                     type="checkbox"
-                     checked={useAvatarPersonality}
-                     onChange={(e) => setUseAvatarPersonality(e.target.checked)}
-                     className="h-4 w-4 accent-[#9D7CFF]"
-                   />
-                 </label>
-
-                 {/* Ratio + Quantity */}
-                 {agentType !== "project" && (
-                   <div className="grid grid-cols-2 gap-4">
-                     <div className="flex flex-col gap-2">
-                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">Proporção</div>
-                       <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
-                         {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
-                           const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
-                           const isActive = currentRatio === r;
-                           return (
-                             <button
-                               key={r}
-                               type="button"
-                               onClick={() => {
-                                 if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
-                                 else setVideoRatio(r);
-                               }}
-                               className="rounded-xl py-1 font-mono text-[10px] transition-all cursor-pointer"
-                               style={{
-                                 background: isActive ? "#ffffff" : "transparent",
-                                 color: isActive ? "#080808" : "#7B7B86",
-                                 fontWeight: isActive ? 700 : 400,
-                               }}
-                             >
-                               {r}
-                             </button>
-                           );
-                         })}
-                       </div>
+                   <div className="flex flex-col gap-2">
+                     <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
+                       {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
                      </div>
-                     <div className="flex flex-col gap-2">
-                       <div className="px-1 text-[9px] font-bold uppercase tracking-widest text-[#4A4A54]">
-                         {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
-                       </div>
-                        {agentType === "ad-creative" ? (
-                          <div className="flex flex-col gap-2 rounded-[14px] p-2.5 bg-white/5 border border-white/10">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[12px] font-bold text-white font-mono">
-                                {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
-                              </span>
-                              <span className="text-[9px] text-[#7B7B86] uppercase tracking-wider font-mono">Imagens</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={4}
-                              max={40}
-                              step={1}
-                              value={imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20}
-                              onChange={(e) => {
-                                setImageQty(`x${e.target.value}`);
-                              }}
-                              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                            />
+                      {agentType === "ad-creative" ? (
+                        <div className="flex flex-col gap-2 rounded-[14px] p-2.5 bg-white/5 border border-white/10">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] font-bold text-white font-mono">
+                              {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
+                            </span>
+                            <span className="text-[9px] text-[#7B7B86] uppercase tracking-wider font-mono">Imagens</span>
                           </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
-                            {/* eslint-disable-next-line complexity */}
-                            {["1x", "x2", "x3", "x4"].map((q) => {
-                              const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
-                              const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
-                              const isActive = currentQty === q && !isDisabled;
-                              return (
-                                <button
-                                  key={q}
-                                  type="button"
-                                  disabled={isDisabled}
-                                  onClick={() => {
-                                    if (agentType === "image" && image3dMode) return;
-                                    if (agentType === "image") setImageQty(q);
-                                    else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
-                                  }}
-                                  className="rounded-xl py-1 font-mono text-[10px] transition-all"
-                                  style={{
-                                    background: isActive ? "#ffffff" : "transparent",
-                                    color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
-                                    fontWeight: isActive ? 700 : 400,
-                                    cursor: isDisabled ? "not-allowed" : "pointer",
-                                    opacity: isDisabled ? 0.25 : 1,
-                                  }}
-                                >
-                                  {q}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                       </div>
+                          <input
+                            type="range"
+                            min={4}
+                            max={40}
+                            step={1}
+                            value={imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20}
+                            onChange={(e) => {
+                              setImageQty(`x${e.target.value}`);
+                            }}
+                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-1 rounded-[14px] p-1.5 bg-white/5 border border-white/10">
+                          {/* eslint-disable-next-line complexity */}
+                          {["1x", "x2", "x3", "x4"].map((q) => {
+                            const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                            const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
+                            const isActive = currentQty === q && !isDisabled;
+                            return (
+                              <button
+                                key={q}
+                                type="button"
+                                disabled={isDisabled}
+                                onClick={() => {
+                                  if (agentType === "image" && image3dMode) return;
+                                  if (agentType === "image") setImageQty(q);
+                                  else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
+                                }}
+                                className="rounded-xl py-1 font-mono text-[10px] transition-all"
+                                style={{
+                                  background: isActive ? "#ffffff" : "transparent",
+                                  color: isActive ? "#080808" : isDisabled ? "#2a2a2a" : "#7B7B86",
+                                  fontWeight: isActive ? 700 : 400,
+                                  cursor: isDisabled ? "not-allowed" : "pointer",
+                                  opacity: isDisabled ? 0.25 : 1,
+                                }}
+                              >
+                                {q}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                    </div>
-                 )}
-              </div>
-            }
-          />
+                 </div>
+               )}
+            </div>
+          )}
         </div>
       </div>
     </div>
