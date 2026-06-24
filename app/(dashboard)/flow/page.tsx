@@ -18,7 +18,9 @@ import {
   MessageSquarePlus,
   Square,
   Undo2,
-  Pencil
+  Pencil,
+  ThumbsUp,
+  ThumbsDown
 } from "lucide-react";
 import { ClaudeChatInput } from "@/components/ui/claude-style-ai-input";
 import ReactMarkdown from "react-markdown";
@@ -90,6 +92,7 @@ export interface ChatMessageState {
   videoResult?: GenerationResult | null;
   projectResult?: { success: boolean; jobId?: string; videoPath?: string; error?: string } | null;
   showLogs?: boolean;
+  feedback?: 'good' | 'bad' | null;
 }
 
 interface ChatConversation {
@@ -716,6 +719,36 @@ export default function FlowDashboardPage() {
     }
   };
 
+  const handleEvaluateJob = async (messageId: string, jobId: string, feedback: 'good' | 'bad') => {
+    setChatMessages((prev) =>
+      prev.map((msg) => (msg.id === messageId ? { ...msg, feedback } : msg))
+    );
+    setChatConversations((prev) => {
+      const updated = prev.map((conv) => {
+        if (conv.id === activeConversationId) {
+          return {
+            ...conv,
+            messages: conv.messages.map((m) =>
+              m.id === messageId ? { ...m, feedback } : m
+            )
+          };
+        }
+        return conv;
+      });
+      localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    try {
+      await fetch('/api/jobs/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, feedback })
+      });
+    } catch (err) {
+      console.error("Falha ao avaliar:", err);
+    }
+  };
+
   const activeConversation = chatConversations.find((conversation) => conversation.id === activeConversationId) || null;
 
   const handleSelectConversation = (conversationId: string) => {
@@ -1013,6 +1046,38 @@ export default function FlowDashboardPage() {
                     {msg.projectResult && msg.projectResult.error && (
                       <div className="text-xs text-rose-400 mt-2 p-2 bg-rose-500/10 rounded-lg border border-rose-500/20">
                         {msg.projectResult.error}
+                      </div>
+                    )}
+
+                    {msg.jobStatus === 'completed' && (
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+                        <span className="text-[11px] text-white/40">Avalie o resultado:</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title="Gostei 👍"
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                              msg.feedback === 'good' 
+                                ? 'bg-emerald-500/20 text-emerald-400 scale-110' 
+                                : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+                            }`}
+                            onClick={() => handleEvaluateJob(msg.id, msg.jobId!, 'good')}
+                          >
+                            <ThumbsUp size={13} fill={msg.feedback === 'good' ? 'currentColor' : 'none'} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Não gostei 👎"
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                              msg.feedback === 'bad' 
+                                ? 'bg-rose-500/20 text-rose-400 scale-110' 
+                                : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+                            }`}
+                            onClick={() => handleEvaluateJob(msg.id, msg.jobId!, 'bad')}
+                          >
+                            <ThumbsDown size={13} fill={msg.feedback === 'bad' ? 'currentColor' : 'none'} />
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
