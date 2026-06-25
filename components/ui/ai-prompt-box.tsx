@@ -161,27 +161,22 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 
 // VoiceRecorder Component
+const VOICE_BAR_COUNT = 32;
+const SILENCE_LEVELS = Array.from({ length: VOICE_BAR_COUNT }, () => 0.08);
+const VOICE_ACTIVITY_THRESHOLD = 0.035;
+
 interface VoiceRecorderProps {
-  visualizerBars?: number;
+  elapsedSeconds: number;
+  isVoiceActive: boolean;
+  levels: number[];
+  onStopRecording: () => void;
 }
 const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
-  visualizerBars = 32,
+  elapsedSeconds,
+  isVoiceActive,
+  levels,
+  onStopRecording,
 }) => {
-  const [time, setTime] = React.useState(0);
-  const bars = React.useMemo(
-    () =>
-      Array.from({ length: visualizerBars }, (_, index) => ({
-        height: `${15 + ((index * 37) % 85)}%`,
-        animationDuration: `${0.5 + ((index * 17) % 50) / 100}s`,
-      })),
-    [visualizerBars]
-  );
-
-  React.useEffect(() => {
-    const timer = setInterval(() => setTime((t) => t + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -190,25 +185,37 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 
   return (
     <div
-      className="flex flex-col items-center justify-center w-full transition-all duration-300 py-3"
+      className="relative flex min-h-[150px] w-full flex-col items-center justify-center rounded-[22px] bg-[#1F2023] px-6 py-6 transition-all duration-300 md:min-h-[170px]"
     >
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-        <span className="font-mono text-sm text-white/80">{formatTime(time)}</span>
+      <div className="absolute top-5 flex items-center gap-2">
+        <div className={cn("h-2 w-2 rounded-full bg-red-500", isVoiceActive && "animate-pulse")} />
+        <span className="font-mono text-[12px] font-semibold leading-none text-white/85">{formatTime(elapsedSeconds)}</span>
       </div>
-      <div className="w-full h-10 flex items-center justify-center gap-0.5 px-4">
-        {bars.map((bar, i) => (
+      <div className="flex h-20 w-full max-w-[320px] items-center justify-center gap-[3px] px-4">
+        {levels.map((level, i) => (
           <div
             key={i}
-            className="w-0.5 rounded-full bg-white/50 animate-pulse"
+            className={cn(
+              "w-[2.5px] rounded-full transition-all duration-75",
+              isVoiceActive ? "bg-white/75" : "bg-white/32"
+            )}
             style={{
-              height: bar.height,
-              animationDelay: `${i * 0.05}s`,
-              animationDuration: bar.animationDuration,
+              height: `${isVoiceActive ? Math.max(20, Math.min(100, level * 100)) : Math.max(8, Math.min(18, level * 100))}%`,
             }}
           />
         ))}
       </div>
+      <button
+        type="button"
+        onClick={onStopRecording}
+        className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-500 shadow-[0_8px_22px_rgba(0,0,0,0.28)] transition-transform hover:scale-105"
+        aria-label="Parar gravacao"
+        title="Parar gravacao"
+      >
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-red-500">
+          <Square className="h-2.5 w-2.5 fill-current" />
+        </span>
+      </button>
     </div>
   );
 };
@@ -248,6 +255,53 @@ interface BrowserSpeechRecognition {
 }
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+interface VoiceAnalysisFrame {
+  isVoiceActive: boolean;
+  levels: number[];
+}
+
+type BrowserAudioContextConstructor = new () => AudioContext;
+
+const createSilenceLevels = () => [...SILENCE_LEVELS];
+
+const createBrowserAudioContext = () => {
+  if (typeof window === "undefined") return null;
+  const browserWindow = window as typeof window & {
+    webkitAudioContext?: BrowserAudioContextConstructor;
+  };
+  const AudioContextConstructor = window.AudioContext || browserWindow.webkitAudioContext;
+  return AudioContextConstructor ? new AudioContextConstructor() : null;
+};
+
+const analyzeVoiceFrame = (data: Uint8Array): VoiceAnalysisFrame => {
+  let sumSquares = 0;
+  for (let i = 0; i < data.length; i++) {
+    const centered = (data[i] - 128) / 128;
+    sumSquares += centered * centered;
+  }
+
+  const rms = Math.sqrt(sumSquares / data.length);
+  const isVoiceActive = rms > VOICE_ACTIVITY_THRESHOLD;
+  if (!isVoiceActive) {
+    return { isVoiceActive, levels: createSilenceLevels() };
+  }
+
+  const bucketSize = Math.max(1, Math.floor(data.length / VOICE_BAR_COUNT));
+  const levels = Array.from({ length: VOICE_BAR_COUNT }, (_, index) => {
+    let bucketPeak = 0;
+    const start = index * bucketSize;
+    const end = Math.min(data.length, start + bucketSize);
+
+    for (let i = start; i < end; i++) {
+      bucketPeak = Math.max(bucketPeak, Math.abs(data[i] - 128) / 128);
+    }
+
+    return Math.min(1, Math.max(0.12, bucketPeak * 3.2));
+  });
+
+  return { isVoiceActive, levels };
+};
 
 const getNativeSpeechRecognition = () => {
   if (typeof window === "undefined") return null;
@@ -504,12 +558,22 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
   const [isRecording, setIsRecording] = React.useState(false);
+  const [isVoiceActive, setIsVoiceActive] = React.useState(false);
+  const [voiceLevels, setVoiceLevels] = React.useState(createSilenceLevels);
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [interimTranscript, setInterimTranscript] = React.useState("");
   const [recordingError, setRecordingError] = React.useState("");
   const [showCanvas, setShowCanvas] = React.useState(false);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const promptBoxRef = React.useRef<HTMLDivElement>(null);
   const speechRecognitionRef = React.useRef<BrowserSpeechRecognition | null>(null);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const audioSourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  const micStreamRef = React.useRef<MediaStream | null>(null);
+  const voiceFrameRef = React.useRef<number | null>(null);
+  const voiceActiveRef = React.useRef(false);
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleToggleChange = (value: string) => {
     if (value === "cortex") {
@@ -562,6 +626,88 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
   const openImageModal = (imageUrl: string) => setSelectedImage(imageUrl);
 
+  const resetVoiceMeter = React.useCallback(() => {
+    voiceActiveRef.current = false;
+    setIsVoiceActive(false);
+    setVoiceLevels(createSilenceLevels());
+  }, []);
+
+  const stopRecordingTimer = React.useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  const startRecordingTimer = React.useCallback(() => {
+    stopRecordingTimer();
+    setRecordingSeconds(0);
+    recordingTimerRef.current = setInterval(() => {
+      if (voiceActiveRef.current) {
+        setRecordingSeconds((seconds) => seconds + 1);
+      }
+    }, 1000);
+  }, [stopRecordingTimer]);
+
+  const stopVoiceMeter = React.useCallback(() => {
+    if (voiceFrameRef.current !== null) {
+      cancelAnimationFrame(voiceFrameRef.current);
+      voiceFrameRef.current = null;
+    }
+
+    audioSourceRef.current?.disconnect();
+    audioSourceRef.current = null;
+    analyserRef.current = null;
+
+    micStreamRef.current?.getTracks().forEach((track) => track.stop());
+    micStreamRef.current = null;
+
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      void audioContext.close();
+    }
+
+    resetVoiceMeter();
+  }, [resetVoiceMeter]);
+
+  const startVoiceMeter = React.useCallback(async () => {
+    const audioContext = createBrowserAudioContext();
+    if (!audioContext || !navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Medidor de voz nativo nao esta disponivel neste navegador.");
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.74;
+
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    audioContextRef.current = audioContext;
+    audioSourceRef.current = source;
+    analyserRef.current = analyser;
+    micStreamRef.current = stream;
+
+    const data = new Uint8Array(analyser.fftSize);
+    const readVoiceFrame = () => {
+      analyser.getByteTimeDomainData(data);
+      const frame = analyzeVoiceFrame(data);
+      voiceActiveRef.current = frame.isVoiceActive;
+      setIsVoiceActive(frame.isVoiceActive);
+      setVoiceLevels(frame.levels);
+      voiceFrameRef.current = requestAnimationFrame(readVoiceFrame);
+    };
+
+    readVoiceFrame();
+  }, []);
+
   const appendTranscription = React.useCallback((text: string) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -587,19 +733,26 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     speechRecognitionRef.current = null;
     setIsRecording(false);
     setInterimTranscript("");
-  }, []);
+    stopRecordingTimer();
+    stopVoiceMeter();
+  }, [stopRecordingTimer, stopVoiceMeter]);
 
   const handleSpeechError = React.useCallback((event: BrowserSpeechRecognitionErrorEvent) => {
-    const message = event.message || event.error || "Falha ao reconhecer audio pelo navegador.";
+    const message = event.error === "no-speech"
+      ? "Nenhuma voz detectada."
+      : event.message || event.error || "Falha ao reconhecer audio pelo navegador.";
     setRecordingError(message);
     setIsRecording(false);
     setInterimTranscript("");
-  }, []);
+    stopRecordingTimer();
+    stopVoiceMeter();
+  }, [stopRecordingTimer, stopVoiceMeter]);
 
-  const handleStartRecording = React.useCallback(() => {
+  const handleStartRecording = React.useCallback(async () => {
     if (isLoading || isRecording) return;
     setRecordingError("");
     setInterimTranscript("");
+    resetVoiceMeter();
 
     const recognition = createNativeSpeechRecognition();
     if (!recognition) {
@@ -612,17 +765,37 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
       recognition.onerror = handleSpeechError;
       recognition.onend = handleSpeechEnd;
       speechRecognitionRef.current = recognition;
+      await startVoiceMeter();
       recognition.start();
       setIsRecording(true);
+      startRecordingTimer();
     } catch (error) {
       speechRecognitionRef.current = null;
+      stopRecordingTimer();
+      stopVoiceMeter();
       setRecordingError(error instanceof Error ? error.message : "Nao foi possivel iniciar a transcricao nativa.");
     }
-  }, [handleSpeechEnd, handleSpeechError, handleSpeechResult, isLoading, isRecording]);
+  }, [
+    handleSpeechEnd,
+    handleSpeechError,
+    handleSpeechResult,
+    isLoading,
+    isRecording,
+    resetVoiceMeter,
+    startRecordingTimer,
+    startVoiceMeter,
+    stopRecordingTimer,
+    stopVoiceMeter,
+  ]);
 
   const handleStopRecording = React.useCallback(() => {
     speechRecognitionRef.current?.stop();
-  }, []);
+    speechRecognitionRef.current = null;
+    setIsRecording(false);
+    setInterimTranscript("");
+    stopRecordingTimer();
+    stopVoiceMeter();
+  }, [stopRecordingTimer, stopVoiceMeter]);
 
   React.useEffect(() => {
     return () => {
@@ -633,8 +806,10 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         recognition.onresult = null;
         recognition.abort();
       }
+      stopRecordingTimer();
+      stopVoiceMeter();
     };
-  }, []);
+  }, [stopRecordingTimer, stopVoiceMeter]);
 
   const handlePaste = React.useCallback((e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -669,6 +844,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   };
 
   const hasContent = input.trim() !== "" || files.length > 0;
+  const visibleTranscript = [input.trim(), interimTranscript.trim()].filter(Boolean).join(" ");
 
   return (
     <>
@@ -679,7 +855,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         onSubmit={handleSubmit}
         className={cn(
           "w-full bg-[#1F2023] border-[#444444] shadow-[0_8px_30px_rgba(0,0,0,0.24)] transition-all duration-300 ease-in-out",
-          isRecording && "border-red-500/70",
+          isRecording && "min-h-[170px] rounded-[24px] border-red-500/90 p-0 shadow-[0_0_0_1px_rgba(239,68,68,0.28),0_18px_42px_rgba(0,0,0,0.34)] md:min-h-[190px]",
           className
         )}
         disabled={isLoading}
@@ -735,55 +911,56 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         </div>
 
         {isRecording && (
-          <VoiceRecorder />
+          <>
+            <VoiceRecorder
+              elapsedSeconds={recordingSeconds}
+              isVoiceActive={isVoiceActive}
+              levels={voiceLevels}
+              onStopRecording={handleStopRecording}
+            />
+            <div
+              className="min-h-[22px] w-full whitespace-pre-wrap break-words px-5 pb-4 pt-1 text-left text-[13px] leading-relaxed text-white/80"
+              aria-live="polite"
+            >
+              {visibleTranscript || (isVoiceActive ? "Voz detectada..." : "Aguardando voz...")}
+            </div>
+          </>
         )}
 
-        {(isRecording || recordingError) && (
+        {recordingError && !isRecording && (
           <div className={cn("px-3 pb-1 text-xs", recordingError ? "text-red-300" : "text-white/50")}>
-            {recordingError || interimTranscript || "Ouvindo pelo navegador..."}
+            {recordingError}
           </div>
         )}
 
-        <PromptInputActions className="flex items-center justify-between gap-2 p-0 pt-2">
-          <div
-            className={cn(
-              "flex items-center gap-1 transition-opacity duration-300",
-              isRecording ? "opacity-0 invisible h-0" : "opacity-100 visible"
-            )}
-          >
-            <PromptInputAction tooltip="Upload image">
-              <button
-                type="button"
-                onClick={() => uploadInputRef.current?.click()}
-                className="flex h-8 w-8 text-[#9CA3AF] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-gray-600/30 hover:text-[#D1D5DB]"
-                disabled={isRecording}
-              >
-                <Paperclip className="h-5 w-5 transition-colors" />
-                <input
-                  ref={uploadInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) processFile(e.target.files[0]);
-                    if (e.target) e.target.value = "";
-                  }}
-                  accept="image/*"
-                />
-              </button>
-            </PromptInputAction>
-
-            <PromptInputAction tooltip={isRecording ? "Ouvindo audio" : "Gravar audio"}>
-              <button
-                type="button"
-                onClick={handleStartRecording}
-                className="flex h-8 w-8 text-[#9CA3AF] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-gray-600/30 hover:text-[#D1D5DB] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoading || isRecording}
-                aria-label="Gravar audio"
-                title="Gravar audio"
-              >
-                <Mic className="h-5 w-5 transition-colors" />
-              </button>
-            </PromptInputAction>
+        {!isRecording && (
+          <PromptInputActions className="flex items-center justify-between gap-2 p-0 pt-2">
+            <div
+              className={cn(
+                "flex items-center gap-1 transition-opacity duration-300",
+                isRecording ? "opacity-0 invisible h-0" : "opacity-100 visible"
+              )}
+            >
+              <PromptInputAction tooltip="Upload image">
+                <button
+                  type="button"
+                  onClick={() => uploadInputRef.current?.click()}
+                  className="flex h-8 w-8 text-[#9CA3AF] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-gray-600/30 hover:text-[#D1D5DB]"
+                  disabled={isRecording}
+                >
+                  <Paperclip className="h-5 w-5 transition-colors" />
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) processFile(e.target.files[0]);
+                      if (e.target) e.target.value = "";
+                    }}
+                    accept="image/*"
+                  />
+                </button>
+              </PromptInputAction>
 
             <div className="flex items-center">
               <button
@@ -895,44 +1072,39 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             </div>
           </div>
 
-          <PromptInputAction tooltip={isRecording ? "Parar gravacao" : hasContent ? "Send message" : "Type a message to send"}>
+          <PromptInputAction tooltip={hasContent ? "Send message" : "Gravar audio"}>
             <Button
               variant="default"
               size="icon"
               className={cn(
                 "h-8 w-8 rounded-full border border-white/20 bg-white text-[#1F2023] shadow-[0_0_0_1px_rgba(255,255,255,0.08)] transition-all duration-200 hover:bg-white/85 disabled:opacity-100",
-                isRecording && "bg-red-500 text-white hover:bg-red-500/90",
-                !isRecording && !hasContent && "cursor-not-allowed bg-white/25 text-white/45 hover:bg-white/25"
+                !hasContent && "text-[#1F2023]"
               )}
               onClick={() => {
-                if (isRecording) {
-                  handleStopRecording();
-                  return;
-                }
                 if (hasContent) handleSubmit();
+                else handleStartRecording();
               }}
-              disabled={isLoading || (!isRecording && !hasContent)}
-              aria-label={isRecording ? "Parar gravacao" : "Enviar mensagem"}
-              title={isRecording ? "Parar gravacao" : "Enviar mensagem"}
+              disabled={isLoading}
+              aria-label={hasContent ? "Enviar mensagem" : "Gravar audio"}
+              title={hasContent ? "Enviar mensagem" : "Gravar audio"}
               style={{
-                backgroundColor: isRecording ? "#EF4444" : hasContent ? "#ffffff" : "rgba(255,255,255,0.22)",
-                borderColor: isRecording ? "rgba(239,68,68,0.55)" : hasContent ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.14)",
-                color: isRecording ? "#ffffff" : hasContent ? "#1F2023" : "rgba(255,255,255,0.56)",
+                backgroundColor: "#ffffff",
+                borderColor: "rgba(255,255,255,0.28)",
+                color: "#1F2023",
                 opacity: 1,
               }}
             >
-              {isRecording ? (
-                <Square className="h-4 w-4 fill-current" />
-              ) : isLoading ? (
+              {isLoading ? (
                 <Square className="h-4 w-4 animate-pulse fill-current" />
               ) : hasContent ? (
                 <ArrowUp className="h-4 w-4 text-current" />
               ) : (
-                <ArrowUp className="h-4 w-4 text-current" />
+                <Mic className="h-4 w-4 text-current" />
               )}
             </Button>
           </PromptInputAction>
         </PromptInputActions>
+        )}
       </PromptInput>
 
       <ImageViewDialog imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />

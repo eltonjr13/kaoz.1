@@ -210,6 +210,28 @@ const getResultFilename = (filePath: string) => {
   return cleanPath.split(/[\\/]/).pop() || cleanPath;
 };
 
+const getPlanKindLabel = (kind: AgentType) => {
+  if (kind === "image") return "Imagem";
+  if (kind === "video") return "Video";
+  if (kind === "project") return "Projeto";
+  return "Criativo de anuncio";
+};
+
+const getPlanTitle = (plan: PendingPlan) => {
+  if (plan.kind === "ad-creative") return "Plano de criativos de anuncio";
+  return `Plano de ${getPlanKindLabel(plan.kind).toLowerCase()}`;
+};
+
+const getPlanMetaItems = (plan: PendingPlan) => [
+  { label: "Tipo", value: getPlanKindLabel(plan.kind) },
+  { label: "Modelo", value: plan.mediaModel || plan.model },
+  { label: "Formato", value: plan.aspectRatio },
+  { label: "Quantidade", value: plan.requestedImageCount ? `${plan.requestedImageCount} imagens` : plan.quantity },
+  { label: "Avatar", value: plan.avatarName },
+  { label: "Pacote", value: plan.imagePackageMode === "turnaround3d" ? "3D turnaround" : undefined },
+  { label: "Vistas", value: plan.turnaroundViews?.join(", ") }
+].filter((item): item is { label: string; value: string } => Boolean(item.value));
+
 const normalizeRequestedImageCount = (value: unknown) => {
   const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isInteger(count) || count < 5) return undefined;
@@ -922,7 +944,7 @@ export default function FlowDashboardPage() {
         )}
 
         {chatMessages.map(msg => (
-          <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+          <div key={msg.id} className={`flex flex-col ${msg.plan && !msg.jobId ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
             <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
               <div className="shrink-0 mt-1">
                 {msg.role === 'user' ? (
@@ -969,11 +991,22 @@ export default function FlowDashboardPage() {
 
                 {/* Plan Card */}
                 {msg.plan && !msg.jobId && (
-                  <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
-                        {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
+                  <div className="mt-3 w-full max-w-[760px] rounded-[24px] border border-[#9D7CFF]/25 bg-[#09090d] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.34)] sm:p-5">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#9D7CFF] mb-2">
+                        {getPlanTitle(msg.plan)}
                       </div>
-                      <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
+                      <div className="mb-4 text-[13px] leading-relaxed text-white/80">{msg.plan.explanation}</div>
+
+                      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {getPlanMetaItems(msg.plan).map((item) => (
+                          <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-white/35">{item.label}</div>
+                            <div className="mt-1 truncate text-[12px] font-medium text-white/90" title={item.value}>
+                              {item.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       {msg.plan.requestedImageCount && (
                         <div className="text-[11px] text-white/60 mb-3">
                           Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
@@ -981,30 +1014,82 @@ export default function FlowDashboardPage() {
                       )}
                       
                       {msg.plan.kind === 'ad-creative' && msg.plan.adCreativePlan?.concepts && (
-                        <div className="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto pr-1">
-                          {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
-                            <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
-                              <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
-                              <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
-                              <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
-                            </div>
-                          ))}
-                        </div>
+                        <section className="mb-4 space-y-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                            Conceitos planejados
+                          </div>
+                          <div className="grid gap-2">
+                            {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
+                              <div key={idx} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-[12px]">
+                                <div className="mb-2 font-semibold text-[#C9BAFF]">{concept.conceptName}</div>
+                                <div className="mb-2 leading-relaxed text-white/80"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
+                                <div className="leading-relaxed text-white/60"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
                       )}
 
                       {msg.plan.kind !== 'ad-creative' && (
-                        <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
-                          <strong className="text-white/80 block mb-1">Prompt:</strong>
-                          {msg.plan.prompt}
+                        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
+                          {(msg.plan.strategy || msg.plan.scriptOutline) && (
+                            <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                                Direcao
+                              </div>
+                              <div className="space-y-3 text-[12px] leading-relaxed text-white/70">
+                                {msg.plan.strategy && <p>{msg.plan.strategy}</p>}
+                                {msg.plan.scriptOutline && <p>{msg.plan.scriptOutline}</p>}
+                              </div>
+                            </section>
+                          )}
+
+                          <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                              Prompt final
+                            </div>
+                            <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-white/70">
+                              {msg.plan.prompt}
+                            </p>
+                          </section>
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 bg-white text-black py-2 rounded-full text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer">
-                          <Check size={14}/> Aprovar
+                      {msg.plan.creativeSteps && msg.plan.creativeSteps.length > 0 && (
+                        <section className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                            Etapas
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {msg.plan.creativeSteps.map((step, idx) => (
+                              <div key={`${idx}-${step}`} className="flex gap-2 rounded-xl bg-black/20 p-2 text-[12px] leading-relaxed text-white/70">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#9D7CFF]/20 text-[10px] font-semibold text-[#C9BAFF]">
+                                  {idx + 1}
+                                </span>
+                                <span>{step}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {msg.plan.visualReferenceInstructions && (
+                        <section className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                            Referencia visual
+                          </div>
+                          <p className="text-[12px] leading-relaxed text-white/70">
+                            {msg.plan.visualReferenceInstructions}
+                          </p>
+                        </section>
+                      )}
+
+                      <div className="flex flex-col gap-2 border-t border-white/10 pt-3 sm:flex-row">
+                        <button onClick={() => handleApplyPlan(msg.id)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-black transition-opacity hover:opacity-90 cursor-pointer">
+                          <Check size={14}/> Aprovar plano
                         </button>
-                        <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 bg-white/10 border border-white/10 py-2 rounded-full text-xs font-medium hover:bg-white/20 cursor-pointer">
-                          Cancelar
+                        <button onClick={() => handleCancelPlan(msg.id)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 text-xs font-medium text-white/75 transition-colors hover:bg-white/20 cursor-pointer">
+                          <X size={14}/> Cancelar
                         </button>
                       </div>
                   </div>
