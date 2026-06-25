@@ -991,7 +991,7 @@ export default function FlowDashboardPage() {
 
                 {/* Plan Card */}
                 {msg.plan && !msg.jobId && (
-                  <div className="mt-3 w-full max-w-[760px] rounded-[24px] border border-[#9D7CFF]/25 bg-[#09090d] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.34)] sm:p-5">
+                  <div className="mb-28 mt-3 w-full max-w-[760px] rounded-[24px] border border-[#9D7CFF]/25 bg-[#09090d] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.34)] sm:p-5">
                       <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#9D7CFF] mb-2">
                         {getPlanTitle(msg.plan)}
                       </div>
