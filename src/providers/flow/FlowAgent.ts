@@ -40,6 +40,7 @@ export interface AgentTaskOptions {
   approvedPlan?: FlowDecision;
   avatarReferenceImage?: string;
   inputReferenceImage?: string;
+  useExistingFlowReference?: boolean;
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   imagePackageMode?: ImagePackageMode;
@@ -116,10 +117,10 @@ export class FlowAgent {
         return this.prepareAvatarReferenceImage(cachedMedia, jobId);
       }
 
-      const localPath = path.isAbsolute(imagePath)
-        ? imagePath
-        : imagePath.startsWith("/")
+      const localPath = imagePath.startsWith("/")
         ? path.join(process.cwd(), "public", imagePath.slice(1))
+        : path.isAbsolute(imagePath)
+        ? imagePath
         : path.resolve(imagePath);
 
       await access(localPath);
@@ -491,17 +492,20 @@ export class FlowAgent {
 
   private buildSingleTurnaroundPrompt(prompt: string, view: TurnaroundView): string {
     return [
-      "Image-to-image character turnaround task.",
-      "Use the attached reference image as the source of truth.",
-      "Do not invent, redesign, restyle, beautify, age, simplify, cartoonize, or change the character.",
-      `Generate exactly one standalone image showing that same exact character in ${TURNAROUND_VIEW_LABELS[view]}.`,
-      "Only rotate the camera/character angle around the vertical axis. Keep everything else as close to the reference image as possible.",
-      "Keep the same identity, face structure, hair, skin tone, body shape, clothing, shoes, colors, materials, wrinkles, accessories, and silhouette.",
-      "Keep the same camera distance, lens feeling, subject scale, crop/framing, pose energy, lighting direction, shadow softness, and background style from the reference.",
-      "If the reference is waist-up, generate waist-up with the same crop. If the reference is full-body, generate full-body with the same subject size.",
+      "STRICT image-to-image 3D character turnaround task.",
+      "The attached image is the locked character design. Treat it as a model sheet source, not as loose inspiration.",
+      "Do not invent a new person, new face, new haircut, new body, new clothes, new scene, new pose, new emotion, new props, or new environment.",
+      `Generate exactly one full-body standalone image of the SAME character in ${TURNAROUND_VIEW_LABELS[view]}.`,
+      "Keep the exact same body pose and posture from the reference. The character should look like the same 3D model rotated on a turntable, not re-posed.",
+      "Only rotate the character around the vertical axis to the requested angle. Do not move arms, legs, head tilt, expression, clothing folds, or stance except what is naturally hidden or revealed by the rotation.",
+      "Use an orthographic model-sheet camera feel: no perspective exaggeration, no dynamic angle, no walking direction, no action pose.",
+      "Preserve the exact caricature proportions, head size, face structure, moustache/facial hair if present, skin tone, hair shape, body shape, clothing, shoes, colors, materials, and silhouette.",
+      "Use the same neutral model-sheet presentation for every angle: full body, centered, standing upright, arms relaxed exactly as in the reference, no walking, no action, no object interaction.",
+      "Use a plain neutral studio background. Do not add streets, bathrooms, toys, posters, signs, crowds, furniture, windows, props, text, logos, or story context.",
+      "Keep identical subject scale, crop, feet position, vertical alignment, lens, lighting, shadow softness, and 3D render style across all angles.",
       "Do not create a contact sheet, grid, collage, split-screen, thumbnails, labels, captions, or multiple angles inside one image.",
-      "Output one character only, one angle only, centered, with no extra props and no new environment.",
-      `Minimal instruction context: ${prompt}`
+      "Output one character only, one angle only, full body, centered.",
+      `Original user brief for context only, not for redesign: ${prompt}`
     ].join(" ");
   }
 
@@ -572,9 +576,13 @@ export class FlowAgent {
       promptUsed = optimizedPrimary;
     } else {
       await this.logAgentEvent(jobId, "researching", "Usando a imagem anexada como base do personagem para gerar os angulos.");
+      uploadedPaths.push(referencePath);
+      imageRecords.push({ role: 'primary', path: referencePath });
     }
 
-    for (const view of views) {
+    const viewsToGenerate = referencePath ? views.filter(view => view !== 'front') : views;
+
+    for (const view of viewsToGenerate) {
       const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
 
       promptUsed = viewPrompt;
@@ -583,7 +591,9 @@ export class FlowAgent {
         aspectRatio: options.aspectRatio || '1:1',
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
-        referenceImage: referencePath
+        referenceImage: referencePath,
+        forceReferenceUpload: options.useExistingFlowReference ? view === viewsToGenerate[0] : true,
+        useExistingFlowReference: options.useExistingFlowReference
       });
 
       const viewPaths = this.getImageResultPaths(viewResult);
@@ -597,7 +607,7 @@ export class FlowAgent {
     }
 
     const generatedViewCount = imageRecords.filter(record => record.role !== 'primary').length;
-    if (generatedViewCount < BASE_TURNAROUND_VIEWS.length) {
+    if (generatedViewCount < viewsToGenerate.length) {
       throw new Error(`Pacote 3D incompleto: ${generatedViewCount} angulos gerados.`);
     }
 

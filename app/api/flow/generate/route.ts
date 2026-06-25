@@ -44,6 +44,33 @@ function saveBase64Image(base64Data: string): { filePath: string; extension: str
   return { filePath, extension };
 }
 
+function resolveGeneratedReferencePath(referencePath: string): string | undefined {
+  const absolutePath = path.resolve(referencePath);
+  const allowedRoot = path.resolve("storage/generated/");
+  const isWindows = process.platform === "win32";
+  const normalizedPath = isWindows ? absolutePath.toLowerCase() : absolutePath;
+  const normalizedRoot = isWindows ? allowedRoot.toLowerCase() : allowedRoot;
+  const allowedPrefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
+
+  if (!normalizedPath.startsWith(allowedPrefix) || !fs.existsSync(absolutePath)) {
+    return undefined;
+  }
+
+  return absolutePath;
+}
+
+function copyGeneratedReferenceImage(referencePath: string): string {
+  const ext = path.extname(referencePath) || ".png";
+  const tempDir = path.resolve("storage/temp_uploads");
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const tempPath = path.join(tempDir, `ref_image_${crypto.randomUUID()}${ext}`);
+  fs.copyFileSync(referencePath, tempPath);
+  return tempPath;
+}
+
 // eslint-disable-next-line complexity
 export async function POST(request: Request) {
   try {
@@ -54,6 +81,9 @@ export async function POST(request: Request) {
       quantity?: unknown;
       model?: unknown;
       referenceImage?: unknown;
+      referenceImagePath?: unknown;
+      forceReferenceUpload?: unknown;
+      useExistingFlowReference?: unknown;
       folderName?: unknown;
       originalFilename?: unknown;
     } | null;
@@ -93,16 +123,31 @@ export async function POST(request: Request) {
     }
 
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
+    const referenceImagePathRaw = typeof body?.referenceImagePath === "string" ? body.referenceImagePath.trim() : "";
+    const useExistingFlowReference = body?.useExistingFlowReference === true;
     let tempFilePath: string | undefined = undefined;
+    let referenceImagePath: string | undefined = undefined;
 
     if (referenceImageBase64) {
       try {
         const saved = saveBase64Image(referenceImageBase64);
+        referenceImagePath = saved.filePath;
         tempFilePath = saved.filePath;
         console.log(`[API FLOW] Imagem de referência salva temporariamente em: ${tempFilePath}`);
       } catch (saveErr) {
         console.error("[API FLOW] Erro ao salvar imagem de referência temporária:", saveErr);
         return jsonError("Falha ao processar a imagem de referência fornecida.");
+      }
+    } else if (referenceImagePathRaw) {
+      const generatedReferencePath = resolveGeneratedReferencePath(referenceImagePathRaw);
+      if (!generatedReferencePath) {
+        return jsonError("Imagem de referencia invalida ou fora do diretorio permitido.");
+      }
+      if (useExistingFlowReference) {
+        referenceImagePath = generatedReferencePath;
+      } else {
+        referenceImagePath = copyGeneratedReferenceImage(generatedReferencePath);
+        tempFilePath = referenceImagePath;
       }
     }
 
@@ -110,7 +155,9 @@ export async function POST(request: Request) {
       aspectRatio: validatedAspectRatio,
       quantity: validatedQuantity,
       model: model || undefined,
-      referenceImage: tempFilePath,
+      referenceImage: referenceImagePath,
+      forceReferenceUpload: body?.forceReferenceUpload === true,
+      useExistingFlowReference,
       folderName,
       originalFilename
     };

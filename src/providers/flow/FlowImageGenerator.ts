@@ -109,24 +109,32 @@ export class FlowImageGenerator {
   /**
    * Uploads a reference image to the workspace.
    */
-  private async uploadReferenceImage(page: Page, referenceImage: string, skipUpload = false): Promise<void> {
+  private async uploadReferenceImage(
+    page: Page,
+    referenceImage: string,
+    skipUpload = false,
+    useExistingFlowReference = false,
+    forceReferenceSelection = false
+  ): Promise<void> {
     logger.info(`Upload de imagem de referência solicitado: ${referenceImage} (skipUpload: ${skipUpload})`);
 
     // Check if an image is already attached to avoid attaching again
     const alreadyAttached = await this.isReferenceImageAttached(page);
-    if (alreadyAttached) {
+    if (alreadyAttached && !forceReferenceSelection) {
       logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
       return;
     }
 
     const fileInput = page.locator('input[type="file"]').first();
     try {
-      if (!skipUpload) {
+      if ((!skipUpload || forceReferenceSelection) && !useExistingFlowReference) {
         await fileInput.waitFor({ state: 'attached', timeout: 15000 });
         logger.info('Input de arquivo de referência localizado. Fazendo upload...');
         await fileInput.setInputFiles(referenceImage);
         logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
         await page.waitForTimeout(5000);
+      } else if (useExistingFlowReference) {
+        logger.info('Usando imagem ja existente no Flow. Pulando upload do arquivo fisico.');
       } else {
         logger.info('Imagem já enviada anteriormente nesta sessão do projeto. Pulando upload do arquivo físico.');
       }
@@ -139,16 +147,22 @@ export class FlowImageGenerator {
 
       logger.info('Localizando caixa de diálogo de recursos...');
       const dialog = page.locator('[role="dialog"], [role="menu"], [data-state="open"]').filter({ hasText: 'Incluir no comando' }).first();
-      await dialog.waitFor({ state: 'visible', timeout: 15000 });
+      await dialog.waitFor({ state: 'visible', timeout: 30000 });
 
       // We do not fill the searchInput to avoid search behavior or issues since Google Flow
       // truncates long filenames with an ellipsis in the UI list items.
       // Since the uploaded file is the most recent, it sits at the top under "Recentes".
       // We directly locate the item containing the prefix "ref_image_".
       logger.info('Selecionando o recurso mais recente na lista...');
-      const item = dialog.locator('text=ref_image_').filter({ visible: true }).first();
-      await item.waitFor({ state: 'visible', timeout: 15000 });
-      await item.click();
+      if (useExistingFlowReference) {
+        const thumbnail = dialog.locator('img').filter({ visible: true }).first();
+        await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
+        await thumbnail.click();
+      } else {
+        const item = dialog.locator('text=ref_image_').filter({ visible: true }).first();
+        await item.waitFor({ state: 'visible', timeout: 15000 });
+        await item.click();
+      }
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');
@@ -419,8 +433,14 @@ export class FlowImageGenerator {
 
       // 4.5. Upload reference image if provided
       if (options?.referenceImage) {
-        const skipUpload = (options.referenceImage === this.lastUploadedReferenceImage);
-        await this.uploadReferenceImage(page, options.referenceImage, skipUpload);
+        const skipUpload = !options.forceReferenceUpload && (options.referenceImage === this.lastUploadedReferenceImage);
+        await this.uploadReferenceImage(
+          page,
+          options.referenceImage,
+          skipUpload,
+          options.useExistingFlowReference,
+          options.forceReferenceUpload
+        );
         this.lastUploadedReferenceImage = options.referenceImage;
       }
 

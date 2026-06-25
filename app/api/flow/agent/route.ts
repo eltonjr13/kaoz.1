@@ -74,6 +74,21 @@ function saveBase64ReferenceImage(base64Data: string): string {
   return filePath;
 }
 
+function resolveGeneratedReferencePath(referencePath: string): string | undefined {
+  const absolutePath = path.resolve(referencePath);
+  const allowedRoot = path.resolve("storage/generated/");
+  const isWindows = process.platform === "win32";
+  const normalizedPath = isWindows ? absolutePath.toLowerCase() : absolutePath;
+  const normalizedRoot = isWindows ? allowedRoot.toLowerCase() : allowedRoot;
+  const allowedPrefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
+
+  if (!normalizedPath.startsWith(allowedPrefix) || !fs.existsSync(absolutePath)) {
+    return undefined;
+  }
+
+  return absolutePath;
+}
+
 function parseApprovedPlan(value: unknown): FlowDecision | undefined {
   if (!value || typeof value !== "object") return undefined;
 
@@ -126,6 +141,7 @@ export async function POST(request: Request) {
       imagePackageMode?: unknown;
       turnaroundViews?: unknown;
       referenceImage?: unknown;
+      referenceImagePath?: unknown;
       approvedPlan?: unknown;
       useAvatarPersonality?: unknown;
       useCortexMemory?: unknown;
@@ -145,6 +161,7 @@ export async function POST(request: Request) {
     const imagePackageMode = parseImagePackageMode(body?.imagePackageMode);
     const turnaroundViews = parseTurnaroundViews(body?.turnaroundViews);
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
+    const referenceImagePathRaw = typeof body?.referenceImagePath === "string" ? body.referenceImagePath.trim() : "";
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
     const useAvatarPersonality = body?.useAvatarPersonality !== false;
     const useCortexMemory = body?.useCortexMemory !== false;
@@ -210,6 +227,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Avatar local nao encontrado." }, { status: 404 });
       }
 
+      const generatedReferencePath = referenceImagePathRaw ? resolveGeneratedReferencePath(referenceImagePathRaw) : undefined;
+      if (referenceImagePathRaw && !generatedReferencePath) {
+        return NextResponse.json({ error: "Imagem base 3D invalida ou fora do diretorio permitido." }, { status: 400 });
+      }
+      const generatedReferenceImage = generatedReferencePath;
+
       const localJob = await createLocalJob({
         avatarId,
         topic: taskPrompt,
@@ -222,9 +245,10 @@ export async function POST(request: Request) {
       await updateLocalJobStatus(jobId, "researching");
       await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autonomo inicializado no armazenamento local.");
       const inputReferenceImage = referenceImageBase64 ? saveBase64ReferenceImage(referenceImageBase64) : undefined;
-      if (inputReferenceImage) {
+      const referenceImage = inputReferenceImage || generatedReferenceImage;
+      if (referenceImage) {
         await createLocalJobEvent(jobId, "planning", "Imagem de referencia enviada pelo usuario anexada ao agente.", {
-          referenceImage: inputReferenceImage
+          referenceImage
         });
       }
 
@@ -240,7 +264,8 @@ export async function POST(request: Request) {
         videoQuantity,
         imagePackageMode,
         turnaroundViews,
-        inputReferenceImage,
+        inputReferenceImage: referenceImage,
+        useExistingFlowReference: Boolean(generatedReferenceImage && !inputReferenceImage),
         useAvatarPersonality,
         useCortexMemory,
         jobId,

@@ -537,6 +537,8 @@ interface PromptInputBoxProps {
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
   onOptionsClick?: () => void;
   showOptions?: boolean;
   useCortexMemory?: boolean;
@@ -548,12 +550,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     isLoading = false,
     placeholder = "Type your message here...",
     className,
+    value,
+    onValueChange,
     onOptionsClick,
     showOptions = false,
     useCortexMemory = true,
     onCortexMemoryChange
   } = props;
-  const [input, setInput] = React.useState("");
+  const [internalInput, setInternalInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
@@ -574,6 +578,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const voiceFrameRef = React.useRef<number | null>(null);
   const voiceActiveRef = React.useRef(false);
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const input = value ?? internalInput;
+  const setInput = React.useCallback((nextValue: string | ((current: string) => string)) => {
+    const resolvedValue = typeof nextValue === "function" ? nextValue(input) : nextValue;
+    onValueChange?.(resolvedValue);
+    if (value === undefined) {
+      setInternalInput(resolvedValue);
+    }
+  }, [input, onValueChange, value]);
 
   const handleToggleChange = (value: string) => {
     if (value === "cortex") {
@@ -712,7 +724,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     const cleanText = text.trim();
     if (!cleanText) return;
     setInput((current) => (current.trim() ? `${current.trimEnd()} ${cleanText}` : cleanText));
-  }, []);
+  }, [setInput]);
 
   const handleSpeechResult = React.useCallback((event: BrowserSpeechRecognitionEvent) => {
     let finalText = "";

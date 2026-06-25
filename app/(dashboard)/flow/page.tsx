@@ -65,6 +65,7 @@ interface PendingPlan {
   avatarId?: string;
   avatarName?: string;
   referenceImage?: string | null;
+  referenceImagePath?: string | null;
   targetJobId?: string | null;
   strategy?: string;
   scriptOutline?: string | null;
@@ -136,6 +137,60 @@ const sanitizeChatMessages = (messages: ChatMessageState[]) =>
     };
   });
 
+const getFlowMediaUrl = (mediaPath?: string | null) => {
+  if (!mediaPath) return "";
+  if (mediaPath.startsWith("public/")) {
+    return mediaPath.substring(6);
+  }
+  if (mediaPath.startsWith("/public/")) {
+    return mediaPath.substring(7);
+  }
+  return `/api/flow/media?path=${encodeURIComponent(mediaPath)}`;
+};
+
+async function generate3dBaseImage(params: {
+  prompt: string;
+  aspectRatio: string;
+  model: string;
+  referenceImage?: string;
+  referenceImagePath?: string;
+  forceReferenceUpload?: boolean;
+  useExistingFlowReference?: boolean;
+}): Promise<GenerationResult> {
+  const response = await fetch("/api/flow/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "image",
+      prompt: params.prompt,
+      aspectRatio: params.aspectRatio,
+      quantity: "1x",
+      model: params.model,
+      referenceImage: params.referenceImage,
+      referenceImagePath: params.referenceImagePath,
+      forceReferenceUpload: params.forceReferenceUpload,
+      useExistingFlowReference: params.useExistingFlowReference
+    })
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || "Falha ao gerar a imagem base do 3D.");
+  }
+
+  return result;
+}
+
+const build3dImageEditPrompt = (originalPrompt: string, correctionPrompt: string) =>
+  [
+    "Image-to-image edit task. Use the attached reference image as the exact source image.",
+    "Do not generate a new character, new scene, new composition, or unrelated image.",
+    "Preserve the same subject identity, pose, camera angle, crop, composition, style, lighting, colors, materials, background, and image proportions.",
+    "Apply only the requested correction below. Keep every other visual detail unchanged.",
+    `Original 3D base brief: ${originalPrompt}`,
+    `Requested correction: ${correctionPrompt}`,
+    "Return one edited image only, not a variation sheet, not a collage, not a redesign."
+  ].join(" ");
+
 const getConversationTitle = (messages: ChatMessageState[]) => {
   const firstUserMessage = messages.find((msg) => msg.role === "user")?.content.trim();
   if (!firstUserMessage) return "Nova conversa";
@@ -145,7 +200,8 @@ const getConversationTitle = (messages: ChatMessageState[]) => {
 
 const getConversationTitleWithBranch = (messages: ChatMessageState[], currentTitle: string) => {
   const title = getConversationTitle(messages);
-  return currentTitle.startsWith(BRANCH_TITLE_PREFIX) ? `${BRANCH_TITLE_PREFIX}${title}` : title;
+  void currentTitle;
+  return title;
 };
 
 const createChatConversation = (messages: ChatMessageState[] = [], title?: string): ChatConversation => {
@@ -295,9 +351,8 @@ export default function FlowDashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedResultImage, setExpandedResultImage] = useState<{ src: string; alt: string; downloadUrl: string } | null>(null);
-  const [draftMessage] = [""];
-  const setDraftMessage = (_: string) => {};
-  void draftMessage; void setDraftMessage;
+  const [draftMessage, setDraftMessage] = useState("");
+  const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -744,6 +799,11 @@ export default function FlowDashboardPage() {
   }, [chatMessages]);
 
   const handleSendMessage = async (message: string, files: any[], pastedContent: any[]) => {
+    if (editing3dImageMessageId) {
+      await handleEdit3dBaseImage(editing3dImageMessageId, message);
+      return;
+    }
+
     let content = message;
     if (pastedContent.length > 0) {
       content += "\n\n" + pastedContent.map((p: any) => p.content).join("\n\n");
@@ -830,6 +890,23 @@ export default function FlowDashboardPage() {
           useCortexMemory,
           adCreativePlan: data.action.adCreativePlan
         };
+
+        if (plannedKind === 'image' && image3dMode && referenceImageBase64) {
+          const baseImageData = await generate3dBaseImage({
+            prompt: data.action.optimizedPrompt || message,
+            aspectRatio: imageRatio,
+            model: imageModel,
+            referenceImage: referenceImageBase64,
+            forceReferenceUpload: true
+          });
+
+          const baseImagePath = baseImageData.path || baseImageData.paths?.[0] || null;
+          agentMsg.imageResult = baseImageData;
+          agentMsg.plan.referenceImage = null;
+          agentMsg.plan.referenceImagePath = baseImagePath;
+          agentMsg.plan.explanation = "Imagem base 3D gerada com o estilo solicitado. Aprove para gerar as variações de ângulo usando esta imagem como referência.";
+          agentMsg.content = "Gerei a primeira imagem no estilo pedido. Se aprovar, continuo o pacote 3D usando esta imagem como base para os ângulos.";
+        }
       }
 
       setChatMessages(prev => [...prev, agentMsg]);
@@ -870,6 +947,7 @@ export default function FlowDashboardPage() {
           imagePackageMode: msg.plan.imagePackageMode,
           turnaroundViews: msg.plan.turnaroundViews,
           referenceImage: msg.plan.referenceImage || undefined,
+          referenceImagePath: msg.plan.referenceImagePath || undefined,
           videoModel: msg.plan.kind === 'project' || msg.plan.kind === 'video' ? msg.plan.mediaModel : undefined,
           videoQuantity: msg.plan.kind === 'video' ? msg.plan.quantity : undefined,
           approvedPlan: {
@@ -915,7 +993,144 @@ export default function FlowDashboardPage() {
     }
   };
 
-  const canBranchConversation = !isLoading && !chatMessages.some((msg) => msg.jobStatus === "running");
+  const handleStartEdit3dBaseImage = (messageId: string) => {
+    setEditing3dImageMessageId(messageId);
+    setDraftMessage("");
+  };
+
+  const handleEdit3dBaseImage = async (messageId: string, correctionPrompt: string) => {
+    const cleanPrompt = correctionPrompt.trim();
+    if (!cleanPrompt) return;
+
+    const targetMessage = chatMessages.find((msg) => msg.id === messageId);
+    const referenceImagePath = targetMessage?.plan?.referenceImagePath || targetMessage?.imageResult?.path || targetMessage?.imageResult?.paths?.[0];
+    if (!targetMessage?.plan || !referenceImagePath) return;
+
+    const userMsg: ChatMessageState = {
+      id: Date.now().toString(),
+      role: "user",
+      content: cleanPrompt,
+      timestamp: new Date().toISOString()
+    };
+
+    setChatMessages((previous) => [...previous, userMsg]);
+    setIsLoading(true);
+
+    try {
+      const editedImage = await generate3dBaseImage({
+        prompt: build3dImageEditPrompt(targetMessage.plan.prompt || targetMessage.plan.originalPrompt, cleanPrompt),
+        aspectRatio: targetMessage.plan.aspectRatio || imageRatio,
+        model: targetMessage.plan.mediaModel || imageModel,
+        referenceImagePath,
+        forceReferenceUpload: true,
+        useExistingFlowReference: true
+      });
+      const editedImagePath = editedImage.path || editedImage.paths?.[0] || null;
+      if (!editedImagePath) {
+        throw new Error("A imagem editada foi gerada, mas nenhum caminho foi retornado.");
+      }
+      const updatedPlan: PendingPlan = {
+        ...targetMessage.plan,
+        referenceImage: null,
+        referenceImagePath: editedImagePath
+      };
+
+      setChatMessages((previous) =>
+        previous.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                content: "Atualizei a imagem base com as correções e vou continuar o pacote 3D usando esta versão.",
+                imageResult: editedImage,
+                plan: updatedPlan,
+                jobStatus: "running",
+                jobType: updatedPlan.kind,
+                jobLogs: [`[${new Date().toLocaleTimeString()}] Imagem base editada. Iniciando geração dos ângulos 3D...`]
+              }
+            : msg
+        )
+      );
+      setEditing3dImageMessageId(null);
+      setDraftMessage("");
+
+      const res = await fetch("/api/flow/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create-project",
+          prompt: updatedPlan.originalPrompt,
+          avatarId: updatedPlan.avatarId || selectedAvatarId,
+          useAvatarPersonality: updatedPlan.useAvatarPersonality ?? useAvatarPersonality,
+          useCortexMemory: updatedPlan.useCortexMemory ?? useCortexMemory,
+          model: updatedPlan.model,
+          aspectRatio: updatedPlan.aspectRatio,
+          imageModel: updatedPlan.kind === 'image' || updatedPlan.kind === 'ad-creative' ? updatedPlan.mediaModel : undefined,
+          imageQuantity: updatedPlan.kind === 'image' || updatedPlan.kind === 'ad-creative' ? updatedPlan.quantity : undefined,
+          requestedImageCount: updatedPlan.kind === 'image' || updatedPlan.kind === 'ad-creative' ? updatedPlan.requestedImageCount : undefined,
+          imagePackageMode: updatedPlan.imagePackageMode,
+          turnaroundViews: updatedPlan.turnaroundViews,
+          referenceImagePath: updatedPlan.referenceImagePath || undefined,
+          videoModel: updatedPlan.kind === 'project' || updatedPlan.kind === 'video' ? updatedPlan.mediaModel : undefined,
+          videoQuantity: updatedPlan.kind === 'video' ? updatedPlan.quantity : undefined,
+          approvedPlan: {
+            flow: updatedPlan.flow,
+            optimizedPrompt: updatedPlan.prompt,
+            explanation: updatedPlan.explanation,
+            targetJobId: updatedPlan.targetJobId ?? null,
+            strategy: updatedPlan.strategy,
+            scriptOutline: updatedPlan.scriptOutline ?? null,
+            creativeSteps: updatedPlan.creativeSteps,
+            visualReferenceInstructions: updatedPlan.visualReferenceInstructions,
+            requestedImageCount: updatedPlan.requestedImageCount,
+            imagePackageMode: updatedPlan.imagePackageMode,
+            turnaroundViews: updatedPlan.turnaroundViews,
+            useCortexMemory: updatedPlan.useCortexMemory ?? useCortexMemory,
+            adCreativePlan: updatedPlan.adCreativePlan
+          }
+        })
+      });
+      const data = await res.json();
+
+      setChatMessages((previous) =>
+        previous.map((msg) =>
+          msg.id === messageId
+            ? data.success && data.jobId
+              ? {
+                  ...msg,
+                  jobId: data.jobId,
+                  jobLogs: [
+                    ...(msg.jobLogs || []),
+                    `[${new Date().toLocaleTimeString()}] Job criado: ${data.jobId}`
+                  ]
+                }
+              : {
+                  ...msg,
+                  jobStatus: "failed",
+                  jobLogs: [
+                    ...(msg.jobLogs || []),
+                    `[${new Date().toLocaleTimeString()}] Falha: ${data.error || "Não foi possível iniciar o pacote 3D."}`
+                  ]
+                }
+            : msg
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      setChatMessages((previous) => [
+        ...previous,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `Não consegui editar a imagem base: ${err instanceof Error ? err.message : String(err)}`,
+          timestamp: new Date().toISOString()
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const canEditConversation = !isLoading && !chatMessages.some((msg) => msg.jobStatus === "running");
 
   const createConversationBranch = (branchMessages: ChatMessageState[]) => {
     const sanitizedBranchMessages = sanitizeChatMessages(branchMessages);
@@ -942,23 +1157,35 @@ export default function FlowDashboardPage() {
   };
 
   const handleReturnToMessage = (messageId: string) => {
-    if (!canBranchConversation) return;
+    if (!canEditConversation) return;
 
     const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId);
     if (messageIndex < 0) return;
 
-    createConversationBranch(chatMessages.slice(0, messageIndex + 1));
+    setEditing3dImageMessageId(null);
+    setDraftMessage("");
+    setChatMessages(chatMessages.slice(0, messageIndex + 1));
   };
 
   const handleEditMessage = (messageId: string) => {
-    if (!canBranchConversation) return;
+    if (!canEditConversation) return;
 
     const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId);
     const message = chatMessages[messageIndex];
     if (!message || message.role !== "user") return;
 
     setDraftMessage(getEditableMessageContent(message.content));
-    createConversationBranch(chatMessages.slice(0, messageIndex));
+    setEditing3dImageMessageId(null);
+    setChatMessages(chatMessages.slice(0, messageIndex));
+  };
+
+  const handleBranchFromMessage = (messageId: string) => {
+    if (!canEditConversation) return;
+
+    const messageIndex = chatMessages.findIndex((msg) => msg.id === messageId);
+    if (messageIndex < 0) return;
+
+    createConversationBranch(chatMessages.slice(0, messageIndex + 1));
   };
 
   const handleStopJob = async (msgId: string, jobId: string) => {
@@ -1191,7 +1418,7 @@ export default function FlowDashboardPage() {
                       </ReactMarkdown>
                     </div>
 
-                    {canBranchConversation && (
+                    {canEditConversation && (
                       <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <button
                           type="button"
@@ -1213,6 +1440,15 @@ export default function FlowDashboardPage() {
                             Editar
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleBranchFromMessage(msg.id)}
+                          className="flex h-6 items-center gap-1 rounded-full border border-[#9D7CFF]/20 bg-[#9D7CFF]/10 px-2 text-[10px] text-[#c7b7ff] transition-colors hover:border-[#9D7CFF]/35 hover:bg-[#9D7CFF]/15 hover:text-white"
+                          title="Criar uma ramificacao ate esta mensagem"
+                        >
+                          <MessageSquarePlus size={11} />
+                          Ramificar
+                        </button>
                       </div>
                     )}
 
@@ -1226,6 +1462,24 @@ export default function FlowDashboardPage() {
                           {msg.plan.requestedImageCount && (
                             <div className="text-[11px] text-white/60 mb-3">
                               Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
+                            </div>
+                          )}
+
+                          {msg.plan.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && (msg.imageResult.path || msg.imageResult.paths?.[0]) && (
+                            <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-black">
+                              <img
+                                src={getFlowMediaUrl(msg.imageResult.path || msg.imageResult.paths?.[0])}
+                                alt="Imagem base 3D"
+                                className="h-auto w-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit3dBaseImage(msg.id)}
+                                className="flex w-full items-center justify-center gap-1.5 border-t border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white"
+                              >
+                                <Pencil size={12} />
+                                Editar imagem
+                              </button>
                             </div>
                           )}
                           
@@ -1271,6 +1525,15 @@ export default function FlowDashboardPage() {
                             <Square size={8} fill="currentColor" /> Cancelar
                           </button>
                         </div>
+                        {msg.plan?.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && (msg.imageResult.path || msg.imageResult.paths?.[0]) && (
+                          <div className="overflow-hidden rounded-xl border border-white/10 bg-black">
+                            <img
+                              src={getFlowMediaUrl(msg.imageResult.path || msg.imageResult.paths?.[0])}
+                              alt="Imagem base 3D editada"
+                              className="h-auto w-full object-cover"
+                            />
+                          </div>
+                        )}
                         {/* Terminal box for logs */}
                         <div className="h-28 overflow-y-auto rounded-xl bg-black p-3 font-mono text-[9px] text-[#4ADE80] border border-white/5 leading-normal flex flex-col gap-0.5 select-text">
                           {msg.jobLogs?.map((log, logIdx) => (
@@ -1292,8 +1555,8 @@ export default function FlowDashboardPage() {
                          {msg.imageResult.paths && msg.imageResult.paths.length > 0 ? (
                            <div className="grid grid-cols-2 gap-2">
                              {msg.imageResult.paths.slice(0, 4).map((p, idx) => (
-                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: p, alt: `Midia gerada ${idx + 1}`, downloadUrl: p })}>
-                                 <img src={p} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(p), alt: `Midia gerada ${idx + 1}`, downloadUrl: getFlowMediaUrl(p) })}>
+                                 <img src={getFlowMediaUrl(p)} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                    <span className="text-[10px] text-white font-medium bg-black/60 px-2 py-1 rounded-md">Expandir</span>
                                  </div>
@@ -1302,13 +1565,13 @@ export default function FlowDashboardPage() {
                            </div>
                          ) : (
                            msg.imageResult.path && (
-                             <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-video cursor-pointer" onClick={() => setExpandedResultImage({ src: msg.imageResult!.path, alt: "Midia gerada", downloadUrl: msg.imageResult!.path })}>
-                               <img src={msg.imageResult.path} alt="Midia gerada" className="w-full h-full object-cover" />
+                             <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-video cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(msg.imageResult!.path), alt: "Midia gerada", downloadUrl: getFlowMediaUrl(msg.imageResult!.path) })}>
+                               <img src={getFlowMediaUrl(msg.imageResult.path)} alt="Midia gerada" className="w-full h-full object-cover" />
                              </div>
                            )
                          )}
                          {msg.imageResult.path && (
-                            <a href={msg.imageResult.path} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
+                            <a href={getFlowMediaUrl(msg.imageResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
                               <Download size={12} /> Baixar Pacote Completo
                             </a>
                          )}
@@ -1479,7 +1742,9 @@ export default function FlowDashboardPage() {
           <div className="w-full max-w-[900px] relative" ref={popoverRef}>
             <PromptInputBox
               isLoading={isLoading}
-              placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
+              value={draftMessage}
+              onValueChange={setDraftMessage}
+              placeholder={editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
               onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
               onOptionsClick={() => setShowSettings(!showSettings)}
               showOptions={showSettings}
