@@ -22,9 +22,11 @@ import {
   ThumbsUp,
   ThumbsDown,
   ChevronDown,
-  X
+  X,
+  Settings
 } from "lucide-react";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
+import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
 import ReactMarkdown from "react-markdown";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -271,6 +273,7 @@ export default function FlowDashboardPage() {
   const [activeConversationId, setActiveConversationId] = useState("");
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
+  const [flyModeActive, setFlyModeActive] = useState(false);
   
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState("");
@@ -299,6 +302,241 @@ export default function FlowDashboardPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+
+  const renderSettingsMenu = (isFloatingRight = false) => {
+    return (
+      <motion.div
+        ref={settingsMenuRef}
+        className={`absolute bottom-full z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto ${isFloatingRight ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'}`}
+        initial={{ opacity: 0, y: 10, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <div className="flex flex-col gap-2">
+          <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Tipo preferido</div>
+          <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:grid-cols-4">
+            {[
+              { id: "image", label: "Imagem", icon: <ImageIcon size={13} /> },
+              { id: "video", label: "Vídeo", icon: <Film size={13} /> },
+              { id: "project", label: "React", icon: <Cpu size={13} /> },
+              { id: "ad-creative", label: "Anúncio", icon: <Bot size={13} /> },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setAgentType(t.id as AgentType);
+                  if (t.id === "ad-creative") {
+                    const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 2;
+                    if (currentNum < 4 || currentNum > 40) {
+                      setImageQty("x20");
+                    }
+                  } else if (t.id === "image") {
+                    const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20;
+                    if (currentNum > 4) {
+                      setImageQty("x2");
+                    }
+                  }
+                }}
+                className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer text-center"
+                style={{
+                  background: agentType === t.id ? "rgba(255,255,255,0.14)" : "transparent",
+                  color: agentType === t.id ? "#ffffff" : "rgba(255,255,255,0.42)"
+                }}
+              >
+                {t.icon} <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Image mode (3D turnaround toggle) */}
+        {agentType === "image" && (
+          <div className="flex flex-col gap-2">
+            <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+              Modo da imagem
+            </div>
+            <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+              {[
+                { id: "standard", label: "Normal" },
+                { id: "turnaround3d", label: "3D" },
+              ].map((mode) => {
+                const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => {
+                      const nextIs3d = mode.id === "turnaround3d";
+                      setImage3dMode(nextIs3d);
+                      if (nextIs3d) setImageQty("x4");
+                    }}
+                    className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
+                    style={{
+                      background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
+                      color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
+                    }}
+                  >
+                    {mode.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Operation Mode for ad-creative */}
+        {agentType === "ad-creative" && (
+          <div className="flex flex-col gap-2">
+            <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+              Modo de Operação
+            </div>
+            <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+              {[
+                { id: "normal", label: "Normal" },
+                { id: "fly", label: "Modo Fly ✈️" },
+              ].map((mode) => {
+                const isActive = flyModeActive ? mode.id === "fly" : mode.id === "normal";
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => {
+                      setFlyModeActive(mode.id === "fly");
+                    }}
+                    className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
+                    style={{
+                      background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
+                      color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
+                    }}
+                  >
+                    {mode.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[12px] font-semibold text-white/85">Personalidade do avatar</span>
+            <span className="text-[10px] leading-snug text-white/45">Usar o tom do avatar nas respostas e roteiros</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={useAvatarPersonality}
+            onChange={(e) => setUseAvatarPersonality(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+        </label>
+
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[12px] font-semibold text-white/85">Cortex</span>
+            <span className="text-[10px] leading-snug text-white/45">Usar e gravar memoria cognitiva nas execucoes</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={useCortexMemory}
+            onChange={(e) => setUseCortexMemory(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#8B5CF6]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+        </label>
+
+        {/* Ratio + Quantity */}
+        {agentType !== "project" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Proporção</div>
+              <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
+                {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
+                  const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
+                  const isActive = currentRatio === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => {
+                        if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
+                        else setVideoRatio(r);
+                      }}
+                      className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all cursor-pointer"
+                      style={{
+                        background: isActive ? "#ffffff" : "transparent",
+                        color: isActive ? "#080808" : "rgba(255,255,255,0.42)",
+                        fontWeight: isActive ? 700 : 400,
+                      }}
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+                {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
+              </div>
+              {agentType === "ad-creative" ? (
+                <div className="flex min-h-[116px] flex-col justify-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[16px] font-bold text-white">
+                      {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
+                    </span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-white/45">Imagens</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={4}
+                    max={40}
+                    step={1}
+                    value={imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20}
+                    onChange={(e) => {
+                      setImageQty(`x${e.target.value}`);
+                    }}
+                    className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                  />
+                </div>
+              ) : (
+                <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
+                  {["1x", "x2", "x3", "x4"].map((q) => {
+                    const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
+                    const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
+                    const isActive = currentQty === q && !isDisabled;
+                    return (
+                      <button
+                        key={q}
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (agentType === "image" && image3dMode) return;
+                          if (agentType === "image") setImageQty(q);
+                          else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
+                        }}
+                        className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all"
+                        style={{
+                          background: isActive ? "#ffffff" : "transparent",
+                          color: isActive ? "#080808" : isDisabled ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.42)",
+                          fontWeight: isActive ? 700 : 400,
+                          cursor: isDisabled ? "not-allowed" : "pointer",
+                          opacity: isDisabled ? 0.25 : 1,
+                        }}
+                      >
+                        {q}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
 
   useEffect(() => {
     fetch("/api/avatars").then(res => res.json()).then(data => {
@@ -911,231 +1149,234 @@ export default function FlowDashboardPage() {
 
       {/* ── Chat Area ── */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-8 pb-48 md:px-10 lg:px-32">
-        {chatMessages.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
-            <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
-            <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Agente MrChicken.</h2>
-            <p className="text-sm text-white/60 max-w-sm leading-relaxed">
-              Posso te ajudar a criar imagens, vídeos de react ou planejar projetos completos. O que vamos criar hoje?
-            </p>
-          </div>
-        )}
-
-        {chatMessages.map(msg => (
-          <div key={msg.id} className={`flex flex-col ${msg.plan && !msg.jobId ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
-            <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className="shrink-0 mt-1">
-                {msg.role === 'user' ? (
-                  <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-                    <User size={12} className="text-white/80" />
-                  </div>
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center">
-                    <Bot size={12} className="text-[#9D7CFF]" />
-                  </div>
-                )}
+        {agentType === "ad-creative" && flyModeActive ? (
+          <FlyModeWizard
+            avatars={avatars}
+            selectedAvatarId={selectedAvatarId}
+            setSelectedAvatarId={setSelectedAvatarId}
+            agentModel={agentModel}
+            setAgentModel={setAgentModel}
+            useCortexMemory={useCortexMemory}
+          />
+        ) : (
+          <>
+            {chatMessages.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
+                <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
+                <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Agente MrChicken.</h2>
+                <p className="text-sm text-white/60 max-w-sm leading-relaxed">
+                  Posso te ajudar a criar imagens, vídeos de react ou planejar projetos completos. O que vamos criar hoje?
+                </p>
               </div>
-              <div className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                <div className={`px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 rounded-tr-sm text-white/90' : 'bg-white/5 border border-white/10 rounded-tl-sm text-white/80'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
-                  <ReactMarkdown>
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
+            )}
 
-                {canBranchConversation && (
-                  <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <button
-                      type="button"
-                      onClick={() => handleReturnToMessage(msg.id)}
-                      className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
-                      title="Criar ramificação até esta mensagem"
-                    >
-                      <Undo2 size={11} />
-                      Voltar
-                    </button>
-                    {msg.role === "user" && (
-                      <button
-                        type="button"
-                        onClick={() => handleEditMessage(msg.id)}
-                        className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
-                        title="Criar ramificação editando esta mensagem"
-                      >
-                        <Pencil size={11} />
-                        Editar
-                      </button>
+            {chatMessages.map(msg => (
+              <div key={msg.id} className={`flex flex-col ${msg.plan && !msg.jobId ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+                <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className="shrink-0 mt-1">
+                    {msg.role === 'user' ? (
+                      <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+                        <User size={12} className="text-white/80" />
+                      </div>
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center">
+                        <Bot size={12} className="text-[#9D7CFF]" />
+                      </div>
                     )}
                   </div>
-                )}
+                  <div className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 rounded-tr-sm text-white/90' : 'bg-white/5 border border-white/10 rounded-tl-sm text-white/80'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
+                      <ReactMarkdown>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
 
-                {/* Plan Card */}
-                {msg.plan && !msg.jobId && (
-                  <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
-                        {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
+                    {canBranchConversation && (
+                      <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <button
+                          type="button"
+                          onClick={() => handleReturnToMessage(msg.id)}
+                          className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
+                          title="Criar ramificação até esta mensagem"
+                        >
+                          <Undo2 size={11} />
+                          Voltar
+                        </button>
+                        {msg.role === "user" && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditMessage(msg.id)}
+                            className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
+                            title="Criar ramificação editando esta mensagem"
+                          >
+                            <Pencil size={11} />
+                            Editar
+                          </button>
+                        )}
                       </div>
-                      <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
-                      {msg.plan.requestedImageCount && (
-                        <div className="text-[11px] text-white/60 mb-3">
-                          Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
+                    )}
+
+                    {/* Plan Card */}
+                    {msg.plan && !msg.jobId && (
+                      <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
+                            {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
+                          </div>
+                          <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
+                          {msg.plan.requestedImageCount && (
+                            <div className="text-[11px] text-white/60 mb-3">
+                              Modo escala: {msg.plan.requestedImageCount} imagens em rodadas sequenciais.
+                            </div>
+                          )}
+                          
+                          {msg.plan.kind === 'ad-creative' && msg.plan.adCreativePlan?.concepts && (
+                            <div className="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto pr-1">
+                              {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
+                                <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
+                                  <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
+                                  <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
+                                  <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {msg.plan.kind !== 'ad-creative' && (
+                            <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
+                              <strong className="text-white/80 block mb-1">Prompt:</strong>
+                              {msg.plan.prompt}
+                            </div>
+                          )}
+
+                          {/* Plan actions */}
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
+                            <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] text-white/40 hover:text-white/80 hover:bg-white/5 border border-white/10 rounded-xl transition-all cursor-pointer">
+                              Recusar
+                            </button>
+                            <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] rounded-xl transition-all cursor-pointer">
+                              Aplicar
+                            </button>
+                          </div>
+                      </div>
+                    )}
+
+                    {/* Job executing progress */}
+                    {msg.jobId && msg.jobStatus === 'running' && (
+                      <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-white/5 flex flex-col gap-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-[#9D7CFF] flex items-center gap-1.5 font-semibold">
+                            <Loader2 size={12} className="animate-spin" /> Processando tarefa...
+                          </span>
+                          <button onClick={() => handleStopJob(msg.id, msg.jobId!)} className="text-[10px] text-white/40 hover:text-red-400 flex items-center gap-1 cursor-pointer">
+                            <Square size={8} fill="currentColor" /> Cancelar
+                          </button>
                         </div>
-                      )}
-                      
-                      {msg.plan.kind === 'ad-creative' && msg.plan.adCreativePlan?.concepts && (
-                        <div className="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto pr-1">
-                          {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
-                            <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
-                              <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
-                              <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
-                              <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
+                        {/* Terminal box for logs */}
+                        <div className="h-28 overflow-y-auto rounded-xl bg-black p-3 font-mono text-[9px] text-[#4ADE80] border border-white/5 leading-normal flex flex-col gap-0.5 select-text">
+                          {msg.jobLogs?.map((log, logIdx) => (
+                            <div key={logIdx} className="flex gap-1.5">
+                              <span className="text-white/20 select-none">{logIdx + 1}</span>
+                              <span className="break-all">{log}</span>
                             </div>
                           ))}
                         </div>
-                      )}
-
-                      {msg.plan.kind !== 'ad-creative' && (
-                        <div className="bg-white/5 rounded-xl p-3 text-[11px] text-white/60 mb-3 border border-white/5">
-                          <strong className="text-white/80 block mb-1">Prompt:</strong>
-                          {msg.plan.prompt}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 bg-white text-black py-2 rounded-full text-xs font-semibold hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer">
-                          <Check size={14}/> Aprovar
-                        </button>
-                        <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 bg-white/10 border border-white/10 py-2 rounded-full text-xs font-medium hover:bg-white/20 cursor-pointer">
-                          Cancelar
-                        </button>
-                      </div>
-                  </div>
-                )}
-
-                {/* Running Status & Logs */}
-                {msg.jobId && (
-                  <div className="mt-2 w-full min-w-[280px] max-w-md rounded-[20px] p-4 bg-white/5 border border-white/10">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-xs font-medium text-white/80">
-                        {msg.jobStatus === 'running' && <Loader2 size={14} className="animate-spin text-[#9D7CFF]" />}
-                        {msg.jobStatus === 'completed' && <CheckCircle size={14} className="text-emerald-400" />}
-                        {msg.jobStatus === 'failed' && <AlertCircle size={14} className="text-rose-500" />}
-                        <span>
-                          {msg.jobStatus === 'running' ? 'Processando...' : 
-                           msg.jobStatus === 'completed' ? 'Finalizado' : 'Falhou'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {msg.jobStatus === "running" && msg.jobId && (
-                          <button
-                            type="button"
-                            onClick={() => handleStopJob(msg.id, msg.jobId!)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/15 text-white/55 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] transition-all duration-200 hover:border-white/25 hover:bg-white/25 hover:text-white/80 cursor-pointer"
-                            title="Parar geração"
-                            aria-label="Parar geração"
-                          >
-                            <Square size={12} fill="currentColor" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            const next = [...chatMessages];
-                            const idx = next.findIndex(m => m.id === msg.id);
-                            next[idx].showLogs = !next[idx].showLogs;
-                            setChatMessages(next);
-                          }}
-                          className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white/80 flex items-center gap-1 cursor-pointer"
-                        >
-                          <Terminal size={10} /> Logs
-                        </button>
-                      </div>
-                    </div>
-
-                    {msg.showLogs && msg.jobLogs && (
-                      <div className="bg-black/60 border border-white/5 rounded-xl p-3 text-[10px] font-mono text-white/50 h-32 overflow-y-auto mb-3">
-                        {msg.jobLogs.map((log, i) => (
-                          <div key={i} className="mb-1 leading-relaxed break-all">{log}</div>
-                        ))}
                       </div>
                     )}
 
-                    {/* Media Output - Image */}
-                    {msg.imageResult?.success && (
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        {(msg.imageResult.paths || [msg.imageResult.path]).map((p, idx) => {
-                          const mediaUrl = `/api/flow/media?path=${encodeURIComponent(p)}`;
-                          const alt = `Resultado ${idx + 1}`;
-
-                          return (
-                            <div key={idx} className="relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/50 group">
-                              <button
-                                type="button"
-                                className="block h-full w-full cursor-zoom-in"
-                                onClick={() => setExpandedResultImage({ src: mediaUrl, alt, downloadUrl: mediaUrl })}
-                                title="Visualizar imagem"
-                              >
-                                <img src={mediaUrl} alt={alt} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
-                              </button>
-                              <a href={mediaUrl} download className="absolute bottom-2 right-2 z-10 p-1.5 bg-black/60 rounded-full text-white/80 hover:text-white border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight size={12} className="rotate-90"/>
-                              </a>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Media Output - Video or Project */}
-                    {(msg.videoResult?.success || msg.projectResult?.success) && (
-                      <div className="grid grid-cols-1 gap-2 mt-3">
-                         {((msg.videoResult?.paths || (msg.projectResult?.videoPath ? [msg.projectResult.videoPath] : []))).map((p, idx) => {
-                           const mediaUrl = p.startsWith("http") ? p : `/api/flow/media?path=${encodeURIComponent(p)}`;
-                           const isImage = /\.(png|jpe?g|webp)$/i.test(p);
-                           const alt = `Resultado ${idx + 1}`;
-
-                           return (
-                             <div key={idx} className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-black/50">
-                               {isImage ? (
-                                 <button
-                                   type="button"
-                                   className="block h-full w-full cursor-zoom-in"
-                                   onClick={() => setExpandedResultImage({ src: mediaUrl, alt, downloadUrl: mediaUrl })}
-                                   title="Visualizar imagem"
-                                 >
-                                   <img src={mediaUrl} alt={alt} className="h-full w-full object-contain transition-transform duration-200 hover:scale-[1.02]" />
-                                 </button>
-                               ) : (
-                                 <video src={mediaUrl} controls className="w-full h-full object-contain" />
-                               )}
+                    {/* Job completed result (Image package) */}
+                    {msg.jobId && msg.jobStatus === 'completed' && msg.imageResult && (
+                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-green-500/20 flex flex-col gap-3">
+                         <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-semibold">
+                           <CheckCircle size={13} /> Geração de mídia concluída!
+                         </div>
+                         {msg.imageResult.paths && msg.imageResult.paths.length > 0 ? (
+                           <div className="grid grid-cols-2 gap-2">
+                             {msg.imageResult.paths.slice(0, 4).map((p, idx) => (
+                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: p, alt: `Midia gerada ${idx + 1}`, downloadUrl: p })}>
+                                 <img src={p} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                   <span className="text-[10px] text-white font-medium bg-black/60 px-2 py-1 rounded-md">Expandir</span>
+                                 </div>
+                               </div>
+                             ))}
+                           </div>
+                         ) : (
+                           msg.imageResult.path && (
+                             <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-video cursor-pointer" onClick={() => setExpandedResultImage({ src: msg.imageResult!.path, alt: "Midia gerada", downloadUrl: msg.imageResult!.path })}>
+                               <img src={msg.imageResult.path} alt="Midia gerada" className="w-full h-full object-cover" />
                              </div>
-                           );
-                         })}
-                      </div>
-                    )}
-                    
-                    {msg.projectResult && msg.projectResult.error && (
-                      <div className="text-xs text-rose-400 mt-2 p-2 bg-rose-500/10 rounded-lg border border-rose-500/20">
-                        {msg.projectResult.error}
-                      </div>
+                           )
+                         )}
+                         {msg.imageResult.path && (
+                            <a href={msg.imageResult.path} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
+                              <Download size={12} /> Baixar Pacote Completo
+                            </a>
+                         )}
+                       </div>
                     )}
 
-                    {msg.jobStatus === 'completed' && (
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
-                        <span className="text-[11px] text-white/40">Avalie o resultado:</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            title="Gostei 👍"
+                    {/* Job completed result (Video) */}
+                    {msg.jobId && msg.jobStatus === 'completed' && msg.videoResult && (
+                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-green-500/20 flex flex-col gap-3">
+                         <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-semibold">
+                           <CheckCircle size={13} /> Vídeo gerado com sucesso!
+                         </div>
+                         <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black aspect-video">
+                           <video src={msg.videoResult.path} controls className="w-full h-full object-cover" />
+                         </div>
+                         <a href={msg.videoResult.path} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
+                           <Download size={12} /> Baixar Vídeo
+                         </a>
+                       </div>
+                    )}
+
+                    {/* Job completed result (Project react video) */}
+                    {msg.jobId && msg.jobStatus === 'completed' && msg.projectResult && msg.projectResult.success && (
+                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-green-500/20 flex flex-col gap-3">
+                         <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-semibold">
+                           <CheckCircle size={13} /> Projeto de react finalizado!
+                         </div>
+                         {msg.projectResult.videoPath && (
+                           <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black aspect-video">
+                             <video src={msg.projectResult.videoPath} controls className="w-full h-full object-cover" />
+                           </div>
+                         )}
+                         <div className="flex gap-2">
+                           <a href={msg.projectResult.videoPath || "#"} download className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
+                             <Download size={12} /> Baixar Vídeo React
+                           </a>
+                         </div>
+                       </div>
+                    )}
+
+                    {/* Job failed error */}
+                    {msg.jobId && (msg.jobStatus === 'failed' || (msg.projectResult && !msg.projectResult.success)) && (
+                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-red-500/5 border border-red-500/20 flex flex-col gap-2">
+                         <div className="flex items-center gap-1.5 text-[11px] text-red-400 font-semibold">
+                           <AlertCircle size={13} /> Falha no processamento.
+                         </div>
+                         <p className="text-[11px] text-white/50 leading-relaxed select-text">
+                           {msg.projectResult?.error || "Ocorreu um erro no pipeline do MrChicken. Verifique os logs detalhados para entender a causa."}
+                         </p>
+                       </div>
+                    )}
+
+                    {/* Job feedback actions */}
+                    {msg.jobId && msg.jobStatus === 'completed' && (
+                      <div className="flex items-center justify-between w-full px-1 mt-1 text-[10px] text-white/40">
+                        <span>A qualidade ficou boa?</span>
+                        <div className="flex items-center gap-2">
+                          <button 
                             className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                               msg.feedback === 'good' 
-                                ? 'bg-emerald-500/20 text-emerald-400 scale-110' 
+                                ? 'bg-green-500/20 text-green-400 scale-110' 
                                 : 'text-white/40 hover:text-white/80 hover:bg-white/5'
                             }`}
                             onClick={() => handleEvaluateJob(msg.id, msg.jobId!, 'good')}
                           >
                             <ThumbsUp size={13} fill={msg.feedback === 'good' ? 'currentColor' : 'none'} />
                           </button>
-                          <button
-                            type="button"
-                            title="Não gostei 👎"
+                          <button 
                             className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                               msg.feedback === 'bad' 
                                 ? 'bg-rose-500/20 text-rose-400 scale-110' 
@@ -1149,25 +1390,25 @@ export default function FlowDashboardPage() {
                       </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            ))}
 
-        {isLoading && (
-          <div className="flex gap-3 self-start">
-            <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center shrink-0">
-               <Bot size={12} className="text-[#9D7CFF]" />
-            </div>
-            <div className="px-4 py-3 text-[13px] rounded-2xl bg-white/5 border border-white/10 rounded-tl-sm text-white/60 flex items-center gap-2">
-               <Loader2 size={14} className="animate-spin text-[#9D7CFF]/70" />
-               MrChicken está pensando...
-            </div>
-          </div>
+            {isLoading && (
+              <div className="flex gap-3 self-start">
+                <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center shrink-0">
+                   <Bot size={12} className="text-[#9D7CFF]" />
+                </div>
+                <div className="px-4 py-3 text-[13px] rounded-2xl bg-white/5 border border-white/10 rounded-tl-sm text-white/60 flex items-center gap-2">
+                   <Loader2 size={14} className="animate-spin text-[#9D7CFF]/70" />
+                   MrChicken está pensando...
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       <AnimatePresence>
@@ -1232,219 +1473,40 @@ export default function FlowDashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Input Bar ── */}
-      <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
-        <div className="w-full max-w-[900px] relative" ref={popoverRef}>
-          <PromptInputBox
-            isLoading={isLoading}
-            placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
-            onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
-            onOptionsClick={() => setShowSettings(!showSettings)}
-            showOptions={showSettings}
-            useCortexMemory={useCortexMemory}
-            onCortexMemoryChange={setUseCortexMemory}
-          />
-          <AnimatePresence>
-          {showSettings && (
-            <motion.div
-              ref={settingsMenuRef}
-              className="absolute bottom-full left-0 z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] origin-bottom-left flex-col gap-5 rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto"
-              initial={{ opacity: 0, y: 10, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            >
-                <div className="flex flex-col gap-2">
-                  <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Tipo preferido</div>
-                  <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:grid-cols-4">
-                    {[
-                      { id: "image", label: "Imagem", icon: <ImageIcon size={13} /> },
-                      { id: "video", label: "Vídeo", icon: <Film size={13} /> },
-                      { id: "project", label: "React", icon: <Cpu size={13} /> },
-                      { id: "ad-creative", label: "Anúncio", icon: <Bot size={13} /> },
-                    ].map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => {
-                          setAgentType(t.id as AgentType);
-                          if (t.id === "ad-creative") {
-                            const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 2;
-                            if (currentNum < 4 || currentNum > 40) {
-                              setImageQty("x20");
-                            }
-                          } else if (t.id === "image") {
-                            const currentNum = imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20;
-                            if (currentNum > 4) {
-                              setImageQty("x2");
-                            }
-                          }
-                        }}
-                        className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer text-center"
-                        style={{ background: agentType === t.id ? "rgba(255,255,255,0.14)" : "transparent", color: agentType === t.id ? "#ffffff" : "rgba(255,255,255,0.42)" }}
-                      >
-                        {t.icon} <span>{t.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-               {/* Image mode (3D turnaround toggle) */}
-               {agentType === "image" && (
-                 <div className="flex flex-col gap-2">
-                   <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                     Modo da imagem
-                   </div>
-                   <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
-                     {[
-                       { id: "standard", label: "Normal" },
-                       { id: "turnaround3d", label: "3D" },
-                     ].map((mode) => {
-                       const isActive = image3dMode ? mode.id === "turnaround3d" : mode.id === "standard";
-                       return (
-                         <button
-                           key={mode.id}
-                           type="button"
-                           onClick={() => {
-                             const nextIs3d = mode.id === "turnaround3d";
-                             setImage3dMode(nextIs3d);
-                             if (nextIs3d) setImageQty("x4");
-                           }}
-                           className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
-                           style={{
-                             background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
-                             color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
-                           }}
-                         >
-                           {mode.label}
-                         </button>
-                       );
-                     })}
-                   </div>
-                 </div>
-               )}
-
-               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
-                 <span className="flex flex-col gap-0.5">
-                   <span className="text-[12px] font-semibold text-white/85">Personalidade do avatar</span>
-                   <span className="text-[10px] leading-snug text-white/45">Usar o tom do avatar nas respostas e roteiros</span>
-                 </span>
-                 <input
-                   type="checkbox"
-                   checked={useAvatarPersonality}
-                   onChange={(e) => setUseAvatarPersonality(e.target.checked)}
-                   className="peer sr-only"
-                 />
-                 <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
-               </label>
-
-               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
-                 <span className="flex flex-col gap-0.5">
-                   <span className="text-[12px] font-semibold text-white/85">Cortex</span>
-                   <span className="text-[10px] leading-snug text-white/45">Usar e gravar memoria cognitiva nas execucoes</span>
-                 </span>
-                 <input
-                   type="checkbox"
-                   checked={useCortexMemory}
-                   onChange={(e) => setUseCortexMemory(e.target.checked)}
-                   className="peer sr-only"
-                 />
-                 <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#8B5CF6]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
-               </label>
-
-               {/* Ratio + Quantity */}
-               {agentType !== "project" && (
-                 <div className="grid grid-cols-2 gap-4">
-                   <div className="flex flex-col gap-2">
-                     <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Proporção</div>
-                     <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
-                       {["16:9", "4:3", "1:1", "3:4", "9:16"].map((r) => {
-                         const currentRatio = (agentType === "image" || agentType === "ad-creative") ? imageRatio : videoRatio;
-                         const isActive = currentRatio === r;
-                         return (
-                           <button
-                             key={r}
-                             type="button"
-                             onClick={() => {
-                               if (agentType === "image" || agentType === "ad-creative") setImageRatio(r);
-                               else setVideoRatio(r);
-                             }}
-                             className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all cursor-pointer"
-                             style={{
-                               background: isActive ? "#ffffff" : "transparent",
-                               color: isActive ? "#080808" : "rgba(255,255,255,0.42)",
-                               fontWeight: isActive ? 700 : 400,
-                             }}
-                           >
-                             {r}
-                           </button>
-                         );
-                       })}
-                     </div>
-                   </div>
-                   <div className="flex flex-col gap-2">
-                     <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                       {agentType === "ad-creative" ? "Imagens" : "Quantidade"}
-                     </div>
-                      {agentType === "ad-creative" ? (
-                        <div className="flex min-h-[116px] flex-col justify-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-[16px] font-bold text-white">
-                              {imageQty.startsWith("x") ? imageQty.slice(1) : "20"}
-                            </span>
-                            <span className="font-mono text-[9px] uppercase tracking-wider text-white/45">Imagens</span>
-                          </div>
-                          <input
-                            type="range"
-                            min={4}
-                            max={40}
-                            step={1}
-                            value={imageQty.startsWith("x") ? Number(imageQty.slice(1)) : 20}
-                            onChange={(e) => {
-                              setImageQty(`x${e.target.value}`);
-                            }}
-                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
-                          {/* eslint-disable-next-line complexity */}
-                          {["1x", "x2", "x3", "x4"].map((q) => {
-                            const currentQty = agentType === "image" && image3dMode ? "x4" : (agentType === "image" ? imageQty : videoQty);
-                            const isDisabled = (agentType === "video" && (q === "x3" || q === "x4")) || (agentType === "image" && image3dMode && q !== "x4");
-                            const isActive = currentQty === q && !isDisabled;
-                            return (
-                              <button
-                                key={q}
-                                type="button"
-                                disabled={isDisabled}
-                                onClick={() => {
-                                  if (agentType === "image" && image3dMode) return;
-                                  if (agentType === "image") setImageQty(q);
-                                  else setVideoQty(q === "x3" || q === "x4" ? "x2" : q);
-                                }}
-                                className="min-h-8 rounded-xl px-2 font-mono text-[13px] transition-all"
-                                style={{
-                                  background: isActive ? "#ffffff" : "transparent",
-                                  color: isActive ? "#080808" : isDisabled ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.42)",
-                                  fontWeight: isActive ? 700 : 400,
-                                  cursor: isDisabled ? "not-allowed" : "pointer",
-                                  opacity: isDisabled ? 0.25 : 1,
-                                }}
-                              >
-                                {q}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                   </div>
-                 </div>
-               )}
-            </motion.div>
-          )}
-          </AnimatePresence>
+      {/* ── Input Bar or Floating Settings Gear ── */}
+      {!(agentType === "ad-creative" && flyModeActive) ? (
+        <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
+          <div className="w-full max-w-[900px] relative" ref={popoverRef}>
+            <PromptInputBox
+              isLoading={isLoading}
+              placeholder={agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
+              onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
+              onOptionsClick={() => setShowSettings(!showSettings)}
+              showOptions={showSettings}
+              useCortexMemory={useCortexMemory}
+              onCortexMemoryChange={setUseCortexMemory}
+            />
+            <AnimatePresence>
+              {showSettings && renderSettingsMenu(false)}
+            </AnimatePresence>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="absolute bottom-6 right-6 z-40">
+          <div className="relative" ref={popoverRef}>
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 transition-colors shadow-lg shadow-black/40 backdrop-blur-md cursor-pointer"
+              title="Configurações do Piloto"
+            >
+              <Settings size={18} />
+            </button>
+            <AnimatePresence>
+              {showSettings && renderSettingsMenu(true)}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
