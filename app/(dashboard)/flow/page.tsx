@@ -354,6 +354,7 @@ export default function FlowDashboardPage() {
   const [imageQty, setImageQty] = useState("x2");
   const [imageModel, setImageModel] = useState("Nano Banana 2");
   const [image3dMode, setImage3dMode] = useState(false);
+  const [image3dReadyMode, setImage3dReadyMode] = useState(false);
   
   const [videoRatio, setVideoRatio] = useState("16:9");
   const [videoQty, setVideoQty] = useState("1x");
@@ -436,6 +437,7 @@ export default function FlowDashboardPage() {
                       const nextIs3d = mode.id === "turnaround3d";
                       setImage3dMode(nextIs3d);
                       if (nextIs3d) setImageQty("x4");
+                      if (!nextIs3d) setImage3dReadyMode(false);
                     }}
                     className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
                     style={{
@@ -448,6 +450,30 @@ export default function FlowDashboardPage() {
                 );
               })}
             </div>
+            {image3dMode && (
+              <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+                {[
+                  { id: "create", label: "Criar base" },
+                  { id: "ready", label: "Imagem pronta" },
+                ].map((mode) => {
+                  const isActive = image3dReadyMode ? mode.id === "ready" : mode.id === "create";
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setImage3dReadyMode(mode.id === "ready")}
+                      className="min-h-8 rounded-xl px-2 text-[11px] font-semibold transition-all cursor-pointer"
+                      style={{
+                        background: isActive ? "rgba(157,124,255,0.18)" : "transparent",
+                        color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
+                      }}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -902,7 +928,10 @@ export default function FlowDashboardPage() {
           adCreativePlan: data.action.adCreativePlan
         };
 
-        if (plannedKind === 'image' && image3dMode && referenceImageBase64) {
+        if (plannedKind === 'image' && image3dMode && referenceImageBase64 && image3dReadyMode) {
+          agentMsg.plan.explanation = "Imagem pronta recebida. Aprove para gerar apenas as variações de ângulo usando essa imagem como base.";
+          agentMsg.content = "Vou usar a imagem anexada como base pronta e gerar somente os ângulos do pacote 3D.";
+        } else if (plannedKind === 'image' && image3dMode && referenceImageBase64) {
           const baseImageData = await generate3dBaseImage({
             prompt: build3dBasePrompt(data.action.optimizedPrompt || message),
             aspectRatio: imageRatio,
@@ -1755,7 +1784,7 @@ export default function FlowDashboardPage() {
               isLoading={isLoading}
               value={draftMessage}
               onValueChange={setDraftMessage}
-              placeholder={editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
+              placeholder={editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode && image3dReadyMode ? "Anexe a imagem pronta para gerar apenas os ângulos..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
               onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
               onOptionsClick={() => setShowSettings(!showSettings)}
               showOptions={showSettings}
