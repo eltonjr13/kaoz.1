@@ -5,6 +5,7 @@ import { FlowDownloader } from './FlowDownloader';
 import { FlowImageGenerator } from './FlowImageGenerator';
 import { FlowVideoGenerator } from './FlowVideoGenerator';
 import { FlowLLMAutomation } from './FlowLLMAutomation';
+import { hunyuan3DBrowserGenerator } from './Hunyuan3DBrowserGenerator';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 
@@ -84,6 +85,16 @@ export class FlowProvider {
     try {
       const page = await this.session.getPage();
       return await this.videoGenerator.generate(page, prompt, this.config.timeout, options);
+    } finally {
+      this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
+    }
+  }
+
+  async generate3DObjectFromImages(imagePaths: string[], jobId: string): Promise<{ modelPaths: string[] }> {
+    this.activeTasksCount++;
+    try {
+      const page = await this.session.getAutomationPage();
+      return await hunyuan3DBrowserGenerator.generate(page, imagePaths, jobId);
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }

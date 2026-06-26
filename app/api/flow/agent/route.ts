@@ -45,6 +45,24 @@ function parseTurnaroundViews(value: unknown): TurnaroundView[] | undefined {
   return views.length > 0 ? Array.from(new Set(views)) : undefined;
 }
 
+function parseImagePaths(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function parseStoredImagePackage(value?: string | null): Record<string, unknown> {
+  if (!value) return {};
+  const marker = "Imagens salvas em:";
+  const jsonText = value.includes(marker) ? value.slice(value.indexOf(marker) + marker.length).trim() : value;
+
+  try {
+    const parsed = JSON.parse(jsonText);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 function saveBase64ReferenceImage(base64Data: string): string {
   const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
   let buffer: Buffer;
@@ -142,6 +160,8 @@ export async function POST(request: Request) {
       turnaroundViews?: unknown;
       referenceImage?: unknown;
       referenceImagePath?: unknown;
+      jobId?: unknown;
+      imagePaths?: unknown;
       approvedPlan?: unknown;
       useAvatarPersonality?: unknown;
       useCortexMemory?: unknown;
@@ -168,6 +188,53 @@ export async function POST(request: Request) {
     const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
     const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
+
+    if (action === "generate-3d-object") {
+      const jobId = typeof body?.jobId === "string" ? body.jobId.trim() : "";
+      const imagePaths = parseImagePaths(body?.imagePaths);
+
+      if (!jobId || imagePaths.length === 0) {
+        return NextResponse.json({ error: "Parametros 'jobId' e 'imagePaths' sao obrigatorios." }, { status: 400 });
+      }
+
+      const { findLocalJob, updateLocalJob, createLocalJobEvent } = await import("@/lib/local-store");
+      const existingJob = await findLocalJob(jobId);
+      if (!existingJob) {
+        return NextResponse.json({ error: "Job nao encontrado." }, { status: 404 });
+      }
+
+      void (async () => {
+        try {
+          await updateLocalJob(jobId, { status: "researching", error_message: null });
+          await createLocalJobEvent(jobId, "researching", "Enviando imagens aprovadas para o Hunyuan 3D pelo navegador.");
+          const model3d = await flowProvider.generate3DObjectFromImages(imagePaths, jobId);
+          const storedPackage = parseStoredImagePackage(existingJob.source_video_transcription);
+          await updateLocalJob(jobId, {
+            status: "completed",
+            final_video_path: existingJob.final_video_path || imagePaths[0],
+            source_video_description: `${existingJob.source_video_description || "Pacote 3D"} + objeto 3D gerado no Hunyuan`,
+            source_video_transcription: `Imagens salvas em: ${JSON.stringify({
+              ...storedPackage,
+              mode: storedPackage.mode || "turnaround3d",
+              model3d
+            })}`,
+            error_message: null
+          });
+          await createLocalJobEvent(jobId, "completed", "Objeto 3D gerado no Hunyuan e baixado com sucesso.", model3d);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`[API AGENT] Erro ao gerar objeto 3D no Hunyuan para o job ${jobId}:`, err);
+          await updateLocalJob(jobId, { status: "failed", error_message: errMsg });
+          await createLocalJobEvent(jobId, "failed", `Falha ao gerar objeto 3D no Hunyuan: ${errMsg}`);
+        }
+      })();
+
+      return NextResponse.json({
+        success: true,
+        jobId,
+        message: "Geracao do objeto 3D iniciada no navegador."
+      });
+    }
 
     if (!model) {
       return NextResponse.json({ error: "Parametro 'model' e obrigatorio." }, { status: 400 });

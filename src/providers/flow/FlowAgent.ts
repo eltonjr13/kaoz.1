@@ -624,7 +624,7 @@ export class FlowAgent {
 
     await this.updateJobCompletion(jobId, uploadedPaths[0], {
       status: "completed",
-      source_video_description: `Pacote 3D de personagem gerado pelo agente autonomo sobre: ${options.topic}`,
+      source_video_description: `Pacote 3D de imagens pronto para revisao sobre: ${options.topic}`,
       source_video_transcription: `Imagens salvas em: ${JSON.stringify({
         mode: 'turnaround3d',
         views,
@@ -640,10 +640,10 @@ export class FlowAgent {
       type: "success",
       promptUsed,
       modelUsed: options.imageModel || "ImageFX Nano Banana Pro",
-      learnings: `Pacote 3D gerado com sucesso para o tema "${options.topic}". Vistas: ${views.join(", ")}`
+      learnings: `Pacote 3D gerado para revisao antes do Hunyuan. Tema "${options.topic}". Vistas: ${views.join(", ")}`
     });
 
-    await this.logAgentEvent(jobId, "completed", "Pacote 3D de imagens concluido com sucesso!", {
+    await this.logAgentEvent(jobId, "completed", "Pacote 3D de imagens concluido. Revise as imagens antes de gerar o objeto 3D.", {
       imagePaths: uploadedPaths,
       views
     });

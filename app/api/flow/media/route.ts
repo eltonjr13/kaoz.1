@@ -72,6 +72,10 @@ export async function GET(request: NextRequest) {
     else if (ext === ".jpg" || ext === ".jpeg") contentType = "image/jpeg";
     else if (ext === ".webp") contentType = "image/webp";
     else if (ext === ".mp4") contentType = "video/mp4";
+    else if (ext === ".glb") contentType = "model/gltf-binary";
+    else if (ext === ".gltf") contentType = "model/gltf+json";
+    else if (ext === ".obj") contentType = "model/obj";
+    else if (ext === ".fbx") contentType = "application/octet-stream";
 
     return new NextResponse(fileBuffer, {
       headers: {

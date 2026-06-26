@@ -41,6 +41,14 @@ interface GenerationResult {
   error?: string;
 }
 
+interface Model3DResult {
+  success: boolean;
+  path: string;
+  filename: string;
+  paths?: string[];
+  createdAt: string;
+}
+
 interface Avatar {
   id: string;
   name: string;
@@ -96,6 +104,7 @@ export interface ChatMessageState {
   jobStatus?: 'running' | 'completed' | 'failed' | null;
   jobLogs?: string[];
   imageResult?: GenerationResult | null;
+  model3dResult?: Model3DResult | null;
   videoResult?: GenerationResult | null;
   projectResult?: { success: boolean; jobId?: string; videoPath?: string; error?: string } | null;
   showLogs?: boolean;
@@ -326,6 +335,34 @@ const extractImagePathsFromJob = (value?: string | null) => {
   try {
     const parsed = JSON.parse(match[0]);
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
+const extractModel3dPathsFromJob = (value?: string | null) => {
+  if (!value) return [];
+
+  const parseModelPaths = (parsed: unknown) => {
+    if (!parsed || typeof parsed !== "object") return [];
+    const data = parsed as { mode?: unknown; model3d?: { modelPaths?: unknown } };
+    if (data.mode === "turnaround3d" && Array.isArray(data.model3d?.modelPaths)) {
+      return data.model3d.modelPaths.filter((item): item is string => typeof item === "string");
+    }
+    return [];
+  };
+
+  try {
+    const directPaths = parseModelPaths(JSON.parse(value));
+    if (directPaths.length > 0) return directPaths;
+  } catch {}
+
+  const marker = "Imagens salvas em:";
+  const markerIndex = value.indexOf(marker);
+  if (markerIndex < 0) return [];
+
+  try {
+    return parseModelPaths(JSON.parse(value.slice(markerIndex + marker.length).trim()));
   } catch {
     return [];
   }
@@ -776,6 +813,7 @@ export default function FlowDashboardPage() {
                   const finalPath = job.final_video_path || "";
                   if (msg.jobType === "image" || msg.jobType === "ad-creative") {
                      const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
+                     const model3dPaths = extractModel3dPathsFromJob(job.source_video_transcription);
                      nextMessages[msgIndex].imageResult = {
                        success: true,
                        path: finalPath,
@@ -783,6 +821,15 @@ export default function FlowDashboardPage() {
                        paths: imagePaths.length > 0 ? imagePaths : (finalPath ? [finalPath] : []),
                        createdAt: job.updated_at
                      };
+                     if (model3dPaths.length > 0) {
+                       nextMessages[msgIndex].model3dResult = {
+                         success: true,
+                         path: model3dPaths[0],
+                         filename: getResultFilename(model3dPaths[0]),
+                         paths: model3dPaths,
+                         createdAt: job.updated_at
+                       };
+                     }
                   } else if (msg.jobType === "video") {
                      nextMessages[msgIndex].videoResult = {
                        success: true,
@@ -1021,6 +1068,52 @@ export default function FlowDashboardPage() {
       setChatMessages(newMessages);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleGenerate3dObject = async (msgId: string) => {
+    const msgIndex = chatMessages.findIndex(m => m.id === msgId);
+    if (msgIndex < 0) return;
+    const msg = chatMessages[msgIndex];
+    const imagePaths = msg.imageResult?.paths?.length ? msg.imageResult.paths : (msg.imageResult?.path ? [msg.imageResult.path] : []);
+    if (!msg.jobId || imagePaths.length === 0) return;
+
+    const nextMessages = [...chatMessages];
+    nextMessages[msgIndex].jobStatus = "running";
+    nextMessages[msgIndex].jobLogs = [
+      ...(nextMessages[msgIndex].jobLogs || []),
+      `[${new Date().toLocaleTimeString()}] Enviando imagens aprovadas para o Hunyuan 3D...`
+    ];
+    setChatMessages(nextMessages);
+
+    try {
+      const res = await fetch("/api/flow/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-3d-object",
+          jobId: msg.jobId,
+          imagePaths
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao iniciar geracao do objeto 3D.");
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setChatMessages((previous) =>
+        previous.map((item) =>
+          item.id === msgId
+            ? {
+                ...item,
+                jobStatus: "failed",
+                projectResult: { success: false, error: errMsg },
+                jobLogs: [...(item.jobLogs || []), `[${new Date().toLocaleTimeString()}] Falha: ${errMsg}`]
+              }
+            : item
+        )
+      );
     }
   };
 
@@ -1613,6 +1706,20 @@ export default function FlowDashboardPage() {
                          {msg.imageResult.path && (
                             <a href={getFlowMediaUrl(msg.imageResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
                               <Download size={12} /> Baixar Pacote Completo
+                            </a>
+                         )}
+                         {msg.plan?.imagePackageMode === 'turnaround3d' && !msg.model3dResult?.path && (
+                            <button
+                              type="button"
+                              onClick={() => handleGenerate3dObject(msg.id)}
+                              className="flex items-center justify-center gap-1.5 rounded-xl bg-[#9D7CFF]/10 border border-[#9D7CFF]/25 px-3 py-2 text-[11px] font-semibold text-[#c7b7ff] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer"
+                            >
+                              <Cpu size={12} /> Gerar Objeto 3D
+                            </button>
+                         )}
+                         {msg.model3dResult?.path && (
+                            <a href={getFlowMediaUrl(msg.model3dResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-[#9D7CFF]/10 border border-[#9D7CFF]/25 px-3 py-2 text-[11px] font-semibold text-[#c7b7ff] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer">
+                              <Download size={12} /> Baixar Objeto 3D
                             </a>
                          )}
                        </div>
