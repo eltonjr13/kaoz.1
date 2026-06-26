@@ -100,12 +100,144 @@ interface RuleEntry {
 // Mapeamento de relações para cores de arestas
 const EDGE_RELATION_COLORS: Record<string, { color: string; dash: boolean }> = {
   causes_failure: { color: 'rgba(239,68,68,', dash: true },
+  fails_with: { color: 'rgba(239,68,68,', dash: true },
   improves_quality: { color: 'rgba(16,185,129,', dash: false },
   uses_model: { color: 'rgba(157, 124, 255,', dash: false },
   uses_tool: { color: 'rgba(251, 191, 36,', dash: false },
   supports: { color: 'rgba(6, 182, 212,', dash: false },
   controls: { color: 'rgba(168, 85, 247,', dash: false },
+  uses_avatar: { color: 'rgba(6, 182, 212,', dash: false },
+  performs_task: { color: 'rgba(251, 191, 36,', dash: false },
+  records_outcome: { color: 'rgba(16,185,129,', dash: false },
 };
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const DEFAULT_CANVAS_WIDTH = 1100;
+const DEFAULT_CANVAS_HEIGHT = 680;
+const MIN_NODE_DISTANCE = 58;
+const MAX_NODE_SPEED = 9;
+
+function getNodeDegree(nodeId: string, edges: EdgeData[]): number {
+  return edges.filter((edge) => edge.source === nodeId || edge.target === nodeId).length;
+}
+
+function getNodeRadius(nodeId: string, edges: EdgeData[]): number {
+  return Math.min(24, 10 + getNodeDegree(nodeId, edges) * 1.6);
+}
+
+function createAdjacencyMap(nodes: NodeData[], edges: EdgeData[]): Map<string, Set<string>> {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map<string, Set<string>>();
+
+  for (const node of nodes) {
+    adjacency.set(node.id, new Set());
+  }
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+    adjacency.get(edge.source)?.add(edge.target);
+    adjacency.get(edge.target)?.add(edge.source);
+  }
+
+  return adjacency;
+}
+
+function collectConnectedComponent(
+  rootId: string,
+  adjacency: Map<string, Set<string>>,
+  visited: Set<string>
+): string[] {
+  const stack = [rootId];
+  const component: string[] = [];
+  visited.add(rootId);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+
+    component.push(current);
+    for (const next of adjacency.get(current) || []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      stack.push(next);
+    }
+  }
+
+  return component;
+}
+
+function getConnectedComponentIds(nodes: NodeData[], edges: EdgeData[]): string[][] {
+  const adjacency = createAdjacencyMap(nodes, edges);
+  const visited = new Set<string>();
+  const components: string[][] = [];
+
+  for (const node of nodes) {
+    if (visited.has(node.id)) continue;
+    components.push(collectConnectedComponent(node.id, adjacency, visited));
+  }
+
+  return components.sort((a, b) => b.length - a.length);
+}
+
+function layoutGraphNodes(
+  rawNodes: NodeData[],
+  edges: EdgeData[],
+  width = DEFAULT_CANVAS_WIDTH,
+  height = DEFAULT_CANVAS_HEIGHT
+): NodeData[] {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const components = getConnectedComponentIds(rawNodes, edges);
+  const nodeById = new Map(rawNodes.map((node) => [node.id, node]));
+  const positionedNodes: NodeData[] = [];
+  const componentRing = Math.max(190, Math.min(width, height) * 0.32);
+
+  components.forEach((component, componentIndex) => {
+    const componentAngle = componentIndex * GOLDEN_ANGLE;
+    const componentCenterX = components.length === 1
+      ? centerX
+      : centerX + Math.cos(componentAngle) * componentRing;
+    const componentCenterY = components.length === 1
+      ? centerY
+      : centerY + Math.sin(componentAngle) * componentRing * 0.65;
+
+    const sortedIds = [...component].sort((a, b) => getNodeDegree(b, edges) - getNodeDegree(a, edges));
+    sortedIds.forEach((id, index) => {
+      const node = nodeById.get(id);
+      if (!node) return;
+
+      const distance = index === 0 ? 0 : 115 + Math.sqrt(index) * 58;
+      const angle = index * GOLDEN_ANGLE;
+      positionedNodes.push({
+        ...node,
+        x: componentCenterX + Math.cos(angle) * distance,
+        y: componentCenterY + Math.sin(angle) * distance * 0.76,
+        vx: 0,
+        vy: 0,
+        radius: getNodeRadius(node.id, edges)
+      });
+    });
+  });
+
+  return positionedNodes;
+}
+
+function getRelatedNodeIds(nodeId: string | undefined, edges: EdgeData[]): Set<string> {
+  const related = new Set<string>();
+  if (!nodeId) return related;
+
+  related.add(nodeId);
+  for (const edge of edges) {
+    if (edge.source === nodeId) related.add(edge.target);
+    if (edge.target === nodeId) related.add(edge.source);
+  }
+
+  return related;
+}
+
+function truncateCanvasLabel(label: string, maxLength = 28): string {
+  return label.length > maxLength ? `${label.slice(0, maxLength - 1)}...` : label;
+}
 
 function getEdgeStyle(relation: string) {
   return EDGE_RELATION_COLORS[relation] || { color: 'rgba(157, 124, 255,', dash: false };
@@ -159,12 +291,12 @@ export function CortexGraphClient() {
   const [isCreatingRule, setIsCreatingRule] = useState(false);
 
   // Parâmetros da simulação física ajustáveis
-  const [repulsionForce, setRepulsionForce] = useState(600);
-  const [attractionForce, setAttractionForce] = useState(0.04);
-  const [centerGravity, setCenterGravity] = useState(0.03);
+  const [repulsionForce, setRepulsionForce] = useState(1800);
+  const [attractionForce, setAttractionForce] = useState(0.018);
+  const [centerGravity, setCenterGravity] = useState(0.006);
 
   // Estado de Visualização (Pan e Zoom)
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(0.85);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
 
@@ -190,29 +322,22 @@ export function CortexGraphClient() {
       const statsData = await statsRes.json();
       
       // Inicializa posições dos nós de forma circular se não existirem
-      const initializedNodes = (graphData.nodes || []).map((node: NodeData, index: number, arr: NodeData[]) => {
-        const angle = (index / arr.length) * Math.PI * 2;
-        const radius = 180 + Math.random() * 50;
-        return {
-          ...node,
-          x: node.x ?? (window.innerWidth / 2 - 124 + Math.cos(angle) * radius),
-          y: node.y ?? (300 + Math.sin(angle) * radius),
-          vx: 0,
-          vy: 0,
-          radius: 12
-        };
-      }) as NodeData[];
+      const graphEdges = graphData.edges || [];
+      const container = containerRef.current;
+      const initializedNodes = layoutGraphNodes(
+        graphData.nodes || [],
+        graphEdges,
+        container?.clientWidth || DEFAULT_CANVAS_WIDTH,
+        container?.clientHeight || DEFAULT_CANVAS_HEIGHT
+      );
 
       // Calcula os raios dinamicamente com base no número de conexões (grau)
       initializedNodes.forEach((node) => {
-        const degree = (graphData.edges || []).filter(
-          (e: EdgeData) => e.source === node.id || e.target === node.id
-        ).length;
-        node.radius = Math.min(26, 10 + degree * 2);
+        node.radius = getNodeRadius(node.id, graphEdges);
       });
 
       setNodes(initializedNodes);
-      setEdges(graphData.edges || []);
+      setEdges(graphEdges);
       setStats(statsData);
       setLastSyncTime(new Date());
     } catch (err) {
@@ -240,20 +365,10 @@ export function CortexGraphClient() {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     
-    const updatedNodes = nodes.map((node, index, arr) => {
-      const angle = (index / arr.length) * Math.PI * 2;
-      const dist = 180 + Math.random() * 40;
-      return {
-        ...node,
-        x: canvas.width / 2 + Math.cos(angle) * dist,
-        y: canvas.height / 2 + Math.sin(angle) * dist,
-        vx: 0,
-        vy: 0
-      };
-    });
+    const updatedNodes = layoutGraphNodes(nodes, edges, canvas.width, canvas.height);
 
     setNodes(updatedNodes);
-    setZoom(1.0);
+    setZoom(0.85);
     setPanX(0);
     setPanY(0);
   };
@@ -285,6 +400,9 @@ export function CortexGraphClient() {
 
       const currentNodes = [...nodes];
       const n = currentNodes.length;
+      const nodeById = new Map(currentNodes.map((node) => [node.id, node]));
+      const focusedNodeId = selectedNode?.id || hoveredNode?.id;
+      const focusedNodeIds = getRelatedNodeIds(focusedNodeId, edges);
 
       // 1.A. Repulsão entre pares de nós
       for (let i = 0; i < n; i++) {
@@ -298,8 +416,10 @@ export function CortexGraphClient() {
           const distSq = dx * dx + dy * dy || 1;
           const dist = Math.sqrt(distSq);
 
-          if (dist < 400) {
-            const force = repulsionForce / distSq;
+          const minDistance = (u.radius || 12) + (v.radius || 12) + MIN_NODE_DISTANCE;
+          if (dist < 680) {
+            const collisionBoost = dist < minDistance ? (minDistance - dist) * 0.11 : 0;
+            const force = repulsionForce / Math.max(distSq, 90) + collisionBoost;
             const fx = (dx / dist) * force;
             const fy = (dy / dist) * force;
 
@@ -317,8 +437,8 @@ export function CortexGraphClient() {
 
       // 1.B. Atração ao longo das arestas
       for (const edge of edges) {
-        const sourceNode = currentNodes.find((x) => x.id === edge.source);
-        const targetNode = currentNodes.find((x) => x.id === edge.target);
+        const sourceNode = nodeById.get(edge.source);
+        const targetNode = nodeById.get(edge.target);
 
         if (!sourceNode || !targetNode) continue;
         if (sourceNode.x === undefined || sourceNode.y === undefined || targetNode.x === undefined || targetNode.y === undefined) continue;
@@ -327,7 +447,7 @@ export function CortexGraphClient() {
         const dy = targetNode.y - sourceNode.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
         
-        const restLength = 120;
+        const restLength = 210 - Math.min(edge.weight, 1) * 35;
         const displacement = dist - restLength;
         const force = displacement * attractionForce * edge.weight;
 
@@ -362,6 +482,8 @@ export function CortexGraphClient() {
         node.vx = (node.vx || 0) + dx * centerGravity;
         node.vy = (node.vy || 0) + dy * centerGravity;
 
+        node.vx = Math.max(-MAX_NODE_SPEED, Math.min(MAX_NODE_SPEED, node.vx || 0));
+        node.vy = Math.max(-MAX_NODE_SPEED, Math.min(MAX_NODE_SPEED, node.vy || 0));
         node.x += node.vx;
         node.y += node.vy;
         node.vx *= 0.82;
@@ -396,20 +518,24 @@ export function CortexGraphClient() {
 
       // 2.B. Arestas
       for (const edge of edges) {
-        const sourceNode = currentNodes.find((x) => x.id === edge.source);
-        const targetNode = currentNodes.find((x) => x.id === edge.target);
+        const sourceNode = nodeById.get(edge.source);
+        const targetNode = nodeById.get(edge.target);
 
         if (!sourceNode || !targetNode) continue;
         if (sourceNode.x === undefined || sourceNode.y === undefined || targetNode.x === undefined || targetNode.y === undefined) continue;
 
+        const isFocusedEdge = focusedNodeIds.has(edge.source) && focusedNodeIds.has(edge.target);
         let opacity = 0.15 + edge.weight * 0.45;
+        if (focusedNodeId) {
+          opacity = isFocusedEdge ? 0.75 : 0.05;
+        }
         if (q && !sourceNode.label.toLowerCase().includes(q) && !targetNode.label.toLowerCase().includes(q)) {
           opacity = 0.04;
         }
 
         const edgeStyle = getEdgeStyle(edge.relation);
         ctx.strokeStyle = `${edgeStyle.color}${opacity})`;
-        ctx.lineWidth = 1 + edge.weight * 3;
+        ctx.lineWidth = isFocusedEdge ? 2 + edge.weight * 3 : 0.8 + edge.weight * 2.2;
 
         if (edgeStyle.dash) {
           ctx.setLineDash([6, 4]);
@@ -425,7 +551,7 @@ export function CortexGraphClient() {
         ctx.setLineDash([]);
 
         // Seta direcional no centro da aresta
-        if (zoom > 0.7 && !q) {
+        if (zoom > 0.7 && !q && (!focusedNodeId || isFocusedEdge)) {
           const midX = (sourceNode.x + targetNode.x) / 2;
           const midY = (sourceNode.y + targetNode.y) / 2;
           const angle = Math.atan2(targetNode.y - sourceNode.y, targetNode.x - sourceNode.x);
@@ -443,8 +569,8 @@ export function CortexGraphClient() {
           ctx.restore();
 
           // Rótulo da relação
-          if (zoom > 0.8) {
-            ctx.fillStyle = `rgba(184, 184, 192, 0.35)`;
+          if (zoom > 0.95 && isFocusedEdge) {
+            ctx.fillStyle = `rgba(184, 184, 192, 0.7)`;
             ctx.font = "8px 'Inter', sans-serif";
             ctx.textAlign = "center";
             ctx.fillText(edge.relation, midX, midY - 8);
@@ -461,8 +587,10 @@ export function CortexGraphClient() {
         const isHighlighted = q && node.label.toLowerCase().includes(q);
         const isSelected = selectedNode?.id === node.id;
         const isHovered = hoveredNode?.id === node.id;
-        const isFaded = q && !isHighlighted;
+        const isRelatedToFocus = !focusedNodeId || focusedNodeIds.has(node.id);
+        const isFaded = (q && !isHighlighted) || !isRelatedToFocus;
         const isNew = isNewNode(node.lastObserved);
+        const degree = getNodeDegree(node.id, edges);
 
         let nodeColor = "#a855f7"; // concept
         if (node.type === 'entity') nodeColor = "#06b6d4";
@@ -523,13 +651,18 @@ export function CortexGraphClient() {
         ctx.restore();
 
         // Rótulo
-        const showLabel = zoom > 0.6 || isSelected || isHighlighted || isHovered;
+        const showLabel = isSelected || isHighlighted || isHovered || (zoom > 0.78 && degree >= 2) || zoom > 1.25;
         if (showLabel) {
-          ctx.fillStyle = isSelected ? "#ffffff" : isHighlighted || isHovered ? nodeColor : "#B8B8C0";
+          const label = truncateCanvasLabel(node.label);
           ctx.font = isSelected ? "bold 11px 'Inter', sans-serif" : "10px 'Inter', sans-serif";
+          const labelWidth = ctx.measureText(label).width + 12;
+          const labelY = node.y + node.radius + 16;
+          ctx.fillStyle = "rgba(9, 9, 11, 0.72)";
+          ctx.fillRect(node.x - labelWidth / 2, labelY - 10, labelWidth, 15);
+          ctx.fillStyle = isSelected ? "#ffffff" : isHighlighted || isHovered ? nodeColor : "#B8B8C0";
           ctx.textAlign = "center";
           ctx.globalAlpha = isFaded ? 0.2 : 1.0;
-          ctx.fillText(node.label, node.x, node.y + node.radius + 14);
+          ctx.fillText(label, node.x, labelY);
           ctx.globalAlpha = 1.0;
         }
 
@@ -591,6 +724,30 @@ export function CortexGraphClient() {
       return false;
     }).slice(0, 3);
   }, [selectedNode, stats]);
+
+  const graphConnectivity = useMemo(() => {
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const connectedNodeIds = new Set<string>();
+    let invalidEdges = 0;
+
+    for (const edge of edges) {
+      const hasSource = nodeIds.has(edge.source);
+      const hasTarget = nodeIds.has(edge.target);
+
+      if (!hasSource || !hasTarget) {
+        invalidEdges += 1;
+        continue;
+      }
+
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+
+    return {
+      isolatedNodes: nodes.filter((node) => !connectedNodeIds.has(node.id)).length,
+      invalidEdges
+    };
+  }, [nodes, edges]);
 
   // Converte coordenadas de tela para virtuais
   const screenToVirtual = (mouseX: number, mouseY: number, canvas: HTMLCanvasElement) => {
@@ -1094,9 +1251,9 @@ export function CortexGraphClient() {
               <h4 style={{ margin: 0, fontSize: "12px", color: "#fff", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px" }}>Físicas do Córtex</h4>
               
               {[
-                { label: "Repulsão", val: repulsionForce, setter: setRepulsionForce, min: 100, max: 1500, step: 1, fmt: (v: number) => v.toString() },
-                { label: "Atração (Mola)", val: attractionForce, setter: setAttractionForce, min: 0.005, max: 0.1, step: 0.005, fmt: (v: number) => v.toFixed(3) },
-                { label: "Gravidade Central", val: centerGravity, setter: setCenterGravity, min: 0.005, max: 0.1, step: 0.005, fmt: (v: number) => v.toFixed(3) },
+                { label: "Repulsão", val: repulsionForce, setter: setRepulsionForce, min: 600, max: 3200, step: 1, fmt: (v: number) => v.toString() },
+                { label: "Atração (Mola)", val: attractionForce, setter: setAttractionForce, min: 0.006, max: 0.05, step: 0.002, fmt: (v: number) => v.toFixed(3) },
+                { label: "Gravidade Central", val: centerGravity, setter: setCenterGravity, min: 0.002, max: 0.04, step: 0.002, fmt: (v: number) => v.toFixed(3) },
               ].map((ctrl) => (
                 <div key={ctrl.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted)" }}>
@@ -1244,6 +1401,20 @@ export function CortexGraphClient() {
                   <span style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</span>
                 </div>
               ))}
+            </div>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "4px", paddingTop: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                background: graphConnectivity.isolatedNodes === 0 && graphConnectivity.invalidEdges === 0 ? "#10b981" : "#f59e0b",
+                flexShrink: 0
+              }} />
+              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.5)" }}>
+                {graphConnectivity.isolatedNodes === 0 && graphConnectivity.invalidEdges === 0
+                  ? "Grafo conectado"
+                  : `${graphConnectivity.isolatedNodes} soltos / ${graphConnectivity.invalidEdges} arestas inválidas`}
+              </span>
             </div>
           </div>
         </div>
