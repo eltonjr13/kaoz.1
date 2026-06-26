@@ -29,6 +29,8 @@ import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
 import ReactMarkdown from "react-markdown";
 import { AnimatePresence, motion } from "framer-motion";
+import { useSearchParams } from "next/navigation";
+import ModelViewer3D from "@/components/ui/ModelViewer3D";
 
 interface GenerationResult {
   success: boolean;
@@ -117,6 +119,15 @@ interface ChatConversation {
   createdAt: string;
   updatedAt: string;
   messages: ChatMessageState[];
+}
+
+interface FlowJobSnapshot {
+  id?: string;
+  status?: string;
+  topic?: string | null;
+  final_video_path?: string | null;
+  source_video_transcription?: string | null;
+  updated_at?: string;
 }
 
 const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
@@ -368,13 +379,27 @@ const extractModel3dPathsFromJob = (value?: string | null) => {
   }
 };
 
+const buildModel3dResultFromJob = (job: FlowJobSnapshot): Model3DResult | null => {
+  const model3dPaths = extractModel3dPathsFromJob(job.source_video_transcription);
+  if (model3dPaths.length === 0) return null;
+  return {
+    success: true,
+    path: model3dPaths[0],
+    filename: getResultFilename(model3dPaths[0]),
+    paths: model3dPaths,
+    createdAt: job.updated_at || new Date().toISOString()
+  };
+};
+
 const getEditableMessageContent = (content: string) =>
   content.replace(/\n\n\[Imagem de refer(?:ência|Ãªncia) anexada\]$/i, "");
 
 export default function FlowDashboardPage() {
+  const searchParams = useSearchParams();
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
+  const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
@@ -686,8 +711,79 @@ export default function FlowDashboardPage() {
       setChatConversations(initialConversations);
       setActiveConversationId(activeConversation.id);
       setChatMessages(activeConversation.messages);
+      setHasLoadedConversations(true);
     });
   }, []);
+
+  useEffect(() => {
+    const recoverJobId = searchParams.get("recover3d") || "";
+    const alreadyRecovered = recoverJobId && chatMessages.some((msg) =>
+      msg.jobId === recoverJobId && Boolean(msg.model3dResult?.path)
+    );
+    if (!hasLoadedConversations || alreadyRecovered || (!recoverJobId && chatMessages.length > 0)) return;
+
+    let cancelled = false;
+    const recoverLatest3dModel = async () => {
+      try {
+        const res = await fetch(recoverJobId ? `/api/jobs?jobId=${encodeURIComponent(recoverJobId)}` : "/api/jobs");
+        if (!res.ok) return;
+        const data = await res.json() as { jobs?: FlowJobSnapshot[] };
+        const latest3dJob = (recoverJobId ? (data.jobs || []) : (data.jobs || [])
+          .filter((job) => job.status === "completed" && buildModel3dResultFromJob(job))
+          .sort((a, b) => Date.parse(b.updated_at || "") - Date.parse(a.updated_at || "")))[0];
+        if (!latest3dJob || !latest3dJob.id || cancelled) return;
+
+        const imagePaths = extractImagePathsFromJob(latest3dJob.source_video_transcription);
+        const finalPath = latest3dJob.final_video_path || imagePaths[0] || "";
+        const model3dResult = buildModel3dResultFromJob(latest3dJob);
+        if (!model3dResult) return;
+
+        const recoveredMessage: ChatMessageState = {
+          id: createChatId("assistant"),
+          role: "assistant",
+          content: "Objeto 3D gerado no Hunyuan e recuperado para visualizacao no agente.",
+          timestamp: new Date().toISOString(),
+          plan: {
+            kind: "image",
+            flow: "image",
+            originalPrompt: latest3dJob.topic || "Objeto 3D gerado",
+            prompt: latest3dJob.topic || "Objeto 3D gerado",
+            explanation: "Resultado 3D recuperado de um job concluido.",
+            model: "gemini",
+            aspectRatio: "1:1",
+            imagePackageMode: "turnaround3d",
+            turnaroundViews: ["front", "left", "right", "back"]
+          },
+          jobId: latest3dJob.id,
+          jobType: "image",
+          jobStatus: "completed",
+          imageResult: finalPath ? {
+            success: true,
+            path: finalPath,
+            filename: getResultFilename(finalPath),
+            paths: imagePaths.length > 0 ? imagePaths : [finalPath],
+            createdAt: latest3dJob.updated_at || new Date().toISOString()
+          } : null,
+          model3dResult
+        };
+
+        if (!cancelled) {
+          setChatMessages((previous) => {
+            const existingIndex = previous.findIndex((msg) => msg.jobId === latest3dJob.id);
+            if (existingIndex < 0) return previous.length > 0 && recoverJobId ? [...previous, recoveredMessage] : [recoveredMessage];
+            return previous.map((msg, index) => index === existingIndex ? { ...msg, ...recoveredMessage, id: msg.id } : msg);
+          });
+        }
+      } catch (err) {
+        console.warn("Falha ao recuperar ultimo modelo 3D gerado:", err);
+      }
+    };
+
+    void recoverLatest3dModel();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLoadedConversations, chatMessages, searchParams]);
 
   useEffect(() => {
     localStorage.setItem(USE_AVATAR_PERSONALITY_KEY, String(useAvatarPersonality));
@@ -770,7 +866,15 @@ export default function FlowDashboardPage() {
 
   // Polling events
   useEffect(() => {
-    const activeJobs = chatMessages.filter(m => m.jobId && m.jobStatus === 'running');
+    const needsModel3dReconcile = (message: ChatMessageState) =>
+      message.plan?.imagePackageMode === 'turnaround3d' && !message.model3dResult?.path;
+
+    const activeJobs = chatMessages.filter(
+      (m) => m.jobId && (
+        m.jobStatus === 'running' ||
+        needsModel3dReconcile(m)
+      )
+    );
     if (activeJobs.length === 0) return;
 
     let isMounted = true;
@@ -811,9 +915,12 @@ export default function FlowDashboardPage() {
                 if (job.status === "completed") {
                   nextMessages[msgIndex].jobStatus = 'completed';
                   const finalPath = job.final_video_path || "";
+                  const model3dResult = buildModel3dResultFromJob(job);
+                  if (model3dResult) {
+                    nextMessages[msgIndex].model3dResult = model3dResult;
+                  }
                   if (msg.jobType === "image" || msg.jobType === "ad-creative") {
                      const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
-                     const model3dPaths = extractModel3dPathsFromJob(job.source_video_transcription);
                      nextMessages[msgIndex].imageResult = {
                        success: true,
                        path: finalPath,
@@ -821,15 +928,6 @@ export default function FlowDashboardPage() {
                        paths: imagePaths.length > 0 ? imagePaths : (finalPath ? [finalPath] : []),
                        createdAt: job.updated_at
                      };
-                     if (model3dPaths.length > 0) {
-                       nextMessages[msgIndex].model3dResult = {
-                         success: true,
-                         path: model3dPaths[0],
-                         filename: getResultFilename(model3dPaths[0]),
-                         paths: model3dPaths,
-                         createdAt: job.updated_at
-                       };
-                     }
                   } else if (msg.jobType === "video") {
                      nextMessages[msgIndex].videoResult = {
                        success: true,
@@ -1087,11 +1185,10 @@ export default function FlowDashboardPage() {
     setChatMessages(nextMessages);
 
     try {
-      const res = await fetch("/api/flow/agent", {
+      const res = await fetch("/api/flow/hunyuan3d", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "generate-3d-object",
           jobId: msg.jobId,
           imagePaths
         })
@@ -1680,7 +1777,7 @@ export default function FlowDashboardPage() {
                     )}
 
                     {/* Job completed result (Image package) */}
-                    {msg.jobId && msg.jobStatus === 'completed' && msg.imageResult && (
+                    {msg.jobId && (msg.jobStatus === 'completed' || msg.jobStatus === 'failed') && msg.imageResult && (
                        <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-green-500/20 flex flex-col gap-3">
                          <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-semibold">
                            <CheckCircle size={13} /> Geração de mídia concluída!
@@ -1714,13 +1811,16 @@ export default function FlowDashboardPage() {
                               onClick={() => handleGenerate3dObject(msg.id)}
                               className="flex items-center justify-center gap-1.5 rounded-xl bg-[#9D7CFF]/10 border border-[#9D7CFF]/25 px-3 py-2 text-[11px] font-semibold text-[#c7b7ff] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer"
                             >
-                              <Cpu size={12} /> Gerar Objeto 3D
+                              <Cpu size={12} /> {msg.jobStatus === 'failed' ? 'Recomeçar Geração 3D' : 'Gerar Objeto 3D'}
                             </button>
                          )}
                          {msg.model3dResult?.path && (
-                            <a href={getFlowMediaUrl(msg.model3dResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-[#9D7CFF]/10 border border-[#9D7CFF]/25 px-3 py-2 text-[11px] font-semibold text-[#c7b7ff] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer">
-                              <Download size={12} /> Baixar Objeto 3D
-                            </a>
+                            <div className="mt-2 w-full max-w-[280px]">
+                              <ModelViewer3D
+                                src={getFlowMediaUrl(msg.model3dResult.path)}
+                                title={msg.model3dResult.filename || "Caricatura 3D"}
+                              />
+                            </div>
                          )}
                        </div>
                     )}
@@ -1768,6 +1868,13 @@ export default function FlowDashboardPage() {
                          <p className="text-[11px] text-white/50 leading-relaxed select-text">
                            {msg.projectResult?.error || "Ocorreu um erro no pipeline do MrChicken. Verifique os logs detalhados para entender a causa."}
                          </p>
+                         {msg.jobLogs && msg.jobLogs.length > 0 && (
+                           <div className="mt-2 max-h-28 overflow-y-auto rounded-xl bg-black/60 p-3 font-mono text-[9px] text-red-400/90 border border-red-500/10 leading-normal flex flex-col gap-0.5 select-text">
+                             {msg.jobLogs.slice(-5).map((log, logIdx) => (
+                               <div key={logIdx} className="break-all">{log}</div>
+                             ))}
+                           </div>
+                         )}
                        </div>
                     )}
 

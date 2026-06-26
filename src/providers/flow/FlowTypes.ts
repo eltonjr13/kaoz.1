@@ -39,7 +39,7 @@ export interface FlowStatus {
   profilePath: string;
 }
 
-export type FlowPortal = 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek';
+export type FlowPortal = 'google' | 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'hunyuan3d';
 
 export interface PortalLoginResult {
   portal: FlowPortal;

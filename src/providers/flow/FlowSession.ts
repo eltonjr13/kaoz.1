@@ -268,6 +268,8 @@ export class FlowSession {
       targetUrl = 'https://claude.ai';
     } else if (portal === 'deepseek') {
       targetUrl = 'https://chat.deepseek.com';
+    } else if (portal === 'hunyuan3d') {
+      targetUrl = 'https://3d.hunyuan.tencent.com/';
     }
 
     // 3. Launch headful browser context
@@ -469,6 +471,17 @@ export class FlowSession {
         return await promptArea.isVisible();
       }
 
+      if (portal === 'hunyuan3d') {
+        const loginButton = page.getByText("登录").first();
+        const uploadTrigger = page.getByText("图生3D").first();
+        const uploadTriggerEn = page.getByText("Image").first();
+        const hasLogin = url.includes('/login') || await loginButton.isVisible().catch(() => false);
+        const hasUpload = await uploadTrigger.isVisible().catch(() => false) || await uploadTriggerEn.isVisible().catch(() => false);
+        const hasFileInput = await page.locator('input[type="file"]').count().catch(() => 0) > 0;
+        const hasHomeCard = await page.getByText("\u56fe/\u6587\u751f3D").first().isVisible().catch(() => false);
+        return !hasLogin && (hasUpload || hasFileInput || hasHomeCard);
+      }
+
       return false;
     } catch {
       return false;
@@ -497,7 +510,8 @@ export class FlowSession {
         gemini: false,
         chatgpt: false,
         claude: false,
-        deepseek: false
+        deepseek: false,
+        hunyuan3d: false
       };
 
       // 1. Check Google Flow on the active page or navigate to it
@@ -508,7 +522,7 @@ export class FlowSession {
       results.google = await this.checkAuthenticated(page);
 
       // 2. Helper to check another portal on the same temporary page.
-      const checkPortal = async (portal: 'gemini' | 'chatgpt' | 'claude' | 'deepseek', url: string) => {
+      const checkPortal = async (portal: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'hunyuan3d', url: string) => {
         try {
           await page!.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
           return await this.checkPortalAuthenticated(page!, portal);
@@ -522,6 +536,7 @@ export class FlowSession {
       results.chatgpt = await checkPortal('chatgpt', 'https://chatgpt.com');
       results.claude = await checkPortal('claude', 'https://claude.ai');
       results.deepseek = await checkPortal('deepseek', 'https://chat.deepseek.com');
+      results.hunyuan3d = await checkPortal('hunyuan3d', 'https://3d.hunyuan.tencent.com/');
 
       return results;
     } catch (err) {
@@ -531,7 +546,8 @@ export class FlowSession {
         gemini: false,
         chatgpt: false,
         claude: false,
-        deepseek: false
+        deepseek: false,
+        hunyuan3d: false
       };
     } finally {
       if (!wasInitialized) {

@@ -13,15 +13,16 @@ import {
   AlertCircle,
   Play,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  Box
 } from "lucide-react";
 
 interface PortalConfig {
-  id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek";
+  id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
   name: string;
   url: string;
   description: string;
-  icon: typeof Globe | typeof Sparkles | typeof Cpu | typeof Settings | typeof Bot;
+  icon: typeof Globe | typeof Sparkles | typeof Cpu | typeof Settings | typeof Bot | typeof Box;
   color: string;
 }
 
@@ -73,6 +74,14 @@ const PORTALS: PortalConfig[] = [
     description: "Refinamento rápido e inteligência contextual via DeepSeek.",
     icon: Bot,
     color: "text-sky-400 bg-sky-500/5 border-sky-500/10"
+  },
+  {
+    id: "hunyuan3d",
+    name: "Tencent Hunyuan 3D",
+    url: "https://3d.hunyuan.tencent.com/",
+    description: "Geração de malhas 3D (.glb) a partir de turnaround.",
+    icon: Box,
+    color: "text-[#9D7CFF] bg-[#9D7CFF]/5 border-[#9D7CFF]/10"
   }
 ];
 
@@ -87,7 +96,8 @@ export default function SettingsPage() {
     gemini: 'disconnected',
     chatgpt: 'disconnected',
     claude: 'disconnected',
-    deepseek: 'disconnected'
+    deepseek: 'disconnected',
+    hunyuan3d: 'disconnected'
   });
 
   const checkAllStatuses = async () => {
@@ -97,7 +107,8 @@ export default function SettingsPage() {
       gemini: 'checking',
       chatgpt: 'checking',
       claude: 'checking',
-      deepseek: 'checking'
+      deepseek: 'checking',
+      hunyuan3d: 'checking'
     });
 
     try {
@@ -126,7 +137,8 @@ export default function SettingsPage() {
           gemini: 'disconnected',
           chatgpt: 'disconnected',
           claude: 'disconnected',
-          deepseek: 'disconnected'
+          deepseek: 'disconnected',
+          hunyuan3d: 'disconnected'
         });
       }
     } catch (err: unknown) {
@@ -140,7 +152,8 @@ export default function SettingsPage() {
         gemini: 'disconnected',
         chatgpt: 'disconnected',
         claude: 'disconnected',
-        deepseek: 'disconnected'
+        deepseek: 'disconnected',
+        hunyuan3d: 'disconnected'
       });
     } finally {
       setIsCheckingAll(false);
@@ -215,7 +228,8 @@ export default function SettingsPage() {
           gemini: 'disconnected',
           chatgpt: 'disconnected',
           claude: 'disconnected',
-          deepseek: 'disconnected'
+          deepseek: 'disconnected',
+          hunyuan3d: 'disconnected'
         });
       } else {
         setStatusMessage({ text: `Falha ao fechar sessões: ${data.error}`, type: "error" });
