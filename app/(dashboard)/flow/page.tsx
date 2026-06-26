@@ -180,12 +180,23 @@ async function generate3dBaseImage(params: {
   return result;
 }
 
+const build3dBasePrompt = (prompt: string) =>
+  [
+    "Create a 3D caricature character model-sheet base image from the attached reference.",
+    "Output one full-body character only, centered, upright, unobstructed, feet visible.",
+    "Use a strict plain light gray neutral background only. No environment, no room, no street, no toys, no props, no furniture, no text, no logos.",
+    "Do not include objects held in the hands. Keep hands empty unless the original character identity absolutely requires an accessory.",
+    "Keep the character identity and requested style from the user prompt.",
+    `User prompt: ${prompt}`
+  ].join(" ");
+
 const build3dImageEditPrompt = (originalPrompt: string, correctionPrompt: string) =>
   [
     "Image-to-image edit task. Use the attached reference image as the exact source image.",
     "Do not generate a new character, new scene, new composition, or unrelated image.",
     "Preserve the same subject identity, pose, camera angle, crop, composition, style, lighting, colors, materials, background, and image proportions.",
     "Apply only the requested correction below. Keep every other visual detail unchanged.",
+    "Keep or convert the result to a strict neutral model-sheet setup: one full-body character, centered, plain light gray background, no environment, no props, no text, no logos.",
     `Original 3D base brief: ${originalPrompt}`,
     `Requested correction: ${correctionPrompt}`,
     "Return one edited image only, not a variation sheet, not a collage, not a redesign."
@@ -893,7 +904,7 @@ export default function FlowDashboardPage() {
 
         if (plannedKind === 'image' && image3dMode && referenceImageBase64) {
           const baseImageData = await generate3dBaseImage({
-            prompt: data.action.optimizedPrompt || message,
+            prompt: build3dBasePrompt(data.action.optimizedPrompt || message),
             aspectRatio: imageRatio,
             model: imageModel,
             referenceImage: referenceImageBase64,

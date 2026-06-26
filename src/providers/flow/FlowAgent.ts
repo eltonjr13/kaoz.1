@@ -24,6 +24,14 @@ const TURNAROUND_VIEW_LABELS: Record<TurnaroundView, string> = {
   top: 'top view',
   bottom: 'bottom view'
 };
+const TURNAROUND_VIEW_INSTRUCTIONS: Record<TurnaroundView, string> = {
+  front: "FRONT VIEW: character faces directly forward, both eyes visible symmetrically, shoulders square to camera, 0 degree rotation.",
+  left: "LEFT SIDE VIEW: exact 90 degree left profile. Only the left side contour is visible; one eye profile, one ear, nose silhouette, chest and feet aligned sideways. Do not use a 3/4 view.",
+  right: "RIGHT SIDE VIEW: exact 90 degree right profile. Only the right side contour is visible; one eye profile, one ear, nose silhouette, chest and feet aligned sideways. Do not use a 3/4 view.",
+  back: "BACK VIEW: exact 180 degree rear view. Face is not visible, only back of head, back of body, back of clothing and shoes. Do not use a 3/4 back view.",
+  top: "TOP VIEW: exact overhead orthographic view looking straight down at the same character.",
+  bottom: "BOTTOM VIEW: exact underside orthographic view looking straight up at the same character."
+};
 
 export interface AgentTaskOptions {
   topic: string;
@@ -484,8 +492,10 @@ export class FlowAgent {
   private buildPrimaryTurnaroundPrompt(prompt: string): string {
     return [
       "Create the primary character image for a 3D character modeling workflow.",
-      "Show one final character design clearly, centered, complete, and unobstructed.",
-      "Use a clean neutral studio background, sharp edges, consistent materials, and enough detail for later multi-image character reference.",
+      "Show one final full-body character design clearly, centered, complete, and unobstructed.",
+      "Use a strict neutral model-sheet setup: plain light gray background, no environment, no room, no street, no furniture, no toys, no props, no text, no logos.",
+      "Character must stand upright in a simple neutral pose with arms relaxed, feet visible, full body visible.",
+      "Keep sharp edges, consistent materials, and enough detail for later multi-image character reference.",
       `Character brief: ${prompt}`
     ].join(" ");
   }
@@ -496,12 +506,13 @@ export class FlowAgent {
       "The attached image is the locked character design. Treat it as a model sheet source, not as loose inspiration.",
       "Do not invent a new person, new face, new haircut, new body, new clothes, new scene, new pose, new emotion, new props, or new environment.",
       `Generate exactly one full-body standalone image of the SAME character in ${TURNAROUND_VIEW_LABELS[view]}.`,
+      TURNAROUND_VIEW_INSTRUCTIONS[view],
       "Keep the exact same body pose and posture from the reference. The character should look like the same 3D model rotated on a turntable, not re-posed.",
       "Only rotate the character around the vertical axis to the requested angle. Do not move arms, legs, head tilt, expression, clothing folds, or stance except what is naturally hidden or revealed by the rotation.",
       "Use an orthographic model-sheet camera feel: no perspective exaggeration, no dynamic angle, no walking direction, no action pose.",
       "Preserve the exact caricature proportions, head size, face structure, moustache/facial hair if present, skin tone, hair shape, body shape, clothing, shoes, colors, materials, and silhouette.",
       "Use the same neutral model-sheet presentation for every angle: full body, centered, standing upright, arms relaxed exactly as in the reference, no walking, no action, no object interaction.",
-      "Use a plain neutral studio background. Do not add streets, bathrooms, toys, posters, signs, crowds, furniture, windows, props, text, logos, or story context.",
+      "Use a plain light gray neutral background only. Remove and ignore any environment or objects from the reference. Do not add streets, bathrooms, toys, posters, signs, crowds, furniture, windows, props, text, logos, or story context.",
       "Keep identical subject scale, crop, feet position, vertical alignment, lens, lighting, shadow softness, and 3D render style across all angles.",
       "Do not create a contact sheet, grid, collage, split-screen, thumbnails, labels, captions, or multiple angles inside one image.",
       "Output one character only, one angle only, full body, centered.",
