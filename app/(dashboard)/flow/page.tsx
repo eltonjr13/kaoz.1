@@ -400,6 +400,7 @@ export default function FlowDashboardPage() {
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
+  const hasAttempted3dRecoveryRef = useRef(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
@@ -720,7 +721,9 @@ export default function FlowDashboardPage() {
     const alreadyRecovered = recoverJobId && chatMessages.some((msg) =>
       msg.jobId === recoverJobId && Boolean(msg.model3dResult?.path)
     );
-    if (!hasLoadedConversations || alreadyRecovered || (!recoverJobId && chatMessages.length > 0)) return;
+    if (!hasLoadedConversations || hasAttempted3dRecoveryRef.current) return;
+    hasAttempted3dRecoveryRef.current = true;
+    if (alreadyRecovered || (!recoverJobId && chatMessages.length > 0)) return;
 
     let cancelled = false;
     const recoverLatest3dModel = async () => {
@@ -1513,8 +1516,17 @@ export default function FlowDashboardPage() {
     downloadTextFile(formatChatExport(exportConversation, messages), `mrchicken-${slug}.md`);
   };
 
-  const clearChat = () => {
-    setChatMessages([]);
+  const handleDeleteConversation = () => {
+    const activeIndex = chatConversations.findIndex((conversation) => conversation.id === activeConversationId);
+    if (activeIndex < 0) return;
+
+    const remainingConversations = chatConversations.filter((conversation) => conversation.id !== activeConversationId);
+    const nextConversation = remainingConversations[activeIndex] || remainingConversations[activeIndex - 1] || createChatConversation();
+    const nextConversations = remainingConversations.length > 0 ? remainingConversations : [nextConversation];
+
+    setChatConversations(nextConversations);
+    setActiveConversationId(nextConversation.id);
+    setChatMessages(nextConversation.messages);
   };
 
   return (
@@ -1597,7 +1609,7 @@ export default function FlowDashboardPage() {
             >
               <Download size={16} />
             </button>
-            <button onClick={clearChat} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Limpar conversa">
+            <button onClick={handleDeleteConversation} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Excluir conversa">
               <Trash2 size={16} />
             </button>
           </div>
