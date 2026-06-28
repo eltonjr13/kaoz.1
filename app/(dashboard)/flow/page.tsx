@@ -401,6 +401,7 @@ export default function FlowDashboardPage() {
   const [activeConversationId, setActiveConversationId] = useState("");
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const hasAttempted3dRecoveryRef = useRef(false);
+  const hasAppliedModeFromUrlRef = useRef(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
@@ -429,6 +430,20 @@ export default function FlowDashboardPage() {
   const [draftMessage, setDraftMessage] = useState("");
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   
+  useEffect(() => {
+    if (hasAppliedModeFromUrlRef.current) return;
+    const mode = searchParams.get("mode");
+    if (mode !== "image" && mode !== "video" && mode !== "project" && mode !== "ad-creative") {
+      return;
+    }
+
+    setAgentType(mode);
+    if (mode === "ad-creative") {
+      setFlyModeActive(searchParams.get("fly") === "1");
+    }
+    hasAppliedModeFromUrlRef.current = true;
+  }, [searchParams]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);

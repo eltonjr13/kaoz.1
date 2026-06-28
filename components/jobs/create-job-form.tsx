@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors, Upload } from "lucide-react";
 import type { Avatar, ExpertBackgroundMode, RenderLayout } from "@/types";
@@ -22,6 +22,8 @@ type CreateJobFormProps = {
   initialSourceVideoTitle?: string;
 };
 
+type AvatarOption = CreateJobFormProps["avatars"][number];
+
 const layoutOptions: { value: RenderLayout; label: string; description: string }[] = [
   {
     value: "source_pip",
@@ -39,6 +41,121 @@ const layoutOptions: { value: RenderLayout; label: string; description: string }
     description: "Video fonte maior, mas com expert ainda bem visivel."
   }
 ];
+
+const formSteps = [
+  { value: 1, label: "Origem" },
+  { value: 2, label: "Plano" },
+  { value: 3, label: "Revisao" }
+];
+
+function StepIndicator({ currentStep }: { currentStep: number }) {
+  return (
+    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      {formSteps.map((item, index) => (
+        <div key={item.value} style={{ display: "contents" }}>
+          <span
+            className={`status-badge ${
+              currentStep === item.value ? "queued" : currentStep > item.value ? "completed" : ""
+            }`}
+            style={{ padding: "4px 10px" }}
+          >
+            Etapa {item.value}: {item.label}
+          </span>
+          {index < formSteps.length - 1 ? (
+            <div style={{ flex: 1, height: "2px", background: "var(--line)" }} />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryPanel({
+  label,
+  children,
+  meta,
+  actionLabel,
+  disabled,
+  onAction
+}: {
+  label: string;
+  children: ReactNode;
+  meta?: ReactNode;
+  actionLabel: string;
+  disabled?: boolean;
+  onAction: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: "12px 16px",
+        background: "var(--panel-strong)",
+        borderRadius: "8px",
+        marginBottom: "20px",
+        border: "1px solid var(--line)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: "16px"
+      }}
+    >
+      <div>
+        <span style={{ fontSize: "0.8rem", color: "var(--muted)", fontWeight: "bold", display: "block" }}>
+          {label}
+        </span>
+        <span style={{ fontSize: "0.9rem", wordBreak: "break-all" }}>{children}</span>
+        {meta ? (
+          <span style={{ fontSize: "0.84rem", display: "block", marginTop: "4px", color: "var(--brand)", fontWeight: 700 }}>
+            {meta}
+          </span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        className="button secondary"
+        style={{ minHeight: "36px", padding: "0 12px", fontSize: "0.82rem", flexShrink: 0 }}
+        onClick={onAction}
+        disabled={disabled}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
+function AvatarVersionPreview({ avatar }: { avatar: AvatarOption | null }) {
+  if (!avatar) return null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: 10, background: "var(--bg-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+      <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+        {avatar.image_path ? (
+          isVideo(avatar.image_path) ? (
+            <video
+              src={getMediaUrl(avatar.image_path)}
+              muted
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <img
+              src={getMediaUrl(avatar.image_path)}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              alt="Avatar preview"
+            />
+          )
+        ) : null}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={{ fontSize: "0.85rem", fontWeight: "bold" }}>
+          {avatar.name || "Avatar padrao"}
+        </span>
+        <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+          {avatar.parent_id ? "Versao do avatar" : "Versao principal padrao"}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function CreateJobForm({
   avatars,
@@ -91,6 +208,7 @@ export function CreateJobForm({
   const parsedSourceVideo = sourceVideoUrl.trim() ? parseSourceVideoUrl(sourceVideoUrl) : null;
   const SourceIcon = parsedSourceVideo?.platform === "instagram" ? Camera : Play;
   const canRemoveExpertBackground = renderLayout === "source_pip";
+  const selectedAvatar = avatars.find((avatar) => avatar.id === versionId) ?? null;
 
   // Voice advanced settings state
   const [inferenceSteps, setInferenceSteps] = useState(32);
@@ -118,7 +236,7 @@ export function CreateJobForm({
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setMessage(data.error || "Falha ao analisar o vídeo.");
+        setMessage(data.error || "Falha ao analisar o video.");
         return;
       }
 
@@ -126,10 +244,10 @@ export function CreateJobForm({
       setSourceVideoTranscription(data.transcription || "");
       if (data.topic) setTopic(data.topic);
       if (data.title) setSourceVideoTitle(data.title);
-      setStep(2); // Avança para a Etapa 2 de parâmetros
+      setStep(2); // Avanca para a Etapa 2 de parametros
     } catch (err) {
       console.error(err);
-      setMessage("Erro de conexão ao solicitar análise do vídeo.");
+      setMessage("Erro de conexao ao solicitar analise do video.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -157,16 +275,16 @@ export function CreateJobForm({
       }
 
       setScriptText(data.script || "");
-      setStep(3); // Avança para a Etapa 3 de revisão do roteiro
+      setStep(3); // Avanca para a Etapa 3 de revisao do roteiro
     } catch (err) {
       console.error(err);
-      setMessage("Erro de conexão ao solicitar geração do roteiro.");
+      setMessage("Erro de conexao ao solicitar geracao do roteiro.");
     } finally {
       setIsGeneratingScript(false);
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
 
@@ -179,11 +297,11 @@ export function CreateJobForm({
     let finalAvatarId = avatarId;
 
     if (swappedVideoFile) {
-      setMessage("Processando arquivo de vídeo do avatar...");
+      setMessage("Processando arquivo de video do avatar...");
       try {
         if (saveAsNewVersion) {
           const formData = new FormData();
-          formData.append("name", newVersionName.trim() || `Versão via Job - ${new Date().toLocaleDateString("pt-BR")}`);
+          formData.append("name", newVersionName.trim() || `Versao via Job - ${new Date().toLocaleDateString("pt-BR")}`);
           formData.append("image", swappedVideoFile);
           formData.append("parent_id", parentId);
           formData.append("consentAccepted", "true");
@@ -195,7 +313,7 @@ export function CreateJobForm({
 
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || "Não foi possível salvar o novo vídeo como versão.");
+            throw new Error(data.error || "Nao foi possivel salvar o novo video como versao.");
           }
 
           const data = await response.json();
@@ -211,12 +329,12 @@ export function CreateJobForm({
 
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || "Não foi possível atualizar o vídeo base da versão.");
+            throw new Error(data.error || "Nao foi possivel atualizar o video base da versao.");
           }
         }
       } catch (err) {
         setIsLoading(false);
-        setMessage(err instanceof Error ? err.message : "Erro ao processar vídeo do avatar.");
+        setMessage(err instanceof Error ? err.message : "Erro ao processar video do avatar.");
         return;
       }
     }
@@ -280,27 +398,14 @@ export function CreateJobForm({
   }
 
   return (
-    <form className="form-panel" onSubmit={handleSubmit}>
-      {/* Visual Step Indicator */}
-      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "24px" }}>
-        <span className={`status-badge ${step === 1 ? "queued" : "completed"}`} style={{ padding: "4px 10px" }}>
-          Etapa 1: Origem
-        </span>
-        <div style={{ flex: 1, height: "2px", background: "var(--line)" }}></div>
-        <span className={`status-badge ${step === 2 ? "queued" : step > 2 ? "completed" : ""}`} style={{ padding: "4px 10px" }}>
-          Etapa 2: Parâmetros
-        </span>
-        <div style={{ flex: 1, height: "2px", background: "var(--line)" }}></div>
-        <span className={`status-badge ${step === 3 ? "queued" : ""}`} style={{ padding: "4px 10px" }}>
-          Etapa 3: Roteiro & Voz
-        </span>
-      </div>
+    <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+      <StepIndicator currentStep={step} />
 
       {step === 1 && (
         /* STEP 1: Video selection and trimming */
         <div>
           <div className="field" style={{ marginTop: 0 }}>
-            <label htmlFor="sourceVideoUrl">Link do vídeo para colagem</label>
+            <label htmlFor="sourceVideoUrl">Link do video para colagem</label>
             <input
               id="sourceVideoUrl"
               value={sourceVideoUrl}
@@ -319,17 +424,17 @@ export function CreateJobForm({
                 onChange={(event) => setShouldTrim(event.target.checked)}
               />
               <Scissors size={18} />
-              <span>Cortar/Limitar trecho do vídeo?</span>
+              <span>Cortar/Limitar trecho do video?</span>
             </label>
             <span className="field-hint">
-              Recorta o vídeo original antes de fazer a análise de IA e renderização final.
+              Recorta o video original antes de fazer a analise de IA e renderizacao final.
             </span>
           </div>
 
           {shouldTrim && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "12px" }}>
               <div className="field" style={{ marginTop: 0 }}>
-                <label htmlFor="trimStart">Início do trecho (segundos ou MM:SS)</label>
+                <label htmlFor="trimStart">Inicio do trecho (segundos ou MM:SS)</label>
                 <input
                   id="trimStart"
                   value={trimStart}
@@ -393,7 +498,7 @@ export function CreateJobForm({
                   setTrimEnd("");
                 }}
               >
-                Vídeo Completo
+                Video Completo
               </button>
             </div>
           )}
@@ -405,7 +510,7 @@ export function CreateJobForm({
               disabled={isAnalyzing || !sourceVideoUrl.trim()}
               onClick={handleStep1Analyze}
             >
-              {isAnalyzing ? "Analisando com Gemini..." : "Analisar vídeo e avançar"}
+              {isAnalyzing ? "Analisando com Gemini..." : "Analisar video e avancar"}
             </button>
           </div>
           {message ? <p className="form-message" style={{ marginTop: "12px" }}>{message}</p> : null}
@@ -415,43 +520,20 @@ export function CreateJobForm({
       {step === 2 && (
         /* STEP 2: React Settings */
         <div>
-          {/* Summary Panel */}
-          <div
-            style={{
-              padding: "12px 16px",
-              background: "var(--panel-strong)",
-              borderRadius: "8px",
-              marginBottom: "20px",
-              border: "1px solid var(--line)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
+          <SummaryPanel
+            label="Video de origem selecionado"
+            actionLabel="Alterar"
+            onAction={() => setStep(1)}
+            meta={shouldTrim ? `Trecho: de ${trimStart || "0"} ate ${trimEnd || "fim"}` : "Video completo (sem cortes)"}
           >
-            <div>
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)", fontWeight: "bold", display: "block" }}>
-                Vídeo de Origem Selecionado
-              </span>
-              <span style={{ fontSize: "0.9rem", wordBreak: "break-all" }}>{sourceVideoUrl}</span>
-              <span style={{ fontSize: "0.84rem", display: "block", marginTop: "4px", color: "var(--brand)", fontWeight: 700 }}>
-                {shouldTrim ? `Trecho: de ${trimStart || "0"} até ${trimEnd || "fim"}` : "Vídeo completo (sem cortes)"}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="button secondary"
-              style={{ minHeight: "36px", padding: "0 12px", fontSize: "0.82rem" }}
-              onClick={() => setStep(1)}
-            >
-              Alterar
-            </button>
-          </div>
+            {sourceVideoUrl}
+          </SummaryPanel>
 
           {/* Video Preview */}
           {parsedSourceVideo && (
             <div style={{ marginBottom: "20px" }}>
               <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold", fontSize: "0.9rem" }}>
-                Prévia do Vídeo Original
+                Previa do Video Original
               </label>
               {parsedSourceVideo.platform === "youtube" ? (
                 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, borderRadius: "8px", overflow: "hidden", border: "1px solid var(--line)", background: "#000" }}>
@@ -502,7 +584,7 @@ export function CreateJobForm({
           </div>
 
           <div className="field">
-            <label htmlFor="avatar-version">Versão do Avatar</label>
+            <label htmlFor="avatar-version">Versao do Avatar</label>
             <select
               id="avatar-version"
               value={versionId}
@@ -514,7 +596,7 @@ export function CreateJobForm({
               required
             >
               {avatars.find((a) => a.id === parentId) && (
-                <option value={parentId}>Padrão (original)</option>
+                <option value={parentId}>Padrao (original)</option>
               )}
               {avatars
                 .filter((a) => a.parent_id === parentId)
@@ -526,42 +608,13 @@ export function CreateJobForm({
             </select>
           </div>
 
-          {/* Selected Version Preview */}
-          {versionId && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: 10, background: "var(--bg-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
-              <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                {avatars.find(a => a.id === versionId)?.image_path ? (
-                  isVideo(avatars.find(a => a.id === versionId)!.image_path) ? (
-                    <video
-                      src={getMediaUrl(avatars.find(a => a.id === versionId)!.image_path)}
-                      muted
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <img
-                      src={getMediaUrl(avatars.find(a => a.id === versionId)!.image_path)}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      alt="Avatar Preview"
-                    />
-                  )
-                ) : null}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: "0.85rem", fontWeight: "bold" }}>
-                  {avatars.find(a => a.id === versionId)?.name || "Avatar padrão"}
-                </span>
-                <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                  {avatars.find(a => a.id === versionId)?.parent_id ? "Subversão do avatar" : "Versão principal padrão"}
-                </span>
-              </div>
-            </div>
-          )}
+          <AvatarVersionPreview avatar={selectedAvatar} />
 
           {/* Optional Base Video Swapping */}
           <div style={{ border: "1px dashed var(--line)", padding: 14, borderRadius: 8, marginTop: 16, background: "var(--panel-strong)" }}>
             <div className="field" style={{ marginTop: 0 }}>
               <label htmlFor="swapped-video" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Upload size={16} /> Trocar vídeo base para este job? (Opcional)
+                <Upload size={16} /> Trocar video base para este job? (Opcional)
               </label>
               <input
                 id="swapped-video"
@@ -571,12 +624,12 @@ export function CreateJobForm({
                   const file = e.target.files?.[0] ?? null;
                   setSwappedVideoFile(file);
                   if (file && !newVersionName) {
-                    setNewVersionName(`Versão via Job - ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR").slice(0, 5)}`);
+                    setNewVersionName(`Versao via Job - ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR").slice(0, 5)}`);
                   }
                 }}
               />
               <span className="field-hint" style={{ fontSize: "0.78rem" }}>
-                Selecione um novo vídeo ou imagem para usar como base para o avatar neste job.
+                Selecione um novo video ou imagem para usar como base para o avatar neste job.
               </span>
             </div>
 
@@ -588,17 +641,17 @@ export function CreateJobForm({
                     checked={saveAsNewVersion}
                     onChange={(e) => setSaveAsNewVersion(e.target.checked)}
                   />
-                  <span>Salvar como uma nova versão do avatar principal?</span>
+                  <span>Salvar como uma nova versao do avatar principal?</span>
                 </label>
 
                 {saveAsNewVersion && (
                   <div className="field" style={{ marginTop: 0 }}>
-                    <label htmlFor="new-version-name">Nome da Nova Versão</label>
+                    <label htmlFor="new-version-name">Nome da Nova Versao</label>
                     <input
                       id="new-version-name"
                       value={newVersionName}
                       onChange={(e) => setNewVersionName(e.target.value)}
-                      placeholder="Ex: João com terno azul"
+                      placeholder="Ex: Joao com terno azul"
                       required={saveAsNewVersion}
                     />
                   </div>
@@ -619,7 +672,7 @@ export function CreateJobForm({
           </div>
 
           <div className="field">
-            <label htmlFor="sourceVideoTitle">Título de referência do vídeo</label>
+            <label htmlFor="sourceVideoTitle">Titulo de referencia do video</label>
             <input
               id="sourceVideoTitle"
               value={sourceVideoTitle}
@@ -640,7 +693,7 @@ export function CreateJobForm({
               onClick={handleGenerateScript}
               disabled={isGeneratingScript || !topic.trim() || !avatarId}
             >
-              {isGeneratingScript ? "Gerando roteiro..." : "Gerar Roteiro e Avançar"}
+              {isGeneratingScript ? "Gerando roteiro..." : "Gerar Roteiro e Avancar"}
             </button>
           </div>
         </div>
@@ -649,40 +702,17 @@ export function CreateJobForm({
       {step === 3 && (
         /* STEP 3: Script Review & Edits */
         <div>
-          {/* Summary Panel */}
-          <div
-            style={{
-              padding: "12px 16px",
-              background: "var(--panel-strong)",
-              borderRadius: "8px",
-              marginBottom: "20px",
-              border: "1px solid var(--line)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
+          <SummaryPanel
+            label="Revisao do roteiro e configuracoes"
+            actionLabel="Alterar assunto/avatar"
+            onAction={() => setStep(2)}
+            disabled={isLoading}
           >
-            <div>
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)", fontWeight: "bold", display: "block" }}>
-                Revisão do Roteiro e Configurações
-              </span>
-              <span style={{ fontSize: "0.9rem", wordBreak: "break-all" }}>
-                Avatar: {avatars.find(a => a.id === avatarId)?.name || "Nenhum"} | Assunto: {topic}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="button secondary"
-              style={{ minHeight: "36px", padding: "0 12px", fontSize: "0.82rem" }}
-              onClick={() => setStep(2)}
-              disabled={isLoading}
-            >
-              Alterar Assunto/Avatar
-            </button>
-          </div>
+            Avatar: {selectedAvatar?.name || "Nenhum"} | Assunto: {topic}
+          </SummaryPanel>
 
           <div className="field" style={{ marginTop: 0 }}>
-            <label htmlFor="scriptText">Roteiro da Dublagem (Gerado pela IA - Você pode editar)</label>
+            <label htmlFor="scriptText">Roteiro da Dublagem (Gerado pela IA - Voce pode editar)</label>
             <textarea
               id="scriptText"
               value={scriptText}
@@ -691,25 +721,25 @@ export function CreateJobForm({
               placeholder="Escreva ou edite o roteiro do react..."
               required
             />
-            <span className="field-hint">Este texto será falado pelo avatar e usado no Lip-sync.</span>
+            <span className="field-hint">Este texto sera falado pelo avatar e usado no Lip-sync.</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
             <div className="field" style={{ marginTop: 0 }}>
-              <label htmlFor="transcription">Transcrição do Vídeo Original (IA)</label>
+              <label htmlFor="transcription">Transcricao do Video Original (IA)</label>
               <textarea
                 id="transcription"
-                value={sourceVideoTranscription || "Sem transcrição de áudio significativa."}
+                value={sourceVideoTranscription || "Sem transcricao de audio significativa."}
                 readOnly
                 rows={4}
                 style={{ background: "var(--panel-strong)", opacity: 0.8, fontSize: "0.86rem" }}
               />
             </div>
             <div className="field" style={{ marginTop: 0 }}>
-              <label htmlFor="description">Descrição Visual do Vídeo (IA)</label>
+              <label htmlFor="description">Descricao Visual do Video (IA)</label>
               <textarea
                 id="description"
-                value={sourceVideoDescription || "Sem descrição visual disponível."}
+                value={sourceVideoDescription || "Sem descricao visual disponivel."}
                 readOnly
                 rows={4}
                 style={{ background: "var(--panel-strong)", opacity: 0.8, fontSize: "0.86rem" }}
@@ -718,7 +748,7 @@ export function CreateJobForm({
           </div>
 
           <div className="field">
-            <label>Layout do vídeo colagem</label>
+            <label>Layout do video colagem</label>
             <div className="layout-options" role="group" aria-label="Layout do video">
               {layoutOptions.map((option) => (
                 <button
@@ -752,7 +782,7 @@ export function CreateJobForm({
               <Scissors size={18} />
               <span>Remover fundo do expert</span>
             </label>
-            <span className="field-hint">Disponível no layout Fonte cheia + expert. Exige rembg no worker.</span>
+            <span className="field-hint">Disponivel no layout Fonte cheia + expert. Exige rembg no worker.</span>
           </div>
 
           {/* Advanced Voice Settings */}
@@ -774,7 +804,7 @@ export function CreateJobForm({
             >
               <span className="advanced-settings-title" style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800 }}>
                 <Settings size={18} />
-                Configurações Avançadas de Voz
+                Configuracoes Avancadas de Voz
               </span>
               {showAdvancedVoice ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
@@ -976,7 +1006,7 @@ export function CreateJobForm({
               Voltar
             </button>
             <button className="button" type="submit" disabled={isLoading}>
-              <Rocket size={18} /> {isLoading ? "Criando e Renderizando..." : "Criar e Iniciar Renderização"}
+              <Rocket size={18} /> {isLoading ? "Criando e Renderizando..." : "Criar e Iniciar Renderizacao"}
             </button>
           </div>
         </div>
