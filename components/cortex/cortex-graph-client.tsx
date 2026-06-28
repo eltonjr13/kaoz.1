@@ -243,6 +243,13 @@ function getEdgeStyle(relation: string) {
   return EDGE_RELATION_COLORS[relation] || { color: 'rgba(157, 124, 255,', dash: false };
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function isNewNode(lastObserved: string): boolean {
   const ms = Date.now() - new Date(lastObserved).getTime();
   return ms < 24 * 60 * 60 * 1000; // últimas 24h
@@ -263,7 +270,6 @@ function formatRelativeTime(iso: string): string {
 export function CortexGraphClient() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pulseTimeRef = useRef<number>(0);
   const dashOffsetRef = useRef<number>(0);
 
   const [nodes, setNodes] = useState<NodeData[]>([]);
@@ -395,7 +401,6 @@ export function CortexGraphClient() {
     window.addEventListener("resize", resizeCanvas);
 
     const tick = () => {
-      pulseTimeRef.current += 0.05;
       dashOffsetRef.current -= 0.5;
 
       const currentNodes = [...nodes];
@@ -579,8 +584,6 @@ export function CortexGraphClient() {
       }
 
       // 2.C. Nós
-      const pulse = Math.sin(pulseTimeRef.current) * 0.5 + 0.5; // 0 a 1
-
       for (const node of currentNodes) {
         if (node.x === undefined || node.y === undefined || node.radius === undefined) continue;
 
@@ -599,52 +602,34 @@ export function CortexGraphClient() {
 
         ctx.save();
 
-        // Anel de pulse para nós novos
+        // Marcação sutil para nós novos
         if (isNew && !isFaded) {
-          const pulseRadius = node.radius + 6 + pulse * 8;
+          const pulseRadius = node.radius + 3;
           ctx.beginPath();
           ctx.arc(node.x, node.y, pulseRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = `${nodeColor.replace('#', 'rgba(')}${pulse * 0.3})`.replace('rgba(', 'rgba(').replace(/^rgba\((.+)\)$/, (_, c) => {
-            // Converte hex para rgba com alpha
-            const r = parseInt(nodeColor.slice(1, 3), 16);
-            const g = parseInt(nodeColor.slice(3, 5), 16);
-            const b = parseInt(nodeColor.slice(5, 7), 16);
-            return `rgba(${r},${g},${b},${pulse * 0.35})`;
-          });
-          // Workaround simples para pulse ring
-          const r = parseInt(nodeColor.slice(1, 3), 16);
-          const g = parseInt(nodeColor.slice(3, 5), 16);
-          const b = parseInt(nodeColor.slice(5, 7), 16);
-          ctx.strokeStyle = `rgba(${r},${g},${b},${pulse * 0.35})`;
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = hexToRgba(nodeColor, 0.3);
+          ctx.lineWidth = 1.5;
           ctx.stroke();
         }
 
-        ctx.shadowColor = nodeColor;
-        ctx.shadowBlur = isSelected ? 20 : isHovered ? 15 : isHighlighted ? 12 : isNew ? 10 : 6;
-
-        // Radial gradient 3D
-        const grad = ctx.createRadialGradient(
-          node.x - node.radius * 0.25,
-          node.y - node.radius * 0.25,
-          node.radius * 0.1,
-          node.x,
-          node.y,
-          node.radius
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = hexToRgba(
+          nodeColor,
+          isFaded ? 0.2 : isSelected ? 0.95 : isHovered || isHighlighted ? 0.9 : 0.8
         );
-        grad.addColorStop(0, "#ffffff");
-        grad.addColorStop(0.2, nodeColor);
-        grad.addColorStop(1, "rgba(0, 0, 0, 0.85)");
-
-        ctx.fillStyle = grad;
-        ctx.globalAlpha = isFaded ? 0.2 : 1.0;
         
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fill();
 
         // Borda
-        ctx.strokeStyle = isSelected ? "#ffffff" : isHovered ? nodeColor : "rgba(255,255,255,0.15)";
+        ctx.strokeStyle = isSelected
+          ? "#ffffff"
+          : isHovered
+            ? nodeColor
+            : isNew && !isFaded
+              ? hexToRgba(nodeColor, 0.45)
+              : "rgba(255,255,255,0.15)";
         ctx.lineWidth = isSelected ? 2.5 : isHovered ? 1.5 : 1;
         ctx.stroke();
 
@@ -668,13 +653,16 @@ export function CortexGraphClient() {
 
         // Badge "NOVO" para nós recentes
         if (isNew && !isFaded && zoom > 0.5) {
-          const r2 = parseInt(nodeColor.slice(1, 3), 16);
-          const g2 = parseInt(nodeColor.slice(3, 5), 16);
-          const b2 = parseInt(nodeColor.slice(5, 7), 16);
-          ctx.fillStyle = `rgba(${r2},${g2},${b2},0.9)`;
+          const badgeY = node.y - node.radius - 11;
+          ctx.fillStyle = "rgba(9, 9, 11, 0.82)";
+          ctx.fillRect(node.x - 16, badgeY - 7, 32, 12);
+          ctx.strokeStyle = hexToRgba(nodeColor, 0.35);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(node.x - 16, badgeY - 7, 32, 12);
+          ctx.fillStyle = hexToRgba(nodeColor, 0.72);
           ctx.font = "bold 7px 'Inter', sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText("NOVO", node.x, node.y - node.radius - 4);
+          ctx.fillText("NOVO", node.x, badgeY + 2);
         }
       }
 
