@@ -62,6 +62,39 @@ function getYtDlpCommand() {
   return { command: "python", argsPrefix: ["-m", "yt_dlp"] };
 }
 
+function getOptionalEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+function getYtDlpCookieArgs() {
+  const cookiesPath = getOptionalEnv("YTDLP_COOKIES_PATH");
+  if (cookiesPath) {
+    return ["--cookies", cookiesPath];
+  }
+
+  const cookiesFromBrowser = getOptionalEnv("YTDLP_COOKIES_FROM_BROWSER");
+  return cookiesFromBrowser ? ["--cookies-from-browser", cookiesFromBrowser] : [];
+}
+
+function hasYtDlpCookieConfig() {
+  return Boolean(getOptionalEnv("YTDLP_COOKIES_PATH") || getOptionalEnv("YTDLP_COOKIES_FROM_BROWSER"));
+}
+
+function isLikelyCookieRequiredError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /empty media response|cookies-from-browser|use --cookies|login required|not accessible/i.test(message);
+}
+
+function createYtDlpCookieError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const authHint = hasYtDlpCookieConfig()
+    ? "Confira se os cookies configurados ainda estao validos."
+    : "Configure YTDLP_COOKIES_PATH ou YTDLP_COOKIES_FROM_BROWSER no .env.local e reinicie o servidor.";
+
+  return new Error(`O Instagram bloqueou o download sem sessao autenticada. ${authHint}\n\nDetalhes do yt-dlp:\n${message}`);
+}
+
 function isRemoteUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
@@ -242,6 +275,7 @@ export async function downloadSourceVideo(rawUrl: string, workDir: string) {
     await runCommand(ytDlp.command, [
       ...ytDlp.argsPrefix,
       "--no-playlist",
+      ...getYtDlpCookieArgs(),
       "--format",
       "bv*+ba/b",
       "--merge-output-format",
@@ -253,6 +287,10 @@ export async function downloadSourceVideo(rawUrl: string, workDir: string) {
   } catch (error) {
     if (isMissingCommandError(error)) {
       throw new Error("yt-dlp nao encontrado. Configure YTDLP_PATH ou instale yt-dlp no worker.");
+    }
+
+    if (isLikelyCookieRequiredError(error)) {
+      throw createYtDlpCookieError(error);
     }
 
     throw error;

@@ -106,6 +106,70 @@ export class FlowImageGenerator {
     }
   }
 
+  private getReferenceNameFragments(referenceImage: string): string[] {
+    const basename = path.basename(referenceImage);
+    const ext = path.extname(basename);
+    const stem = ext ? basename.slice(0, -ext.length) : basename;
+
+    return Array.from(new Set([
+      basename,
+      stem,
+      'agent_ref_image_',
+      'chat_ref_image_',
+      'ref_image_',
+      'avatar_ref_'
+    ].filter(Boolean)));
+  }
+
+  private async selectReferenceAsset(
+    dialog: Locator,
+    referenceImage: string,
+    preferLatestUpload: boolean
+  ): Promise<void> {
+    if (!preferLatestUpload) {
+      for (const fragment of this.getReferenceNameFragments(referenceImage)) {
+        const namedItem = dialog.getByText(fragment, { exact: false }).filter({ visible: true }).first();
+        if (await namedItem.count() > 0 && await namedItem.isVisible()) {
+          logger.info(`Recurso de referencia existente localizado no Flow pelo nome: ${fragment}`);
+          await namedItem.click();
+          return;
+        }
+      }
+
+      logger.warn('Nao encontrei o recurso de referencia pelo nome no Flow. Selecionando o primeiro thumbnail visivel como fallback.');
+    }
+
+    const thumbnail = dialog.locator('img').filter({ visible: true }).first();
+    await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
+    await thumbnail.click();
+  }
+
+  private async prepareReferenceFile(
+    page: Page,
+    fileInput: Locator,
+    referenceImage: string,
+    skipUpload: boolean,
+    useExistingFlowReference: boolean,
+    forceReferenceSelection: boolean
+  ): Promise<boolean> {
+    if ((!skipUpload || forceReferenceSelection) && !useExistingFlowReference) {
+      await fileInput.waitFor({ state: 'attached', timeout: 15000 });
+      logger.info('Input de arquivo de referencia localizado. Fazendo upload...');
+      await fileInput.setInputFiles(referenceImage);
+      logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
+      await page.waitForTimeout(5000);
+      return true;
+    }
+
+    if (useExistingFlowReference) {
+      logger.info('Usando imagem ja existente no Flow. Pulando upload do arquivo fisico.');
+      return false;
+    }
+
+    logger.info('Imagem ja enviada anteriormente nesta sessao do projeto. Pulando upload do arquivo fisico.');
+    return false;
+  }
+
   /**
    * Uploads a reference image to the workspace.
    */
@@ -127,17 +191,14 @@ export class FlowImageGenerator {
 
     const fileInput = page.locator('input[type="file"]').first();
     try {
-      if ((!skipUpload || forceReferenceSelection) && !useExistingFlowReference) {
-        await fileInput.waitFor({ state: 'attached', timeout: 15000 });
-        logger.info('Input de arquivo de referência localizado. Fazendo upload...');
-        await fileInput.setInputFiles(referenceImage);
-        logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
-        await page.waitForTimeout(5000);
-      } else if (useExistingFlowReference) {
-        logger.info('Usando imagem ja existente no Flow. Pulando upload do arquivo fisico.');
-      } else {
-        logger.info('Imagem já enviada anteriormente nesta sessão do projeto. Pulando upload do arquivo físico.');
-      }
+      const uploadedFileThisRun = await this.prepareReferenceFile(
+        page,
+        fileInput,
+        referenceImage,
+        skipUpload,
+        useExistingFlowReference,
+        forceReferenceSelection
+      );
 
       logger.info('Abrindo menu de mídia do prompt...');
       const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
@@ -149,20 +210,9 @@ export class FlowImageGenerator {
       const dialog = page.locator('[role="dialog"], [role="menu"], [data-state="open"]').filter({ hasText: 'Incluir no comando' }).first();
       await dialog.waitFor({ state: 'visible', timeout: 30000 });
 
-      // We do not fill the searchInput to avoid search behavior or issues since Google Flow
-      // truncates long filenames with an ellipsis in the UI list items.
-      // Since the uploaded file is the most recent, it sits at the top under "Recentes".
-      // We directly locate the item containing the prefix "ref_image_".
-      logger.info('Selecionando o recurso mais recente na lista...');
-      if (useExistingFlowReference) {
-        const thumbnail = dialog.locator('img').filter({ visible: true }).first();
-        await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
-        await thumbnail.click();
-      } else {
-        const item = dialog.locator('text=ref_image_').filter({ visible: true }).first();
-        await item.waitFor({ state: 'visible', timeout: 15000 });
-        await item.click();
-      }
+      // Avoid search because Flow can truncate filenames in the media list.
+      logger.info('Selecionando recurso de referencia na lista...');
+      await this.selectReferenceAsset(dialog, referenceImage, uploadedFileThisRun);
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');

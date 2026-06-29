@@ -264,7 +264,7 @@ function JobRow({
   const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
 
   return (
-    <tr>
+    <tr id={`job-${job.id}`}>
       <td>{job.topic}</td>
       <td>{avatar?.name ?? "Avatar removido"}</td>
       <td>

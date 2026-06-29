@@ -2,10 +2,12 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Camera, Play, Rocket, Settings, RotateCcw, ChevronDown, ChevronUp, Scissors, Upload } from "lucide-react";
-import type { Avatar, ExpertBackgroundMode, RenderLayout } from "@/types";
+import { AlertCircle, Camera, CheckCircle, Download, ExternalLink, Play, RefreshCw, Rocket, RotateCcw, ChevronDown, ChevronUp, Scissors, Settings, Upload } from "lucide-react";
+import { JobStatusBadge } from "@/components/jobs/job-status-badge";
+import type { Avatar, ExpertBackgroundMode, JobStatus, RenderLayout } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 function getMediaUrl(filePath: string | null | undefined) {
@@ -23,6 +25,23 @@ type CreateJobFormProps = {
 };
 
 type AvatarOption = CreateJobFormProps["avatars"][number];
+
+type TrackedJob = {
+  id: string;
+  topic: string;
+  status: JobStatus;
+  final_video_path: string | null;
+  audio_path?: string | null;
+  error_message: string | null;
+  updated_at: string;
+};
+
+type TrackedJobEvent = {
+  id: string;
+  event_type: string;
+  message: string;
+  created_at: string;
+};
 
 const layoutOptions: { value: RenderLayout; label: string; description: string }[] = [
   {
@@ -48,6 +67,65 @@ const formSteps = [
   { value: 3, label: "Revisao" }
 ];
 
+const activeJobStatuses = new Set<JobStatus>([
+  "queued",
+  "researching",
+  "scripting",
+  "voice_generating",
+  "lip_syncing",
+  "rendering"
+]);
+
+function isActiveJobStatus(status: JobStatus) {
+  return activeJobStatuses.has(status);
+}
+
+function formatRelativeTime(iso?: string | null) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) return `ha ${diffSeconds}s`;
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `ha ${diffMinutes}m`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `ha ${diffHours}h`;
+
+  return `ha ${Math.floor(diffHours / 24)}d`;
+}
+
+async function readTrackedJobResponse(response: Response) {
+  if (!response.ok) return undefined;
+
+  const payload = (await response.json().catch(() => ({}))) as { jobs?: TrackedJob[] };
+  return payload.jobs?.[0] ?? null;
+}
+
+async function readTrackedEventsResponse(response: Response) {
+  if (!response.ok) return undefined;
+
+  const payload = (await response.json().catch(() => ({}))) as { events?: TrackedJobEvent[] };
+  return payload.events ?? [];
+}
+
+async function fetchTrackedJobSnapshot(jobId: string) {
+  const [jobResponse, eventsResponse] = await Promise.all([
+    fetch(`/api/jobs?jobId=${encodeURIComponent(jobId)}`),
+    fetch(`/api/jobs/events?jobId=${encodeURIComponent(jobId)}`)
+  ]);
+
+  const [job, events] = await Promise.all([
+    readTrackedJobResponse(jobResponse),
+    readTrackedEventsResponse(eventsResponse)
+  ]);
+
+  return { job, events };
+}
+
 function StepIndicator({ currentStep }: { currentStep: number }) {
   return (
     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -66,6 +144,53 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+function CompactSettingsPanel({
+  title,
+  summary,
+  icon,
+  open,
+  onToggle,
+  children
+}: {
+  title: string;
+  summary: string;
+  icon: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="advanced-settings-panel">
+      <button
+        type="button"
+        className="advanced-settings-header button secondary full"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          border: "none",
+          borderRadius: 0,
+          background: "none",
+          minHeight: "48px",
+          padding: "12px 16px"
+        }}
+        onClick={onToggle}
+      >
+        <span style={{ display: "flex", minWidth: 0, alignItems: "center", gap: "8px", fontWeight: 800 }}>
+          {icon}
+          <span>{title}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: "0.78rem", fontWeight: 500 }}>
+            {summary}
+          </span>
+        </span>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open ? <div className="advanced-settings-content">{children}</div> : null}
     </div>
   );
 }
@@ -120,6 +245,181 @@ function SummaryPanel({
         {actionLabel}
       </button>
     </div>
+  );
+}
+
+type GenerationTrackerProps = {
+  job: TrackedJob;
+  events: TrackedJobEvent[];
+  isRefreshing: boolean;
+  isRestarting: boolean;
+  onRefresh: () => void;
+  onRestart: (startFrom?: "lipsync") => void;
+};
+
+function TrackerHeader({
+  job,
+  latestEvent,
+  isRefreshing,
+  onRefresh
+}: Pick<GenerationTrackerProps, "job" | "isRefreshing" | "onRefresh"> & {
+  latestEvent?: TrackedJobEvent;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gap: 6 }}>
+        <span style={{ color: "var(--muted)", fontSize: "0.78rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+          Acompanhamento da geracao
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <JobStatusBadge status={job.status} />
+          {isActiveJobStatus(job.status) ? (
+            <span style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Atualizacao automatica ativa</span>
+          ) : null}
+        </div>
+        <strong style={{ fontSize: "0.95rem" }}>{job.topic}</strong>
+        <span style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+          {latestEvent?.message || job.error_message || `Atualizado ${formatRelativeTime(job.updated_at)}`}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {job.final_video_path ? (
+          <a className="button" href={job.final_video_path}>
+            <Download size={16} /> Baixar
+          </a>
+        ) : null}
+        <Link className="button secondary" href={`/jobs#job-${job.id}`}>
+          <ExternalLink size={16} /> Ver detalhes
+        </Link>
+        <button className="button secondary" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          <RefreshCw size={16} className={isRefreshing ? "spin-icon" : ""} />
+          Atualizar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TrackerNotice({ job }: { job: TrackedJob }) {
+  if (job.status === "failed" && job.error_message) {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--danger)", fontSize: "0.85rem" }}>
+        <AlertCircle size={16} /> {job.error_message}
+      </div>
+    );
+  }
+
+  if (job.status === "completed") {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--success)", fontSize: "0.85rem" }}>
+        <CheckCircle size={16} /> Geracao concluida.
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function TrackerEvents({ events }: { events: TrackedJobEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <span style={{ color: "var(--muted)", fontSize: "0.84rem" }}>
+        Os eventos do job aparecem aqui assim que o pipeline registrar o primeiro passo.
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <span style={{ color: "var(--muted)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase" }}>
+        Ultimos eventos
+      </span>
+      <div style={{ display: "grid", gap: 6 }}>
+        {events.slice(-5).reverse().map((event) => (
+          <div
+            key={event.id}
+            style={{
+              display: "grid",
+              gap: 2,
+              border: "1px solid var(--line)",
+              borderRadius: 6,
+              padding: "8px 10px",
+              background: "var(--panel-strong)"
+            }}
+          >
+            <span style={{ fontSize: "0.84rem" }}>{event.message}</span>
+            <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>
+              {event.event_type} - {formatRelativeTime(event.created_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrackerRestartActions({
+  job,
+  isRestarting,
+  onRestart
+}: Pick<GenerationTrackerProps, "job" | "isRestarting" | "onRestart">) {
+  const canRestart = !isActiveJobStatus(job.status);
+  const canRestartFromLipSync = Boolean(job.audio_path) && job.status !== "queued" && job.status !== "researching" && job.status !== "scripting" && job.status !== "voice_generating";
+
+  if (!canRestart) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <button className="button secondary" type="button" onClick={() => onRestart()} disabled={isRestarting}>
+        <RefreshCw size={16} className={isRestarting ? "spin-icon" : ""} />
+        {isRestarting ? "Reiniciando..." : "Reiniciar pipeline"}
+      </button>
+      {canRestartFromLipSync ? (
+        <button className="button secondary" type="button" onClick={() => onRestart("lipsync")} disabled={isRestarting}>
+          Refazer lip-sync
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function GenerationTracker({
+  job,
+  events,
+  isRefreshing,
+  isRestarting,
+  onRefresh,
+  onRestart
+}: GenerationTrackerProps) {
+  const latestEvent = events[events.length - 1];
+
+  return (
+    <section
+      style={{
+        border: "1px solid var(--line)",
+        background: "var(--panel)",
+        borderRadius: 8,
+        padding: 16,
+        display: "grid",
+        gap: 14
+      }}
+      aria-live="polite"
+    >
+      <TrackerHeader
+        job={job}
+        latestEvent={latestEvent}
+        isRefreshing={isRefreshing}
+        onRefresh={onRefresh}
+      />
+      <TrackerNotice job={job} />
+      <TrackerEvents events={events} />
+      <TrackerRestartActions
+        job={job}
+        isRestarting={isRestarting}
+        onRestart={onRestart}
+      />
+    </section>
   );
 }
 
@@ -192,6 +492,10 @@ export function CreateJobForm({
   const [expertBackgroundMode, setExpertBackgroundMode] = useState<ExpertBackgroundMode>("original");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [trackedJob, setTrackedJob] = useState<TrackedJob | null>(null);
+  const [trackedEvents, setTrackedEvents] = useState<TrackedJobEvent[]>([]);
+  const [isRefreshingJob, setIsRefreshingJob] = useState(false);
+  const [isRestartingJob, setIsRestartingJob] = useState(false);
 
   // Video analysis and editing states
   const [scriptText, setScriptText] = useState("");
@@ -219,6 +523,62 @@ export function CreateJobForm({
   const [preprocessPrompt, setPreprocessPrompt] = useState(true);
   const [postprocessOutput, setPostprocessOutput] = useState(true);
   const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
+  const [showLayoutSettings, setShowLayoutSettings] = useState(false);
+
+  const refreshTrackedJob = useCallback(async (jobId: string, options?: { silent?: boolean }) => {
+    const showLoading = options?.silent !== true;
+    if (showLoading) setIsRefreshingJob(true);
+
+    try {
+      const { job, events } = await fetchTrackedJobSnapshot(jobId);
+      if (job !== undefined) setTrackedJob(job);
+      if (events !== undefined) setTrackedEvents(events);
+    } catch {
+      if (showLoading) {
+        setMessage("Nao foi possivel atualizar o acompanhamento do job.");
+      }
+    } finally {
+      if (showLoading) setIsRefreshingJob(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!trackedJob || !isActiveJobStatus(trackedJob.status)) return;
+
+    const interval = window.setInterval(() => {
+      void refreshTrackedJob(trackedJob.id, { silent: true });
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, [refreshTrackedJob, trackedJob]);
+
+  async function handleRestartJob(startFrom?: "lipsync") {
+    if (!trackedJob) return;
+
+    setMessage("");
+    setIsRestartingJob(true);
+    try {
+      const response = await fetch("/api/pipeline/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: trackedJob.id, startFrom })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        setMessage(payload.error ?? "Nao foi possivel reiniciar o pipeline.");
+        return;
+      }
+
+      setMessage(startFrom === "lipsync" ? "Lip-sync reiniciado." : "Pipeline reiniciado.");
+      await refreshTrackedJob(trackedJob.id);
+      router.refresh();
+    } catch {
+      setMessage("Erro de conexao ao reiniciar o pipeline.");
+    } finally {
+      setIsRestartingJob(false);
+    }
+  }
 
   async function handleStep1Analyze() {
     setMessage("");
@@ -367,13 +727,16 @@ export function CreateJobForm({
         })
       });
 
-      const createPayload = (await createResponse.json()) as { job?: { id: string }; error?: string };
+      const createPayload = (await createResponse.json()) as { job?: TrackedJob; error?: string };
 
       if (!createResponse.ok || !createPayload.job) {
         setIsLoading(false);
         setMessage(createPayload.error ?? "Nao foi possivel criar o job.");
         return;
       }
+
+      setTrackedJob(createPayload.job);
+      setTrackedEvents([]);
 
       const startResponse = await fetch("/api/pipeline/start", {
         method: "POST",
@@ -386,10 +749,12 @@ export function CreateJobForm({
       if (!startResponse.ok) {
         const payload = (await startResponse.json()) as { error?: string };
         setMessage(payload.error ?? "Job criado, mas o pipeline nao iniciou.");
+        await refreshTrackedJob(createPayload.job.id);
         return;
       }
 
-      router.push("/jobs");
+      setMessage("Job criado e pipeline iniciado.");
+      await refreshTrackedJob(createPayload.job.id);
       router.refresh();
     } catch {
       setIsLoading(false);
@@ -747,72 +1112,80 @@ export function CreateJobForm({
             </div>
           </div>
 
-          <div className="field">
-            <label>Layout do video colagem</label>
-            <div className="layout-options" role="group" aria-label="Layout do video">
-              {layoutOptions.map((option) => (
-                <button
-                  className={`layout-option ${renderLayout === option.value ? "active" : ""}`}
-                  type="button"
-                  onClick={() => {
-                    setRenderLayout(option.value);
-                    if (option.value !== "source_pip") {
-                      setExpertBackgroundMode("original");
-                    }
-                  }}
-                  key={option.value}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <span className="field-hint">
-              {layoutOptions.find((option) => option.value === renderLayout)?.description}
-            </span>
-          </div>
-
-          <div className="field">
-            <label className={`toggle-row ${!canRemoveExpertBackground ? "disabled" : ""}`}>
-              <input
-                type="checkbox"
-                checked={expertBackgroundMode === "remove"}
-                disabled={!canRemoveExpertBackground}
-                onChange={(event) => setExpertBackgroundMode(event.target.checked ? "remove" : "original")}
-              />
-              <Scissors size={18} />
-              <span>Remover fundo do expert</span>
-            </label>
-            <span className="field-hint">Disponivel no layout Fonte cheia + expert. Exige rembg no worker.</span>
-          </div>
-
-          {/* Advanced Voice Settings */}
-          <div className="advanced-settings-panel">
-            <button
-              type="button"
-              className="advanced-settings-header button secondary full"
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                border: "none",
-                borderRadius: 0,
-                background: "none",
-                minHeight: "48px",
-                padding: "12px 16px"
-              }}
-              onClick={() => setShowAdvancedVoice(!showAdvancedVoice)}
-            >
-              <span className="advanced-settings-title" style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800 }}>
-                <Settings size={18} />
-                Configuracoes Avancadas de Voz
+          <CompactSettingsPanel
+            title="Layout e composicao"
+            summary={`${layoutOptions.find((option) => option.value === renderLayout)?.label ?? "Layout"} - ${expertBackgroundMode === "remove" ? "fundo removido" : "fundo original"}`}
+            icon={<Scissors size={18} />}
+            open={showLayoutSettings}
+            onToggle={() => setShowLayoutSettings((value) => !value)}
+          >
+            <div className="field" style={{ marginTop: 0 }}>
+              <label>Layout do video colagem</label>
+              <div className="layout-options" role="group" aria-label="Layout do video">
+                {layoutOptions.map((option) => (
+                  <button
+                    className={`layout-option ${renderLayout === option.value ? "active" : ""}`}
+                    type="button"
+                    onClick={() => {
+                      setRenderLayout(option.value);
+                      if (option.value !== "source_pip") {
+                        setExpertBackgroundMode("original");
+                      }
+                    }}
+                    key={option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="field-hint">
+                {layoutOptions.find((option) => option.value === renderLayout)?.description}
               </span>
-              {showAdvancedVoice ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            </button>
+            </div>
 
-            {showAdvancedVoice && (
-              <div className="advanced-settings-content">
-                {/* Inference Steps */}
-                <div className="advanced-slider-group">
+            <div className="field">
+              <label className={`toggle-row ${!canRemoveExpertBackground ? "disabled" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={expertBackgroundMode === "remove"}
+                  disabled={!canRemoveExpertBackground}
+                  onChange={(event) => setExpertBackgroundMode(event.target.checked ? "remove" : "original")}
+                />
+                <Scissors size={18} />
+                <span>Remover fundo do expert</span>
+              </label>
+              <span className="field-hint">Disponivel no layout Fonte cheia + expert. Exige rembg no worker.</span>
+            </div>
+
+            <div
+              className={`collage-preview ${renderLayout} ${expertBackgroundMode === "remove" ? "expert-cutout" : ""}`}
+              aria-label="Preview da colagem"
+            >
+              <div className="collage-preview-source">
+                <SourceIcon size={18} />
+                <span>
+                  {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube / Video"}
+                </span>
+              </div>
+              <div className="collage-preview-expert">
+                <span>Expert</span>
+              </div>
+            </div>
+          </CompactSettingsPanel>
+
+          <CompactSettingsPanel
+            title="Voz e lip-sync"
+            summary={`${speed.toFixed(1).replace(".", ",")}x, ${inferenceSteps} steps, ${duration || "auto"}s`}
+            icon={<Settings size={18} />}
+            open={showAdvancedVoice}
+            onToggle={() => setShowAdvancedVoice((value) => !value)}
+          >
+            <span className="field-hint" style={{ marginTop: 0 }}>
+              A voz gerada por OmniVoice segue automaticamente para o lip-sync. Mantenha os defaults se nao precisar de ajuste fino.
+            </span>
+
+            {/* Inference Steps */}
+            <div className="advanced-slider-group">
                   <div className="advanced-slider-header">
                     <span className="advanced-slider-label">Inference Steps</span>
                     <div className="advanced-slider-controls">
@@ -962,42 +1335,25 @@ export function CreateJobForm({
                 </div>
 
                 {/* Checkboxes Row */}
-                <div className="advanced-checkboxes-row">
-                  <label className="advanced-checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={preprocessPrompt}
-                      onChange={(e) => setPreprocessPrompt(e.target.checked)}
-                    />
-                    <span>Preprocess Prompt</span>
-                  </label>
-                  <label className="advanced-checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={postprocessOutput}
-                      onChange={(e) => setPostprocessOutput(e.target.checked)}
-                    />
-                    <span>Postprocess Output</span>
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div
-            className={`collage-preview ${renderLayout} ${expertBackgroundMode === "remove" ? "expert-cutout" : ""}`}
-            aria-label="Preview da colagem"
-          >
-            <div className="collage-preview-source">
-              <SourceIcon size={18} />
-              <span>
-                {parsedSourceVideo ? getSourceVideoPlatformLabel(parsedSourceVideo.platform) : "Instagram / YouTube / Video"}
-              </span>
+            <div className="advanced-checkboxes-row">
+              <label className="advanced-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={preprocessPrompt}
+                  onChange={(e) => setPreprocessPrompt(e.target.checked)}
+                />
+                <span>Preprocess Prompt</span>
+              </label>
+              <label className="advanced-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={postprocessOutput}
+                  onChange={(e) => setPostprocessOutput(e.target.checked)}
+                />
+                <span>Postprocess Output</span>
+              </label>
             </div>
-            <div className="collage-preview-expert">
-              <span>Expert</span>
-            </div>
-          </div>
+          </CompactSettingsPanel>
 
           {message ? <p className="form-message">{message}</p> : null}
 
@@ -1011,6 +1367,17 @@ export function CreateJobForm({
           </div>
         </div>
       )}
+
+      {trackedJob ? (
+        <GenerationTracker
+          job={trackedJob}
+          events={trackedEvents}
+          isRefreshing={isRefreshingJob}
+          isRestarting={isRestartingJob}
+          onRefresh={() => void refreshTrackedJob(trackedJob.id)}
+          onRestart={(startFrom) => void handleRestartJob(startFrom)}
+        />
+      ) : null}
     </form>
   );
 }

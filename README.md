@@ -115,8 +115,17 @@ Tambem e possivel configurar caminhos explicitos:
 FFMPEG_PATH=
 FFPROBE_PATH=
 YTDLP_PATH=
+YTDLP_COOKIES_PATH=
+YTDLP_COOKIES_FROM_BROWSER=
 REMBG_PYTHON_PATH=
 ```
+
+Para links do Instagram que exigem login, configure um destes caminhos de autenticacao para o `yt-dlp`:
+
+- `YTDLP_COOKIES_PATH`: arquivo de cookies no formato Netscape, recomendado para ambientes estaveis.
+- `YTDLP_COOKIES_FROM_BROWSER`: perfil do navegador para leitura local de cookies, por exemplo `chrome`, `edge` ou `firefox`.
+
+Depois de alterar essas variaveis no `.env.local`, reinicie o servidor Next.js para o worker carregar a nova configuracao.
 
 Para usar o recorte do expert, instale as dependencias Python no worker:
 

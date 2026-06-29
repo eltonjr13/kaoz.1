@@ -595,6 +595,8 @@ export class FlowAgent {
 
     for (const view of viewsToGenerate) {
       const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
+      const isFirstGeneratedView = view === viewsToGenerate[0];
+      const useExistingReferenceAsset = options.useExistingFlowReference || !isFirstGeneratedView;
 
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
@@ -603,8 +605,8 @@ export class FlowAgent {
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
         referenceImage: referencePath,
-        forceReferenceUpload: options.useExistingFlowReference ? view === viewsToGenerate[0] : true,
-        useExistingFlowReference: options.useExistingFlowReference
+        forceReferenceUpload: isFirstGeneratedView,
+        useExistingFlowReference: useExistingReferenceAsset
       });
 
       const viewPaths = this.getImageResultPaths(viewResult);
