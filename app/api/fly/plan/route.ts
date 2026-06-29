@@ -1,63 +1,105 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { generateFlyJson, parseFlyAiModel } from "@/lib/ai/fly-json";
+import { createLocalFlyCampaign } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
 
+type FlyPlanRequest = {
+  campaignGoal: string;
+  questions: string[];
+  answers: string[];
+  avatarId: string | null;
+  model: ReturnType<typeof parseFlyAiModel>;
+};
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parsePlanRequest(body: Record<string, unknown> | null): FlyPlanRequest | null {
+  if (!body || typeof body.campaignGoal !== "string" || !Array.isArray(body.questions) || !Array.isArray(body.answers)) {
+    return null;
+  }
+
+  return {
+    campaignGoal: body.campaignGoal,
+    questions: stringArray(body.questions),
+    answers: stringArray(body.answers),
+    avatarId: typeof body.avatarId === "string" && body.avatarId.trim() ? body.avatarId.trim() : null,
+    model: parseFlyAiModel(body.model)
+  };
+}
+
+function parsePlanJson(responseText: string): Record<string, unknown> | null {
+  try {
+    const cleaned = responseText.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    console.error("Falha ao analisar JSON do plano de campanha:", responseText);
+    return null;
+  }
+}
+
+function applyAvatarId(planData: Record<string, unknown>, avatarId: string | null) {
+  if (!avatarId || !planData.avatarRecommendation || typeof planData.avatarRecommendation !== "object") {
+    return planData;
+  }
+
+  return {
+    ...planData,
+    avatarRecommendation: {
+      ...(planData.avatarRecommendation as Record<string, unknown>),
+      avatarId
+    }
+  };
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => null);
-    if (!body || typeof body.campaignGoal !== "string" || !Array.isArray(body.questions) || !Array.isArray(body.answers)) {
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    const parsedRequest = parsePlanRequest(body);
+    if (!parsedRequest) {
       return NextResponse.json(
-        { error: "Parâmetros 'campaignGoal', 'questions' e 'answers' são obrigatórios." },
+        { error: "Parametros 'campaignGoal', 'questions' e 'answers' sao obrigatorios." },
         { status: 400 }
       );
     }
 
-    const { campaignGoal, questions, answers, avatarId, model } = body;
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "GEMINI_API_KEY não configurada no servidor." },
-        { status: 500 }
-      );
-    }
-
-    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const ai = new GoogleGenAI({ apiKey });
+    const { campaignGoal, questions, answers, avatarId, model } = parsedRequest;
 
     const qnaString = questions.map((q: string, idx: number) => {
-      const ans = answers[idx] || "Não especificado";
+      const ans = answers[idx] || "Nao especificado";
       return `Pergunta: ${q}\nResposta: ${ans}`;
     }).join("\n\n");
 
     const prompt = `
-Você é o Piloto Automático do MrChicken, um diretor de criação e estrategista de marketing digital avançado.
-O usuário deseja planejar uma campanha otimizada de criativos e vídeos com base nos seguintes dados:
+Voce e o Piloto Automatico do MrChicken, um diretor de criacao e estrategista de marketing digital avancado.
+O usuario deseja planejar uma campanha otimizada de criativos e videos com base nos seguintes dados:
 
 Briefing Inicial da Campanha: "${campaignGoal}"
 
-Respostas do Questionário de Diagnóstico:
+Respostas do Questionario de Diagnostico:
 ${qnaString}
 
-Sua tarefa é planejar, estruturar e coordenar as melhores decisões criativas para gerar o **Plano de Campanha Otimizado Definitivo**.
+Sua tarefa e planejar, estruturar e coordenar as melhores decisoes criativas para gerar o Plano de Campanha Otimizado Definitivo.
 
 O plano deve conter:
-1. Nome da Campanha e Slogan atraente.
-2. Perfil detalhado do Público-alvo (demográfica, principais dores e desejos).
-3. Proposta de Valor central.
-4. Raciocínio de recomendação do avatar.
-5. Recomendações de Criativos de Anúncio de Imagem (Exatamente 4 conceitos). Para cada um, defina:
+1. Nome da Campanha e slogan atraente.
+2. Perfil detalhado do publico-alvo (demografica, principais dores e desejos).
+3. Proposta de valor central.
+4. Raciocinio de recomendacao do avatar.
+5. Recomendacoes de criativos de anuncio de imagem (exatamente 4 conceitos). Para cada um, defina:
    - Um nome de conceito curto (ex: "Visual Showcase", "Pain Relief")
-   - Copy/Texto do criativo (frase curta e magnética para aparecer sobre a imagem)
-   - Prompt visual detalhado em inglês para o gerador de imagens (ImageFX). O prompt deve ser focado em um único assunto/personagem/objeto, com iluminação de estúdio profissional, estilo premium ("depth of field", "cinematic lighting") e especificação exata de onde e como o texto (copyText) deve ser desenhado na imagem em inglês de forma integrada (ex: "with a clean bold sans-serif text overlay in the top area reading '...'").
-   - Breve explicação estratégica do porquê esse conceito funciona.
-6. Recomendações de Vídeos de React (Exatamente 2 conceitos). Para cada um, defina:
-   - Título marcante do vídeo.
-   - Um gancho de atenção curto para os primeiros 3 segundos.
-   - Assunto de pesquisa/reação (o termo de busca ou tipo de vídeo que o avatar irá reagir e comentar).
-   - Roteiro sugerido de no máximo 15 segundos em português, simulando a fala do avatar reagindo e vendendo/chamando para ação.
-   - Breve justificativa estratégica.
-7. Legendas Sociais (Exatamente 2 opções de legenda com emojis, hashtags e chamada para ação clara).
+   - Copy/texto do criativo (frase curta e magnetica para aparecer sobre a imagem)
+   - Prompt visual detalhado em ingles para o gerador de imagens (ImageFX). O prompt deve ser focado em um unico assunto/personagem/objeto, com iluminacao de estudio profissional, estilo premium ("depth of field", "cinematic lighting") e especificacao exata de onde e como o texto (copyText) deve ser desenhado na imagem em ingles de forma integrada (ex: "with a clean bold sans-serif text overlay in the top area reading '...'").
+   - Breve explicacao estrategica do porque esse conceito funciona.
+6. Recomendacoes de videos de react (exatamente 2 conceitos). Para cada um, defina:
+   - Titulo marcante do video.
+   - Um gancho de atencao curto para os primeiros 3 segundos.
+   - Assunto de pesquisa/reacao (o termo de busca ou tipo de video que o avatar ira reagir e comentar).
+   - Roteiro sugerido de no maximo 15 segundos em portugues, simulando a fala do avatar reagindo e vendendo/chamando para acao.
+   - Breve justificativa estrategica.
+7. Legendas sociais (exatamente 2 opcoes de legenda com emojis, hashtags e chamada para acao clara).
 
 Responda RIGOROSAMENTE em formato JSON seguindo exatamente esta estrutura:
 {
@@ -65,7 +107,7 @@ Responda RIGOROSAMENTE em formato JSON seguindo exatamente esta estrutura:
   "tagline": "Slogan da Campanha",
   "objective": "Objetivo original resumido",
   "targetAudience": {
-    "demographic": "Perfil demográfico geral",
+    "demographic": "Perfil demografico geral",
     "painPoints": ["dor 1", "dor 2"],
     "desires": ["desejo 1", "desejo 2"]
   },
@@ -79,15 +121,15 @@ Responda RIGOROSAMENTE em formato JSON seguindo exatamente esta estrutura:
       "conceptName": "Conceito 1",
       "copyText": "Texto a ser colocado na imagem",
       "visualPrompt": "Detailed visual prompt in English for image generator...",
-      "explanation": "Explicação da estratégia"
+      "explanation": "Explicacao da estrategia"
     }
   ],
   "recommendedReactVideos": [
     {
-      "title": "Título do Vídeo 1",
-      "topic": "Assunto ou nicho do vídeo fonte para reagir",
+      "title": "Titulo do Video 1",
+      "topic": "Assunto ou nicho do video fonte para reagir",
       "hook": "Gancho inicial de 3 segundos",
-      "voiceoverScript": "Roteiro do react em português (limite de 15 segundos de fala)",
+      "voiceoverScript": "Roteiro do react em portugues (limite de 15 segundos de fala)",
       "explanation": "Por que esse react converte"
     }
   ],
@@ -95,46 +137,43 @@ Responda RIGOROSAMENTE em formato JSON seguindo exatamente esta estrutura:
     {
       "platform": "Instagram / TikTok",
       "captionText": "Texto completo da legenda",
-      "callToAction": "Chamada para ação"
+      "callToAction": "Chamada para acao"
     }
   ]
 }
 
-IMPORTANTE: Não inclua nenhuma marcação de bloco de código (\`\`\`json). Retorne exclusivamente o JSON bruto validável.
+IMPORTANTE: Nao inclua nenhuma marcacao de bloco de codigo (\`\`\`json). Retorne exclusivamente o JSON bruto validavel.
 `;
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-
-    const responseText = response.text || "{}";
-    let planData;
-    try {
-      const cleaned = responseText.replace(/```json|```/g, "").trim();
-      planData = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error("Falha ao analisar JSON do plano de campanha:", responseText);
+    const responseText = await generateFlyJson(model, prompt);
+    const parsedPlanData = parsePlanJson(responseText);
+    if (!parsedPlanData) {
       return NextResponse.json({ error: "Falha na resposta do servidor de IA." }, { status: 500 });
     }
+    const planData = applyAvatarId(parsedPlanData, avatarId);
 
-    // Force inject the actual avatarId if passed
-    if (avatarId && planData.avatarRecommendation) {
-      planData.avatarRecommendation.avatarId = avatarId;
-    }
-
-    return NextResponse.json({
-      success: true,
+    const campaign = await createLocalFlyCampaign({
+      campaignGoal,
+      questions,
+      answers,
+      avatarId,
+      model,
       plan: planData
     });
 
-  } catch (err: any) {
+    return NextResponse.json({
+      success: true,
+      model,
+      campaignId: campaign.id,
+      campaign,
+      plan: planData
+    });
+
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[API FLY PLAN] Erro no endpoint:", err);
     return NextResponse.json(
-      { error: `Falha ao gerar plano: ${err.message || String(err)}` },
+      { error: `Falha ao gerar plano: ${errMsg}` },
       { status: 500 }
     );
   }

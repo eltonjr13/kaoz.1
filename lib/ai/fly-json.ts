@@ -1,0 +1,91 @@
+import { GoogleGenAI } from "@google/genai";
+import { OpenAI } from "openai";
+
+export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek";
+
+export function parseFlyAiModel(value: unknown): FlyAiModel {
+  return value === "chatgpt" || value === "claude" || value === "deepseek" || value === "gemini"
+    ? value
+    : "gemini";
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} nao configurada no servidor.`);
+  }
+  return value;
+}
+
+async function generateWithGemini(prompt: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: requireEnv("GEMINI_API_KEY") });
+  const response = await ai.models.generateContent({
+    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    contents: prompt,
+    config: { responseMimeType: "application/json" }
+  });
+  return response.text || "{}";
+}
+
+async function generateWithOpenAI(prompt: string): Promise<string> {
+  const openai = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
+  const response = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.7
+  });
+  return response.choices[0]?.message?.content || "{}";
+}
+
+async function generateWithDeepSeek(prompt: string): Promise<string> {
+  const deepseek = new OpenAI({
+    apiKey: requireEnv("DEEPSEEK_API_KEY"),
+    baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
+  });
+  const response = await deepseek.chat.completions.create({
+    model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.7
+  });
+  return response.choices[0]?.message?.content || "{}";
+}
+
+async function generateWithClaude(prompt: string): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": requireEnv("ANTHROPIC_API_KEY"),
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest",
+      max_tokens: 4000,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Anthropic API retornou ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json() as {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  return data.content?.find((part) => part.type === "text")?.text || "{}";
+}
+
+export async function generateFlyJson(model: FlyAiModel, prompt: string): Promise<string> {
+  switch (model) {
+    case "chatgpt":
+      return generateWithOpenAI(prompt);
+    case "claude":
+      return generateWithClaude(prompt);
+    case "deepseek":
+      return generateWithDeepSeek(prompt);
+    case "gemini":
+      return generateWithGemini(prompt);
+  }
+}

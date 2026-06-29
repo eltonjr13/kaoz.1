@@ -255,6 +255,23 @@ interface CampaignPlan {
   socialCaptions: SocialCaption[];
 }
 
+interface FlyCampaignJob {
+  key: string;
+  jobId: string;
+  type: "ad-creative" | "react-video";
+}
+
+interface FlyCampaign {
+  id: string;
+  campaign_goal: string;
+  questions: string[];
+  answers: string[];
+  avatar_id: string | null;
+  model: "gemini" | "chatgpt" | "claude" | "deepseek";
+  plan: CampaignPlan;
+  jobs?: FlyCampaignJob[];
+}
+
 interface JobState {
   jobId: string;
   status: "idle" | "running" | "completed" | "failed";
@@ -263,6 +280,30 @@ interface JobState {
   resultPaths?: string[];
   error?: string;
 }
+
+const FLY_CAMPAIGN_QUERY_PARAM = "flyCampaign";
+
+const getGeneratedMediaUrl = (mediaPath?: string | null) => {
+  if (!mediaPath) return "";
+  if (/^(https?:|blob:|data:)/i.test(mediaPath)) return mediaPath;
+  if (mediaPath.startsWith("/api/flow/media")) return mediaPath;
+  if (mediaPath.startsWith("/uploads/")) return mediaPath;
+  if (mediaPath.startsWith("uploads/")) return `/${mediaPath}`;
+  if (mediaPath.startsWith("public/")) return mediaPath.substring(6);
+  if (mediaPath.startsWith("/public/")) return mediaPath.substring(7);
+  return `/api/flow/media?path=${encodeURIComponent(mediaPath)}`;
+};
+
+const buildRestoredJobState = (jobs: FlyCampaignJob[] = []): Record<string, JobState> => {
+  return jobs.reduce<Record<string, JobState>>((acc, job) => {
+    acc[job.key] = {
+      jobId: job.jobId,
+      status: "running",
+      logs: [`Job restaurado da campanha: ${job.jobId}. Atualizando status...`]
+    };
+    return acc;
+  }, {});
+};
 
 export function FlyModeWizard({
   avatars,
@@ -284,6 +325,8 @@ export function FlyModeWizard({
   // Planning Step
   const [progressMessage, setProgressMessage] = useState("Coordenando decisões estratégicas...");
   const [plan, setPlan] = useState<CampaignPlan | null>(null);
+  const [campaignId, setCampaignId] = useState("");
+  const [isRestoringCampaign, setIsRestoringCampaign] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "creatives" | "videos" | "captions">("overview");
 
   // Job Launch state
@@ -306,6 +349,102 @@ export function FlyModeWizard({
 
   // Auto-close toast / clipboard alerts
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const updateCampaignUrl = React.useCallback((nextCampaignId?: string | null) => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (nextCampaignId) {
+      url.searchParams.set(FLY_CAMPAIGN_QUERY_PARAM, nextCampaignId);
+    } else {
+      url.searchParams.delete(FLY_CAMPAIGN_QUERY_PARAM);
+    }
+
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const applyCampaign = React.useCallback((campaign: FlyCampaign) => {
+    setCampaignId(campaign.id);
+    setCampaignGoal(campaign.campaign_goal);
+    setQuestions(campaign.questions);
+    setAnswers(campaign.answers.length > 0 ? campaign.answers : ["", "", ""]);
+    setPlan(campaign.plan);
+    setActiveTab("creatives");
+    setLaunchedJobs(buildRestoredJobState(campaign.jobs));
+    if (campaign.avatar_id) {
+      setSelectedAvatarId(campaign.avatar_id);
+    }
+    if (campaign.model) {
+      setAgentModel(campaign.model);
+    }
+    setStep("blueprint");
+  }, [setAgentModel, setSelectedAvatarId]);
+
+  const resetCampaign = React.useCallback(() => {
+    setCampaignId("");
+    setCampaignGoal("");
+    setQuestions([]);
+    setAnswers(["", "", ""]);
+    setPlan(null);
+    setLaunchedJobs({});
+    setError(null);
+    setStep("briefing");
+    updateCampaignUrl(null);
+  }, [updateCampaignUrl]);
+
+  const persistCampaignJob = React.useCallback((job: {
+    key: string;
+    jobId: string;
+    type: "ad-creative" | "react-video";
+    title?: string;
+    conceptName?: string;
+    index: number;
+  }) => {
+    if (!campaignId) return;
+
+    void fetch("/api/fly/campaigns", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaignId, job })
+    }).catch((err) => {
+      console.error("Erro ao vincular job a campanha Fly:", err);
+    });
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const campaignIdFromUrl = new URLSearchParams(window.location.search).get(FLY_CAMPAIGN_QUERY_PARAM);
+    if (!campaignIdFromUrl) return;
+
+    let isMounted = true;
+    setIsRestoringCampaign(true);
+
+    fetch(`/api/fly/campaigns?campaignId=${encodeURIComponent(campaignIdFromUrl)}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.campaign) {
+          throw new Error(data.error || "Campanha Fly nao encontrada.");
+        }
+        if (isMounted) {
+          applyCampaign(data.campaign as FlyCampaign);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Erro ao restaurar campanha Fly.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsRestoringCampaign(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [applyCampaign]);
 
   // Poll job events for launched projects/ad-creatives
   useEffect(() => {
@@ -397,7 +536,7 @@ export function FlyModeWizard({
       const res = await fetch("/api/fly/diagnose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignGoal }),
+        body: JSON.stringify({ campaignGoal, model: agentModel }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -452,6 +591,11 @@ export function FlyModeWizard({
         throw new Error(data.error || "Erro ao gerar o plano de campanha.");
       }
       setPlan(data.plan);
+      if (data.campaignId) {
+        setCampaignId(data.campaignId);
+        updateCampaignUrl(data.campaignId);
+      }
+      setActiveTab("creatives");
       setStep("blueprint");
     } catch (err: any) {
       clearInterval(interval);
@@ -509,6 +653,14 @@ export function FlyModeWizard({
       });
       const data = await res.json();
       if (data.success && data.jobId) {
+        persistCampaignJob({
+          key,
+          jobId: data.jobId,
+          type: "ad-creative",
+          title: concept.conceptName,
+          conceptName: concept.conceptName,
+          index
+        });
         setLaunchedJobs((prev) => ({
           ...prev,
           [key]: {
@@ -571,6 +723,13 @@ export function FlyModeWizard({
       });
       const data = await res.json();
       if (data.success && data.jobId) {
+        persistCampaignJob({
+          key,
+          jobId: data.jobId,
+          type: "react-video",
+          title: video.title,
+          index
+        });
         setLaunchedJobs((prev) => ({
           ...prev,
           [key]: {
@@ -708,14 +867,14 @@ export function FlyModeWizard({
 
               {/* Submit */}
               <button
-                disabled={isLoading}
+                disabled={isLoading || isRestoringCampaign}
                 onClick={handleStartDiagnosis}
                 className="mt-2 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-[#9D7CFF] px-6 text-sm font-semibold text-black transition-all hover:bg-[#b096ff] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                {isLoading ? (
+                {isLoading || isRestoringCampaign ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    <span>Iniciando Piloto...</span>
+                    <span>{isRestoringCampaign ? "Restaurando Campanha..." : "Iniciando Piloto..."}</span>
                   </>
                 ) : (
                   <>
@@ -845,7 +1004,7 @@ export function FlyModeWizard({
                 <p className="text-xs text-white/50 italic">&ldquo;{plan.tagline}&rdquo;</p>
               </div>
               <button
-                onClick={() => setStep("briefing")}
+                onClick={resetCampaign}
                 className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 cursor-pointer"
               >
                 Nova Campanha
@@ -996,24 +1155,27 @@ export function FlyModeWizard({
                                   
                                   {job.resultPaths && job.resultPaths.length > 0 ? (
                                     <div className="grid grid-cols-2 gap-2 mt-1">
-                                      {job.resultPaths.slice(0, 4).map((path, pIdx) => (
-                                        <div key={pIdx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black">
-                                          <img src={path} alt="Generated Ad Creative" className="w-full aspect-square object-cover" />
-                                          <a
-                                            href={path}
-                                            download
-                                            className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                            title="Baixar imagem"
-                                          >
-                                            <Download size={10} />
-                                          </a>
-                                        </div>
-                                      ))}
+                                      {job.resultPaths.slice(0, 4).map((path, pIdx) => {
+                                        const mediaUrl = getGeneratedMediaUrl(path);
+                                        return (
+                                          <div key={pIdx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black">
+                                            <img src={mediaUrl} alt="Generated Ad Creative" className="w-full aspect-square object-cover" />
+                                            <a
+                                              href={mediaUrl}
+                                              download
+                                              className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                              title="Baixar imagem"
+                                            >
+                                              <Download size={10} />
+                                            </a>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   ) : (
                                     job.resultPath && (
                                       <a
-                                        href={job.resultPath}
+                                        href={getGeneratedMediaUrl(job.resultPath)}
                                         download
                                         className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-xs font-semibold text-green-400 hover:bg-green-500/20"
                                       >

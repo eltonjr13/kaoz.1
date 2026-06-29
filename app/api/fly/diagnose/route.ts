@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { generateFlyJson, parseFlyAiModel } from "@/lib/ai/fly-json";
 
 export const dynamic = "force-dynamic";
 
@@ -8,28 +8,19 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     if (!body || typeof body.campaignGoal !== "string") {
       return NextResponse.json(
-        { error: "Parâmetro 'campaignGoal' é obrigatório e deve ser uma string." },
+        { error: "Parametro 'campaignGoal' e obrigatorio e deve ser uma string." },
         { status: 400 }
       );
     }
 
     const { campaignGoal } = body;
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "GEMINI_API_KEY não configurada no servidor." },
-        { status: 500 }
-      );
-    }
-
-    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const ai = new GoogleGenAI({ apiKey });
+    const model = parseFlyAiModel(body.model);
 
     const prompt = `
-Você é o Piloto Automático do MrChicken, um estrategista digital avançado.
-O usuário quer criar uma campanha de anúncios/criativos com o seguinte objetivo: "${campaignGoal}".
+Voce e o Piloto Automatico do MrChicken, um estrategista digital avancado.
+O usuario quer criar uma campanha de anuncios/criativos com o seguinte objetivo: "${campaignGoal}".
 
-Para coordenar as melhores decisões e gerar o plano estratégico definitivo para esta campanha, formule exatamente 3 perguntas diagnósticas curtas, diretas e de alto impacto sobre o produto, público-alvo ou diferencial competitivo. Elas devem ajudar a calibrar os prompts de anúncios e os roteiros dos vídeos de reação.
+Para coordenar as melhores decisoes e gerar o plano estrategico definitivo para esta campanha, formule exatamente 3 perguntas diagnosticas curtas, diretas e de alto impacto sobre o produto, publico-alvo ou diferencial competitivo. Elas devem ajudar a calibrar os prompts de anuncios e os roteiros dos videos de reacao.
 
 Responda RIGOROSAMENTE em formato JSON com o seguinte formato de objeto:
 {
@@ -40,42 +31,36 @@ Responda RIGOROSAMENTE em formato JSON com o seguinte formato de objeto:
   ]
 }
 
-IMPORTANTE: Não retorne nenhuma marcação markdown como \`\`\`json. Retorne exclusivamente o JSON bruto validável.
+IMPORTANTE: Nao retorne nenhuma marcacao markdown como \`\`\`json. Retorne exclusivamente o JSON bruto validavel.
 `;
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-
-    const responseText = response.text || "{}";
+    const responseText = await generateFlyJson(model, prompt);
     let parsedJson;
     try {
       const cleaned = responseText.replace(/```json|```/g, "").trim();
       parsedJson = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error("Falha ao fazer parse do JSON das perguntas do Gemini:", responseText);
+    } catch {
+      console.error("Falha ao fazer parse do JSON das perguntas:", responseText);
       parsedJson = {
         questions: [
-          "Quem é o cliente ideal para este produto ou serviço?",
-          "Qual é o principal benefício ou diferencial do seu produto?",
-          "Qual tom de voz prefere para a campanha (ex: engraçado, sério, informativo)?"
+          "Quem e o cliente ideal para este produto ou servico?",
+          "Qual e o principal beneficio ou diferencial do seu produto?",
+          "Qual tom de voz prefere para a campanha (ex: engracado, serio, informativo)?"
         ]
       };
     }
 
     return NextResponse.json({
       success: true,
-      questions: parsedJson.questions || []
+      model,
+      questions: Array.isArray(parsedJson.questions) ? parsedJson.questions : []
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[API FLY DIAGNOSE] Erro no endpoint:", err);
     return NextResponse.json(
-      { error: `Falha ao processar diagnóstico: ${err.message || String(err)}` },
+      { error: `Falha ao processar diagnostico: ${errMsg}` },
       { status: 500 }
     );
   }

@@ -6,6 +6,7 @@ import { APP_WORKSPACE_ID } from "@/lib/workspace";
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const AVATARS_FILE = path.join(DATA_DIR, "avatars.json");
 const JOBS_FILE = path.join(DATA_DIR, "jobs.json");
+const FLY_CAMPAIGNS_FILE = path.join(DATA_DIR, "fly-campaigns.json");
 const PUBLIC_AVATAR_DIR = path.join(process.cwd(), "public", "uploads", "avatars");
 
 type NewLocalAvatarInput = {
@@ -31,6 +32,39 @@ type NewLocalJobInput = {
   trimEnd?: string | null;
   scriptText?: string | null;
   useCortexMemory?: boolean;
+};
+
+type NewFlyCampaignInput = {
+  campaignGoal: string;
+  questions: string[];
+  answers: string[];
+  avatarId?: string | null;
+  model: string;
+  plan: Record<string, unknown>;
+};
+
+export type FlyCampaignJobLink = {
+  key: string;
+  jobId: string;
+  type: "ad-creative" | "react-video";
+  title?: string | null;
+  conceptName?: string | null;
+  index?: number | null;
+  created_at: string;
+};
+
+export type FlyCampaign = {
+  id: string;
+  user_id: string;
+  campaign_goal: string;
+  questions: string[];
+  answers: string[];
+  avatar_id: string | null;
+  model: string;
+  plan: Record<string, unknown>;
+  jobs: FlyCampaignJobLink[];
+  created_at: string;
+  updated_at: string;
 };
 
 
@@ -145,6 +179,64 @@ export async function findLocalJob(jobId: string) {
 export async function listLocalJobs(): Promise<ReactionJob[]> {
   const jobs = await readJsonFile<ReactionJob[]>(JOBS_FILE, []);
   return jobs.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+
+export async function listLocalFlyCampaigns(): Promise<FlyCampaign[]> {
+  const campaigns = await readJsonFile<FlyCampaign[]>(FLY_CAMPAIGNS_FILE, []);
+  return campaigns.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+
+export async function findLocalFlyCampaign(campaignId: string): Promise<FlyCampaign | null> {
+  const campaigns = await listLocalFlyCampaigns();
+  return campaigns.find((campaign) => campaign.id === campaignId) ?? null;
+}
+
+export async function createLocalFlyCampaign(input: NewFlyCampaignInput): Promise<FlyCampaign> {
+  const now = new Date().toISOString();
+  const campaign: FlyCampaign = {
+    id: crypto.randomUUID(),
+    user_id: APP_WORKSPACE_ID,
+    campaign_goal: input.campaignGoal,
+    questions: input.questions,
+    answers: input.answers,
+    avatar_id: input.avatarId || null,
+    model: input.model,
+    plan: input.plan,
+    jobs: [],
+    created_at: now,
+    updated_at: now
+  };
+  const campaigns = await listLocalFlyCampaigns();
+
+  await writeJsonFile(FLY_CAMPAIGNS_FILE, [campaign, ...campaigns]);
+
+  return campaign;
+}
+
+export async function addLocalFlyCampaignJob(
+  campaignId: string,
+  job: Omit<FlyCampaignJobLink, "created_at">
+): Promise<FlyCampaign | null> {
+  const campaigns = await listLocalFlyCampaigns();
+  const campaignIndex = campaigns.findIndex((campaign) => campaign.id === campaignId);
+
+  if (campaignIndex < 0) {
+    return null;
+  }
+
+  const campaign = campaigns[campaignIndex];
+  const now = new Date().toISOString();
+  const jobs = campaign.jobs.filter((existing) => existing.key !== job.key && existing.jobId !== job.jobId);
+  const updatedCampaign: FlyCampaign = {
+    ...campaign,
+    jobs: [...jobs, { ...job, created_at: now }],
+    updated_at: now
+  };
+
+  campaigns[campaignIndex] = updatedCampaign;
+  await writeJsonFile(FLY_CAMPAIGNS_FILE, campaigns);
+
+  return updatedCampaign;
 }
 
 const defaultJobOptions = {
