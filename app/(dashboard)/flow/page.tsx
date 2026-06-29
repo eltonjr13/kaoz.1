@@ -169,6 +169,15 @@ const getFlowMediaUrl = (mediaPath?: string | null) => {
   return `/api/flow/media?path=${encodeURIComponent(mediaPath)}`;
 };
 
+const getFlowDownloadUrl = (mediaPath?: string | null) => {
+  const url = getFlowMediaUrl(mediaPath);
+  if (!url) return "";
+  if (url.startsWith("/api/flow/media")) {
+    return `${url}&download=true`;
+  }
+  return url;
+};
+
 async function generate3dBaseImage(params: {
   prompt: string;
   aspectRatio: string;
@@ -1845,7 +1854,7 @@ export default function FlowDashboardPage() {
                          {msg.imageResult.paths && msg.imageResult.paths.length > 0 ? (
                            <div className="grid grid-cols-2 gap-2">
                              {msg.imageResult.paths.slice(0, 4).map((p, idx) => (
-                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(p), alt: `Midia gerada ${idx + 1}`, downloadUrl: getFlowMediaUrl(p) })}>
+                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(p), alt: `Midia gerada ${idx + 1}`, downloadUrl: getFlowDownloadUrl(p) })}>
                                  <img src={getFlowMediaUrl(p)} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                    <span className="text-[10px] text-white font-medium bg-black/60 px-2 py-1 rounded-md">Expandir</span>
@@ -1855,13 +1864,13 @@ export default function FlowDashboardPage() {
                            </div>
                          ) : (
                            msg.imageResult.path && (
-                             <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-video cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(msg.imageResult!.path), alt: "Midia gerada", downloadUrl: getFlowMediaUrl(msg.imageResult!.path) })}>
+                             <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-video cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(msg.imageResult!.path), alt: "Midia gerada", downloadUrl: getFlowDownloadUrl(msg.imageResult!.path) })}>
                                <img src={getFlowMediaUrl(msg.imageResult.path)} alt="Midia gerada" className="w-full h-full object-cover" />
                              </div>
                            )
                          )}
                          {msg.imageResult.path && (
-                            <a href={getFlowMediaUrl(msg.imageResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
+                            <a href={getFlowDownloadUrl(msg.imageResult.path)} download className="flex items-center justify-center gap-1.5 rounded-xl bg-green-500/10 border border-green-500/20 px-3 py-2 text-[11px] font-semibold text-green-400 hover:bg-green-500/20 transition-all cursor-pointer">
                               <Download size={12} /> Baixar Pacote Completo
                             </a>
                          )}

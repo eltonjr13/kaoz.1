@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
@@ -77,12 +78,17 @@ export async function GET(request: NextRequest) {
     else if (ext === ".obj") contentType = "model/obj";
     else if (ext === ".fbx") contentType = "application/octet-stream";
 
-    return new NextResponse(fileBuffer, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": fileBuffer.length.toString()
-      }
-    });
+    const shouldDownload = searchParams.get("download") === "true";
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Length": fileBuffer.length.toString()
+    };
+
+    if (shouldDownload) {
+      headers["Content-Disposition"] = `attachment; filename="${path.basename(absolutePath)}"`;
+    }
+
+    return new NextResponse(fileBuffer, { headers });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[API FLOW MEDIA] Erro ao servir arquivo:", err);
