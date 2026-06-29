@@ -106,42 +106,103 @@ export class FlowImageGenerator {
     }
   }
 
-  private getReferenceNameFragments(referenceImage: string): string[] {
+  private getReferenceNameFragments(referenceImage: string, includeGenericPrefixes = true): string[] {
     const basename = path.basename(referenceImage);
     const ext = path.extname(basename);
     const stem = ext ? basename.slice(0, -ext.length) : basename;
+    const idMatch = stem.match(/^((?:agent_|chat_)?ref_image_|avatar_ref_)([A-Za-z0-9-]+)/);
+    const idFragment = idMatch ? `${idMatch[1]}${idMatch[2].slice(0, 8)}` : '';
+    const truncatedStem = stem.length > 24 ? stem.slice(0, 24) : '';
 
-    return Array.from(new Set([
+    const fragments = [
       basename,
       stem,
-      'agent_ref_image_',
-      'chat_ref_image_',
-      'ref_image_',
-      'avatar_ref_'
-    ].filter(Boolean)));
+      idFragment,
+      truncatedStem,
+      ...(includeGenericPrefixes ? [
+        'agent_ref_image_',
+        'chat_ref_image_',
+        'ref_image_',
+        'avatar_ref_'
+      ] : [])
+    ];
+
+    return Array.from(new Set(fragments.filter(Boolean)));
+  }
+
+  private async findVisibleReferenceAsset(
+    dialog: Locator,
+    referenceImage: string,
+    includeGenericPrefixes = true
+  ): Promise<{ item: Locator; fragment: string } | null> {
+    for (const fragment of this.getReferenceNameFragments(referenceImage, includeGenericPrefixes)) {
+      const namedItem = dialog.getByText(fragment, { exact: false }).filter({ visible: true }).first();
+      if (await namedItem.count() > 0 && await namedItem.isVisible()) {
+        return { item: namedItem, fragment };
+      }
+    }
+
+    return null;
+  }
+
+  private async waitForUploadedReferenceAsset(
+    page: Page,
+    dialog: Locator,
+    referenceImage: string
+  ): Promise<{ item: Locator; fragment: string } | null> {
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      const match = await this.findVisibleReferenceAsset(dialog, referenceImage, false);
+      if (match) return match;
+      await page.waitForTimeout(1000);
+    }
+
+    return null;
   }
 
   private async selectReferenceAsset(
+    page: Page,
     dialog: Locator,
     referenceImage: string,
-    preferLatestUpload: boolean
+    requireUploadedAsset: boolean
   ): Promise<void> {
-    if (!preferLatestUpload) {
-      for (const fragment of this.getReferenceNameFragments(referenceImage)) {
-        const namedItem = dialog.getByText(fragment, { exact: false }).filter({ visible: true }).first();
-        if (await namedItem.count() > 0 && await namedItem.isVisible()) {
-          logger.info(`Recurso de referencia existente localizado no Flow pelo nome: ${fragment}`);
-          await namedItem.click();
-          return;
-        }
-      }
-
-      logger.warn('Nao encontrei o recurso de referencia pelo nome no Flow. Selecionando o primeiro thumbnail visivel como fallback.');
+    const namedAsset = requireUploadedAsset
+      ? await this.waitForUploadedReferenceAsset(page, dialog, referenceImage)
+      : await this.findVisibleReferenceAsset(dialog, referenceImage);
+    if (namedAsset) {
+      logger.info(`Recurso de referencia localizado no Flow pelo nome: ${namedAsset.fragment}`);
+      await namedAsset.item.click();
+      return;
     }
 
+    if (requireUploadedAsset) {
+      throw new Error('O upload da imagem de referencia nao apareceu na lista do Flow. Geracao bloqueada para evitar anexar uma imagem anterior.');
+    }
+
+    logger.warn('Nao encontrei o recurso de referencia pelo nome no Flow. Selecionando o primeiro thumbnail visivel como fallback.');
     const thumbnail = dialog.locator('img').filter({ visible: true }).first();
     await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
     await thumbnail.click();
+  }
+
+  private shouldReuseExistingAttachment(
+    alreadyAttached: boolean,
+    skipUpload: boolean,
+    useExistingFlowReference: boolean,
+    forceReferenceSelection: boolean
+  ): boolean {
+    return alreadyAttached && (skipUpload || useExistingFlowReference) && !forceReferenceSelection;
+  }
+
+  private async confirmReferenceInclude(dialog: Locator): Promise<void> {
+    const includeBtn = dialog.locator('button:has-text("Incluir no comando"), button:has-text("Include in prompt"), button:has-text("Incluir")').first();
+    if (await includeBtn.isVisible()) {
+      await includeBtn.click();
+      logger.info('Botao de inclusao clicado.');
+      return;
+    }
+
+    logger.info('Botao de inclusao nao visivel (imagem anexada automaticamente).');
   }
 
   private async prepareReferenceFile(
@@ -156,8 +217,8 @@ export class FlowImageGenerator {
       await fileInput.waitFor({ state: 'attached', timeout: 15000 });
       logger.info('Input de arquivo de referencia localizado. Fazendo upload...');
       await fileInput.setInputFiles(referenceImage);
-      logger.info('Arquivo enviado. Aguardando 5 segundos para processamento do upload...');
-      await page.waitForTimeout(5000);
+      logger.info('Arquivo enviado. Aguardando o Flow iniciar o processamento do upload...');
+      await page.waitForTimeout(2000);
       return true;
     }
 
@@ -182,11 +243,15 @@ export class FlowImageGenerator {
   ): Promise<void> {
     logger.info(`Upload de imagem de referência solicitado: ${referenceImage} (skipUpload: ${skipUpload})`);
 
-    // Check if an image is already attached to avoid attaching again
+    // Only reuse an existing attachment when this run explicitly targets the same Flow reference.
     const alreadyAttached = await this.isReferenceImageAttached(page);
-    if (alreadyAttached && !forceReferenceSelection) {
+    if (this.shouldReuseExistingAttachment(alreadyAttached, skipUpload, useExistingFlowReference, forceReferenceSelection)) {
       logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
       return;
+    }
+
+    if (alreadyAttached) {
+      logger.info('Ja existe uma imagem no prompt, mas a referencia solicitada precisa ser anexada novamente.');
     }
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -212,17 +277,11 @@ export class FlowImageGenerator {
 
       // Avoid search because Flow can truncate filenames in the media list.
       logger.info('Selecionando recurso de referencia na lista...');
-      await this.selectReferenceAsset(dialog, referenceImage, uploadedFileThisRun);
+      await this.selectReferenceAsset(page, dialog, referenceImage, uploadedFileThisRun);
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');
-      const includeBtn = dialog.locator('button:has-text("Incluir no comando"), button:has-text("Include in prompt"), button:has-text("Incluir")').first();
-      if (await includeBtn.isVisible()) {
-        await includeBtn.click();
-        logger.info('Botão de inclusão clicado.');
-      } else {
-        logger.info('Botão de inclusão não visível (imagem anexada automaticamente).');
-      }
+      await this.confirmReferenceInclude(dialog);
       
       logger.info('Imagem de referência anexada com sucesso ao prompt.');
       await page.waitForTimeout(1500);

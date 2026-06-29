@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, useRef, type WheelEvent } from "react";
 import {
   Image as ImageIcon,
   Loader2,
@@ -457,11 +457,41 @@ export default function FlowDashboardPage() {
     hasAppliedModeFromUrlRef.current = true;
   }, [searchParams]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const container = chatScrollContainerRef.current;
+    if (!container) return;
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior
+    });
+    shouldAutoScrollRef.current = true;
+  }, []);
+
+  const handleInputOverlayWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    const container = chatScrollContainerRef.current;
+    if (!container) return;
+
+    const target = event.target as HTMLElement | null;
+    const editableElement = target?.closest("textarea, input, select, [contenteditable='true']") as HTMLElement | null;
+    if (editableElement) {
+      const canScrollEditable = editableElement.scrollHeight > editableElement.clientHeight;
+      const canScrollDown = editableElement.scrollTop + editableElement.clientHeight < editableElement.scrollHeight;
+      const canScrollUp = editableElement.scrollTop > 0;
+      if (canScrollEditable && ((event.deltaY > 0 && canScrollDown) || (event.deltaY < 0 && canScrollUp))) {
+        return;
+      }
+    }
+
+    event.preventDefault();
+    container.scrollTop += event.deltaY;
+    shouldAutoScrollRef.current = isChatNearBottom(container);
+  }, []);
 
   const renderSettingsMenu = (isFloatingRight = false) => {
     return (
@@ -868,16 +898,19 @@ export default function FlowDashboardPage() {
     if (!activeConversationId) return;
     shouldAutoScrollRef.current = true;
     requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      scrollChatToBottom();
     });
-  }, [activeConversationId]);
+  }, [activeConversationId, scrollChatToBottom]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!shouldAutoScrollRef.current) return;
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+
+    const frame = requestAnimationFrame(() => {
+      scrollChatToBottom();
     });
-  }, [chatMessages]);
+
+    return () => cancelAnimationFrame(frame);
+  }, [chatMessages, isLoading, scrollChatToBottom]);
 
   useEffect(() => {
     if (chatConversations.length === 0) return;
@@ -890,12 +923,27 @@ export default function FlowDashboardPage() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    const bodyEl = document.body;
     const mainEl = document.querySelector('main');
+    const originalBodyOverflow = bodyEl.style.overflow;
+
+    bodyEl.style.overflow = 'hidden';
+
     if (mainEl) {
       const originalBg = mainEl.style.backgroundColor;
+      const originalOverflow = mainEl.style.overflow;
       mainEl.style.backgroundColor = '#080808';
-      return () => { mainEl.style.backgroundColor = originalBg; };
+      mainEl.style.overflow = 'hidden';
+      return () => {
+        bodyEl.style.overflow = originalBodyOverflow;
+        mainEl.style.backgroundColor = originalBg;
+        mainEl.style.overflow = originalOverflow;
+      };
     }
+
+    return () => {
+      bodyEl.style.overflow = originalBodyOverflow;
+    };
   }, []);
 
   useEffect(() => {
@@ -1072,6 +1120,7 @@ export default function FlowDashboardPage() {
       timestamp: new Date().toISOString()
     };
 
+    shouldAutoScrollRef.current = true;
     setChatMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -1172,6 +1221,7 @@ export default function FlowDashboardPage() {
     nextMessages[msgIndex].jobStatus = 'running';
     nextMessages[msgIndex].jobLogs = [`[${new Date().toLocaleTimeString()}] Iniciando a execução do plano...`];
     nextMessages[msgIndex].jobType = msg.plan.kind;
+    shouldAutoScrollRef.current = true;
     setChatMessages(nextMessages);
 
     try {
@@ -1242,6 +1292,7 @@ export default function FlowDashboardPage() {
       ...(nextMessages[msgIndex].jobLogs || []),
       `[${new Date().toLocaleTimeString()}] Enviando imagens aprovadas para o Hunyuan 3D...`
     ];
+    shouldAutoScrollRef.current = true;
     setChatMessages(nextMessages);
 
     try {
@@ -1587,7 +1638,7 @@ export default function FlowDashboardPage() {
   };
 
   return (
-    <div className="relative isolate flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-screen" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
       <div
         aria-hidden="true"
@@ -1674,7 +1725,7 @@ export default function FlowDashboardPage() {
       </header>
 
       {/* ── Chat Area ── */}
-      <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-8 pb-48 md:px-10 lg:px-32">
+      <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-8 pb-48 md:px-10 lg:px-32">
         {agentType === "ad-creative" && flyModeActive ? (
           <FlyModeWizard
             avatars={avatars}
@@ -1992,7 +2043,6 @@ export default function FlowDashboardPage() {
               </div>
             )}
 
-            <div ref={messagesEndRef} />
           </>
         )}
       </div>
@@ -2061,8 +2111,8 @@ export default function FlowDashboardPage() {
 
       {/* ── Input Bar or Floating Settings Gear ── */}
       {!(agentType === "ad-creative" && flyModeActive) ? (
-        <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
-          <div className="w-full max-w-[900px] relative" ref={popoverRef}>
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
+          <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
             <PromptInputBox
               isLoading={isLoading}
               value={draftMessage}
