@@ -134,6 +134,7 @@ const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
 const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
+const CHAT_AUTO_SCROLL_THRESHOLD = 96;
 const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
 const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
@@ -394,6 +395,9 @@ const buildModel3dResultFromJob = (job: FlowJobSnapshot): Model3DResult | null =
 const getEditableMessageContent = (content: string) =>
   content.replace(/\n\n\[Imagem de refer(?:ência|Ãªncia) anexada\]$/i, "");
 
+const isChatNearBottom = (element: HTMLDivElement) =>
+  element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_AUTO_SCROLL_THRESHOLD;
+
 export default function FlowDashboardPage() {
   const searchParams = useSearchParams();
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
@@ -445,6 +449,8 @@ export default function FlowDashboardPage() {
   }, [searchParams]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -834,8 +840,35 @@ export default function FlowDashboardPage() {
     } catch (e) {
       console.warn("Falha ao salvar o histórico de chat no LocalStorage:", e);
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, activeConversationId]);
+
+  useEffect(() => {
+    const container = chatScrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      shouldAutoScrollRef.current = isChatNearBottom(container);
+    };
+
+    handleScroll();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    shouldAutoScrollRef.current = true;
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current) return;
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+  }, [chatMessages]);
 
   useEffect(() => {
     if (chatConversations.length === 0) return;
@@ -1632,7 +1665,7 @@ export default function FlowDashboardPage() {
       </header>
 
       {/* ── Chat Area ── */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-8 pb-48 md:px-10 lg:px-32">
+      <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-8 pb-48 md:px-10 lg:px-32">
         {agentType === "ad-creative" && flyModeActive ? (
           <FlyModeWizard
             avatars={avatars}
