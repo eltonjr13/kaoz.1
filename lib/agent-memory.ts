@@ -17,7 +17,7 @@ export interface AgentMemoryEntry {
 }
 
 export async function loadAgentMemory(avatarId: string, topic?: string): Promise<AgentMemoryEntry[]> {
-  const episodes = await memoryManager.episodic.getRecentEpisodes(avatarId, 50);
+  const episodes = await memoryManager.hippocampus.getRecentEpisodes(avatarId, 50);
   let mapped = episodes.map(mapNodeToEntry);
 
   if (topic) {
@@ -77,10 +77,13 @@ export async function getMemoryContextForPrompt(avatarId: string, topic: string)
   }
 
   // 2. Fallback Híbrido: Obtém histórico recente de sucessos/falhas para guiar o LLM com exemplos reais
-  const recentEpisodes = await memoryManager.episodic.getRecentEpisodes(avatarId, 15);
+  const recentEpisodes = await memoryManager.hippocampus.getRecentEpisodes(avatarId, 15);
   
-  const successes = recentEpisodes.filter((e) => e.status === "success").slice(0, 3);
-  const failures = recentEpisodes.filter((e) => e.status === "failure").slice(0, 3);
+  // A Amígdala avalia se a memória é valiosa/segura para compor o contexto
+  const valuableEpisodes = recentEpisodes.filter((e) => memoryManager.amygdala.isMemoryValuable(e));
+  
+  const successes = valuableEpisodes.filter((e) => e.status === "success").slice(0, 3);
+  const failures = valuableEpisodes.filter((e) => e.status === "failure").slice(0, 3);
 
   if (successes.length > 0) {
     context += "- EXEMPLOS DE SUCESSO (essas abordagens funcionaram):\n";

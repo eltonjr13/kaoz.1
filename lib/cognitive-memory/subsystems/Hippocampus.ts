@@ -1,7 +1,7 @@
 import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { EpisodicMemoryNode } from '../types/memory';
 
-export class EpisodicMemory {
+export class Hippocampus {
   constructor(private storage: IStorageProvider) {}
 
   public async addEpisode(episode: EpisodicMemoryNode): Promise<void> {

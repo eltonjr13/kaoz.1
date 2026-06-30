@@ -1,7 +1,7 @@
 import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { ProceduralRule } from '../types/memory';
 
-export class ProceduralMemory {
+export class PrefrontalCortex {
   constructor(private storage: IStorageProvider) {}
 
   public async addRule(rule: ProceduralRule): Promise<void> {

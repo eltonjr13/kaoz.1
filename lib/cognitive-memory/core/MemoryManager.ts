@@ -1,8 +1,9 @@
 import { EventBus } from './EventBus';
 import { HierarchicalResolver } from './HierarchicalResolver';
-import { EpisodicMemory } from '../subsystems/EpisodicMemory';
-import { SemanticMemory } from '../subsystems/SemanticMemory';
-import { ProceduralMemory } from '../subsystems/ProceduralMemory';
+import { Hippocampus } from '../subsystems/Hippocampus';
+import { CerebralCortex } from '../subsystems/CerebralCortex';
+import { PrefrontalCortex } from '../subsystems/PrefrontalCortex';
+import { Amygdala } from '../subsystems/Amygdala';
 import { JsonStorageProvider } from '../storage/JsonStorageProvider';
 import type { EpisodicMemoryNode, TaskType } from '../types/memory';
 import type { GraphEdge, GraphNode } from '../types/graph';
@@ -13,9 +14,10 @@ export class MemoryManager {
   private resolver = new HierarchicalResolver();
   private bus = EventBus.getInstance();
 
-  public episodic = new EpisodicMemory(this.storage);
-  public semantic = new SemanticMemory(this.storage);
-  public procedural = new ProceduralMemory(this.storage);
+  public hippocampus = new Hippocampus(this.storage);
+  public cerebralCortex = new CerebralCortex(this.storage);
+  public prefrontalCortex = new PrefrontalCortex(this.storage);
+  public amygdala = new Amygdala(this.storage);
 
   private constructor() {
     this.setupListeners();
@@ -45,7 +47,7 @@ export class MemoryManager {
       timestamp: new Date().toISOString()
     };
 
-    await this.episodic.addEpisode(newEpisode);
+    await this.hippocampus.addEpisode(newEpisode);
     await this.projectEpisodeToSemanticGraph(newEpisode);
     this.bus.publish('EPISODE_RECORDED', newEpisode);
 
@@ -73,7 +75,7 @@ export class MemoryManager {
     );
 
     if (episode) {
-      const updated = await this.episodic.updateEpisodeFeedback(episode.id, feedback);
+      const updated = await this.amygdala.modulateEmotionalWeight(episode.id, feedback);
       if (updated) {
         await this.projectEpisodeToSemanticGraph(updated);
         this.bus.publish('EPISODE_UPDATED', updated);
@@ -114,11 +116,11 @@ export class MemoryManager {
     const edges = this.createEpisodeGraphEdges(episode, topic, now);
 
     for (const node of nodes) {
-      await this.semantic.upsertNode(node);
+      await this.cerebralCortex.upsertNode(node);
     }
 
     for (const edge of edges) {
-      await this.semantic.upsertEdge(edge);
+      await this.cerebralCortex.upsertEdge(edge);
     }
   }
 

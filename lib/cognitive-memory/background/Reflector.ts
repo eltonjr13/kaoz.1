@@ -3,14 +3,14 @@ import { EventBus } from '../core/EventBus';
 import type { EpisodicMemoryNode, ProceduralRule } from '../types/memory';
 import type { GraphNode, GraphEdge } from '../types/graph';
 import { JsonStorageProvider } from '../storage/JsonStorageProvider';
-import { SemanticMemory } from '../subsystems/SemanticMemory';
-import { ProceduralMemory } from '../subsystems/ProceduralMemory';
+import { CerebralCortex } from '../subsystems/CerebralCortex';
+import { PrefrontalCortex } from '../subsystems/PrefrontalCortex';
 
 export class Reflector {
   private ai: GoogleGenAI | null = null;
   private storage = new JsonStorageProvider();
-  private semantic = new SemanticMemory(this.storage);
-  private procedural = new ProceduralMemory(this.storage);
+  private cerebralCortex = new CerebralCortex(this.storage);
+  private prefrontalCortex = new PrefrontalCortex(this.storage);
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -99,7 +99,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
             lastTriggerPrompt: episode.inputPrompt
           }
         };
-        await this.semantic.upsertNode(errorNode);
+        await this.cerebralCortex.upsertNode(errorNode);
 
         // 2. Cria o nó correspondente ao modelo utilizado (caso não exista)
         const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -112,7 +112,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
           lastObserved: new Date().toISOString(),
           metadata: {}
         };
-        await this.semantic.upsertNode(modelNode);
+        await this.cerebralCortex.upsertNode(modelNode);
 
         // 3. Cria relacionamento (Edge) indicando a falha
         const edgeId = `edge:${modelNodeId}->${errorNodeId}`;
@@ -126,7 +126,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
           occurrences: 1,
           lastReinforced: new Date().toISOString()
         };
-        await this.semantic.upsertEdge(edge);
+        await this.cerebralCortex.upsertEdge(edge);
 
         // 4. Cria a regra procedimental preventiva na memória
         const ruleId = `rule:prevent-${errorNodeId.replace('concept:', '')}`;
@@ -145,7 +145,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
           lastUpdated: new Date().toISOString(),
           timestamp: new Date().toISOString()
         };
-        await this.procedural.addRule(rule);
+        await this.prefrontalCortex.addRule(rule);
 
         console.info(`[Reflector] Sucesso ao refletir na falha. Criada regra de prompt: "${result.preventiveInstruction}"`);
       }
@@ -179,7 +179,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
           lastSuccessAt: new Date().toISOString()
         }
       };
-      await this.semantic.upsertNode(successNode);
+      await this.cerebralCortex.upsertNode(successNode);
 
       // Conecta o modelo ao sucesso
       const modelNodeId = `concept:model-${modelSlug}`;
@@ -194,7 +194,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
         occurrences: 1,
         lastReinforced: new Date().toISOString()
       };
-      await this.semantic.upsertEdge(edge);
+      await this.cerebralCortex.upsertEdge(edge);
 
       console.info(`[Reflector] Nó de sucesso criado no grafo: ${successNodeId}`);
     } catch (err) {
@@ -216,7 +216,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
       );
 
       for (const rule of rules) {
-        await this.procedural.reinforceRule(rule.id, 'success');
+        await this.prefrontalCortex.reinforceRule(rule.id, 'success');
       }
 
       // Reforça arestas de qualidade no grafo semântico
@@ -226,7 +226,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
       );
 
       for (const edge of edges) {
-        await this.semantic.upsertEdge({
+        await this.cerebralCortex.upsertEdge({
           ...edge,
           weight: Math.min(1.0, edge.weight + 0.1)
         });
@@ -293,7 +293,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown.
             approvedAt: new Date().toISOString()
           }
         };
-        await this.semantic.upsertNode(successNode);
+        await this.cerebralCortex.upsertNode(successNode);
 
         // Conecta o modelo ao sucesso com relação de qualidade
         const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -308,7 +308,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown.
           occurrences: 1,
           lastReinforced: new Date().toISOString()
         };
-        await this.semantic.upsertEdge(edge);
+        await this.cerebralCortex.upsertEdge(edge);
 
         // Cria regra procedimental de replicação de sucesso
         const ruleId = `rule:replicate-${successNodeId.replace('tool-outcome:', '')}`;
@@ -327,7 +327,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown.
           lastUpdated: new Date().toISOString(),
           timestamp: new Date().toISOString()
         };
-        await this.procedural.addRule(rule);
+        await this.prefrontalCortex.addRule(rule);
 
         console.info(`[Reflector] Aprendizado de sucesso gravado no grafo: "${result.replicableInstruction}"`);
       }

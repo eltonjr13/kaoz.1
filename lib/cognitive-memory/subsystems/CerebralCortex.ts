@@ -1,7 +1,7 @@
 import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { GraphNode, GraphEdge, SemanticGraph } from '../types/graph';
 
-export class SemanticMemory {
+export class CerebralCortex {
   constructor(private storage: IStorageProvider) {}
 
   public async upsertNode(node: GraphNode): Promise<void> {

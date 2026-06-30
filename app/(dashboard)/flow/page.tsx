@@ -77,6 +77,7 @@ interface PendingPlan {
   avatarName?: string;
   referenceImage?: string | null;
   referenceImagePath?: string | null;
+  editSourceImagePath?: string | null;
   targetJobId?: string | null;
   strategy?: string;
   scriptOutline?: string | null;
@@ -224,13 +225,11 @@ const build3dBasePrompt = (prompt: string) =>
 const build3dImageEditPrompt = (originalPrompt: string, correctionPrompt: string) =>
   [
     "Image-to-image edit task. Use the attached reference image as the exact source image.",
-    "Do not generate a new character, new scene, new composition, or unrelated image.",
-    "Preserve the same subject identity, pose, camera angle, crop, composition, style, lighting, colors, materials, background, and image proportions.",
-    "Apply only the requested correction below. Keep every other visual detail unchanged.",
-    "Keep or convert the result to a strict neutral model-sheet setup: one full-body character, centered, plain light gray background, no environment, no props, no text, no logos.",
+    "Preserve the same subject, pose, camera angle, crop, composition, lighting, colors, materials, background, and proportions.",
+    "Apply only the requested correction below. Do not create a new scene or redesign the image.",
+    "Return one edited image only.",
     `Original 3D base brief: ${originalPrompt}`,
     `Requested correction: ${correctionPrompt}`,
-    "Return one edited image only, not a variation sheet, not a collage, not a redesign."
   ].join(" ");
 
 const getConversationTitle = (messages: ChatMessageState[]) => {
@@ -244,6 +243,12 @@ const getConversationTitleWithBranch = (messages: ChatMessageState[], currentTit
   const title = getConversationTitle(messages);
   void currentTitle;
   return title;
+};
+
+const get3dEditSourcePath = (message: ChatMessageState) => {
+  if (message.plan?.imagePackageMode !== "turnaround3d") return null;
+  const sourcePath = message.plan.referenceImagePath?.trim();
+  return sourcePath || null;
 };
 
 const createChatConversation = (messages: ChatMessageState[] = [], title?: string): ChatConversation => {
@@ -415,9 +420,12 @@ interface CustomDropdownProps {
   icon?: React.ReactNode;
   title?: string;
   className?: string;
+  onRightClickItem?: (e: React.MouseEvent, value: string) => void;
+  editingId?: string | null;
+  setEditingId?: (val: string | null) => void;
+  editingText?: string;
+  setEditingText?: (val: string) => void;
   onRenameOption?: (value: string, newLabel: string) => void;
-  onDeleteOption?: (value: string) => void;
-  onExportOption?: (value: string) => void;
 }
 
 function CustomDropdown({ 
@@ -427,14 +435,14 @@ function CustomDropdown({
   icon, 
   title, 
   className,
-  onRenameOption,
-  onDeleteOption,
-  onExportOption
+  onRightClickItem,
+  editingId,
+  setEditingId,
+  editingText = "",
+  setEditingText,
+  onRenameOption
 }: CustomDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; value: string } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingText, setEditingText] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -448,45 +456,24 @@ function CustomDropdown({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const handleCloseMenu = () => setContextMenu(null);
-    window.addEventListener("click", handleCloseMenu);
-    window.addEventListener("contextmenu", handleCloseMenu);
-    return () => {
-      window.removeEventListener("click", handleCloseMenu);
-      window.removeEventListener("contextmenu", handleCloseMenu);
-    };
-  }, [contextMenu]);
-
   const handleContextMenu = (e: React.MouseEvent, optionValue: string) => {
-    if (!onRenameOption && !onDeleteOption && !onExportOption) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      value: optionValue
-    });
-  };
-
-  const handleRenameStart = (optionValue: string) => {
-    const option = options.find(opt => opt.value === optionValue);
-    if (option) {
-      setEditingId(optionValue);
-      setEditingText(option.label);
+    if (onRightClickItem) {
+      e.preventDefault();
+      e.stopPropagation();
+      onRightClickItem(e, optionValue);
     }
-    setContextMenu(null);
   };
 
   const handleRenameSave = () => {
-    if (editingId && onRenameOption) {
+    if (editingId && onRenameOption && editingText) {
       const trimmed = editingText.trim();
       if (trimmed) {
         onRenameOption(editingId, trimmed);
       }
     }
-    setEditingId(null);
+    if (setEditingId) {
+      setEditingId(null);
+    }
   };
 
   const selectedOption = options.find(opt => opt.value === value);
@@ -532,12 +519,12 @@ function CustomDropdown({
                       <input
                         type="text"
                         value={editingText}
-                        onChange={(e) => setEditingText(e.target.value)}
+                        onChange={(e) => setEditingText && setEditingText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             handleRenameSave();
                           } else if (e.key === "Escape") {
-                            setEditingId(null);
+                            if (setEditingId) setEditingId(null);
                           }
                         }}
                         onBlur={handleRenameSave}
@@ -572,55 +559,6 @@ function CustomDropdown({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {contextMenu && (
-        <div
-          className="fixed z-[100] min-w-[140px] bg-[#121214]/98 border border-white/10 rounded-xl shadow-2xl py-1.5 backdrop-blur-xl text-xs"
-          style={{
-            position: "fixed",
-            top: contextMenu.y,
-            left: contextMenu.x,
-            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05) inset",
-          }}
-        >
-          {onRenameOption && (
-            <button
-              onClick={() => handleRenameStart(contextMenu.value)}
-              className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
-            >
-              <Pencil size={12} className="text-white/50" />
-              Nomear
-            </button>
-          )}
-          {onExportOption && (
-            <button
-              onClick={() => {
-                onExportOption(contextMenu.value);
-                setContextMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
-            >
-              <Download size={12} className="text-white/50" />
-              Exportar
-            </button>
-          )}
-          {onDeleteOption && (
-            <>
-              {(onRenameOption || onExportOption) && <div className="h-[1px] bg-white/10 my-1" />}
-              <button
-                onClick={() => {
-                  onDeleteOption(contextMenu.value);
-                  setContextMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 hover:bg-red-500/10 hover:text-red-400 text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
-              >
-                <Trash2 size={12} className="text-red-500" />
-                Excluir
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -632,6 +570,20 @@ export default function FlowDashboardPage() {
   const [activeConversationId, setActiveConversationId] = useState("");
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
+  const [editingConversationText, setEditingConversationText] = useState("");
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleCloseMenu = () => setContextMenu(null);
+    window.addEventListener("click", handleCloseMenu);
+    window.addEventListener("contextmenu", handleCloseMenu);
+    return () => {
+      window.removeEventListener("click", handleCloseMenu);
+      window.removeEventListener("contextmenu", handleCloseMenu);
+    };
+  }, [contextMenu]);
   const hasAttempted3dRecoveryRef = useRef(false);
   const hasAppliedModeFromUrlRef = useRef(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
@@ -661,6 +613,7 @@ export default function FlowDashboardPage() {
   const [expandedResultImage, setExpandedResultImage] = useState<{ src: string; alt: string; downloadUrl: string } | null>(null);
   const [draftMessage, setDraftMessage] = useState("");
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
+  const [editing3dBaseImagePath, setEditing3dBaseImagePath] = useState<string | null>(null);
   
   useEffect(() => {
     if (hasAppliedModeFromUrlRef.current) return;
@@ -1309,7 +1262,7 @@ export default function FlowDashboardPage() {
 
   const handleSendMessage = async (message: string, files: any[], pastedContent: any[]) => {
     if (editing3dImageMessageId) {
-      await handleEdit3dBaseImage(editing3dImageMessageId, message);
+      await handleEdit3dBaseImage(editing3dImageMessageId, message, editing3dBaseImagePath);
       return;
     }
 
@@ -1554,16 +1507,21 @@ export default function FlowDashboardPage() {
   };
 
   const handleStartEdit3dBaseImage = (messageId: string) => {
+    const targetMessage = chatMessages.find((msg) => msg.id === messageId);
+    const sourceImagePath = targetMessage ? get3dEditSourcePath(targetMessage) : null;
+    if (!targetMessage?.plan || !sourceImagePath) return;
+
     setEditing3dImageMessageId(messageId);
+    setEditing3dBaseImagePath(sourceImagePath);
     setDraftMessage("");
   };
 
-  const handleEdit3dBaseImage = async (messageId: string, correctionPrompt: string) => {
+  const handleEdit3dBaseImage = async (messageId: string, correctionPrompt: string, sourceImagePath?: string | null) => {
     const cleanPrompt = correctionPrompt.trim();
     if (!cleanPrompt) return;
 
     const targetMessage = chatMessages.find((msg) => msg.id === messageId);
-    const referenceImagePath = targetMessage?.plan?.referenceImagePath || targetMessage?.imageResult?.path || targetMessage?.imageResult?.paths?.[0];
+    const referenceImagePath = sourceImagePath?.trim();
     if (!targetMessage?.plan || !referenceImagePath) return;
 
     const userMsg: ChatMessageState = {
@@ -1592,7 +1550,8 @@ export default function FlowDashboardPage() {
       const updatedPlan: PendingPlan = {
         ...targetMessage.plan,
         referenceImage: null,
-        referenceImagePath: editedImagePath
+        referenceImagePath: editedImagePath,
+        editSourceImagePath: referenceImagePath
       };
 
       setChatMessages((previous) =>
@@ -1611,6 +1570,7 @@ export default function FlowDashboardPage() {
         )
       );
       setEditing3dImageMessageId(null);
+      setEditing3dBaseImagePath(null);
       setDraftMessage("");
 
       const res = await fetch("/api/flow/agent", {
@@ -1900,6 +1860,23 @@ export default function FlowDashboardPage() {
     downloadTextFile(formatChatExport(exportConversation, sanitized), `mrchicken-${slug}.md`);
   };
 
+  const handleRightClickConversation = (e: React.MouseEvent, conversationId: string) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      value: conversationId
+    });
+  };
+
+  const handleRenameStart = (conversationId: string) => {
+    const conversation = chatConversations.find(c => c.id === conversationId);
+    if (conversation) {
+      setEditingConversationId(conversationId);
+      setEditingConversationText(conversation.title);
+    }
+    setContextMenu(null);
+  };
+
   return (
     <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
@@ -1984,9 +1961,12 @@ export default function FlowDashboardPage() {
                   value={activeConversationId}
                   onChange={handleSelectConversation}
                   options={chatConversations.map(c => ({ value: c.id, label: c.title }))}
+                  onRightClickItem={handleRightClickConversation}
+                  editingId={editingConversationId}
+                  setEditingId={setEditingConversationId}
+                  editingText={editingConversationText}
+                  setEditingText={setEditingConversationText}
                   onRenameOption={handleRenameConversation}
-                  onDeleteOption={handleDeleteSpecificConversation}
-                  onExportOption={handleExportSpecificConversation}
                   title="Selecionar conversa"
                   className="w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]"
                 />
@@ -2008,21 +1988,6 @@ export default function FlowDashboardPage() {
                   title="Nova conversa"
                 >
                   <MessageSquarePlus size={16} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleExportConversation(); }}
-                  disabled={chatMessages.length === 0}
-                  className="p-2 hover:bg-[#9D7CFF]/15 hover:text-[#9D7CFF] rounded-xl transition-all duration-300 text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
-                  title="Exportar conversa"
-                >
-                  <Download size={16} />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleDeleteConversation(); }} 
-                  className="p-2 hover:bg-red-500/15 hover:text-red-400 rounded-xl transition-all duration-300 text-white/60 cursor-pointer" 
-                  title="Excluir conversa"
-                >
-                  <Trash2 size={16} />
                 </button>
                 <div className="w-[1px] h-4 bg-white/10 mx-1.5" />
                 <button
@@ -2132,7 +2097,7 @@ export default function FlowDashboardPage() {
                             </div>
                           )}
 
-                          {msg.plan.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && (msg.imageResult.path || msg.imageResult.paths?.[0]) && (
+                          {msg.plan.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && get3dEditSourcePath(msg) && (
                             <div className="mb-3 overflow-hidden rounded-xl border border-white/10 bg-black">
                               <img
                                 src={getFlowMediaUrl(msg.imageResult.path || msg.imageResult.paths?.[0])}
@@ -2192,7 +2157,7 @@ export default function FlowDashboardPage() {
                             <Square size={8} fill="currentColor" /> Cancelar
                           </button>
                         </div>
-                        {msg.plan?.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && (msg.imageResult.path || msg.imageResult.paths?.[0]) && (
+                        {msg.plan?.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && get3dEditSourcePath(msg) && (
                           <div className="overflow-hidden rounded-xl border border-white/10 bg-black">
                             <img
                               src={getFlowMediaUrl(msg.imageResult.path || msg.imageResult.paths?.[0])}
@@ -2460,6 +2425,48 @@ export default function FlowDashboardPage() {
               {showSettings && renderSettingsMenu(true)}
             </AnimatePresence>
           </div>
+        </div>
+      )}
+
+      {contextMenu && (
+        <div
+          className="fixed z-[100] min-w-[140px] bg-[#121214]/98 border border-white/10 rounded-xl shadow-2xl py-1.5 backdrop-blur-xl text-xs select-none"
+          style={{
+            position: "fixed",
+            top: contextMenu.y,
+            left: contextMenu.x,
+            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05) inset",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => handleRenameStart(contextMenu.value)}
+            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Pencil size={12} className="text-white/50" />
+            Nomear
+          </button>
+          <button
+            onClick={() => {
+              handleExportSpecificConversation(contextMenu.value);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Download size={12} className="text-white/50" />
+            Exportar
+          </button>
+          <div className="h-[1px] bg-white/10 my-1" />
+          <button
+            onClick={() => {
+              handleDeleteSpecificConversation(contextMenu.value);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-red-500/10 hover:text-red-400 text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Trash2 size={12} className="text-red-500" />
+            Excluir
+          </button>
         </div>
       )}
     </div>
