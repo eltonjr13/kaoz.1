@@ -22,6 +22,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   ChevronDown,
+  ChevronUp,
   X,
   Settings
 } from "lucide-react";
@@ -413,6 +414,7 @@ export default function FlowDashboardPage() {
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
+  const [isHeaderHovered, setIsHeaderHovered] = useState(false);
   const hasAttempted3dRecoveryRef = useRef(false);
   const hasAppliedModeFromUrlRef = useRef(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
@@ -1662,23 +1664,45 @@ export default function FlowDashboardPage() {
       />
 
       {/* ── Header ── */}
-      <header className="relative z-20 flex flex-wrap items-center justify-between gap-4 px-6 py-3 border-b border-white/5 backdrop-blur-md bg-black/20">
+      <header
+        onMouseEnter={() => setIsHeaderHovered(true)}
+        onMouseLeave={() => setIsHeaderHovered(false)}
+        onClick={() => {
+          if (!isHeaderHovered) {
+            setIsHeaderHovered(true);
+          }
+        }}
+        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between transition-all duration-500 ease-in-out border backdrop-blur-md shadow-xl select-none
+          ${isHeaderHovered 
+            ? "w-[calc(100%-2rem)] max-w-5xl rounded-2xl px-6 py-3 bg-black/85 border-white/15" 
+            : "w-[220px] rounded-full px-4 py-2 bg-black/60 border-white/10 hover:border-[#9D7CFF]/40 hover:bg-black/75 cursor-pointer"
+          }`}
+      >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-[#9D7CFF]/20 flex items-center justify-center border border-[#9D7CFF]/30">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-500 ease-in-out
+            ${isHeaderHovered 
+              ? "bg-[#9D7CFF]/20 border-[#9D7CFF]/30" 
+              : "bg-[#9D7CFF]/30 border-[#9D7CFF]/50 shadow-[0_0_10px_rgba(157,124,255,0.3)] animate-pulse"
+            }`}
+          >
             <Bot size={18} className="text-[#9D7CFF]" />
           </div>
-          <div>
-            <h1 className="text-sm font-semibold tracking-wide">MrChicken Chatbot</h1>
-            <p className="text-[10px] text-white/50">Assistente Autônomo AI UGC</p>
+          <div className="flex flex-col transition-all duration-500 ease-in-out">
+            <h1 className="text-sm font-semibold tracking-wide whitespace-nowrap">MrChicken Chatbot</h1>
+            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isHeaderHovered ? "max-h-5 opacity-100 mt-0.5" : "max-h-0 opacity-0"}`}>
+              <p className="text-[10px] text-white/50 whitespace-nowrap">Assistente Autônomo AI UGC</p>
+            </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+
+        <div className={`flex items-center gap-3 transition-all duration-500 ease-in-out origin-right ${isHeaderHovered ? "opacity-100 max-w-2xl scale-100" : "opacity-0 max-w-0 scale-95 pointer-events-none overflow-hidden"}`}>
           {chatConversations.length > 0 && (
             <div className="relative flex items-center bg-white/5 border border-white/10 rounded-full pl-3 pr-8 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]">
               <select
                 className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5"
                 value={activeConversationId}
                 onChange={(e) => handleSelectConversation(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
                 title="Selecionar conversa"
               >
                 {chatConversations.map((conversation) => (
@@ -1697,6 +1721,7 @@ export default function FlowDashboardPage() {
                  className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5 pl-1.5"
                  value={selectedAvatarId}
                  onChange={(e) => setSelectedAvatarId(e.target.value)}
+                 onClick={(e) => e.stopPropagation()}
                >
                  {avatars.map(a => (
                    <option key={a.id} value={a.id} className="bg-[#080808] text-white">{a.name}</option>
@@ -1706,26 +1731,37 @@ export default function FlowDashboardPage() {
              </div>
           )}
           <div className="flex items-center gap-1.5">
-            <button onClick={handleCreateConversation} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Nova conversa">
+            <button onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Nova conversa">
               <MessageSquarePlus size={16} />
             </button>
             <button
-              onClick={handleExportConversation}
+              onClick={(e) => { e.stopPropagation(); handleExportConversation(); }}
               disabled={chatMessages.length === 0}
               className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
               title="Exportar conversa"
             >
               <Download size={16} />
             </button>
-            <button onClick={handleDeleteConversation} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Excluir conversa">
+            <button onClick={(e) => { e.stopPropagation(); handleDeleteConversation(); }} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Excluir conversa">
               <Trash2 size={16} />
+            </button>
+            <div className="w-[1px] h-4 bg-white/10 mx-1" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsHeaderHovered(false);
+              }}
+              className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/40 cursor-pointer"
+              title="Recolher menu"
+            >
+              <ChevronUp size={16} />
             </button>
           </div>
         </div>
       </header>
 
       {/* ── Chat Area ── */}
-      <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-8 pb-48 md:px-10 lg:px-32">
+      <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-24 pb-48 md:px-10 lg:px-32">
         {agentType === "ad-creative" && flyModeActive ? (
           <FlyModeWizard
             avatars={avatars}
