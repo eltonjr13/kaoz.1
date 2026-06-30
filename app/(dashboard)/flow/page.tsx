@@ -408,6 +408,223 @@ const getEditableMessageContent = (content: string) =>
 const isChatNearBottom = (element: HTMLDivElement) =>
   element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_AUTO_SCROLL_THRESHOLD;
 
+interface CustomDropdownProps {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  icon?: React.ReactNode;
+  title?: string;
+  className?: string;
+  onRenameOption?: (value: string, newLabel: string) => void;
+  onDeleteOption?: (value: string) => void;
+  onExportOption?: (value: string) => void;
+}
+
+function CustomDropdown({ 
+  value, 
+  onChange, 
+  options, 
+  icon, 
+  title, 
+  className,
+  onRenameOption,
+  onDeleteOption,
+  onExportOption
+}: CustomDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleCloseMenu = () => setContextMenu(null);
+    window.addEventListener("click", handleCloseMenu);
+    window.addEventListener("contextmenu", handleCloseMenu);
+    return () => {
+      window.removeEventListener("click", handleCloseMenu);
+      window.removeEventListener("contextmenu", handleCloseMenu);
+    };
+  }, [contextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent, optionValue: string) => {
+    if (!onRenameOption && !onDeleteOption && !onExportOption) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      value: optionValue
+    });
+  };
+
+  const handleRenameStart = (optionValue: string) => {
+    const option = options.find(opt => opt.value === optionValue);
+    if (option) {
+      setEditingId(optionValue);
+      setEditingText(option.label);
+    }
+    setContextMenu(null);
+  };
+
+  const handleRenameSave = () => {
+    if (editingId && onRenameOption) {
+      const trimmed = editingText.trim();
+      if (trimmed) {
+        onRenameOption(editingId, trimmed);
+      }
+    }
+    setEditingId(null);
+  };
+
+  const selectedOption = options.find(opt => opt.value === value);
+
+  return (
+    <div ref={dropdownRef} className={`relative ${className}`} onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative flex items-center bg-white/[0.03] border border-white/10 rounded-xl pl-3 pr-8 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300 text-left cursor-pointer w-full py-1.5 text-xs text-white/90 font-medium"
+        title={title}
+      >
+        {icon && <span className="mr-2 text-white/50 shrink-0">{icon}</span>}
+        <span className="truncate pr-2">
+          {selectedOption ? selectedOption.label : "Selecionar..."}
+        </span>
+        <ChevronDown size={12} className="absolute right-3 text-white/40 group-hover:text-white/80 pointer-events-none transition-colors" />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#121214]/95 border border-white/10 rounded-xl shadow-2xl overflow-y-auto max-h-[280px] py-1.5 backdrop-blur-xl"
+            style={{
+              boxShadow: "0 10px 30px -10px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.05) inset",
+            }}
+          >
+            {options.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-white/40 italic text-center">Nenhuma opção disponível</div>
+            ) : (
+              options.map((option) => {
+                const isEditing = option.value === editingId;
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={option.value}
+                      className="px-2.5 py-1.5 text-xs rounded-lg mx-1 my-0.5 flex items-center bg-[#9D7CFF]/10 border border-[#9D7CFF]/20"
+                    >
+                      <input
+                        type="text"
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleRenameSave();
+                          } else if (e.key === "Escape") {
+                            setEditingId(null);
+                          }
+                        }}
+                        onBlur={handleRenameSave}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="bg-zinc-950 border border-white/20 rounded px-2 py-1 text-xs text-white outline-none w-full"
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={option.value}
+                    onContextMenu={(e) => handleContextMenu(e, option.value)}
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`px-3 py-1.5 text-xs cursor-pointer transition-all duration-150 rounded-lg mx-1 my-0.5 flex items-center justify-between
+                      ${option.value === value 
+                        ? "bg-[#9D7CFF]/20 text-white font-semibold border border-[#9D7CFF]/25" 
+                        : "text-white/80 hover:bg-white/[0.04] hover:text-white"
+                      }`}
+                  >
+                    <span className="truncate pr-2">{option.label}</span>
+                    {option.value === value && <Check size={12} className="text-[#9D7CFF] shrink-0" />}
+                  </div>
+                );
+              })
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {contextMenu && (
+        <div
+          className="fixed z-[100] min-w-[140px] bg-[#121214]/98 border border-white/10 rounded-xl shadow-2xl py-1.5 backdrop-blur-xl text-xs"
+          style={{
+            position: "fixed",
+            top: contextMenu.y,
+            left: contextMenu.x,
+            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05) inset",
+          }}
+        >
+          {onRenameOption && (
+            <button
+              onClick={() => handleRenameStart(contextMenu.value)}
+              className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Pencil size={12} className="text-white/50" />
+              Nomear
+            </button>
+          )}
+          {onExportOption && (
+            <button
+              onClick={() => {
+                onExportOption(contextMenu.value);
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Download size={12} className="text-white/50" />
+              Exportar
+            </button>
+          )}
+          {onDeleteOption && (
+            <>
+              {(onRenameOption || onExportOption) && <div className="h-[1px] bg-white/10 my-1" />}
+              <button
+                onClick={() => {
+                  onDeleteOption(contextMenu.value);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-red-500/10 hover:text-red-400 text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Trash2 size={12} className="text-red-500" />
+                Excluir
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FlowDashboardPage() {
   const searchParams = useSearchParams();
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
@@ -1366,7 +1583,7 @@ export default function FlowDashboardPage() {
         model: targetMessage.plan.mediaModel || imageModel,
         referenceImagePath,
         forceReferenceUpload: true,
-        useExistingFlowReference: true
+        useExistingFlowReference: false
       });
       const editedImagePath = editedImage.path || editedImage.paths?.[0] || null;
       if (!editedImagePath) {
@@ -1639,6 +1856,50 @@ export default function FlowDashboardPage() {
     setChatMessages(nextConversation.messages);
   };
 
+  const handleDeleteSpecificConversation = (conversationId: string) => {
+    const remainingConversations = chatConversations.filter((c) => c.id !== conversationId);
+    
+    if (conversationId === activeConversationId) {
+      const activeIndex = chatConversations.findIndex((c) => c.id === conversationId);
+      const nextConversation = remainingConversations[activeIndex] || remainingConversations[activeIndex - 1] || createChatConversation();
+      
+      setChatConversations(remainingConversations.length > 0 ? remainingConversations : [nextConversation]);
+      setActiveConversationId(nextConversation.id);
+      setChatMessages(nextConversation.messages);
+    } else {
+      setChatConversations(remainingConversations.length > 0 ? remainingConversations : [createChatConversation()]);
+    }
+  };
+
+  const handleRenameConversation = (conversationId: string, newTitle: string) => {
+    setChatConversations((prev) => 
+      prev.map((c) => (c.id === conversationId ? { ...c, title: newTitle } : c))
+    );
+  };
+
+  const handleExportSpecificConversation = (conversationId: string) => {
+    const conversation = chatConversations.find((c) => c.id === conversationId);
+    if (!conversation) return;
+    
+    const messages = conversationId === activeConversationId ? chatMessages : conversation.messages;
+    const sanitized = sanitizeChatMessages(messages);
+    
+    const exportConversation = {
+      ...conversation,
+      title: getConversationTitle(sanitized)
+    };
+    
+    const slug = exportConversation.title
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 48) || "chat";
+      
+    downloadTextFile(formatChatExport(exportConversation, sanitized), `mrchicken-${slug}.md`);
+  };
+
   return (
     <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
@@ -1672,92 +1933,112 @@ export default function FlowDashboardPage() {
             setIsHeaderHovered(true);
           }
         }}
-        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between transition-all duration-500 ease-in-out border backdrop-blur-md shadow-xl select-none
+        style={{
+          transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
+        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between border backdrop-blur-xl shadow-2xl select-none rounded-full
           ${isHeaderHovered 
-            ? "w-[calc(100%-2rem)] max-w-5xl rounded-2xl px-6 py-3 bg-black/85 border-white/15" 
-            : "w-[220px] rounded-full px-4 py-2 bg-black/60 border-white/10 hover:border-[#9D7CFF]/40 hover:bg-black/75 cursor-pointer"
+            ? "w-[calc(100%-2rem)] max-w-5xl px-6 py-3 bg-zinc-950/80 border-white/10" 
+            : "w-[220px] px-4 py-2.5 bg-zinc-950/60 border-white/10 hover:border-white/20 hover:bg-zinc-950/75 cursor-pointer"
           }`}
       >
         <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-500 ease-in-out
-            ${isHeaderHovered 
-              ? "bg-[#9D7CFF]/20 border-[#9D7CFF]/30" 
-              : "bg-[#9D7CFF]/30 border-[#9D7CFF]/50 shadow-[0_0_10px_rgba(157,124,255,0.3)] animate-pulse"
-            }`}
+          <div 
+            style={{
+              transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+            className="w-8 h-8 rounded-full flex items-center justify-center border bg-[#9D7CFF]/15 border-[#9D7CFF]/25"
           >
-            <Bot size={18} className="text-[#9D7CFF]" />
+            <Bot size={17} className="text-[#9D7CFF]" />
           </div>
-          <div className="flex flex-col transition-all duration-500 ease-in-out">
-            <h1 className="text-sm font-semibold tracking-wide whitespace-nowrap">MrChicken Chatbot</h1>
-            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isHeaderHovered ? "max-h-5 opacity-100 mt-0.5" : "max-h-0 opacity-0"}`}>
+          <div 
+            style={{
+              transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+            className="flex flex-col"
+          >
+            <h1 className="text-sm font-semibold tracking-wide text-white/95 whitespace-nowrap">MrChicken Chatbot</h1>
+            <div 
+              style={{
+                transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+              className={`overflow-hidden ${isHeaderHovered ? "max-h-5 opacity-100 mt-0.5" : "max-h-0 opacity-0"}`}
+            >
               <p className="text-[10px] text-white/50 whitespace-nowrap">Assistente Autônomo AI UGC</p>
             </div>
           </div>
         </div>
 
-        <div className={`flex items-center gap-3 transition-all duration-500 ease-in-out origin-right ${isHeaderHovered ? "opacity-100 max-w-2xl scale-100" : "opacity-0 max-w-0 scale-95 pointer-events-none overflow-hidden"}`}>
-          {chatConversations.length > 0 && (
-            <div className="relative flex items-center bg-white/5 border border-white/10 rounded-full pl-3 pr-8 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]">
-              <select
-                className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5"
-                value={activeConversationId}
-                onChange={(e) => handleSelectConversation(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                title="Selecionar conversa"
-              >
-                {chatConversations.map((conversation) => (
-                  <option key={conversation.id} value={conversation.id} className="bg-[#080808] text-white">
-                    {conversation.title}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={12} className="absolute right-3 text-white/40 group-hover:text-white/80 pointer-events-none transition-colors" />
-            </div>
-          )}
-          {avatars.length > 0 && (
-             <div className="relative flex items-center bg-white/5 border border-white/10 rounded-full pl-3 pr-8 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group w-[120px] sm:w-[150px]">
-               <User size={12} className="text-white/50 shrink-0"/>
-               <select 
-                 className="appearance-none bg-transparent text-xs text-white/80 outline-none cursor-pointer w-full truncate py-1.5 pl-1.5"
-                 value={selectedAvatarId}
-                 onChange={(e) => setSelectedAvatarId(e.target.value)}
-                 onClick={(e) => e.stopPropagation()}
-               >
-                 {avatars.map(a => (
-                   <option key={a.id} value={a.id} className="bg-[#080808] text-white">{a.name}</option>
-                 ))}
-               </select>
-               <ChevronDown size={12} className="absolute right-3 text-white/40 group-hover:text-white/80 pointer-events-none transition-colors" />
-             </div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <button onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Nova conversa">
-              <MessageSquarePlus size={16} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleExportConversation(); }}
-              disabled={chatMessages.length === 0}
-              className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
-              title="Exportar conversa"
+        <AnimatePresence>
+          {isHeaderHovered && (
+            <motion.div
+              initial={{ opacity: 0, x: 20, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 15, scale: 0.95 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="flex items-center gap-3"
+              onClick={(e) => e.stopPropagation()}
             >
-              <Download size={16} />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); handleDeleteConversation(); }} className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/60 cursor-pointer" title="Excluir conversa">
-              <Trash2 size={16} />
-            </button>
-            <div className="w-[1px] h-4 bg-white/10 mx-1" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsHeaderHovered(false);
-              }}
-              className="p-2 hover:bg-white/10 hover:text-white rounded-full transition-all duration-200 text-white/40 cursor-pointer"
-              title="Recolher menu"
-            >
-              <ChevronUp size={16} />
-            </button>
-          </div>
-        </div>
+              {chatConversations.length > 0 && (
+                <CustomDropdown
+                  value={activeConversationId}
+                  onChange={handleSelectConversation}
+                  options={chatConversations.map(c => ({ value: c.id, label: c.title }))}
+                  onRenameOption={handleRenameConversation}
+                  onDeleteOption={handleDeleteSpecificConversation}
+                  onExportOption={handleExportSpecificConversation}
+                  title="Selecionar conversa"
+                  className="w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]"
+                />
+              )}
+              {avatars.length > 0 && (
+                <CustomDropdown
+                  value={selectedAvatarId}
+                  onChange={setSelectedAvatarId}
+                  options={avatars.map(a => ({ value: a.id, label: a.name }))}
+                  icon={<User size={12} />}
+                  title="Selecionar avatar"
+                  className="w-[120px] sm:w-[150px]"
+                />
+              )}
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
+                  className="p-2 hover:bg-[#9D7CFF]/15 hover:text-[#9D7CFF] rounded-xl transition-all duration-300 text-white/60 cursor-pointer" 
+                  title="Nova conversa"
+                >
+                  <MessageSquarePlus size={16} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleExportConversation(); }}
+                  disabled={chatMessages.length === 0}
+                  className="p-2 hover:bg-[#9D7CFF]/15 hover:text-[#9D7CFF] rounded-xl transition-all duration-300 text-white/60 disabled:text-white/20 disabled:cursor-not-allowed cursor-pointer"
+                  title="Exportar conversa"
+                >
+                  <Download size={16} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleDeleteConversation(); }} 
+                  className="p-2 hover:bg-red-500/15 hover:text-red-400 rounded-xl transition-all duration-300 text-white/60 cursor-pointer" 
+                  title="Excluir conversa"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <div className="w-[1px] h-4 bg-white/10 mx-1.5" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsHeaderHovered(false);
+                  }}
+                  className="p-2 hover:bg-white/10 hover:text-white rounded-xl transition-all duration-300 text-white/40 cursor-pointer"
+                  title="Recolher menu"
+                >
+                  <ChevronUp size={16} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* ── Chat Area ── */}
