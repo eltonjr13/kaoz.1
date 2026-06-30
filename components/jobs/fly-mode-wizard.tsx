@@ -23,7 +23,21 @@ import {
   Volume2,
   Plus,
   Mic,
-  Square
+  Square,
+  Box,
+  GraduationCap,
+  Building2,
+  Shirt,
+  Search,
+  Users,
+  Target,
+  Share2,
+  PenTool,
+  BarChart3,
+  Lock,
+  ChevronDown,
+  User,
+  Pencil
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -771,118 +785,280 @@ export function FlyModeWizard({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
-            className="flex flex-col gap-6"
+            className="flex flex-col gap-12 lg:flex-row max-w-[1280px] w-full mx-auto font-sans"
           >
-            {/* Header */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#9D7CFF]/20 border border-[#9D7CFF]/45">
-                  <Zap size={14} className="text-[#9D7CFF]" />
-                </span>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-[#9D7CFF]">
-                  Piloto Automático (Modo Fly)
-                </span>
+            {/* Left Content (~70%) */}
+            <div className="flex flex-col w-full lg:w-8/12 xl:w-9/12">
+              
+              {/* Hero */}
+              <div className="flex flex-col gap-8 mb-12 mt-8">
+                <div className="inline-flex items-center gap-2 self-start rounded-full border border-[#8B5CF6]/30 bg-[#8B5CF6]/10 px-3 py-1.5">
+                  <Zap size={14} className="text-[#8B5CF6]" />
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-[#8B5CF6]">
+                    Piloto Automático (Modo Fly)
+                  </span>
+                </div>
+                <h1 className="text-5xl md:text-[56px] font-bold leading-[1.1] tracking-tight text-white">
+                  Otimização Inteligente<br />de Campanhas
+                </h1>
+                <p className="text-base text-[#A1A1AA] max-w-2xl leading-relaxed">
+                  A IA irá analisar seu negócio e construir uma estratégia completa<br />de anúncios baseada nas suas respostas.
+                </p>
               </div>
-              <h2 className="text-2xl font-light tracking-tight">Otimização & Coordenação de Anúncios</h2>
-              <p className="text-sm text-white/50 max-w-xl">
-                O piloto automático coordenará a melhor estratégia. Ele fará perguntas diagnósticas personalizadas sobre a sua marca para estruturar criativos e vídeos de alta conversão.
-              </p>
+
+              {/* Progress Bar */}
+              <div className="flex items-center justify-between mb-12 max-w-xl">
+                 <div className="flex flex-col items-center gap-2 w-full relative">
+                    <div className="absolute top-[11px] left-0 w-full h-[2px] bg-white/[0.08] -z-10 rounded-full"></div>
+                    <div className="absolute top-[11px] left-0 w-[15%] h-[2px] bg-[#8B5CF6] -z-10 rounded-full"></div>
+                    <div className="flex justify-between w-full">
+                       <div className="flex flex-col items-center gap-3 bg-transparent pr-4">
+                          <div className="w-6 h-6 rounded-full bg-[#8B5CF6] flex items-center justify-center text-[12px] font-bold text-white ring-4 ring-[#09090B]">1</div>
+                          <span className="text-[12px] font-semibold text-white tracking-wide">Produto</span>
+                       </div>
+                       <div className="flex flex-col items-center gap-3 bg-transparent px-4">
+                          <div className="w-6 h-6 rounded-full bg-[#18181B] border border-white/20 flex items-center justify-center text-[12px] font-bold text-[#A1A1AA] ring-4 ring-[#09090B]">2</div>
+                          <span className="text-[12px] font-medium text-[#A1A1AA] tracking-wide">Estratégia</span>
+                       </div>
+                       <div className="flex flex-col items-center gap-3 bg-transparent pl-4">
+                          <div className="w-6 h-6 rounded-full bg-[#18181B] border border-white/20 flex items-center justify-center text-[12px] font-bold text-[#A1A1AA] ring-4 ring-[#09090B]">3</div>
+                          <span className="text-[12px] font-medium text-[#A1A1AA] tracking-wide">Criativos</span>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Main Card */}
+              <div 
+                className="flex flex-col p-6 md:p-8 backdrop-blur-xl"
+                style={{
+                   backgroundColor: 'rgba(255,255,255,0.04)',
+                   border: '1px solid rgba(255,255,255,0.08)',
+                   borderRadius: '20px',
+                   boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
+                }}
+              >
+                 <label className="text-base font-bold text-white mb-6">O que você quer vender ou promover nesta campanha?</label>
+                 
+                 {/* Textarea Wrapper */}
+                 <div className="relative mb-8 group">
+                    <div className="absolute top-4 left-4 text-[#A1A1AA] pointer-events-none z-10">
+                       <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 group-focus-within:border-[#8B5CF6]/50 transition-colors">
+                         <Pencil size={18} className="text-[#8B5CF6]" />
+                       </div>
+                    </div>
+                    <textarea
+                      value={campaignGoal}
+                      onChange={(e) => setCampaignGoal(e.target.value)}
+                      placeholder="Descreva seu produto, serviço ou oferta com o máximo de detalhes possível.&#10;Ex.: Copos térmicos de cores pastéis para pessoas que trabalham de home office e amam café..."
+                      className="w-full min-h-[160px] bg-[#09090B]/60 text-[15px] leading-relaxed text-white placeholder:text-[#A1A1AA]/50 outline-none resize-none pt-[18px] pb-14 pl-[76px] pr-4 transition-all focus:border-[#8B5CF6]/50 focus:bg-[#09090B]/80 hover:border-white/20"
+                      style={{
+                        borderRadius: '16px',
+                        border: '1px solid rgba(255,255,255,0.08)'
+                      }}
+                    />
+                    <div className="absolute bottom-4 left-[76px]">
+                       <DictationButton value={campaignGoal} onValueChange={setCampaignGoal} disabled={isLoading} />
+                    </div>
+                    <div className="absolute bottom-4 right-5 text-[12px] font-medium text-[#A1A1AA]/60">
+                       {campaignGoal.length} / 1000
+                    </div>
+                 </div>
+
+                 {/* Quick Examples */}
+                 <div className="flex flex-col gap-4 mb-8">
+                    <span className="text-[14px] font-semibold text-white">Exemplos rápidos</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                       <button onClick={() => setCampaignGoal("Copos térmicos de cores pastéis para home office.")} className="flex flex-col text-left p-4 rounded-[16px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all h-[104px]">
+                          <div className="flex items-center gap-2.5 mb-2">
+                             <span className="text-[#8B5CF6]"><Box size={18}/></span>
+                             <span className="text-[14px] font-semibold text-white">Produto Físico</span>
+                          </div>
+                          <span className="text-[13px] text-[#A1A1AA] leading-snug">Copos térmicos para home office.</span>
+                       </button>
+                       <button onClick={() => setCampaignGoal("Curso de finanças pessoais de forma bem humorada.")} className="flex flex-col text-left p-4 rounded-[16px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all h-[104px]">
+                          <div className="flex items-center gap-2.5 mb-2">
+                             <span className="text-[#10B981]"><GraduationCap size={18}/></span>
+                             <span className="text-[14px] font-semibold text-white">Curso</span>
+                          </div>
+                          <span className="text-[13px] text-[#A1A1AA] leading-snug">Curso de finanças pessoais.</span>
+                       </button>
+                       <button onClick={() => setCampaignGoal("Clínica odontológica especializada em estética.")} className="flex flex-col text-left p-4 rounded-[16px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all h-[104px]">
+                          <div className="flex items-center gap-2.5 mb-2">
+                             <span className="text-[#3B82F6]"><Building2 size={18}/></span>
+                             <span className="text-[14px] font-semibold text-white">Empresa/Serviço</span>
+                          </div>
+                          <span className="text-[13px] text-[#A1A1AA] leading-snug">Clínica odontológica especializada.</span>
+                       </button>
+                       <button onClick={() => setCampaignGoal("Roupas sustentáveis focando em minimalismo.")} className="flex flex-col text-left p-4 rounded-[16px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all h-[104px]">
+                          <div className="flex items-center gap-2.5 mb-2">
+                             <span className="text-[#F59E0B]"><Shirt size={18}/></span>
+                             <span className="text-[14px] font-semibold text-white">Marca de Roupas</span>
+                          </div>
+                          <span className="text-[13px] text-[#A1A1AA] leading-snug">Roupas sustentáveis minimalistas.</span>
+                       </button>
+                    </div>
+                 </div>
+
+                 {/* Settings */}
+                 <div className="flex flex-col gap-4 mb-8">
+                    <span className="text-[14px] font-semibold text-white">Configurações da Campanha</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div className="flex flex-col gap-0 relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A1A1AA] z-10 pointer-events-none">
+                             <User size={18} />
+                          </div>
+                          <select
+                            value={selectedAvatarId}
+                            onChange={(e) => setSelectedAvatarId(e.target.value)}
+                            className="w-full appearance-none bg-white/[0.02] border border-white/[0.08] text-[14px] font-medium text-white outline-none cursor-pointer hover:bg-white/[0.05] transition-all pl-12 pr-10 pt-6 pb-2"
+                            style={{ borderRadius: '16px' }}
+                          >
+                            {avatars.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                          <span className="absolute left-12 top-2 text-[10px] font-medium text-[#A1A1AA] pointer-events-none">Avatar da Campanha</span>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#A1A1AA]">
+                             <ChevronDown size={16} />
+                          </div>
+                       </div>
+                       
+                       <div className="flex flex-col gap-0 relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A1A1AA] z-10 pointer-events-none">
+                             <Cpu size={18} />
+                          </div>
+                          <select
+                            value={agentModel}
+                            onChange={(e) => setAgentModel(e.target.value as any)}
+                            className="w-full appearance-none bg-white/[0.02] border border-white/[0.08] text-[14px] font-medium text-white outline-none cursor-pointer hover:bg-white/[0.05] transition-all pl-12 pr-10 pt-6 pb-2"
+                            style={{ borderRadius: '16px' }}
+                          >
+                            <option value="gemini">Gemini 2.5 (Recomendado)</option>
+                            <option value="chatgpt">ChatGPT GPT-4o</option>
+                            <option value="claude">Claude 3.5 Sonnet</option>
+                            <option value="deepseek">DeepSeek R1</option>
+                          </select>
+                          <span className="absolute left-12 top-2 text-[10px] font-medium text-[#A1A1AA] pointer-events-none">Modelo de IA</span>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#A1A1AA]">
+                             <ChevronDown size={16} />
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 <button
+                    disabled={isLoading || isRestoringCampaign}
+                    onClick={handleStartDiagnosis}
+                    className="w-full flex items-center justify-center gap-2 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.99] mt-2"
+                    style={{
+                       background: 'linear-gradient(90deg, #8B5CF6 0%, #7C3AED 100%)',
+                       height: '58px',
+                       borderRadius: '16px',
+                    }}
+                 >
+                    {isLoading || isRestoringCampaign ? (
+                      <Loader2 size={20} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={20} />
+                    )}
+                    <span className="text-[16px] tracking-wide">{isRestoringCampaign ? "Restaurando..." : "Iniciar Piloto Automático"}</span>
+                    <ArrowRight size={20} className="ml-1 opacity-80" />
+                 </button>
+              </div>
             </div>
 
-            {/* Form Box */}
-            <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-md flex flex-col gap-5">
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-white/85">O que você quer vender ou promover nesta campanha?</label>
-                <DictationButton
-                  value={campaignGoal}
-                  onValueChange={setCampaignGoal}
-                  disabled={isLoading}
-                />
-                <textarea
-                  value={campaignGoal}
-                  onChange={(e) => setCampaignGoal(e.target.value)}
-                  placeholder="Ex: Copos térmicos de cores pastéis para pessoas que trabalham de home office e amam café..."
-                  className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white placeholder-white/30 outline-none focus:border-[#9D7CFF]/50 transition-colors"
-                />
-              </div>
+            {/* Right Panel (~30%) */}
+            <div className="flex flex-col w-full lg:w-4/12 xl:w-3/12 lg:mt-[220px]">
+               <div 
+                 className="flex flex-col p-7 backdrop-blur-xl h-fit sticky top-24"
+                 style={{
+                   backgroundColor: 'rgba(255,255,255,0.03)',
+                   border: '1px solid rgba(255,255,255,0.08)',
+                   borderRadius: '20px'
+                 }}
+               >
+                  <h3 className="text-[18px] font-bold text-white mb-8">O Piloto Automático irá:</h3>
+                  <div className="flex flex-col gap-6 flex-1">
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <Search size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Analisar seu mercado</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Entendemos seu nicho e tendências</span>
+                        </div>
+                     </div>
+                     
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <Users size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Identificar concorrentes</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Mapeamos seus principais rivais</span>
+                        </div>
+                     </div>
 
-              {/* Presets */}
-              <div className="flex flex-col gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-white/45">Exemplos rápidos:</span>
-                <div className="flex flex-wrap gap-2">
-                  {presets.map((p, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setCampaignGoal(p)}
-                      className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-1.5 text-xs text-white/60 hover:border-[#9D7CFF]/30 hover:bg-[#9D7CFF]/5 hover:text-white transition-all cursor-pointer"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <Target size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Definir público-alvo</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Descobrimos quem realmente compra</span>
+                        </div>
+                     </div>
 
-              {/* Settings selectors */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                {/* Avatar */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-white/85">Avatar da Campanha</label>
-                  <div className="relative">
-                    <select
-                      value={selectedAvatarId}
-                      onChange={(e) => setSelectedAvatarId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white/80 outline-none cursor-pointer"
-                    >
-                      {avatars.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <Share2 size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Escolher a estratégia ideal</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Selecionamos a abordagem mais eficaz</span>
+                        </div>
+                     </div>
+
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <FileText size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Criar roteiros</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Desenvolvemos scripts persuasivos</span>
+                        </div>
+                     </div>
+
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <ImageIcon size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Gerar anúncios</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Produzimos anúncios de alta conversão</span>
+                        </div>
+                     </div>
+
+                     <div className="flex gap-4 items-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#8B5CF6] mt-0.5">
+                           <BarChart3 size={15} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[14px] font-bold text-white">Planejar campanhas</span>
+                           <span className="text-[13px] text-[#A1A1AA] leading-relaxed">Estruturamos o plano completo</span>
+                        </div>
+                     </div>
                   </div>
-                </div>
-
-                {/* Model */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-white/85">Cérebro da IA</label>
-                  <select
-                    value={agentModel}
-                    onChange={(e) => setAgentModel(e.target.value as any)}
-                    className="w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white/80 outline-none cursor-pointer"
-                  >
-                    <option value="gemini">Gemini 2.5 (Recomendado)</option>
-                    <option value="chatgpt">ChatGPT GPT-4o</option>
-                    <option value="claude">Claude 3.5 Sonnet</option>
-                    <option value="deepseek">DeepSeek R1</option>
-                  </select>
-                </div>
-              </div>
-
-              {error && (
-                <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
-                  <AlertCircle size={14} />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Submit */}
-              <button
-                disabled={isLoading || isRestoringCampaign}
-                onClick={handleStartDiagnosis}
-                className="mt-2 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-[#9D7CFF] px-6 text-sm font-semibold text-black transition-all hover:bg-[#b096ff] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {isLoading || isRestoringCampaign ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>{isRestoringCampaign ? "Restaurando Campanha..." : "Iniciando Piloto..."}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Iniciar Piloto Automático</span>
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
+                  
+                  <div className="mt-8 pt-6 border-t border-white/[0.08]">
+                     <div className="flex items-center gap-3 p-4 rounded-[16px] bg-[#09090B]/40 border border-white/[0.05]">
+                        <Lock size={16} className="text-[#A1A1AA]" />
+                        <div className="flex flex-col">
+                           <span className="text-[13px] font-bold text-white">100% seguro e confidencial</span>
+                           <span className="text-[11px] text-[#A1A1AA] mt-0.5">Suas informações estão protegidas</span>
+                        </div>
+                     </div>
+                  </div>
+               </div>
             </div>
           </motion.div>
         )}

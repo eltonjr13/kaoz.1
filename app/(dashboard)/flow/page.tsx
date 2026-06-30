@@ -585,6 +585,24 @@ export default function FlowDashboardPage() {
       window.removeEventListener("contextmenu", handleCloseMenu);
     };
   }, [contextMenu]);
+
+  const headerRef = useRef<HTMLHeadElement>(null);
+
+  useEffect(() => {
+    if (!isHeaderHovered) return;
+    const handleClickOutsideHeader = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-context-menu]")) {
+        return;
+      }
+      if (headerRef.current && !headerRef.current.contains(target)) {
+        setIsHeaderHovered(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutsideHeader);
+    return () => document.removeEventListener("mousedown", handleClickOutsideHeader);
+  }, [isHeaderHovered]);
+
   const hasAttempted3dRecoveryRef = useRef(false);
   const hasAppliedModeFromUrlRef = useRef(false);
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
@@ -1881,7 +1899,7 @@ export default function FlowDashboardPage() {
   };
 
   return (
-    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#080808] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#09090B] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
       <div
         aria-hidden="true"
@@ -1889,7 +1907,8 @@ export default function FlowDashboardPage() {
           position: "absolute", right: 0, top: 0, bottom: 0, width: "65%", zIndex: 1,
           backgroundImage: "url('/mrchicken-anime-bg.jpeg')", backgroundSize: "cover",
           backgroundPosition: "right 15% top", backgroundAttachment: "local",
-          opacity: 0.15, mixBlendMode: "luminosity",
+          opacity: 0.08, mixBlendMode: "luminosity",
+          filter: "blur(12px) contrast(1.2)",
           maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
           pointerEvents: "none",
@@ -1899,15 +1918,15 @@ export default function FlowDashboardPage() {
         aria-hidden="true"
         style={{
           position: "absolute", inset: 0, zIndex: 0,
-          background: "radial-gradient(ellipse 55% 50% at 82% 10%, rgba(157,124,255,0.065) 0%, transparent 100%), linear-gradient(180deg, rgba(8,8,8,0.30) 0%, rgba(8,8,8,0.72) 52%, #080808 100%)",
+          background: "radial-gradient(ellipse 55% 50% at 82% 10%, rgba(139,92,246,0.035) 0%, transparent 100%), linear-gradient(180deg, rgba(9,9,11,0.40) 0%, rgba(9,9,11,0.80) 52%, #09090B 100%)",
           pointerEvents: "none",
         }}
       />
 
       {/* ── Header ── */}
       <header
+        ref={headerRef}
         onMouseEnter={() => setIsHeaderHovered(true)}
-        onMouseLeave={() => setIsHeaderHovered(false)}
         onClick={() => {
           if (!isHeaderHovered) {
             setIsHeaderHovered(true);
@@ -1923,7 +1942,9 @@ export default function FlowDashboardPage() {
           }`}
       >
         <GlassSurface
+          // @ts-ignore
           width="100%"
+          // @ts-ignore
           height="100%"
           borderRadius={32}
           blur={isHeaderHovered ? 8 : 4}
@@ -2448,6 +2469,7 @@ export default function FlowDashboardPage() {
 
       {contextMenu && (
         <div
+          data-context-menu="true"
           className="fixed z-[100] min-w-[140px] bg-[#121214]/98 border border-white/10 rounded-xl shadow-2xl py-1.5 backdrop-blur-xl text-xs select-none"
           style={{
             position: "fixed",

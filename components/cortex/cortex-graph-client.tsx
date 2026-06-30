@@ -296,6 +296,14 @@ export function CortexGraphClient() {
   const [editingRule, setEditingRule] = useState<Partial<RuleEntry> | null>(null);
   const [isCreatingRule, setIsCreatingRule] = useState(false);
 
+  // Modal de confirmação customizado
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   // Parâmetros da simulação física ajustáveis
   const [repulsionForce, setRepulsionForce] = useState(1800);
   const [attractionForce, setAttractionForce] = useState(0.018);
@@ -850,17 +858,24 @@ export function CortexGraphClient() {
     }
   };
 
-  const handleDeleteNode = async (nodeId: string) => {
-    if (!confirm("Tem certeza que deseja remover este nó e todas as suas conexões?")) return;
-    try {
-      await fetch(`/api/memory/graph?id=${encodeURIComponent(nodeId)}&type=node`, {
-        method: "DELETE"
-      });
-      await fetchGraphData(true);
-      setSelectedNode(null);
-    } catch (err) {
-      console.error("Erro ao deletar nó:", err);
-    }
+  const handleDeleteNode = (nodeId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Remover Nó",
+      message: "Tem certeza que deseja remover este nó e todas as suas conexões? Esta ação não pode ser desfeita.",
+      onConfirm: async () => {
+        try {
+          await fetch(`/api/memory/graph?id=${encodeURIComponent(nodeId)}&type=node`, {
+            method: "DELETE"
+          });
+          await fetchGraphData(true);
+          setSelectedNode(null);
+        } catch (err) {
+          console.error("Erro ao deletar nó:", err);
+        }
+        setConfirmModal(null);
+      }
+    });
   };
 
   const handleSaveFeedback = async (jobId: string, feedback: 'good' | 'bad') => {
@@ -919,16 +934,23 @@ export function CortexGraphClient() {
     }
   };
 
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm("Tem certeza que deseja remover esta regra procedimental?")) return;
-    try {
-      await fetch(`/api/memory/rules?id=${encodeURIComponent(ruleId)}`, {
-        method: "DELETE"
-      });
-      await fetchGraphData(true);
-    } catch (err) {
-      console.error("Erro ao deletar regra procedimental:", err);
-    }
+  const handleDeleteRule = (ruleId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Remover Regra Procedimental",
+      message: "Tem certeza que deseja remover esta regra procedimental? Esta ação não pode ser desfeita.",
+      onConfirm: async () => {
+        try {
+          await fetch(`/api/memory/rules?id=${encodeURIComponent(ruleId)}`, {
+            method: "DELETE"
+          });
+          await fetchGraphData(true);
+        } catch (err) {
+          console.error("Erro ao deletar regra procedimental:", err);
+        }
+        setConfirmModal(null);
+      }
+    });
   };
 
   const nodeTypeColor = (type: string) => {
@@ -2045,11 +2067,83 @@ export function CortexGraphClient() {
         </div>
       )}
 
-      {/* CSS global para animação de spin */}
+      {/* Modal de Confirmação Customizado */}
+      {confirmModal && confirmModal.isOpen && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)",
+          backdropFilter: "blur(8px)", zIndex: 200,
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmModal(null); }}
+        >
+          <div style={{
+            width: "420px", maxWidth: "90vw",
+            background: "rgba(14,14,20,0.98)",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+            borderRadius: "16px", padding: "24px",
+            display: "flex", flexDirection: "column", gap: "20px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)",
+            animation: "confirmModalAppear 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
+          }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div style={{
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.2)",
+                borderRadius: "50%",
+                padding: "8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ef4444"
+              }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#fff" }}>
+                {confirmModal.title}
+              </h3>
+            </div>
+
+            <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.7)", lineHeight: 1.5 }}>
+              {confirmModal.message}
+            </p>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setConfirmModal(null)}
+                style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--muted)", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: "pointer", transition: "all 0.2s"
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                  border: "none", color: "#fff", borderRadius: "8px", padding: "10px 18px",
+                  fontSize: "12px", cursor: "pointer", fontWeight: "bold", transition: "all 0.2s"
+                }}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSS global para animação de spin e modal */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes confirmModalAppear {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
         }
       `}</style>
     </div>
