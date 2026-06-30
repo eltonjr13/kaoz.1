@@ -32,6 +32,7 @@ import ReactMarkdown from "react-markdown";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
+import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 
 interface GenerationResult {
   success: boolean;
@@ -1150,10 +1151,12 @@ export default function FlowDashboardPage() {
       message.plan?.imagePackageMode === 'turnaround3d' && !message.model3dResult?.path;
 
     const activeJobs = chatMessages.filter(
-      (m) => m.jobId && (
-        m.jobStatus === 'running' ||
-        needsModel3dReconcile(m)
-      )
+      (m) => m.jobId &&
+        m.jobStatus !== 'completed' &&
+        m.jobStatus !== 'failed' && (
+          m.jobStatus === 'running' ||
+          needsModel3dReconcile(m)
+        )
     );
     if (activeJobs.length === 0) return;
 
@@ -1913,13 +1916,26 @@ export default function FlowDashboardPage() {
         style={{
           transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
         }}
-        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between border backdrop-blur-xl shadow-2xl select-none rounded-full
+        className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 shadow-2xl select-none rounded-full
           ${isHeaderHovered 
-            ? "w-[calc(100%-2rem)] max-w-5xl px-6 py-3 bg-zinc-950/80 border-white/10" 
-            : "w-[220px] px-4 py-2.5 bg-zinc-950/60 border-white/10 hover:border-white/20 hover:bg-zinc-950/75 cursor-pointer"
+            ? "w-[calc(100%-2rem)] max-w-5xl h-[64px]" 
+            : "w-[220px] h-[52px] cursor-pointer"
           }`}
       >
-        <div className="flex items-center gap-3">
+        <GlassSurface
+          width="100%"
+          height="100%"
+          borderRadius={32}
+          blur={isHeaderHovered ? 8 : 4}
+          displace={isHeaderHovered ? 5 : 0}
+          distortionScale={isHeaderHovered ? -20 : -5}
+          brightness={isHeaderHovered ? 15 : 5}
+          opacity={0.4}
+          backgroundOpacity={isHeaderHovered ? 0.02 : 0}
+          className="w-full h-full border border-white/10 hover:border-white/20 transition-all duration-600 rounded-full"
+        >
+          <div className={`w-full h-full flex items-center justify-between transition-all duration-600 ${isHeaderHovered ? 'px-6' : 'px-4'}`}>
+            <div className="flex items-center gap-3">
           <div 
             style={{
               transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
@@ -2004,6 +2020,8 @@ export default function FlowDashboardPage() {
             </motion.div>
           )}
         </AnimatePresence>
+          </div>
+        </GlassSurface>
       </header>
 
       {/* ── Chat Area ── */}
