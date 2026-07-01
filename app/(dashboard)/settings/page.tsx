@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Settings,
   Cpu,
@@ -14,7 +14,8 @@ import {
   Play,
   XCircle,
   RefreshCw,
-  Box
+  Box,
+  Mic
 } from "lucide-react";
 
 interface PortalConfig {
@@ -33,6 +34,37 @@ interface ExtensionStatus {
   lastHeartbeatAt: number | null;
   pendingTasks: number;
 }
+
+type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed";
+
+interface SpeechConfig {
+  provider: SpeechProviderName;
+  chunkMs: number;
+}
+
+type StatusMessage = { text: string; type: "success" | "error" | "info" };
+
+const SPEECH_OPTIONS: Array<{
+  id: SpeechProviderName;
+  name: string;
+  description: string;
+}> = [
+  {
+    id: "webspeech",
+    name: "Web",
+    description: "Usa a transcricao nativa do navegador."
+  },
+  {
+    id: "whisper",
+    name: "Whisper",
+    description: "Faster-Whisper local com mais estabilidade."
+  },
+  {
+    id: "whisper-speed",
+    name: "Whisper Speed",
+    description: "Faster-Whisper local priorizando baixa latencia."
+  }
+];
 
 const PORTALS: PortalConfig[] = [
   {
@@ -85,9 +117,123 @@ const PORTALS: PortalConfig[] = [
   }
 ];
 
+function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
+  return {
+    provider: data.provider === "webspeech" || data.provider === "whisper" || data.provider === "whisper-speed"
+      ? data.provider
+      : "whisper-speed",
+    chunkMs: typeof data.chunkMs === "number" ? data.chunkMs : 0,
+  };
+}
+
+function getSpeechOptionName(provider: SpeechProviderName): string {
+  return SPEECH_OPTIONS.find((option) => option.id === provider)?.name || provider;
+}
+
+function SpeechSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  const [speechConfig, setSpeechConfig] = useState<SpeechConfig | null>(null);
+  const [savingSpeechProvider, setSavingSpeechProvider] = useState<SpeechProviderName | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSpeechConfig() {
+      try {
+        const res = await fetch("/api/speech/config", { cache: "no-store" });
+        const data = await res.json() as Record<string, unknown>;
+        if (isMounted && res.ok) {
+          setSpeechConfig(parseSpeechConfig(data));
+        }
+      } catch (err) {
+        console.error("Erro ao carregar configuracao de transcricao:", err);
+      }
+    }
+
+    void loadSpeechConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const updateSpeechProvider = async (provider: SpeechProviderName) => {
+    setSavingSpeechProvider(provider);
+    try {
+      const res = await fetch("/api/speech/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel salvar a transcricao.");
+      }
+      const config = parseSpeechConfig(data);
+      setSpeechConfig(config);
+      onStatusMessage({
+        text: `Transcricao alterada para ${getSpeechOptionName(config.provider)}.`,
+        type: "success"
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      onStatusMessage({
+        text: `Erro ao salvar transcricao: ${errMsg}`,
+        type: "error"
+      });
+    } finally {
+      setSavingSpeechProvider(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+        <Mic size={14} className="text-zinc-400" />
+        <span>Transcricao de voz</span>
+      </h2>
+      <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {SPEECH_OPTIONS.map((option) => {
+            const selected = speechConfig?.provider === option.id;
+            const saving = savingSpeechProvider === option.id;
+
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => updateSpeechProvider(option.id)}
+                disabled={!!savingSpeechProvider}
+                className={`text-left rounded-[10px] border p-4 transition-all disabled:opacity-60 ${
+                  selected
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                    : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-bold uppercase tracking-widest">{option.name}</span>
+                  {saving ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : selected ? (
+                    <CheckCircle size={12} className="text-emerald-400" />
+                  ) : null}
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                  {option.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[10px] text-zinc-600">
+          O servidor Faster-Whisper local e iniciado automaticamente quando Whisper ou Whisper Speed estiver ativo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [loadingPortal, setLoadingPortal] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
   const [isCheckingAll, setIsCheckingAll] = useState(false);
   const [extensionStatus, setExtensionStatus] = useState<ExtensionStatus | null>(null);
 
@@ -308,6 +454,8 @@ export default function SettingsPage() {
 
       {/* Contas & Logins das IAs */}
       <div className="space-y-6">
+        <SpeechSettingsPanel onStatusMessage={setStatusMessage} />
+
         <div className="space-y-1">
           <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
             <Key size={14} className="text-zinc-400" />

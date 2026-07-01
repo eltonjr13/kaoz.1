@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Bot,
   Sparkles,
@@ -40,62 +40,7 @@ import {
   Pencil
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface BrowserSpeechRecognitionAlternative {
-  transcript: string;
-}
-
-interface BrowserSpeechRecognitionResult {
-  isFinal: boolean;
-  0?: BrowserSpeechRecognitionAlternative;
-}
-
-interface BrowserSpeechRecognitionEvent {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: BrowserSpeechRecognitionResult;
-  };
-}
-
-interface BrowserSpeechRecognitionErrorEvent {
-  error?: string;
-  message?: string;
-}
-
-interface BrowserSpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onend: (() => void) | null;
-  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
-  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
-  abort: () => void;
-  start: () => void;
-  stop: () => void;
-}
-
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-
-const createSpeechRecognition = () => {
-  if (typeof window === "undefined") return null;
-  const browserWindow = window as typeof window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  };
-  const Recognition = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
-  if (!Recognition) return null;
-
-  const recognition = new Recognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "pt-BR";
-  return recognition;
-};
-
-const combineDictationText = (baseText: string, finalText: string, interimText = "") => {
-  return [baseText.trimEnd(), finalText.trim(), interimText.trim()].filter(Boolean).join(" ");
-};
+import { useSpeechDictation } from "@/lib/speech/use-speech-dictation";
 
 interface DictationButtonProps {
   value: string;
@@ -104,100 +49,21 @@ interface DictationButtonProps {
 }
 
 function DictationButton({ value, onValueChange, disabled = false }: DictationButtonProps) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingError, setRecordingError] = useState("");
-  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const baseTextRef = useRef("");
-  const finalTextRef = useRef("");
-
-  const applyTranscript = React.useCallback((finalText: string, interimText = "") => {
-    onValueChange(combineDictationText(baseTextRef.current, finalText, interimText));
-  }, [onValueChange]);
-
-  const stopRecording = React.useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setIsRecording(false);
-    applyTranscript(finalTextRef.current);
-  }, [applyTranscript]);
-
-  const startRecording = React.useCallback(() => {
-    if (disabled || isRecording) return;
-
-    const recognition = createSpeechRecognition();
-    if (!recognition) {
-      setRecordingError("Microfone indisponivel neste navegador.");
-      return;
-    }
-
-    baseTextRef.current = value;
-    finalTextRef.current = "";
-    setRecordingError("");
-
-    recognition.onresult = (event) => {
-      let nextFinalText = finalTextRef.current;
-      let interimText = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) {
-          nextFinalText = combineDictationText(nextFinalText, transcript);
-        } else {
-          interimText = combineDictationText(interimText, transcript);
-        }
-      }
-
-      finalTextRef.current = nextFinalText;
-      applyTranscript(nextFinalText, interimText);
-    };
-
-    recognition.onerror = (event) => {
-      setRecordingError(
-        event.error === "no-speech"
-          ? "Nenhuma voz detectada."
-          : event.message || event.error || "Falha ao reconhecer audio."
-      );
-      setIsRecording(false);
-      recognitionRef.current = null;
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-      recognitionRef.current = null;
-      applyTranscript(finalTextRef.current);
-    };
-
-    try {
-      recognition.start();
-      recognitionRef.current = recognition;
-      setIsRecording(true);
-    } catch (error) {
-      recognitionRef.current = null;
-      setRecordingError(error instanceof Error ? error.message : "Nao foi possivel iniciar o microfone.");
-    }
-  }, [applyTranscript, disabled, isRecording, value]);
-
-  useEffect(() => {
-    return () => {
-      const recognition = recognitionRef.current;
-      if (!recognition) return;
-      recognition.onend = null;
-      recognition.onerror = null;
-      recognition.onresult = null;
-      recognition.abort();
-    };
-  }, []);
+  const speech = useSpeechDictation({ value, onValueChange, disabled });
+  const isRecording = speech.isRecording;
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {recordingError && (
+      {speech.error && (
         <span className="text-[10px] font-medium text-red-300">
-          {recordingError}
+          {speech.error}
         </span>
       )}
       <button
         type="button"
-        onClick={isRecording ? stopRecording : startRecording}
+        onClick={() => {
+          void (isRecording ? speech.stop() : speech.start());
+        }}
         disabled={disabled}
         aria-pressed={isRecording}
         title={isRecording ? "Parar microfone" : "Falar pelo microfone"}
@@ -207,7 +73,11 @@ function DictationButton({ value, onValueChange, disabled = false }: DictationBu
             : "border-white/10 bg-white/[0.04] text-white/65 hover:border-[#9D7CFF]/40 hover:bg-[#9D7CFF]/10 hover:text-white"
         }`}
       >
-        {isRecording ? <Square size={12} className="fill-current" /> : <Mic size={12} />}
+        {isRecording ? (
+          <Square size={12} className="fill-current" />
+        ) : (
+          <Mic size={12} />
+        )}
         <span>{isRecording ? "Parar" : "Falar"}</span>
       </button>
     </div>

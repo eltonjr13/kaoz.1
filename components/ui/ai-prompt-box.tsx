@@ -1,8 +1,9 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Paperclip, Square, X, SlidersHorizontal, BrainCog, FolderCode, Mic } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, FolderCode, Mic } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSpeechDictation } from "@/lib/speech/use-speech-dictation";
 
 // Utility function for className merging
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(" ");
@@ -206,42 +207,6 @@ const VoiceInteractionLight: React.FC<VoiceInteractionLightProps> = ({ isVoiceAc
   );
 };
 
-interface BrowserSpeechRecognitionAlternative {
-  transcript: string;
-}
-
-interface BrowserSpeechRecognitionResult {
-  isFinal: boolean;
-  0: BrowserSpeechRecognitionAlternative;
-}
-
-interface BrowserSpeechRecognitionEvent {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: BrowserSpeechRecognitionResult;
-  };
-}
-
-interface BrowserSpeechRecognitionErrorEvent {
-  error?: string;
-  message?: string;
-}
-
-interface BrowserSpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onend: (() => void) | null;
-  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
-  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
-  abort: () => void;
-  start: () => void;
-  stop: () => void;
-}
-
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-
 interface VoiceAnalysisFrame {
   isVoiceActive: boolean;
   levels: number[];
@@ -287,25 +252,6 @@ const analyzeVoiceFrame = (data: Uint8Array): VoiceAnalysisFrame => {
   });
 
   return { isVoiceActive, levels };
-};
-
-const getNativeSpeechRecognition = () => {
-  if (typeof window === "undefined") return null;
-  const browserWindow = window as typeof window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  };
-  return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition || null;
-};
-
-const createNativeSpeechRecognition = () => {
-  const Recognition = getNativeSpeechRecognition();
-  if (!Recognition) return null;
-  const recognition = new Recognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "pt-BR";
-  return recognition;
 };
 
 // ImageViewDialog Component
@@ -547,18 +493,12 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
-  const [isRecording, setIsRecording] = React.useState(false);
   const [isVoiceActive, setIsVoiceActive] = React.useState(false);
   const [voiceLevels, setVoiceLevels] = React.useState(createSilenceLevels);
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
-  const [interimTranscript, setInterimTranscript] = React.useState("");
-  const [recordingError, setRecordingError] = React.useState("");
   const [showCanvas, setShowCanvas] = React.useState(false);
-  const recordingBaseTextRef = React.useRef("");
-  const finalTranscriptRef = React.useRef("");
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const promptBoxRef = React.useRef<HTMLDivElement>(null);
-  const speechRecognitionRef = React.useRef<BrowserSpeechRecognition | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const audioSourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = React.useRef<AnalyserNode | null>(null);
@@ -574,6 +514,9 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
       setInternalInput(resolvedValue);
     }
   }, [input, onValueChange, value]);
+  const speech = useSpeechDictation({ value: input, onValueChange: setInput, disabled: isLoading });
+  const isRecording = speech.isRecording;
+  const recordingError = speech.error;
 
   const handleToggleChange = (value: string) => {
     if (value === "cortex") {
@@ -708,118 +651,29 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     readVoiceFrame();
   }, []);
 
-  const renderSpeechText = React.useCallback((finalText: string, interimText = "") => {
-    const parts = [
-      recordingBaseTextRef.current.trimEnd(),
-      finalText.trim(),
-      interimText.trim(),
-    ].filter(Boolean);
-    setInput(parts.join(" "));
-  }, [setInput]);
-
-  const handleSpeechResult = React.useCallback((event: BrowserSpeechRecognitionEvent) => {
-    let finalText = "";
-    let interimText = "";
-
-    for (let i = 0; i < event.results.length; i++) {
-      const result = event.results[i];
-      const transcript = result[0]?.transcript || "";
-      if (result.isFinal) finalText += transcript;
-      else interimText += transcript;
-    }
-
-    finalTranscriptRef.current = finalText.trim();
-    const cleanInterimText = interimText.trim();
-    setInterimTranscript(cleanInterimText);
-    renderSpeechText(finalTranscriptRef.current, cleanInterimText);
-  }, [renderSpeechText]);
-
-  const handleSpeechEnd = React.useCallback(() => {
-    speechRecognitionRef.current = null;
-    setIsRecording(false);
-    setInterimTranscript("");
-    renderSpeechText(finalTranscriptRef.current);
-    stopRecordingTimer();
-    stopVoiceMeter();
-  }, [renderSpeechText, stopRecordingTimer, stopVoiceMeter]);
-
-  const handleSpeechError = React.useCallback((event: BrowserSpeechRecognitionErrorEvent) => {
-    const message = event.error === "no-speech"
-      ? "Nenhuma voz detectada."
-      : event.message || event.error || "Falha ao reconhecer audio pelo navegador.";
-    setRecordingError(message);
-    setIsRecording(false);
-    setInterimTranscript("");
-    stopRecordingTimer();
-    stopVoiceMeter();
-  }, [stopRecordingTimer, stopVoiceMeter]);
-
   const handleStartRecording = React.useCallback(async () => {
     if (isLoading || isRecording) return;
-    setRecordingError("");
-    setInterimTranscript("");
-    recordingBaseTextRef.current = input;
-    finalTranscriptRef.current = "";
     resetVoiceMeter();
 
-    const recognition = createNativeSpeechRecognition();
-    if (!recognition) {
-      setRecordingError("Transcricao nativa nao esta disponivel neste navegador.");
-      return;
-    }
-
-    try {
-      recognition.onresult = handleSpeechResult;
-      recognition.onerror = handleSpeechError;
-      recognition.onend = handleSpeechEnd;
-      speechRecognitionRef.current = recognition;
-      recognition.start();
-      setIsRecording(true);
+    const started = await speech.start();
+    if (started) {
       startRecordingTimer();
       try {
         await startVoiceMeter();
       } catch (meterError) {
         console.warn("Medidor de voz indisponivel:", meterError);
       }
-    } catch (error) {
-      speechRecognitionRef.current = null;
-      stopRecordingTimer();
-      stopVoiceMeter();
-      setRecordingError(error instanceof Error ? error.message : "Nao foi possivel iniciar a transcricao nativa.");
     }
-  }, [
-    handleSpeechEnd,
-    handleSpeechError,
-    handleSpeechResult,
-    input,
-    isLoading,
-    isRecording,
-    resetVoiceMeter,
-    startRecordingTimer,
-    startVoiceMeter,
-    stopRecordingTimer,
-    stopVoiceMeter,
-  ]);
+  }, [isLoading, isRecording, resetVoiceMeter, speech, startRecordingTimer, startVoiceMeter]);
 
-  const handleStopRecording = React.useCallback(() => {
-    speechRecognitionRef.current?.stop();
-    speechRecognitionRef.current = null;
-    setIsRecording(false);
-    setInterimTranscript("");
-    renderSpeechText(finalTranscriptRef.current);
+  const handleStopRecording = React.useCallback(async () => {
+    await speech.stop();
     stopRecordingTimer();
     stopVoiceMeter();
-  }, [renderSpeechText, stopRecordingTimer, stopVoiceMeter]);
+  }, [speech, stopRecordingTimer, stopVoiceMeter]);
 
   React.useEffect(() => {
     return () => {
-      const recognition = speechRecognitionRef.current;
-      if (recognition) {
-        recognition.onend = null;
-        recognition.onerror = null;
-        recognition.onresult = null;
-        recognition.abort();
-      }
       stopRecordingTimer();
       stopVoiceMeter();
     };
@@ -920,7 +774,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
         {isRecording && (
           <div className="sr-only" aria-live="polite">
-            {interimTranscript.trim() || (isVoiceActive ? "Voz detectada" : "Aguardando voz")}
+            {speech.transcript.trim() || (isVoiceActive ? "Voz detectada" : "Aguardando voz")}
           </div>
         )}
 
@@ -1081,11 +935,11 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
               )}
               onClick={() => {
                 if (isRecording) {
-                  handleStopRecording();
+                  void handleStopRecording();
                   return;
                 }
                 if (hasContent) handleSubmit();
-                else handleStartRecording();
+                else void handleStartRecording();
               }}
               disabled={isLoading}
               aria-label={isRecording ? "Parar gravacao" : hasContent ? "Enviar mensagem" : "Gravar audio"}
@@ -1098,7 +952,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
               }}
             >
               {isLoading ? (
-                <Square className="h-4 w-4 animate-pulse fill-current" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : isRecording ? (
                 <span className="flex items-center gap-2">
                   <span className="flex h-4 items-end gap-[3px]">
