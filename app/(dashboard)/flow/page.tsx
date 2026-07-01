@@ -24,7 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  Settings
+  Settings,
+  RefreshCw
 } from "lucide-react";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
@@ -63,6 +64,7 @@ type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
 type PlannedFlow = AgentType | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
+const TURNAROUND_IMAGE_LABELS = ["Base", "Lateral esquerda", "Lateral direita", "Costas", "Topo", "Inferior"];
 
 interface PendingPlan {
   kind: AgentType;
@@ -130,6 +132,7 @@ interface FlowJobSnapshot {
   topic?: string | null;
   final_video_path?: string | null;
   source_video_transcription?: string | null;
+  error_message?: string | null;
   updated_at?: string;
 }
 
@@ -408,6 +411,19 @@ const buildModel3dResultFromJob = (job: FlowJobSnapshot): Model3DResult | null =
   };
 };
 
+const buildImageResultFromJob = (job: FlowJobSnapshot): GenerationResult | null => {
+  const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
+  const finalPath = job.final_video_path || imagePaths[0] || "";
+  if (!finalPath && imagePaths.length === 0) return null;
+  return {
+    success: true,
+    path: finalPath,
+    filename: getResultFilename(finalPath),
+    paths: imagePaths.length > 0 ? imagePaths : [finalPath],
+    createdAt: job.updated_at || new Date().toISOString()
+  };
+};
+
 const getEditableMessageContent = (content: string) =>
   content.replace(/\n\n\[Imagem de refer(?:ência|Ãªncia) anexada\]$/i, "");
 
@@ -605,6 +621,8 @@ export default function FlowDashboardPage() {
 
   const hasAttempted3dRecoveryRef = useRef(false);
   const hasAppliedModeFromUrlRef = useRef(false);
+  const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
+  const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
   const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
@@ -633,6 +651,7 @@ export default function FlowDashboardPage() {
   const [draftMessage, setDraftMessage] = useState("");
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   const [editing3dBaseImagePath, setEditing3dBaseImagePath] = useState<string | null>(null);
+  const [regenerating3dImage, setRegenerating3dImage] = useState<{ messageId: string; imageIndex: number } | null>(null);
   
   useEffect(() => {
     if (hasAppliedModeFromUrlRef.current) return;
@@ -958,6 +977,11 @@ export default function FlowDashboardPage() {
       : [createChatConversation(legacyMessages)];
     const savedActiveId = localStorage.getItem(ACTIVE_CHAT_KEY);
     const activeConversation = initialConversations.find((conversation) => conversation.id === savedActiveId) || initialConversations[0];
+    autoDownloaded3dModelsRef.current = new Set(
+      initialConversations.flatMap((conversation) =>
+        conversation.messages.flatMap((message) => message.model3dResult?.paths || (message.model3dResult?.path ? [message.model3dResult.path] : []))
+      )
+    );
 
     queueMicrotask(() => {
       setChatConversations(initialConversations);
@@ -969,12 +993,15 @@ export default function FlowDashboardPage() {
 
   useEffect(() => {
     const recoverJobId = searchParams.get("recover3d") || "";
+    const stale3dJobIds = chatMessages
+      .filter((msg) => msg.jobId && msg.plan?.imagePackageMode === "turnaround3d" && !msg.model3dResult?.path)
+      .map((msg) => msg.jobId as string);
     const alreadyRecovered = recoverJobId && chatMessages.some((msg) =>
       msg.jobId === recoverJobId && Boolean(msg.model3dResult?.path)
     );
     if (!hasLoadedConversations || hasAttempted3dRecoveryRef.current) return;
     hasAttempted3dRecoveryRef.current = true;
-    if (alreadyRecovered || (!recoverJobId && chatMessages.length > 0)) return;
+    if (alreadyRecovered || (!recoverJobId && chatMessages.length > 0 && stale3dJobIds.length === 0)) return;
 
     let cancelled = false;
     const recoverLatest3dModel = async () => {
@@ -982,7 +1009,10 @@ export default function FlowDashboardPage() {
         const res = await fetch(recoverJobId ? `/api/jobs?jobId=${encodeURIComponent(recoverJobId)}` : "/api/jobs");
         if (!res.ok) return;
         const data = await res.json() as { jobs?: FlowJobSnapshot[] };
-        const latest3dJob = (recoverJobId ? (data.jobs || []) : (data.jobs || [])
+        const recoverableJobs = recoverJobId
+          ? (data.jobs || [])
+          : (data.jobs || []).filter((job) => !chatMessages.length || stale3dJobIds.includes(job.id || ""));
+        const latest3dJob = (recoverJobId ? recoverableJobs : recoverableJobs
           .filter((job) => job.status === "completed" && buildModel3dResultFromJob(job))
           .sort((a, b) => Date.parse(b.updated_at || "") - Date.parse(a.updated_at || "")))[0];
         if (!latest3dJob || !latest3dJob.id || cancelled) return;
@@ -1018,7 +1048,8 @@ export default function FlowDashboardPage() {
             paths: imagePaths.length > 0 ? imagePaths : [finalPath],
             createdAt: latest3dJob.updated_at || new Date().toISOString()
           } : null,
-          model3dResult
+          model3dResult,
+          projectResult: null
         };
 
         if (!cancelled) {
@@ -1114,6 +1145,45 @@ export default function FlowDashboardPage() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!hasLoadedConversations) return;
+
+    const pendingDownloads = chatMessages.flatMap((message) => {
+      if (message.jobStatus !== "completed" || !message.model3dResult?.path) return [];
+      const paths = message.model3dResult.paths?.length ? message.model3dResult.paths : [message.model3dResult.path];
+      return paths
+        .filter((modelPath) => modelPath && !autoDownloaded3dModelsRef.current.has(modelPath))
+        .map((modelPath) => ({ messageId: message.id, modelPath, filename: getResultFilename(modelPath) }));
+    });
+
+    if (pendingDownloads.length === 0) return;
+
+    pendingDownloads.forEach(({ modelPath }) => {
+      autoDownloaded3dModelsRef.current.add(modelPath);
+      const downloadFrame = document.createElement("iframe");
+      downloadFrame.src = getFlowDownloadUrl(modelPath);
+      downloadFrame.style.display = "none";
+      document.body.appendChild(downloadFrame);
+      window.setTimeout(() => downloadFrame.remove(), 60000);
+    });
+
+    setChatMessages((previous) =>
+      previous.map((message) => {
+        const downloadedForMessage = pendingDownloads.filter((item) => item.messageId === message.id);
+        if (downloadedForMessage.length === 0) return message;
+        return {
+          ...message,
+          jobLogs: [
+            ...(message.jobLogs || []),
+            ...downloadedForMessage.map((item) =>
+              `[${new Date().toLocaleTimeString()}] Download automatico do modelo 3D iniciado: ${item.filename}`
+            )
+          ]
+        };
+      })
+    );
+  }, [chatMessages, hasLoadedConversations]);
+
+  useEffect(() => {
     const bodyEl = document.body;
     const mainEl = document.querySelector('main');
     const originalBodyOverflow = bodyEl.style.overflow;
@@ -1167,15 +1237,16 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     const needsModel3dReconcile = (message: ChatMessageState) =>
       message.plan?.imagePackageMode === 'turnaround3d' && !message.model3dResult?.path;
+    const isWithin3dFailureReconcileWindow = (message: ChatMessageState) => {
+      if (!message.jobId || message.jobStatus !== "failed" || !needsModel3dReconcile(message)) return false;
+      return (failed3dReconcileUntilRef.current[message.jobId] || 0) > Date.now();
+    };
 
-    const activeJobs = chatMessages.filter(
-      (m) => m.jobId &&
-        m.jobStatus !== 'completed' &&
-        m.jobStatus !== 'failed' && (
-          m.jobStatus === 'running' ||
-          needsModel3dReconcile(m)
-        )
-    );
+    const activeJobs = chatMessages.filter((m) => {
+      if (!m.jobId || m.jobStatus === "completed") return false;
+      if (m.jobStatus === "failed") return isWithin3dFailureReconcileWindow(m);
+      return m.jobStatus === "running" || needsModel3dReconcile(m);
+    });
     if (activeJobs.length === 0) return;
 
     let isMounted = true;
@@ -1217,18 +1288,13 @@ export default function FlowDashboardPage() {
                   nextMessages[msgIndex].jobStatus = 'completed';
                   const finalPath = job.final_video_path || "";
                   const model3dResult = buildModel3dResultFromJob(job);
+                  nextMessages[msgIndex].projectResult = null;
+                  if (msg.jobId) delete failed3dReconcileUntilRef.current[msg.jobId];
                   if (model3dResult) {
                     nextMessages[msgIndex].model3dResult = model3dResult;
                   }
                   if (msg.jobType === "image" || msg.jobType === "ad-creative") {
-                     const imagePaths = extractImagePathsFromJob(job.source_video_transcription);
-                     nextMessages[msgIndex].imageResult = {
-                       success: true,
-                       path: finalPath,
-                       filename: getResultFilename(finalPath),
-                       paths: imagePaths.length > 0 ? imagePaths : (finalPath ? [finalPath] : []),
-                       createdAt: job.updated_at
-                     };
+                     nextMessages[msgIndex].imageResult = buildImageResultFromJob(job);
                   } else if (msg.jobType === "video") {
                      nextMessages[msgIndex].videoResult = {
                        success: true,
@@ -1249,6 +1315,9 @@ export default function FlowDashboardPage() {
                   const imagePaths = (msg.jobType === "image" || msg.jobType === "ad-creative")
                     ? extractImagePathsFromJob(job.source_video_transcription)
                     : [];
+                  if (needsModel3dReconcile(nextMessages[msgIndex]) && (imagePaths.length > 0 || finalPath)) {
+                    failed3dReconcileUntilRef.current[msg.jobId!] = Date.now() + 10 * 60 * 1000;
+                  }
                   if ((msg.jobType === "image" || msg.jobType === "ad-creative") && (imagePaths.length > 0 || finalPath)) {
                     nextMessages[msgIndex].imageResult = {
                       success: true,
@@ -1481,10 +1550,12 @@ export default function FlowDashboardPage() {
 
     const nextMessages = [...chatMessages];
     nextMessages[msgIndex].jobStatus = "running";
+    nextMessages[msgIndex].projectResult = null;
     nextMessages[msgIndex].jobLogs = [
       ...(nextMessages[msgIndex].jobLogs || []),
       `[${new Date().toLocaleTimeString()}] Enviando imagens aprovadas para o Hunyuan 3D...`
     ];
+    failed3dReconcileUntilRef.current[msg.jobId] = Date.now() + 10 * 60 * 1000;
     shouldAutoScrollRef.current = true;
     setChatMessages(nextMessages);
 
@@ -1515,6 +1586,81 @@ export default function FlowDashboardPage() {
             : item
         )
       );
+    }
+  };
+
+  const handleRegenerate3dImage = async (msgId: string, imageIndex: number) => {
+    const msgIndex = chatMessages.findIndex(m => m.id === msgId);
+    if (msgIndex < 0 || imageIndex <= 0) return;
+
+    const msg = chatMessages[msgIndex];
+    if (!msg.jobId || msg.plan?.imagePackageMode !== "turnaround3d") return;
+
+    setRegenerating3dImage({ messageId: msgId, imageIndex });
+    setChatMessages((previous) =>
+      previous.map((item) =>
+        item.id === msgId
+          ? {
+              ...item,
+              jobLogs: [
+                ...(item.jobLogs || []),
+                `[${new Date().toLocaleTimeString()}] Regenerando imagem ${imageIndex + 1} do pacote 3D...`
+              ]
+            }
+          : item
+      )
+    );
+
+    try {
+      const res = await fetch("/api/flow/regenerate-3d-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: msg.jobId,
+          imageIndex,
+          aspectRatio: msg.plan.aspectRatio,
+          model: msg.plan.mediaModel
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao regenerar a imagem.");
+      }
+
+      setChatMessages((previous) =>
+        previous.map((item) =>
+          item.id === msgId
+            ? {
+                ...item,
+                jobStatus: "completed",
+                model3dResult: null,
+                imageResult: data.imageResult,
+                projectResult: null,
+                jobLogs: [
+                  ...(item.jobLogs || []),
+                  `[${new Date().toLocaleTimeString()}] Imagem ${imageIndex + 1} regenerada.`
+                ]
+              }
+            : item
+        )
+      );
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setChatMessages((previous) =>
+        previous.map((item) =>
+          item.id === msgId
+            ? {
+                ...item,
+                jobLogs: [
+                  ...(item.jobLogs || []),
+                  `[${new Date().toLocaleTimeString()}] Falha ao regenerar imagem: ${errMsg}`
+                ]
+              }
+            : item
+        )
+      );
+    } finally {
+      setRegenerating3dImage(null);
     }
   };
 
@@ -1582,6 +1728,8 @@ export default function FlowDashboardPage() {
                 ...msg,
                 content: "Atualizei a imagem base com as correções e vou continuar o pacote 3D usando esta versão.",
                 imageResult: editedImage,
+                model3dResult: null,
+                projectResult: null,
                 plan: updatedPlan,
                 jobStatus: "running",
                 jobType: updatedPlan.kind,
@@ -2225,14 +2373,34 @@ export default function FlowDashboardPage() {
                          </div>
                          {msg.imageResult.paths && msg.imageResult.paths.length > 0 ? (
                            <div className="grid grid-cols-2 gap-2">
-                             {msg.imageResult.paths.slice(0, 4).map((p, idx) => (
-                               <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(p), alt: `Midia gerada ${idx + 1}`, downloadUrl: getFlowDownloadUrl(p) })}>
-                                 <img src={getFlowMediaUrl(p)} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                   <span className="text-[10px] text-white font-medium bg-black/60 px-2 py-1 rounded-md">Expandir</span>
+                             {msg.imageResult.paths.slice(0, 4).map((p, idx) => {
+                               const isRegenerating = regenerating3dImage?.messageId === msg.id && regenerating3dImage.imageIndex === idx;
+                               const canRegenerate = msg.plan?.imagePackageMode === 'turnaround3d' && idx > 0 && !msg.model3dResult?.path;
+                               const imageLabel = TURNAROUND_IMAGE_LABELS[idx] || `Imagem ${idx + 1}`;
+
+                               return (
+                                 <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square cursor-pointer" onClick={() => setExpandedResultImage({ src: getFlowMediaUrl(p), alt: `Midia gerada ${idx + 1}`, downloadUrl: getFlowDownloadUrl(p) })}>
+                                   <img src={getFlowMediaUrl(p)} alt={`Midia gerada ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                     <span className="text-[10px] text-white font-medium bg-black/60 px-2 py-1 rounded-md">Expandir</span>
+                                   </div>
+                                   {canRegenerate && (
+                                     <button
+                                       type="button"
+                                       disabled={Boolean(regenerating3dImage)}
+                                       onClick={(event) => {
+                                         event.stopPropagation();
+                                         void handleRegenerate3dImage(msg.id, idx);
+                                       }}
+                                       className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/80 transition-colors hover:border-[#9D7CFF]/50 hover:bg-[#9D7CFF]/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                       title={`Gerar novamente: ${imageLabel}`}
+                                     >
+                                       {isRegenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                                     </button>
+                                   )}
                                  </div>
-                               </div>
-                             ))}
+                               );
+                             })}
                            </div>
                          ) : (
                            msg.imageResult.path && (
