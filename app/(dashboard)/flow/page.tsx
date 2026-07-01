@@ -244,9 +244,17 @@ const getConversationTitle = (messages: ChatMessageState[]) => {
 };
 
 const getConversationTitleWithBranch = (messages: ChatMessageState[], currentTitle: string) => {
-  const title = getConversationTitle(messages);
-  void currentTitle;
-  return title;
+  const generatedTitle = getConversationTitle(messages);
+  const isDefault = currentTitle === "Nova conversa" || currentTitle === `${BRANCH_TITLE_PREFIX}Nova conversa`;
+  
+  if (isDefault) {
+    if (currentTitle.startsWith(BRANCH_TITLE_PREFIX)) {
+      return `${BRANCH_TITLE_PREFIX}${generatedTitle}`;
+    }
+    return generatedTitle;
+  }
+  
+  return currentTitle;
 };
 
 const get3dEditSourcePath = (message: ChatMessageState) => {
@@ -974,7 +982,7 @@ export default function FlowDashboardPage() {
     const legacyMessages = readJsonArray<ChatMessageState>(localStorage.getItem(CHAT_HISTORY_KEY));
     const initialConversations = savedConversations.length > 0
       ? savedConversations
-      : [createChatConversation(legacyMessages)];
+      : (legacyMessages.length > 0 ? [createChatConversation(legacyMessages)] : [createChatConversation()]);
     const savedActiveId = localStorage.getItem(ACTIVE_CHAT_KEY);
     const activeConversation = initialConversations.find((conversation) => conversation.id === savedActiveId) || initialConversations[0];
     autoDownloaded3dModelsRef.current = new Set(
@@ -1136,12 +1144,20 @@ export default function FlowDashboardPage() {
 
   useEffect(() => {
     if (chatConversations.length === 0) return;
-    localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(chatConversations));
+    try {
+      localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(chatConversations));
+    } catch (e) {
+      console.warn("Falha ao salvar chatConversations no LocalStorage:", e);
+    }
   }, [chatConversations]);
 
   useEffect(() => {
     if (!activeConversationId) return;
-    localStorage.setItem(ACTIVE_CHAT_KEY, activeConversationId);
+    try {
+      localStorage.setItem(ACTIVE_CHAT_KEY, activeConversationId);
+    } catch (e) {
+      console.warn("Falha ao salvar activeConversationId no LocalStorage:", e);
+    }
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -1823,7 +1839,11 @@ export default function FlowDashboardPage() {
 
   const createConversationBranch = (branchMessages: ChatMessageState[]) => {
     const sanitizedBranchMessages = sanitizeChatMessages(branchMessages);
-    const branchTitle = `${BRANCH_TITLE_PREFIX}${getConversationTitle(sanitizedBranchMessages)}`;
+    const currentTitle = activeConversation?.title || getConversationTitle(sanitizedBranchMessages);
+    const cleanTitle = currentTitle.startsWith(BRANCH_TITLE_PREFIX) 
+      ? currentTitle.substring(BRANCH_TITLE_PREFIX.length)
+      : currentTitle;
+    const branchTitle = `${BRANCH_TITLE_PREFIX}${cleanTitle}`;
     const branchConversation = createChatConversation(sanitizedBranchMessages, branchTitle);
     const currentMessages = sanitizeChatMessages(chatMessages);
     const updatedAt = new Date().toISOString();
@@ -1946,13 +1966,22 @@ export default function FlowDashboardPage() {
     if (!conversation) return;
     setActiveConversationId(conversation.id);
     setChatMessages(conversation.messages);
+    setDraftMessage("");
   };
 
   const handleCreateConversation = () => {
+    if (chatConversations.length > 0 && chatConversations[0].messages.length === 0) {
+      setActiveConversationId(chatConversations[0].id);
+      setChatMessages([]);
+      setDraftMessage("");
+      return;
+    }
+
     const conversation = createChatConversation();
     setChatConversations((previous) => [conversation, ...previous]);
     setActiveConversationId(conversation.id);
     setChatMessages([]);
+    setDraftMessage("");
   };
 
   const handleExportConversation = () => {
@@ -1960,7 +1989,7 @@ export default function FlowDashboardPage() {
     const messages = sanitizeChatMessages(chatMessages);
     const exportConversation = {
       ...activeConversation,
-      title: getConversationTitle(messages)
+      title: activeConversation.title
     };
     const slug = exportConversation.title
       .toLowerCase()
@@ -1983,6 +2012,7 @@ export default function FlowDashboardPage() {
     setChatConversations(nextConversations);
     setActiveConversationId(nextConversation.id);
     setChatMessages(nextConversation.messages);
+    setDraftMessage("");
   };
 
   const handleDeleteSpecificConversation = (conversationId: string) => {
@@ -1995,6 +2025,7 @@ export default function FlowDashboardPage() {
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [nextConversation]);
       setActiveConversationId(nextConversation.id);
       setChatMessages(nextConversation.messages);
+      setDraftMessage("");
     } else {
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [createChatConversation()]);
     }
@@ -2015,7 +2046,7 @@ export default function FlowDashboardPage() {
     
     const exportConversation = {
       ...conversation,
-      title: getConversationTitle(sanitized)
+      title: conversation.title
     };
     
     const slug = exportConversation.title
