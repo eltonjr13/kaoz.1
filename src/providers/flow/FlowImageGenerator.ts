@@ -188,10 +188,9 @@ export class FlowImageGenerator {
   private shouldReuseExistingAttachment(
     alreadyAttached: boolean,
     skipUpload: boolean,
-    useExistingFlowReference: boolean,
     forceReferenceSelection: boolean
   ): boolean {
-    return alreadyAttached && (skipUpload || useExistingFlowReference) && !forceReferenceSelection;
+    return alreadyAttached && skipUpload && !forceReferenceSelection;
   }
 
   private async confirmReferenceInclude(dialog: Locator): Promise<void> {
@@ -208,27 +207,14 @@ export class FlowImageGenerator {
   private async prepareReferenceFile(
     page: Page,
     fileInput: Locator,
-    referenceImage: string,
-    skipUpload: boolean,
-    useExistingFlowReference: boolean,
-    forceReferenceSelection: boolean
+    referenceImage: string
   ): Promise<boolean> {
-    if ((!skipUpload || forceReferenceSelection) && !useExistingFlowReference) {
-      await fileInput.waitFor({ state: 'attached', timeout: 15000 });
-      logger.info('Input de arquivo de referencia localizado. Fazendo upload...');
-      await fileInput.setInputFiles(referenceImage);
-      logger.info('Arquivo enviado. Aguardando o Flow iniciar o processamento do upload...');
-      await page.waitForTimeout(2000);
-      return true;
-    }
-
-    if (useExistingFlowReference) {
-      logger.info('Usando imagem ja existente no Flow. Pulando upload do arquivo fisico.');
-      return false;
-    }
-
-    logger.info('Imagem ja enviada anteriormente nesta sessao do projeto. Pulando upload do arquivo fisico.');
-    return false;
+    await fileInput.waitFor({ state: 'attached', timeout: 15000 });
+    logger.info('Input de arquivo de referencia localizado. Fazendo upload...');
+    await fileInput.setInputFiles(referenceImage);
+    logger.info('Arquivo enviado. Aguardando o Flow iniciar o processamento do upload...');
+    await page.waitForTimeout(2000);
+    return true;
   }
 
   /**
@@ -245,25 +231,20 @@ export class FlowImageGenerator {
 
     // Only reuse an existing attachment when this run explicitly targets the same Flow reference.
     const alreadyAttached = await this.isReferenceImageAttached(page);
-    if (this.shouldReuseExistingAttachment(alreadyAttached, skipUpload, useExistingFlowReference, forceReferenceSelection)) {
+    if (this.shouldReuseExistingAttachment(alreadyAttached, skipUpload, forceReferenceSelection)) {
       logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
       return;
     }
 
     if (alreadyAttached) {
       logger.info('Ja existe uma imagem no prompt, mas a referencia solicitada precisa ser anexada novamente.');
+    } else if (useExistingFlowReference) {
+      logger.info('Referencia existente solicitada, mas nenhum anexo confiavel foi detectado. Reenviando o arquivo local para evitar midia antiga.');
     }
 
     const fileInput = page.locator('input[type="file"]').first();
     try {
-      const uploadedFileThisRun = await this.prepareReferenceFile(
-        page,
-        fileInput,
-        referenceImage,
-        skipUpload,
-        useExistingFlowReference,
-        forceReferenceSelection
-      );
+      const uploadedFileThisRun = await this.prepareReferenceFile(page, fileInput, referenceImage);
 
       logger.info('Abrindo menu de mídia do prompt...');
       const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
