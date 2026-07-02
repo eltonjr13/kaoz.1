@@ -1,6 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { getOmniVoiceApiUrl } from "@/services/omnivoice/omnivoice.settings";
 import type { VoiceSettings } from "@/types";
 
 export type GenerateVoiceInput = {
@@ -95,10 +96,10 @@ async function downloadVoiceAudio(audioUrl: string, jobId: string): Promise<stri
 }
 
 export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
-  const apiUrl = process.env.OMNIVOICE_API_URL;
+  const apiUrl = await getOmniVoiceApiUrl();
 
   if (!apiUrl) {
-    throw new Error("OMNIVOICE_API_URL não configurada no .env.local.");
+    throw new Error("OMNIVOICE_API_URL nao configurada. Defina a URL nas configuracoes do OmniVoice ou no .env.local.");
   }
 
   // Connect to Gradio client

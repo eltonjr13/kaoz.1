@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Settings,
   Cpu,
@@ -15,7 +15,9 @@ import {
   XCircle,
   RefreshCw,
   Box,
-  Mic
+  Mic,
+  Volume2,
+  Save
 } from "lucide-react";
 
 interface PortalConfig {
@@ -40,6 +42,19 @@ type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed";
 interface SpeechConfig {
   provider: SpeechProviderName;
   chunkMs: number;
+}
+
+type OmniVoiceServerStatus = "idle" | "starting" | "waiting_for_login" | "running" | "captured" | "error";
+
+interface OmniVoiceConfig {
+  notebookUrl: string;
+  apiUrl: string;
+  effectiveApiUrl: string | null;
+  source: "settings" | "env" | "none";
+  status: OmniVoiceServerStatus;
+  lastError: string | null;
+  lastCaptureAt: string | null;
+  runStartedAt: string | null;
 }
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
@@ -123,6 +138,36 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
       ? data.provider
       : "whisper-speed",
     chunkMs: typeof data.chunkMs === "number" ? data.chunkMs : 0,
+  };
+}
+
+function normalizeOmniVoiceStatus(value: unknown): OmniVoiceServerStatus {
+  const statuses: OmniVoiceServerStatus[] = ["starting", "waiting_for_login", "running", "captured", "error"];
+  return statuses.includes(value as OmniVoiceServerStatus) ? value as OmniVoiceServerStatus : "idle";
+}
+
+function normalizeOmniVoiceSource(value: unknown): OmniVoiceConfig["source"] {
+  return value === "settings" || value === "env" ? value : "none";
+}
+
+function stringOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function parseOmniVoiceConfig(data: Record<string, unknown>): OmniVoiceConfig {
+  return {
+    notebookUrl: stringOrEmpty(data.notebookUrl),
+    apiUrl: stringOrEmpty(data.apiUrl),
+    effectiveApiUrl: stringOrNull(data.effectiveApiUrl),
+    source: normalizeOmniVoiceSource(data.source),
+    status: normalizeOmniVoiceStatus(data.status),
+    lastError: stringOrNull(data.lastError),
+    lastCaptureAt: stringOrNull(data.lastCaptureAt),
+    runStartedAt: stringOrNull(data.runStartedAt)
   };
 }
 
@@ -231,6 +276,254 @@ function SpeechSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: S
   );
 }
 
+function isActiveOmniVoiceStatus(status: OmniVoiceServerStatus | undefined): boolean {
+  return status === "starting" || status === "waiting_for_login" || status === "running";
+}
+
+function getOmniVoiceStatusLabel(config: OmniVoiceConfig | null): string {
+  if (config?.status === "captured") return "URL capturada";
+  if (config?.status === "error") return "Erro";
+  if (isActiveOmniVoiceStatus(config?.status)) return "Aguardando URL";
+  return "Parado";
+}
+
+function getOmniVoiceStatusClass(config: OmniVoiceConfig | null): string {
+  if (config?.status === "captured") return "bg-emerald-500/10 border-emerald-500/20 text-emerald-400";
+  if (config?.status === "error") return "bg-rose-500/10 border-rose-500/20 text-rose-400";
+  return "bg-white/5 border-white/10 text-zinc-400";
+}
+
+function OmniVoiceStatusSummary({ config }: { config: OmniVoiceConfig | null }) {
+  return (
+    <div className="space-y-1 min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${getOmniVoiceStatusClass(config)}`}>
+          {getOmniVoiceStatusLabel(config)}
+        </span>
+        {config?.source !== "none" && (
+          <span className="text-[10px] text-zinc-600">
+            Fonte: {config?.source === "settings" ? "configuracoes" : ".env.local"}
+          </span>
+        )}
+      </div>
+      {config?.lastError && (
+        <p className="text-[10px] leading-relaxed text-rose-300">{config.lastError}</p>
+      )}
+      {config?.effectiveApiUrl && (
+        <p className="truncate text-[10px] font-mono text-zinc-500">{config.effectiveApiUrl}</p>
+      )}
+    </div>
+  );
+}
+
+type OmniVoiceActionButtonProps = {
+  label: string;
+  action: string;
+  busyAction: string | null;
+  disabled?: boolean;
+  icon: typeof Save;
+  variant?: "default" | "primary" | "success";
+  onClick: () => void;
+};
+
+function getActionButtonClass(variant: OmniVoiceActionButtonProps["variant"]): string {
+  if (variant === "primary") {
+    return "bg-white text-black hover:bg-zinc-200";
+  }
+  if (variant === "success") {
+    return "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15";
+  }
+  return "border border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.06]";
+}
+
+function OmniVoiceActionButton({
+  label,
+  action,
+  busyAction,
+  disabled = false,
+  icon: Icon,
+  variant = "default",
+  onClick
+}: OmniVoiceActionButtonProps) {
+  const busy = busyAction === action;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold transition-all disabled:opacity-50 ${getActionButtonClass(variant)}`}
+    >
+      {busy ? <Loader2 size={10} className="animate-spin" /> : <Icon size={10} />}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+type OmniVoiceActionBarProps = {
+  busyAction: string | null;
+  canTest: boolean;
+  isNotebookRunning: boolean;
+  onSave: () => void;
+  onStart: () => void;
+  onCapture: () => void;
+  onTest: () => void;
+};
+
+function OmniVoiceActionBar({
+  busyAction,
+  canTest,
+  isNotebookRunning,
+  onSave,
+  onStart,
+  onCapture,
+  onTest
+}: OmniVoiceActionBarProps) {
+  const hasBusyAction = Boolean(busyAction);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <OmniVoiceActionButton label="Salvar" action="save" busyAction={busyAction} disabled={hasBusyAction} icon={Save} onClick={onSave} />
+      <OmniVoiceActionButton label="Abrir no navegador" action="start-notebook" busyAction={busyAction} disabled={hasBusyAction || isNotebookRunning} icon={Play} variant="primary" onClick={onStart} />
+      <OmniVoiceActionButton label="Capturar" action="capture-url" busyAction={busyAction} disabled={hasBusyAction} icon={RefreshCw} onClick={onCapture} />
+      <OmniVoiceActionButton label="Testar" action="test" busyAction={busyAction} disabled={hasBusyAction || !canTest} icon={CheckCircle} variant="success" onClick={onTest} />
+    </div>
+  );
+}
+
+function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  const [config, setConfig] = useState<OmniVoiceConfig | null>(null);
+  const [notebookUrl, setNotebookUrl] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [outputText, setOutputText] = useState("");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const applyConfig = useCallback((nextConfig: OmniVoiceConfig) => {
+    setConfig(nextConfig);
+    setNotebookUrl(nextConfig.notebookUrl);
+    setApiUrl(nextConfig.apiUrl || nextConfig.effectiveApiUrl || "");
+  }, []);
+
+  const loadConfig = useCallback(async () => {
+    const res = await fetch("/api/omnivoice/config", { cache: "no-store" });
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) {
+      throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel carregar o OmniVoice.");
+    }
+    applyConfig(parseOmniVoiceConfig(data));
+  }, [applyConfig]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadInitialConfig() {
+      try {
+        const res = await fetch("/api/omnivoice/config", { cache: "no-store" });
+        const data = await res.json() as Record<string, unknown>;
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel carregar o OmniVoice.");
+        }
+        if (isMounted) {
+          applyConfig(parseOmniVoiceConfig(data));
+        }
+      } catch (err) {
+        console.error("Erro ao carregar configuracao do OmniVoice:", err);
+      }
+    }
+
+    void loadInitialConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, [applyConfig]);
+
+  useEffect(() => {
+    if (!config || !["starting", "waiting_for_login", "running"].includes(config.status)) return;
+    const timer = window.setInterval(() => {
+      loadConfig().catch((err) => {
+        console.error("Erro ao atualizar status do OmniVoice:", err);
+      });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [config, loadConfig]);
+
+  const runAction = async (action: string, successText: string) => {
+    setBusyAction(action);
+    try {
+      const res = await fetch("/api/omnivoice/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, notebookUrl, apiUrl, outputText })
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Falha na configuracao do OmniVoice.");
+      }
+      const nextConfig = parseOmniVoiceConfig(data);
+      applyConfig(nextConfig);
+      onStatusMessage({ text: typeof data.message === "string" ? data.message : successText, type: "success" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      onStatusMessage({ text: `Erro no OmniVoice: ${errMsg}`, type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const canTest = Boolean(apiUrl.trim() || config?.effectiveApiUrl);
+  const isNotebookRunning = isActiveOmniVoiceStatus(config?.status);
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+        <Volume2 size={14} className="text-zinc-400" />
+        <span>OmniVoice</span>
+      </h2>
+      <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Notebook Kaggle</span>
+            <div className="w-full truncate rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-400">
+              {notebookUrl || "OMNIVOICE_NOTEBOOK_URL"}
+            </div>
+          </div>
+          <label className="space-y-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">URL OmniVoice</span>
+            <input
+              value={apiUrl}
+              onChange={(event) => setApiUrl(event.target.value)}
+              placeholder="https://...gradio.live"
+              className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-zinc-200 outline-none focus:border-white/25"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Saida do notebook</span>
+          <textarea
+            value={outputText}
+            onChange={(event) => setOutputText(event.target.value)}
+            placeholder="Opcional: cole aqui a linha com a URL publica caso a captura automatica nao encontre."
+            className="min-h-20 w-full resize-y rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-zinc-200 outline-none focus:border-white/25"
+          />
+        </label>
+
+        <div className="flex flex-col gap-3 border-t border-white/[0.04] pt-4 md:flex-row md:items-center md:justify-between">
+          <OmniVoiceStatusSummary config={config} />
+          <OmniVoiceActionBar
+            busyAction={busyAction}
+            canTest={canTest}
+            isNotebookRunning={isNotebookRunning}
+            onSave={() => runAction("save", "Configuracao do OmniVoice salva.")}
+            onStart={() => runAction("start-notebook", "Notebook OmniVoice aberto no navegador.")}
+            onCapture={() => runAction("capture-url", "URL do OmniVoice capturada.")}
+            onTest={() => runAction("test", "Conexao com OmniVoice confirmada.")}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line complexity
 export default function SettingsPage() {
   const [loadingPortal, setLoadingPortal] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
@@ -307,6 +600,7 @@ export default function SettingsPage() {
   };
 
   // Trigger headful manual login session for a specific portal
+  // eslint-disable-next-line complexity
   const handleOpenLogin = async (portal: PortalConfig) => {
     setLoadingPortal(portal.id);
     setStatusMessage({
@@ -455,6 +749,7 @@ export default function SettingsPage() {
       {/* Contas & Logins das IAs */}
       <div className="space-y-6">
         <SpeechSettingsPanel onStatusMessage={setStatusMessage} />
+        <OmniVoiceSettingsPanel onStatusMessage={setStatusMessage} />
 
         <div className="space-y-1">
           <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
