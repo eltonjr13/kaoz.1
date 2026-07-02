@@ -17,7 +17,8 @@ import {
   Box,
   Mic,
   Volume2,
-  Save
+  Save,
+  Terminal
 } from "lucide-react";
 
 interface PortalConfig {
@@ -42,6 +43,32 @@ type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed";
 interface SpeechConfig {
   provider: SpeechProviderName;
   chunkMs: number;
+}
+
+type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli";
+
+interface AgentLLMCommandStatus {
+  command: string;
+  available: boolean;
+  resolvedPath: string | null;
+  error: string | null;
+  authenticated: boolean | null;
+  authMessage: string | null;
+  activeModel: string | null;
+  models: string[];
+}
+
+interface AgentLLMConfig {
+  provider: AgentLLMProvider;
+  codexCommand: string;
+  codexModel: string;
+  grokCommand: string;
+  grokModel: string;
+  timeoutMs: number;
+  status: {
+    codex: AgentLLMCommandStatus;
+    grok: AgentLLMCommandStatus;
+  } | null;
 }
 
 type OmniVoiceServerStatus = "idle" | "starting" | "waiting_for_login" | "running" | "captured" | "error";
@@ -78,6 +105,28 @@ const SPEECH_OPTIONS: Array<{
     id: "whisper-speed",
     name: "Whisper Speed",
     description: "Faster-Whisper local priorizando baixa latencia."
+  }
+];
+
+const AGENT_LLM_OPTIONS: Array<{
+  id: AgentLLMProvider;
+  name: string;
+  description: string;
+}> = [
+  {
+    id: "browser",
+    name: "Navegador",
+    description: "Mantem a automacao web atual."
+  },
+  {
+    id: "codex-cli",
+    name: "Codex CLI",
+    description: "Usa codex exec com modelo rapido."
+  },
+  {
+    id: "grok-cli",
+    name: "Grok CLI",
+    description: "Usa grok headless com modelo fast."
   }
 ];
 
@@ -141,6 +190,45 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
   };
 }
 
+function parseAgentLLMProvider(value: unknown): AgentLLMProvider {
+  return value === "codex-cli" || value === "grok-cli" || value === "browser" ? value : "browser";
+}
+
+function parseCommandStatus(value: unknown): AgentLLMCommandStatus {
+  const status = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const models = Array.isArray(status.models)
+    ? status.models.filter((model): model is string => typeof model === "string")
+    : [];
+  return {
+    command: stringOrEmpty(status.command),
+    available: status.available === true,
+    resolvedPath: stringOrNull(status.resolvedPath),
+    error: stringOrNull(status.error),
+    authenticated: typeof status.authenticated === "boolean" ? status.authenticated : null,
+    authMessage: stringOrNull(status.authMessage),
+    activeModel: stringOrNull(status.activeModel),
+    models
+  };
+}
+
+function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
+  const status = data.status && typeof data.status === "object" ? data.status as Record<string, unknown> : null;
+  return {
+    provider: parseAgentLLMProvider(data.provider),
+    codexCommand: stringOrEmpty(data.codexCommand) || "codex",
+    codexModel: stringOrEmpty(data.codexModel) || "gpt-5.4-mini",
+    grokCommand: stringOrEmpty(data.grokCommand) || "grok",
+    grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
+    timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : 45000,
+    status: status
+      ? {
+        codex: parseCommandStatus(status.codex),
+        grok: parseCommandStatus(status.grok)
+      }
+      : null
+  };
+}
+
 function normalizeOmniVoiceStatus(value: unknown): OmniVoiceServerStatus {
   const statuses: OmniVoiceServerStatus[] = ["starting", "waiting_for_login", "running", "captured", "error"];
   return statuses.includes(value as OmniVoiceServerStatus) ? value as OmniVoiceServerStatus : "idle";
@@ -173,6 +261,296 @@ function parseOmniVoiceConfig(data: Record<string, unknown>): OmniVoiceConfig {
 
 function getSpeechOptionName(provider: SpeechProviderName): string {
   return SPEECH_OPTIONS.find((option) => option.id === provider)?.name || provider;
+}
+
+function getAgentLLMOptionName(provider: AgentLLMProvider): string {
+  return AGENT_LLM_OPTIONS.find((option) => option.id === provider)?.name || provider;
+}
+
+function getProviderStatus(config: AgentLLMConfig | null, provider: AgentLLMProvider): AgentLLMCommandStatus | null {
+  if (!config?.status || provider === "browser") return null;
+  return provider === "codex-cli" ? config.status.codex : config.status.grok;
+}
+
+function getAgentLLMStatusText(status: AgentLLMCommandStatus | null): string {
+  if (!status) return "Usando navegador";
+  if (!status.available) return "Comando ausente";
+  if (status.authenticated === true) return "Conectado";
+  if (status.authenticated === false) return "Nao conectado";
+  return "Instalado";
+}
+
+function getAgentLLMStatusClass(status: AgentLLMCommandStatus | null): string {
+  if (!status) return "border-white/10 bg-white/5 text-zinc-400";
+  if (!status.available || status.authenticated === false) return "border-rose-500/20 bg-rose-500/10 text-rose-400";
+  if (status.authenticated === true) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
+  return "border-amber-500/20 bg-amber-500/10 text-amber-300";
+}
+
+function AgentLLMStatusBadge({ status }: { status: AgentLLMCommandStatus | null }) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold ${getAgentLLMStatusClass(status)}`}>
+      {getAgentLLMStatusText(status)}
+    </span>
+  );
+}
+
+type AgentLLMActionButtonProps = {
+  label: string;
+  action: string;
+  busyAction: string | null;
+  disabled?: boolean;
+  icon: typeof Save;
+  onClick: () => void;
+};
+
+function AgentLLMActionButton({ label, action, busyAction, disabled = false, icon: Icon, onClick }: AgentLLMActionButtonProps) {
+  const busy = busyAction === action;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] font-bold text-zinc-200 transition-all hover:bg-white/[0.06] disabled:opacity-50"
+    >
+      {busy ? <Loader2 size={10} className="animate-spin" /> : <Icon size={10} />}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+type AgentLLMProviderGridProps = {
+  provider: AgentLLMProvider;
+  config: AgentLLMConfig | null;
+  disabled: boolean;
+  onSelect: (provider: AgentLLMProvider) => void;
+};
+
+function AgentLLMProviderGrid({ provider, config, disabled, onSelect }: AgentLLMProviderGridProps) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {AGENT_LLM_OPTIONS.map((option) => {
+        const selected = provider === option.id;
+        const status = getProviderStatus(config, option.id);
+
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSelect(option.id)}
+            disabled={disabled}
+            className={`text-left rounded-[10px] border p-4 transition-all disabled:opacity-60 ${
+              selected
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20 hover:bg-white/[0.06]"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12px] font-bold uppercase tracking-widest">{option.name}</span>
+              {selected ? <CheckCircle size={12} className="text-emerald-400" /> : null}
+            </div>
+            <p className="mt-2 min-h-8 text-[11px] leading-relaxed text-zinc-500">{option.description}</p>
+            <AgentLLMStatusBadge status={status} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type AgentLLMProviderFieldsProps = {
+  provider: AgentLLMProvider;
+  command: string;
+  model: string;
+  models: string[];
+  onCommandChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+};
+
+function AgentLLMProviderFields({
+  provider,
+  command,
+  model,
+  models,
+  onCommandChange,
+  onModelChange
+}: AgentLLMProviderFieldsProps) {
+  if (provider === "browser") return null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-3">
+      <label className="space-y-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Comando</span>
+        <input
+          value={command}
+          onChange={(event) => onCommandChange(event.target.value)}
+          className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
+        />
+      </label>
+      <label className="space-y-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Modelo</span>
+        {models.length > 0 ? (
+          <select
+            value={model}
+            onChange={(event) => onModelChange(event.target.value)}
+            className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
+          >
+            {models.map((modelOption) => (
+              <option key={modelOption} value={modelOption}>{modelOption}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={model}
+            onChange={(event) => onModelChange(event.target.value)}
+            className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
+          />
+        )}
+      </label>
+    </div>
+  );
+}
+
+type AgentLLMActionBarProps = {
+  provider: AgentLLMProvider;
+  selectedStatus: AgentLLMCommandStatus | null;
+  busyAction: string | null;
+  onAction: (action: string, successText: string) => void;
+};
+
+function AgentLLMActionBar({ provider, selectedStatus, busyAction, onAction }: AgentLLMActionBarProps) {
+  const hasBusyAction = Boolean(busyAction);
+  const providerName = getAgentLLMOptionName(provider);
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-white/[0.04] pt-4 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <AgentLLMStatusBadge status={selectedStatus} />
+          <span className="text-[10px] text-zinc-600">{providerName}</span>
+        </div>
+        {selectedStatus?.authMessage && (
+          <p className="text-[10px] leading-relaxed text-zinc-500">{selectedStatus.authMessage}</p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <AgentLLMActionButton label="Conectar" action="connect" busyAction={busyAction} disabled={hasBusyAction || provider === "browser"} icon={Play} onClick={() => onAction("connect", "Janela de conexao aberta.")} />
+        <AgentLLMActionButton label="Atualizar" action="status" busyAction={busyAction} disabled={hasBusyAction} icon={RefreshCw} onClick={() => onAction("status", "Status atualizado.")} />
+        <AgentLLMActionButton label="Testar" action="test" busyAction={busyAction} disabled={hasBusyAction || provider === "browser"} icon={CheckCircle} onClick={() => onAction("test", "CLI testada com sucesso.")} />
+        <AgentLLMActionButton label="Salvar" action="save" busyAction={busyAction} disabled={hasBusyAction} icon={Save} onClick={() => onAction("save", `Resposta do agente alterada para ${providerName}.`)} />
+      </div>
+    </div>
+  );
+}
+
+function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  const [config, setConfig] = useState<AgentLLMConfig | null>(null);
+  const [provider, setProvider] = useState<AgentLLMProvider>("browser");
+  const [codexCommand, setCodexCommand] = useState("codex");
+  const [codexModel, setCodexModel] = useState("gpt-5.4-mini");
+  const [grokCommand, setGrokCommand] = useState("grok");
+  const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const selectedStatus = getProviderStatus(config, provider);
+  const selectedCommand = provider === "codex-cli" ? codexCommand : grokCommand;
+  const selectedModel = provider === "codex-cli" ? codexModel : grokModel;
+  const selectedModels = provider === "browser"
+    ? []
+    : Array.from(new Set([selectedModel, ...(selectedStatus?.models || [])].filter(Boolean)));
+  const hasBusyAction = Boolean(busyAction);
+
+  const applyConfig = useCallback((nextConfig: AgentLLMConfig) => {
+    setConfig(nextConfig);
+    setProvider(nextConfig.provider);
+    setCodexCommand(nextConfig.codexCommand);
+    setCodexModel(nextConfig.codexModel);
+    setGrokCommand(nextConfig.grokCommand);
+    setGrokModel(nextConfig.grokModel);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAgentLLMConfig() {
+      try {
+        const res = await fetch("/api/agent-llm/config", { cache: "no-store" });
+        const data = await res.json() as Record<string, unknown>;
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel carregar a CLI do agente.");
+        }
+        if (isMounted) applyConfig(parseAgentLLMConfig(data));
+      } catch (err) {
+        console.error("Erro ao carregar configuracao de CLI do agente:", err);
+      }
+    }
+
+    void loadAgentLLMConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, [applyConfig]);
+
+  const buildPayload = (action: string) => ({
+    action,
+    provider,
+    codexCommand,
+    codexModel,
+    grokCommand,
+    grokModel,
+    timeoutMs: config?.timeoutMs || 45000
+  });
+
+  const updateSelectedModel = (model: string) => {
+    if (provider === "codex-cli") {
+      setCodexModel(model);
+      return;
+    }
+    setGrokModel(model);
+  };
+
+  const runAction = async (action: string, successText: string) => {
+    setBusyAction(action);
+    try {
+      const res = await fetch("/api/agent-llm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(action))
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Falha na CLI do agente.");
+      }
+      applyConfig(parseAgentLLMConfig(data));
+      onStatusMessage({ text: typeof data.message === "string" ? data.message : successText, type: "success" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      onStatusMessage({ text: `Erro na CLI do agente: ${errMsg}`, type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+        <Terminal size={14} className="text-zinc-400" />
+        <span>Resposta do agente</span>
+      </h2>
+      <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4 space-y-4">
+        <AgentLLMProviderGrid provider={provider} config={config} disabled={hasBusyAction} onSelect={setProvider} />
+        <AgentLLMProviderFields
+          provider={provider}
+          command={selectedCommand}
+          model={selectedModel}
+          models={selectedModels}
+          onCommandChange={provider === "codex-cli" ? setCodexCommand : setGrokCommand}
+          onModelChange={updateSelectedModel}
+        />
+        <AgentLLMActionBar provider={provider} selectedStatus={selectedStatus} busyAction={busyAction} onAction={runAction} />
+      </div>
+    </div>
+  );
 }
 
 function SpeechSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
@@ -748,6 +1126,7 @@ export default function SettingsPage() {
 
       {/* Contas & Logins das IAs */}
       <div className="space-y-6">
+        <AgentLLMSettingsPanel onStatusMessage={setStatusMessage} />
         <SpeechSettingsPanel onStatusMessage={setStatusMessage} />
         <OmniVoiceSettingsPanel onStatusMessage={setStatusMessage} />
 

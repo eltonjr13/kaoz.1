@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { probeMediaInfo, runCommand, getFfmpegPath } from "@/lib/videos/render";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
 
 export type GeminiAnalysisResult = {
   description: string;
@@ -429,14 +430,6 @@ function getLatestUserText(messages: ChatMessage[]) {
 }
 
 export async function classifyIntention(intention: string): Promise<FlowDecision> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY não configurada no .env.local.");
-  }
-
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const ai = new GoogleGenAI({ apiKey });
-
   const agentPlannerInstructions = `
 Modo agente autonomo:
 - Interprete o pedido, decida o fluxo, monte estrategia criativa e defina passos antes da execucao.
@@ -485,6 +478,34 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
 `;
 
   try {
+    const cliResponse = await queryConfiguredAgentCli(prompt);
+    if (cliResponse) {
+      const parsed = parseGeminiResponse<FlowDecision>(cliResponse, {
+        flow: "project",
+        explanation: "Fallback por falha de parser",
+        optimizedPrompt: intention,
+        targetJobId: null,
+        strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
+        scriptOutline: null,
+        creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
+        visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel.",
+        adCreativePlan: null
+      });
+      return preservePromptFidelity(parsed, intention);
+    }
+  } catch (err) {
+    console.warn("CLI configurada falhou ao classificar intencao. Usando Gemini/fallback.", err);
+  }
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY nao configurada no .env.local.");
+    }
+
+    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const ai = new GoogleGenAI({ apiKey });
+
     const response = await ai.models.generateContent({
       model: modelName,
       contents: prompt,
@@ -596,7 +617,7 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
     if (executeWebQuery) {
       responseText = await executeWebQuery(compiledPrompt, referenceImagePath);
     } else {
-      throw new Error("O callback de Automação Web (Playwright) é obrigatório nesta arquitetura.");
+      throw new Error("O callback de consulta ao modelo de IA e obrigatorio nesta arquitetura.");
     }
 
     const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
@@ -608,9 +629,9 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
     }
     return parsed;
   } catch (err) {
-    console.error("Falha na interação com o chat via Playwright:", err);
+    console.error("Falha na interacao com o chat via modelo de IA:", err);
     return {
-      message: "Ops, ocorreu uma falha na minha conexão com o navegador web. Tente novamente.",
+      message: "Ops, ocorreu uma falha na minha conexao com o modelo de IA. Tente novamente.",
       action: null
     };
   }

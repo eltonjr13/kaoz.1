@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, FolderCode, Mic } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, Mic, MicOff, Volume2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSpeechDictation } from "@/lib/speech/use-speech-dictation";
 
@@ -475,6 +475,13 @@ interface PromptInputBoxProps {
   showOptions?: boolean;
   useCortexMemory?: boolean;
   onCortexMemoryChange?: (value: boolean) => void;
+  // Voice mode props
+  voiceEnabled?: boolean;
+  voiceSpeaking?: boolean;
+  voiceAwaitingCommand?: boolean;
+  voiceStatus?: string;
+  voiceError?: string;
+  onVoiceToggle?: () => void;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
   const {
@@ -487,7 +494,13 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     onOptionsClick,
     showOptions = false,
     useCortexMemory = true,
-    onCortexMemoryChange
+    onCortexMemoryChange,
+    voiceEnabled = false,
+    voiceSpeaking = false,
+    voiceAwaitingCommand = false,
+    voiceStatus = "",
+    voiceError = "",
+    onVoiceToggle,
   } = props;
   const [internalInput, setInternalInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
@@ -523,6 +536,19 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
       onCortexMemoryChange?.(!useCortexMemory);
     }
   };
+
+  // Derive the voice button display state
+  const voiceIconEl = voiceSpeaking
+    ? <Volume2 className="w-4 h-4" />
+    : voiceEnabled
+    ? <Mic className="w-4 h-4" />
+    : <MicOff className="w-4 h-4" />;
+
+  const voiceLabel = voiceAwaitingCommand
+    ? "Ativado"
+    : voiceEnabled
+    ? (voiceSpeaking ? "Falando..." : voiceStatus || "Escutando")
+    : "Modo Voz";
 
   const handleCanvasToggle = () => setShowCanvas((prev) => !prev);
 
@@ -886,39 +912,60 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
               <CustomDivider />
 
-              <button
-                type="button"
-                onClick={handleCanvasToggle}
-                className={cn(
-                  "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8",
-                  showCanvas
-                    ? "bg-[#F97316]/15 border-[#F97316] text-[#F97316]"
-                    : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
-                )}
-              >
-                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                  <motion.div
-                    animate={{ rotate: showCanvas ? 360 : 0, scale: showCanvas ? 1.1 : 1 }}
-                    whileHover={{ rotate: showCanvas ? 360 : 15, scale: 1.1, transition: { type: "spring", stiffness: 300, damping: 10 } }}
-                    transition={{ type: "spring", stiffness: 260, damping: 25 }}
-                  >
-                    <FolderCode className={cn("w-4 h-4", showCanvas ? "text-[#F97316]" : "text-inherit")} />
-                  </motion.div>
-                </div>
-                <AnimatePresence>
-                  {showCanvas && (
-                    <motion.span
-                      initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: "auto", opacity: 1 }}
-                      exit={{ width: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="text-xs overflow-hidden whitespace-nowrap text-[#F97316] flex-shrink-0"
-                    >
-                      Canvas
-                    </motion.span>
+              {/* Voice mode button (replaces FolderCode/Canvas) */}
+              {onVoiceToggle && (
+                <button
+                  type="button"
+                  onClick={onVoiceToggle}
+                  title={voiceEnabled ? "Desligar modo de voz" : "Ligar modo de voz"}
+                  className={cn(
+                    "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8 max-w-[160px]",
+                    voiceEnabled
+                      ? voiceSpeaking
+                        ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300"
+                        : voiceAwaitingCommand
+                        ? "bg-sky-500/20 border-sky-400/50 text-sky-300"
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
                   )}
-                </AnimatePresence>
-              </button>
+                >
+                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                    <motion.div
+                      animate={{
+                        scale: voiceSpeaking ? [1, 1.2, 1] : voiceEnabled ? 1.05 : 1,
+                      }}
+                      transition={voiceSpeaking
+                        ? { repeat: Infinity, duration: 0.8, ease: "easeInOut" }
+                        : { type: "spring", stiffness: 260, damping: 25 }
+                      }
+                    >
+                      {voiceIconEl}
+                    </motion.div>
+                  </div>
+                  <AnimatePresence>
+                    {voiceEnabled && (
+                      <motion.span
+                        key="voice-label"
+                        initial={{ width: 0, opacity: 0 }}
+                        animate={{ width: "auto", opacity: 1 }}
+                        exit={{ width: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          "text-xs overflow-hidden whitespace-nowrap flex-shrink-0 truncate max-w-[100px]",
+                          voiceSpeaking ? "text-emerald-300" : voiceAwaitingCommand ? "text-sky-300" : "text-emerald-400"
+                        )}
+                      >
+                        {voiceLabel}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </button>
+              )}
+              {voiceError && voiceEnabled && (
+                <span className="text-[10px] text-rose-400 truncate max-w-[100px]" title={voiceError}>
+                  {voiceError}
+                </span>
+              )}
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { OpenAI } from 'openai';
 import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
+import { queryConfiguredAgentCli } from '@/services/agent-llm/agent-llm.service';
 
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
 
@@ -145,6 +146,16 @@ export class FlowLLMAutomation {
     }
   }
 
+  private async queryConfiguredCli(prompt: string, referenceImagePath?: string): Promise<string | null> {
+    try {
+      const result = await queryConfiguredAgentCli(prompt, { referenceImagePath });
+      return result ? this.cleanLLMResponse(result) : null;
+    } catch (err) {
+      logger.warn('[Agente MrChicken] CLI configurada indisponivel. Usando fallback existente.', err);
+      return null;
+    }
+  }
+
   /**
    * Refines/optimizes a prompt using the selected LLM browser portal.
    * If the portal is offline, not logged in, or blocked, uses a smart local fallback prompt engineer.
@@ -159,6 +170,12 @@ export class FlowLLMAutomation {
     } para torná-lo profissional, ultra-detalhado e de alto impacto visual. Retorne apenas o prompt melhorado em inglês, sem comentários adicionais, sem aspas e sem explicações: '${rawPrompt}'`;
 
     logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
+
+    const cliResult = await this.queryConfiguredCli(promptTemplate);
+    if (cliResult) {
+      logger.info('[Agente MrChicken] Prompt otimizado via CLI configurada.');
+      return cliResult;
+    }
 
     const apiResult = await this.optimizeWithApi(model, promptTemplate);
     if (apiResult) {
@@ -195,9 +212,15 @@ export class FlowLLMAutomation {
   }
 
   /**
-   * Força a execução de um query (como no chat) via Web Automation (Playwright), ignorando a API.
+   * Executa uma consulta direta ao LLM para o chat, priorizando a CLI configurada antes do navegador.
    */
   async queryWebLLM(model: LLMModel, prompt: string, referenceImagePath?: string): Promise<string> {
+    const cliResult = await this.queryConfiguredCli(prompt, referenceImagePath);
+    if (cliResult) {
+      logger.info('[Agente MrChicken] Resposta obtida via CLI configurada.');
+      return cliResult;
+    }
+
     logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);
 
     if (this.shouldSkipWebAutomation(model)) {

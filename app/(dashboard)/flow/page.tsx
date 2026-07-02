@@ -26,10 +26,8 @@ import {
   X,
   Settings,
   RefreshCw,
-  Mic,
-  MicOff,
-  Volume2
 } from "lucide-react";
+
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
 import ReactMarkdown from "react-markdown";
@@ -2895,31 +2893,6 @@ export default function FlowDashboardPage() {
       {!(agentType === "ad-creative" && flyModeActive) ? (
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
-            <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white/70 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleVoiceMode}
-                  className={`flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-widest transition-all ${
-                    voiceEnabled
-                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
-                      : "border-white/10 bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white"
-                  }`}
-                  title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
-                >
-                  {voiceSpeaking ? <Volume2 size={13} /> : voiceEnabled ? <Mic size={13} /> : <MicOff size={13} />}
-                  <span>{voiceEnabled ? "Voz ligada" : "Voz desligada"}</span>
-                </button>
-                <span className="truncate text-white/55">
-                  {voiceAwaitingCommand ? "Ativado" : voiceStatus}
-                </span>
-              </div>
-              {voiceError && (
-                <span className="truncate text-rose-300">
-                  {voiceError}
-                </span>
-              )}
-            </div>
             <PromptInputBox
               isLoading={isLoading}
               value={draftMessage}
@@ -2930,6 +2903,12 @@ export default function FlowDashboardPage() {
               showOptions={showSettings}
               useCortexMemory={useCortexMemory}
               onCortexMemoryChange={setUseCortexMemory}
+              voiceEnabled={voiceEnabled}
+              voiceSpeaking={voiceSpeaking}
+              voiceAwaitingCommand={voiceAwaitingCommand}
+              voiceStatus={voiceStatus}
+              voiceError={voiceError}
+              onVoiceToggle={toggleVoiceMode}
             />
             <AnimatePresence>
               {showSettings && renderSettingsMenu(false)}
