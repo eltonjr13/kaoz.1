@@ -10,6 +10,7 @@ import {
   extractPublicOmniVoiceUrl,
   startOmniVoiceNotebook
 } from "@/services/omnivoice/omnivoice.notebook-runtime";
+import { getFriendlyOmniVoiceError } from "@/services/omnivoice/omnivoice.errors";
 
 export const runtime = "nodejs";
 
@@ -93,7 +94,23 @@ async function handleTest(body: OmniVoiceRequestBody) {
     return jsonError("OMNIVOICE_API_URL nao configurada.");
   }
 
-  await testOmniVoiceConnection(apiUrl);
+  try {
+    await testOmniVoiceConnection(apiUrl);
+  } catch (error) {
+    const message = getFriendlyOmniVoiceError(error);
+    await writeOmniVoiceSettings({
+      status: "error",
+      lastError: message
+    });
+    return jsonError(message, 500);
+  }
+
+  await writeOmniVoiceSettings({
+    apiUrl,
+    status: "captured",
+    lastError: null,
+    lastCaptureAt: new Date().toISOString()
+  });
   return NextResponse.json({
     ...(await getOmniVoiceRuntimeConfig()),
     ok: true
@@ -120,7 +137,6 @@ export async function POST(request: Request) {
     return handler(body);
   } catch (error) {
     console.error("[OmniVoice] Erro ao atualizar configuracao:", error);
-    const message = error instanceof Error ? error.message : "Erro desconhecido no OmniVoice.";
-    return jsonError(message, 500);
+    return jsonError(getFriendlyOmniVoiceError(error), 500);
   }
 }

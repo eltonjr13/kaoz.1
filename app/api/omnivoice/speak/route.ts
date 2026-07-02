@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { generateOmniVoice } from "@/lib/ai/omni-voice";
+import { getFriendlyOmniVoiceError } from "@/services/omnivoice/omnivoice.errors";
 
 export const runtime = "nodejs";
 
@@ -13,14 +14,6 @@ function normalizeSpeechText(value: unknown): string {
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
-}
-
-function getFriendlySpeakError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/Could not resolve app config|fetch failed|404/i.test(message)) {
-    return "Nao consegui conectar ao OmniVoice. Atualize a URL publica do Gradio nas configuracoes.";
-  }
-  return message || "Erro desconhecido ao gerar voz.";
 }
 
 export async function POST(request: Request) {
@@ -55,6 +48,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("[OmniVoice Speak] Erro ao gerar voz:", error);
-    return jsonError(getFriendlySpeakError(error), 500);
+    return jsonError(getFriendlyOmniVoiceError(error), 500);
   }
 }
