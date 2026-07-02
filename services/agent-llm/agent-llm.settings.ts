@@ -4,11 +4,11 @@ import type { AgentLLMProvider, AgentLLMSettings } from "./agent-llm.types";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const SETTINGS_FILE = path.join(DATA_DIR, "agent-llm-settings.json");
-const DEFAULT_PROVIDER: AgentLLMProvider = "browser";
+const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
 const DEFAULT_CODEX_MODEL = "gpt-5.4-mini";
 const DEFAULT_GROK_MODEL = "grok-composer-2.5-fast";
-const DEFAULT_TIMEOUT_MS = 45000;
-const MIN_TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 90000;
+const MIN_TIMEOUT_MS = 90000;
 const MAX_TIMEOUT_MS = 180000;
 
 export function normalizeAgentLLMProvider(value: unknown): AgentLLMProvider {

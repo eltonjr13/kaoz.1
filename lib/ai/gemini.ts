@@ -131,6 +131,16 @@ function parseGeminiResponse<T>(responseText: string, fallback: T): T {
     return JSON.parse(cleanedText) as T;
   } catch {
     console.error("Falha ao analisar a resposta JSON do Gemini. Resposta original:\n", responseText);
+    
+    // Se o fallback esperar uma propriedade "message", reaproveitamos o texto bruto 
+    // como a própria mensagem, evitando descartar a fala da IA!
+    if (fallback && typeof fallback === "object" && "message" in fallback) {
+      return {
+        ...fallback,
+        message: responseText.trim()
+      };
+    }
+    
     return fallback;
   }
 }

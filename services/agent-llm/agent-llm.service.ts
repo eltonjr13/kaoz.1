@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { readAgentLLMSettings } from "./agent-llm.settings";
@@ -17,6 +17,8 @@ type QueryOptions = {
 };
 
 const MAX_OUTPUT_CHARS = 250_000;
+const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
+const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-9;]*m/g, "");
@@ -34,6 +36,36 @@ function commandLookupTool(): { command: string; args: string[] } {
   return process.platform === "win32"
     ? { command: "where.exe", args: [] }
     : { command: "which", args: [] };
+}
+
+function uniquePathEntries(entries: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const entry of entries) {
+    const normalized = process.platform === "win32" ? entry.toLowerCase() : entry;
+    if (!entry || seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(entry);
+  }
+  return unique;
+}
+
+function getWindowsProcessPathEntries(): string[] {
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  return [
+    path.join(os.homedir(), ".grok", "bin"),
+    path.join(localAppData, "Microsoft", "WindowsApps"),
+    path.join(localAppData, WINDOWS_CODEX_BIN_ROOT),
+  ];
+}
+
+function buildProcessEnv(extraPathEntries: string[] = []): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find(k => k.toLowerCase() === "path") || "PATH";
+  const currentPath = env[pathKey] || "";
+  const extraEntries = process.platform === "win32" ? getWindowsProcessPathEntries() : [];
+  env[pathKey] = uniquePathEntries([...extraPathEntries, ...extraEntries, ...currentPath.split(path.delimiter)]).join(path.delimiter);
+  return env;
 }
 
 function truncateOutput(value: string): string {
@@ -54,19 +86,47 @@ function baseCommandStatus(command: string, patch: Partial<AgentLLMCommandStatus
   };
 }
 
+function cmdQuote(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
 function psQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+function terminateProcessTree(pid: number | undefined): void {
+  if (!pid) return;
+
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill.exe", ["/pid", String(pid), "/t", "/f"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    killer.unref();
+    return;
+  }
+
+  try {
+    process.kill(-pid);
+  } catch {
+    try {
+      process.kill(pid);
+    } catch {
+      // Process already exited.
+    }
+  }
 }
 
 async function runProcess(
   command: string,
   args: string[],
-  options: { cwd?: string; input?: string; timeoutMs: number }
+  options: { cwd?: string; input?: string; timeoutMs: number; extraPathEntries?: string[]; label?: string }
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd || process.cwd(),
-      shell: false,
+      env: buildProcessEnv(options.extraPathEntries),
+      shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -77,8 +137,10 @@ async function runProcess(
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      child.kill();
-      reject(new Error(`Tempo limite da CLI excedido (${options.timeoutMs}ms).`));
+      terminateProcessTree(child.pid);
+      const label = options.label ? ` em ${options.label}` : "";
+      const partialLogs = (stdout || stderr) ? `\nOutput Parcial capturado:\n${truncateOutput(stdout)}\n${truncateOutput(stderr)}`.trimEnd() : "";
+      reject(new Error(`Tempo limite da CLI excedido${label} (${options.timeoutMs}ms).${partialLogs}`));
     }, options.timeoutMs);
 
     child.stdout.on("data", (chunk: Buffer) => {
@@ -118,6 +180,14 @@ async function writeTempFile(prefix: string, contents = ""): Promise<string> {
   return filePath;
 }
 
+async function writeTempCommandFile(prefix: string, contents: string): Promise<string> {
+  const tempDir = path.join(os.tmpdir(), "mrchicken-agent-cli");
+  await mkdir(tempDir, { recursive: true });
+  const filePath = path.join(tempDir, `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.cmd`);
+  await writeFile(filePath, contents, "utf8");
+  return filePath;
+}
+
 async function removeTempFile(filePath: string | null): Promise<void> {
   if (!filePath) return;
   await unlink(filePath).catch(() => undefined);
@@ -129,12 +199,24 @@ function assertSuccessfulProcess(result: ProcessResult, providerName: string): v
   throw new Error(`${providerName} retornou codigo ${result.exitCode}: ${details}`);
 }
 
+async function resolveRunnableCommand(command: string): Promise<string> {
+  const status = await checkCommandStatus(command);
+  if (!status.available) {
+    throw new Error(status.error || `Comando ${command} nao encontrado.`);
+  }
+  return status.resolvedPath || command;
+}
+
 async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
   const outputPath = await writeTempFile("codex-output");
   try {
+    const command = await resolveRunnableCommand(settings.codexCommand);
     const args = [
       "exec",
+      "--ignore-user-config",
+      "--ignore-rules",
       "--model", settings.codexModel,
+      "-c", "model_reasoning_effort=low",
       "--sandbox", "read-only",
       "--color", "never",
       "--ephemeral",
@@ -149,10 +231,12 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
 
     args.push("-");
 
-    const result = await runProcess(settings.codexCommand, args, {
+    const result = await runProcess(command, args, {
       cwd: options.cwd,
       input: prompt,
       timeoutMs: settings.timeoutMs,
+      extraPathEntries: [path.dirname(command)],
+      label: `Codex CLI (${settings.codexModel})`,
     });
     assertSuccessfulProcess(result, "Codex CLI");
 
@@ -164,26 +248,32 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
 }
 
 async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
-  const promptPath = await writeTempFile("grok-prompt", prompt);
+  const shouldUseInlinePrompt = false;
+  const promptPath = shouldUseInlinePrompt ? null : await writeTempFile("grok-prompt", prompt);
   try {
+    const command = await resolveRunnableCommand(settings.grokCommand);
     const args = [
       "--no-auto-update",
-      "--prompt-file", promptPath,
+      ...(shouldUseInlinePrompt ? ["-p", prompt] : ["--prompt-file", promptPath as string]),
       "--model", settings.grokModel,
+      "--effort", "low",
       "--output-format", "plain",
       "--cwd", options.cwd || process.cwd(),
       "--no-alt-screen",
       "--disable-web-search",
       "--no-subagents",
       "--no-memory",
+      "--no-plan",
       "--sandbox", "read-only",
       "--permission-mode", "dontAsk",
       "--verbatim",
     ];
 
-    const result = await runProcess(settings.grokCommand, args, {
+    const result = await runProcess(command, args, {
       cwd: options.cwd,
       timeoutMs: settings.timeoutMs,
+      extraPathEntries: [path.dirname(command)],
+      label: `Grok CLI (${settings.grokModel})`,
     });
     assertSuccessfulProcess(result, "Grok CLI");
     return cleanCliOutput(result.stdout);
@@ -212,7 +302,7 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   if (settings.provider === "browser") return null;
 
   if (settings.provider === "grok-cli" && options.referenceImagePath) {
-    return null;
+    throw new Error("Grok CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
   }
 
   return runAgentCli(settings, prompt, options);
@@ -228,6 +318,57 @@ async function checkPathCommand(command: string): Promise<AgentLLMCommandStatus>
   }
 }
 
+async function findLatestExistingFile(files: string[]): Promise<string | null> {
+  const existing: Array<{ file: string; mtimeMs: number }> = [];
+  for (const file of files) {
+    try {
+      const fileStat = await stat(file);
+      existing.push({ file, mtimeMs: fileStat.mtimeMs });
+    } catch {
+      // Keep looking.
+    }
+  }
+  existing.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return existing[0]?.file || null;
+}
+
+async function findCodexWindowsFallback(): Promise<string | null> {
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const codexBinRoot = path.join(localAppData, WINDOWS_CODEX_BIN_ROOT);
+
+  try {
+    const entries = await readdir(codexBinRoot, { withFileTypes: true });
+    const candidates = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(codexBinRoot, entry.name, "codex.exe"));
+    const bundled = await findLatestExistingFile(candidates);
+    if (bundled) return bundled;
+  } catch {
+    // Keep looking in WindowsApps below.
+  }
+
+  const windowsApps = path.join(localAppData, "Microsoft", "WindowsApps");
+  return findLatestExistingFile([
+    path.join(windowsApps, "codex.exe"),
+    path.join(windowsApps, "codex"),
+  ]);
+}
+
+async function findGrokWindowsFallback(): Promise<string | null> {
+  return findLatestExistingFile([
+    path.join(os.homedir(), ".grok", "bin", "grok.exe"),
+  ]);
+}
+
+async function findCommandFallback(command: string): Promise<string | null> {
+  if (process.platform !== "win32") return null;
+
+  const name = path.basename(command).toLowerCase().replace(/\.exe$/, "");
+  if (name === "codex") return findCodexWindowsFallback();
+  if (name === "grok") return findGrokWindowsFallback();
+  return null;
+}
+
 export async function checkCommandStatus(command: string): Promise<AgentLLMCommandStatus> {
   if (!command.trim()) {
     return baseCommandStatus(command, { error: "Comando vazio." });
@@ -237,6 +378,18 @@ export async function checkCommandStatus(command: string): Promise<AgentLLMComma
     return checkPathCommand(command);
   }
 
+  const resolvedPath = await resolveCommandPath(command);
+  if (resolvedPath) {
+    return baseCommandStatus(command, { available: true, resolvedPath });
+  }
+
+  return baseCommandStatus(command, { error: "Comando nao encontrado." });
+}
+
+async function resolveCommandPath(command: string): Promise<string | null> {
+  const fallbackPath = await findCommandFallback(command);
+  if (fallbackPath) return fallbackPath;
+
   const lookup = commandLookupTool();
   try {
     const result = await runProcess(lookup.command, [...lookup.args, command], {
@@ -244,15 +397,11 @@ export async function checkCommandStatus(command: string): Promise<AgentLLMComma
     });
     const resolvedPath = cleanCliOutput(result.stdout).split(/\r?\n/).find(Boolean) || null;
     if (result.exitCode === 0 && resolvedPath) {
-      return baseCommandStatus(command, { available: true, resolvedPath });
+      return resolvedPath;
     }
-    return baseCommandStatus(command, {
-      error: cleanCliOutput(result.stderr || result.stdout) || "Comando nao encontrado.",
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return baseCommandStatus(command, { error: message });
+  } catch {
   }
+  return findCommandFallback(command);
 }
 
 function parseModelLines(output: string): { activeModel: string | null; models: string[] } {
@@ -291,7 +440,7 @@ async function checkCodexStatus(settings: AgentLLMSettings): Promise<AgentLLMCom
   } catch {
     return {
       ...command,
-      authenticated: null,
+      authenticated: false,
       authMessage: "Conecte ou teste para confirmar a credencial do Codex.",
       activeModel: settings.codexModel,
       models: [settings.codexModel],
@@ -304,7 +453,11 @@ async function checkGrokStatus(settings: AgentLLMSettings): Promise<AgentLLMComm
   if (!command.available) return command;
 
   try {
-    const result = await runProcess(settings.grokCommand, ["models"], { timeoutMs: 10000 });
+    const runnableCommand = command.resolvedPath || settings.grokCommand;
+    const result = await runProcess(runnableCommand, ["models"], {
+      timeoutMs: 10000,
+      extraPathEntries: [path.dirname(runnableCommand)],
+    });
     const output = cleanCliOutput(`${result.stdout}\n${result.stderr}`);
     const { activeModel, models } = parseModelLines(output);
     const notAuthenticated = /not authenticated/i.test(output);
@@ -335,21 +488,45 @@ function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentL
   return provider === "codex-cli" ? settings.codexCommand : settings.grokCommand;
 }
 
-function launchVisibleCommand(command: string, args: string[]): void {
+async function launchVisibleCommand(command: string, args: string[], title: string): Promise<string | null> {
   if (process.platform === "win32") {
-    const loginCommand = `& ${psQuote(command)} ${args.map(psQuote).join(" ")}`;
+    const commandLine = [cmdQuote(command), ...args.map(cmdQuote)].join(" ");
+    const launcherPath = await writeTempCommandFile("agent-login", [
+      "@echo off",
+      `title ${title}`,
+      `cd /d ${cmdQuote(process.cwd())}`,
+      `set "PATH=${path.dirname(command)};%PATH%"`,
+      "echo MrChicken - conexao da CLI do agente",
+      `echo Provider: ${title}`,
+      `echo Comando: ${commandLine}`,
+      "echo.",
+      commandLine,
+      "set EXIT_CODE=%ERRORLEVEL%",
+      "echo.",
+      "echo Processo finalizado com codigo %EXIT_CODE%.",
+      "echo Se o login abriu no navegador, conclua a autenticacao e depois use Atualizar no painel.",
+      "pause",
+      "",
+    ].join("\r\n"));
+
     const launcher = spawn("powershell.exe", [
       "-NoProfile",
       "-ExecutionPolicy", "Bypass",
       "-Command",
-      `Start-Process powershell.exe -ArgumentList @('-NoExit','-NoProfile','-Command',${psQuote(loginCommand)})`,
+      [
+        "Start-Process",
+        "-FilePath", psQuote("cmd.exe"),
+        "-ArgumentList", `@(${psQuote("/k")}, ${psQuote(launcherPath)})`,
+        "-WorkingDirectory", psQuote(process.cwd()),
+      ].join(" "),
     ], {
       detached: true,
+      env: buildProcessEnv([path.dirname(command)]),
       stdio: "ignore",
-      windowsHide: false,
+      windowsHide: true,
     });
     launcher.unref();
-    return;
+    return launcherPath;
   }
 
   const child = spawn(command, args, {
@@ -357,9 +534,10 @@ function launchVisibleCommand(command: string, args: string[]): void {
     stdio: "ignore",
   });
   child.unref();
+  return null;
 }
 
-export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: AgentLLMProvider): Promise<void> {
+export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: AgentLLMProvider): Promise<string | null> {
   if (provider === "browser") {
     throw new Error("O provider Navegador usa os logins web existentes.");
   }
@@ -370,7 +548,7 @@ export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: A
     throw new Error(status.error || `Comando ${command} nao encontrado.`);
   }
 
-  launchVisibleCommand(command, getLoginArgs(provider));
+  return launchVisibleCommand(status.resolvedPath || command, getLoginArgs(provider), `MrChicken ${provider}`);
 }
 
 export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {

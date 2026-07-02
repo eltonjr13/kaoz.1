@@ -55,11 +55,13 @@ export async function POST(request: Request) {
     }
 
     if (action === "connect") {
-      await startAgentLLMLogin(settings, getProvider(body));
+      const launcherPath = await startAgentLLMLogin(settings, getProvider(body));
       return NextResponse.json({
         ...(await withStatus(settings)),
         success: true,
-        message: "Janela de conexao aberta. Conclua o login e depois atualize o status.",
+        message: launcherPath
+          ? `Janela de conexao aberta. Se ela nao aparecer, execute: ${launcherPath}`
+          : "Janela de conexao aberta. Conclua o login e depois atualize o status.",
       });
     }
 
