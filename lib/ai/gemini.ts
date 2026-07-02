@@ -620,7 +620,11 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
     const roleName = m.role === 'user' ? 'USUÁRIO' : 'MR CHICKEN (VOCÊ)';
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
   }
-  compiledPrompt += `[INSTRUÇÃO FINAL]: Responda agora exclusivamente com o objeto JSON válido, baseado na última mensagem do histórico. Não escreva nenhum texto fora do JSON.`;
+  compiledPrompt += `[INSTRUÇÃO FINAL E CRÍTICA PARA A IA]:
+Você está executando dentro de um proxy/sandbox cego e não possui acesso a ferramentas de pesquisa, leitura de arquivos, comandos de terminal ou subagentes locais.
+VOCÊ NÃO PODE CONSULTAR, EXECUTAR, PESQUISAR OU LER ARQUIVOS DO PROJETO.
+Sua tarefa é agir EXCLUSIVAMENTE como um chatbot inteligente que RESPONDE IMEDIATAMENTE. Não diga "vou analisar", "vou procurar", "consultando". Se você não souber algo, simplesmente responda "Não tenho acesso a essas informações no momento" na propriedade "message".
+Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na última mensagem do histórico. Não escreva NENHUM texto fora do JSON.`;
 
   try {
     let responseText = "{}";
