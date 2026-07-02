@@ -25,7 +25,10 @@ import {
   ChevronUp,
   X,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Mic,
+  MicOff,
+  Volume2
 } from "lucide-react";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
@@ -126,6 +129,48 @@ interface ChatConversation {
   messages: ChatMessageState[];
 }
 
+type SendMessageOptions = {
+  speakResponse?: boolean;
+};
+
+interface BrowserSpeechRecognitionAlternative {
+  transcript: string;
+}
+
+interface BrowserSpeechRecognitionResult {
+  isFinal: boolean;
+  0?: BrowserSpeechRecognitionAlternative;
+}
+
+interface BrowserSpeechRecognitionResultList {
+  length: number;
+  [index: number]: BrowserSpeechRecognitionResult;
+}
+
+interface BrowserSpeechRecognitionEvent {
+  resultIndex: number;
+  results: BrowserSpeechRecognitionResultList;
+}
+
+interface BrowserSpeechRecognitionErrorEvent {
+  error?: string;
+  message?: string;
+}
+
+interface BrowserSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onend: (() => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  abort(): void;
+  start(): void;
+  stop(): void;
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
 interface FlowJobSnapshot {
   id?: string;
   status?: string;
@@ -144,6 +189,10 @@ const CHAT_AUTO_SCROLL_THRESHOLD = 96;
 const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
 const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
+const WAKE_COMMAND_PATTERNS = [
+  /(?:^|\b)(?:hello|helo|ol[aá]|oi|ei)\s+(?:mr\.?|mister|senhor|seu)?\s*chicken\b[,.!?\s-]*(.*)$/i,
+  /(?:^|\b)(?:mr\.?|mister|senhor|seu)\s*chicken\b[,.!?\s-]*(.*)$/i
+];
 
 const createChatId = (prefix: string) => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -151,6 +200,42 @@ const createChatId = (prefix: string) => {
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 };
+
+function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
+  if (typeof window === "undefined") return null;
+  const browserWindow = window as typeof window & {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  };
+  return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition || null;
+}
+
+function normalizeVoiceText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function extractWakeCommand(text: string): { activated: boolean; command: string } {
+  const normalized = normalizeVoiceText(text);
+  for (const pattern of WAKE_COMMAND_PATTERNS) {
+    const match = normalized.match(pattern);
+    if (match) {
+      return {
+        activated: true,
+        command: normalizeVoiceText(match[1] || "")
+      };
+    }
+  }
+  return { activated: false, command: "" };
+}
+
+function getAssistantSpeechText(content: string): string {
+  return content
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/[`*_>#~-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 const sanitizeChatMessages = (messages: ChatMessageState[]) =>
   messages.map((msg) => {
@@ -679,6 +764,16 @@ export default function FlowDashboardPage() {
   const shouldAutoScrollRef = useRef(true);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const voiceEnabledRef = useRef(false);
+  const voiceAwaitingCommandRef = useRef(false);
+  const voiceSpeakingRef = useRef(false);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [voiceAwaitingCommand, setVoiceAwaitingCommand] = useState(false);
+  const [voiceSpeaking, setVoiceSpeaking] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("Voz desligada.");
+  const [voiceError, setVoiceError] = useState("");
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = chatScrollContainerRef.current;
@@ -1366,7 +1461,53 @@ export default function FlowDashboardPage() {
     };
   }, [chatMessages]);
 
-  const handleSendMessage = async (message: string, files: any[], pastedContent: any[]) => {
+  const speakAssistantResponse = useCallback(async (content: string) => {
+    const text = getAssistantSpeechText(content);
+    if (!text) return;
+
+    voiceSpeakingRef.current = true;
+    setVoiceSpeaking(true);
+    setVoiceStatus("MrChicken esta falando...");
+    setVoiceError("");
+
+    try {
+      voiceAudioRef.current?.pause();
+      const res = await fetch("/api/omnivoice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json() as { audioPath?: string; error?: string };
+      if (!res.ok || !data.audioPath) {
+        throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+      }
+
+      const audio = new Audio(data.audioPath);
+      voiceAudioRef.current = audio;
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("Nao foi possivel tocar o audio gerado."));
+        void audio.play().catch(reject);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setVoiceError(message);
+      setVoiceStatus("Nao consegui falar a resposta.");
+    } finally {
+      voiceSpeakingRef.current = false;
+      setVoiceSpeaking(false);
+      if (voiceEnabledRef.current) {
+        setVoiceStatus("Diga Hello Mr Chicken para ativar.");
+        try {
+          voiceRecognitionRef.current?.start();
+        } catch {
+          // The recognizer may already be active.
+        }
+      }
+    }
+  }, []);
+
+  const handleSendMessage = async (message: string, files: any[], pastedContent: any[], options: SendMessageOptions = {}) => {
     if (editing3dImageMessageId) {
       await handleEdit3dBaseImage(editing3dImageMessageId, message, editing3dBaseImagePath);
       return;
@@ -1482,12 +1623,133 @@ export default function FlowDashboardPage() {
       }
 
       setChatMessages(prev => [...prev, agentMsg]);
+      if (options.speakResponse) {
+        await speakAssistantResponse(agentMsg.content);
+      }
     } catch (err) {
        console.error(err);
     } finally {
        setIsLoading(false);
+     }
+  };
+
+  const handleVoiceCommand = async (command: string) => {
+    const cleanCommand = normalizeVoiceText(command);
+    if (!cleanCommand || isLoading || voiceSpeakingRef.current) return;
+
+    voiceAwaitingCommandRef.current = false;
+    setVoiceAwaitingCommand(false);
+    setVoiceStatus("MrChicken esta pensando...");
+    setVoiceError("");
+    setDraftMessage("");
+
+    await handleSendMessage(cleanCommand, [], [], { speakResponse: true });
+  };
+
+  const handleVoiceTranscript = (transcript: string) => {
+    if (voiceSpeakingRef.current || isLoading) return;
+
+    const wakeResult = extractWakeCommand(transcript);
+    if (wakeResult.activated) {
+      if (wakeResult.command) {
+        void handleVoiceCommand(wakeResult.command);
+        return;
+      }
+
+      voiceAwaitingCommandRef.current = true;
+      setVoiceAwaitingCommand(true);
+      setVoiceStatus("Ativado. Diga seu comando.");
+      return;
+    }
+
+    if (voiceAwaitingCommandRef.current) {
+      void handleVoiceCommand(transcript);
     }
   };
+
+  const startVoiceWakeListening = () => {
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setVoiceError("Reconhecimento de voz nativo indisponivel neste navegador.");
+      setVoiceStatus("Voz indisponivel.");
+      return;
+    }
+
+    voiceRecognitionRef.current?.abort();
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "pt-BR";
+    recognition.onresult = (event) => {
+      for (let index = event.resultIndex; index < event.results.length; index++) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript;
+        if (result?.isFinal && transcript) {
+          handleVoiceTranscript(transcript);
+        }
+      }
+    };
+    recognition.onerror = (event) => {
+      const errorMessage = event.message || event.error || "Falha no reconhecimento de voz.";
+      setVoiceError(errorMessage);
+      setVoiceStatus("Escuta pausada.");
+    };
+    recognition.onend = () => {
+      if (!voiceEnabledRef.current || voiceSpeakingRef.current) return;
+      window.setTimeout(() => {
+        try {
+          recognition.start();
+          setVoiceStatus(voiceAwaitingCommandRef.current ? "Ativado. Diga seu comando." : "Diga Hello Mr Chicken para ativar.");
+        } catch {
+          setVoiceStatus("Escuta pausada.");
+        }
+      }, 350);
+    };
+
+    voiceRecognitionRef.current = recognition;
+    voiceEnabledRef.current = true;
+    setVoiceEnabled(true);
+    setVoiceError("");
+    setVoiceStatus("Diga Hello Mr Chicken para ativar.");
+
+    try {
+      recognition.start();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel iniciar o microfone.";
+      setVoiceError(message);
+      setVoiceStatus("Voz indisponivel.");
+    }
+  };
+
+  const stopVoiceWakeListening = () => {
+    voiceEnabledRef.current = false;
+    voiceAwaitingCommandRef.current = false;
+    setVoiceEnabled(false);
+    setVoiceAwaitingCommand(false);
+    setVoiceStatus("Voz desligada.");
+    voiceRecognitionRef.current?.abort();
+    voiceRecognitionRef.current = null;
+    voiceAudioRef.current?.pause();
+    voiceAudioRef.current = null;
+    voiceSpeakingRef.current = false;
+    setVoiceSpeaking(false);
+  };
+
+  const toggleVoiceMode = () => {
+    if (voiceEnabledRef.current) {
+      stopVoiceWakeListening();
+    } else {
+      startVoiceWakeListening();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      voiceEnabledRef.current = false;
+      voiceRecognitionRef.current?.abort();
+      voiceAudioRef.current?.pause();
+    };
+  }, []);
 
   const handleApplyPlan = async (msgId: string) => {
     const msgIndex = chatMessages.findIndex(m => m.id === msgId);
@@ -2633,6 +2895,31 @@ export default function FlowDashboardPage() {
       {!(agentType === "ad-creative" && flyModeActive) ? (
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
+            <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white/70 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleVoiceMode}
+                  className={`flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    voiceEnabled
+                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                      : "border-white/10 bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white"
+                  }`}
+                  title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
+                >
+                  {voiceSpeaking ? <Volume2 size={13} /> : voiceEnabled ? <Mic size={13} /> : <MicOff size={13} />}
+                  <span>{voiceEnabled ? "Voz ligada" : "Voz desligada"}</span>
+                </button>
+                <span className="truncate text-white/55">
+                  {voiceAwaitingCommand ? "Ativado" : voiceStatus}
+                </span>
+              </div>
+              {voiceError && (
+                <span className="truncate text-rose-300">
+                  {voiceError}
+                </span>
+              )}
+            </div>
             <PromptInputBox
               isLoading={isLoading}
               value={draftMessage}
