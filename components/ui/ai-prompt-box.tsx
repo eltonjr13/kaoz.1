@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, Mic, MicOff, Volume2 } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, Mic, MicOff, Volume2, AudioLines, Square } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSpeechDictation } from "@/lib/speech/use-speech-dictation";
 
@@ -519,6 +519,22 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const voiceFrameRef = React.useRef<number | null>(null);
   const voiceActiveRef = React.useRef(false);
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const inputRef = React.useRef(value ?? internalInput);
+  const filesRef = React.useRef<File[]>([]);
+  const showCanvasRef = React.useRef(false);
+  
+  React.useEffect(() => {
+    inputRef.current = value ?? internalInput;
+  }, [value, internalInput]);
+  
+  React.useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+  
+  React.useEffect(() => {
+    showCanvasRef.current = showCanvas;
+  }, [showCanvas]);
+
   const input = value ?? internalInput;
   const setInput = React.useCallback((nextValue: string | ((current: string) => string)) => {
     const resolvedValue = typeof nextValue === "function" ? nextValue(input) : nextValue;
@@ -541,14 +557,8 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const voiceIconEl = voiceSpeaking
     ? <Volume2 className="w-4 h-4" />
     : voiceEnabled
-    ? <Mic className="w-4 h-4" />
-    : <MicOff className="w-4 h-4" />;
-
-  const voiceLabel = voiceAwaitingCommand
-    ? "Ativado"
-    : voiceEnabled
-    ? (voiceSpeaking ? "Falando..." : voiceStatus || "Escutando")
-    : "Modo Voz";
+    ? <AudioLines className="w-4 h-4" />
+    : <AudioLines className="w-4 h-4 opacity-70" />;
 
   const handleCanvasToggle = () => setShowCanvas((prev) => !prev);
 
@@ -692,11 +702,26 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     }
   }, [isLoading, isRecording, resetVoiceMeter, speech, startRecordingTimer, startVoiceMeter]);
 
+  const submitMessage = React.useCallback(() => {
+    if (inputRef.current.trim() || filesRef.current.length > 0) {
+      let messagePrefix = "";
+      if (showCanvasRef.current) messagePrefix = "[Canvas: ";
+      const formattedInput = messagePrefix ? `${messagePrefix}${inputRef.current}]` : inputRef.current;
+      onSend(formattedInput, filesRef.current);
+      setInput("");
+      setFiles([]);
+      setFilePreviews({});
+    }
+  }, [onSend, setInput, setFiles, setFilePreviews]);
+
   const handleStopRecording = React.useCallback(async () => {
     await speech.stop();
     stopRecordingTimer();
     stopVoiceMeter();
-  }, [speech, stopRecordingTimer, stopVoiceMeter]);
+    
+    // Auto-submit after stopping
+    submitMessage();
+  }, [speech, stopRecordingTimer, stopVoiceMeter, submitMessage]);
 
   React.useEffect(() => {
     return () => {
@@ -726,21 +751,33 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   }, [handlePaste]);
 
   const handleSubmit = () => {
-    if (input.trim() || files.length > 0) {
-      let messagePrefix = "";
-      if (showCanvas) messagePrefix = "[Canvas: ";
-      const formattedInput = messagePrefix ? `${messagePrefix}${input}]` : input;
-      onSend(formattedInput, files);
-      setInput("");
-      setFiles([]);
-      setFilePreviews({});
-    }
+    submitMessage();
   };
 
   const hasContent = input.trim() !== "" || files.length > 0;
   return (
     <div className="relative w-full">
       {isRecording && <VoiceInteractionLight isVoiceActive={isVoiceActive} levels={voiceLevels} />}
+
+      {/* Floating Transcription Panel */}
+      <AnimatePresence>
+        {voiceEnabled && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute bottom-full left-0 w-full rounded-t-2xl bg-[#9D7CFF]/10 backdrop-blur-md border border-b-0 border-[#9D7CFF]/20 p-2 z-50 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2 overflow-hidden flex-1">
+              <div className="flex items-center justify-center w-2 h-2 rounded-full bg-[#9D7CFF] animate-pulse shrink-0 ml-2" />
+              <p className="text-[#D1D5DB] text-[13px] truncate">
+                {voiceStatus || <span className="text-[#9D7CFF]/70 italic">Ouvindo...</span>}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <PromptInput
         value={input}
@@ -797,13 +834,12 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             className="text-base"
           />
         </div>
-
+        {/* Hidden screen reader live region (Transcription panel handles visual) */}
         {isRecording && (
           <div className="sr-only" aria-live="polite">
             {speech.transcript.trim() || (isVoiceActive ? "Voz detectada" : "Aguardando voz")}
           </div>
         )}
-
         {recordingError && !isRecording && (
           <div className={cn("relative z-10 px-3 pb-1 text-xs", recordingError ? "text-red-300" : "text-white/50")}>
             {recordingError}
@@ -912,7 +948,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
               <CustomDivider />
 
-              {/* Voice mode button (replaces FolderCode/Canvas) */}
+              {/* Voice mode button */}
               {onVoiceToggle && (
                 <button
                   type="button"
@@ -922,20 +958,21 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                     "rounded-full transition-all flex items-center gap-1 px-2 py-1 border h-8 max-w-[160px]",
                     voiceEnabled
                       ? voiceSpeaking
-                        ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300"
+                        ? "bg-[#9D7CFF]/20 border-[#9D7CFF]/50 text-[#b59dff]"
                         : voiceAwaitingCommand
-                        ? "bg-sky-500/20 border-sky-400/50 text-sky-300"
-                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                        ? "bg-[#9D7CFF]/20 border-[#9D7CFF]/50 text-[#b59dff]"
+                        : "bg-[#9D7CFF]/10 border-[#9D7CFF]/30 text-[#b59dff]"
                       : "bg-transparent border-transparent text-[#9CA3AF] hover:text-[#D1D5DB]"
                   )}
                 >
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                     <motion.div
                       animate={{
-                        scale: voiceSpeaking ? [1, 1.2, 1] : voiceEnabled ? 1.05 : 1,
+                        scale: voiceSpeaking ? [1, 1.2, 1] : voiceEnabled ? [1, 1.15, 1] : 1,
+                        opacity: voiceEnabled && !voiceSpeaking ? [0.7, 1, 0.7] : 1,
                       }}
-                      transition={voiceSpeaking
-                        ? { repeat: Infinity, duration: 0.8, ease: "easeInOut" }
+                      transition={voiceSpeaking || voiceEnabled
+                        ? { repeat: Infinity, duration: voiceSpeaking ? 0.8 : 2, ease: "easeInOut" }
                         : { type: "spring", stiffness: 260, damping: 25 }
                       }
                     >
@@ -951,11 +988,11 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                         exit={{ width: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
                         className={cn(
-                          "text-xs overflow-hidden whitespace-nowrap flex-shrink-0 truncate max-w-[100px]",
-                          voiceSpeaking ? "text-emerald-300" : voiceAwaitingCommand ? "text-sky-300" : "text-emerald-400"
+                          "text-xs overflow-hidden whitespace-nowrap flex-shrink-0",
+                          "text-[#b59dff]"
                         )}
                       >
-                        {voiceLabel}
+                        Agente
                       </motion.span>
                     )}
                   </AnimatePresence>
@@ -969,7 +1006,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             </div>
           </div>
 
-          <PromptInputAction tooltip={isRecording ? "Parar gravacao" : hasContent ? "Send message" : "Gravar audio"}>
+          <PromptInputAction tooltip={isRecording ? "Parar gravação" : hasContent ? "Send message" : "Gravar áudio"}>
             <Button
               variant="default"
               size={isRecording ? "sm" : "icon"}
@@ -989,8 +1026,8 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 else void handleStartRecording();
               }}
               disabled={isLoading}
-              aria-label={isRecording ? "Parar gravacao" : hasContent ? "Enviar mensagem" : "Gravar audio"}
-              title={isRecording ? "Parar gravacao" : hasContent ? "Enviar mensagem" : "Gravar audio"}
+              aria-label={isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
+              title={isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
               style={{
                 backgroundColor: isRecording ? "#123b74" : "#ffffff",
                 borderColor: isRecording ? "rgba(91,158,255,0.28)" : "rgba(255,255,255,0.28)",

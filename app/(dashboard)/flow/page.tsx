@@ -732,19 +732,23 @@ export default function FlowDashboardPage() {
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; messageId: string; role: 'user' | 'assistant' } | null>(null);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingConversationText, setEditingConversationText] = useState("");
 
   useEffect(() => {
-    if (!contextMenu) return;
-    const handleCloseMenu = () => setContextMenu(null);
+    if (!contextMenu && !messageContextMenu) return;
+    const handleCloseMenu = () => {
+      setContextMenu(null);
+      setMessageContextMenu(null);
+    };
     window.addEventListener("click", handleCloseMenu);
     window.addEventListener("contextmenu", handleCloseMenu);
     return () => {
       window.removeEventListener("click", handleCloseMenu);
       window.removeEventListener("contextmenu", handleCloseMenu);
     };
-  }, [contextMenu]);
+  }, [contextMenu, messageContextMenu]);
 
   const headerRef = useRef<HTMLHeadElement>(null);
 
@@ -2542,12 +2546,12 @@ export default function FlowDashboardPage() {
           // @ts-ignore
           height="100%"
           borderRadius={32}
-          blur={isHeaderHovered ? 8 : 4}
-          displace={isHeaderHovered ? 5 : 0}
-          distortionScale={isHeaderHovered ? -20 : -5}
-          brightness={isHeaderHovered ? 15 : 5}
+          blur={8}
+          displace={5}
+          distortionScale={-20}
+          brightness={15}
           opacity={0.4}
-          backgroundOpacity={isHeaderHovered ? 0.02 : 0}
+          backgroundOpacity={0.02}
           className="w-full h-full border border-white/10 hover:border-white/20 transition-all duration-600 rounded-full"
         >
           <div className={`w-full h-full flex items-center justify-between transition-all duration-600 ${isHeaderHovered ? 'px-6' : 'px-4'}`}>
@@ -2677,46 +2681,28 @@ export default function FlowDashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div 
+                    className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                    onContextMenu={(e) => {
+                      if (!canEditConversation) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu(null);
+                      setMessageContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        messageId: msg.id,
+                        role: msg.role
+                      });
+                    }}
+                  >
                     <div className={`px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 rounded-tr-sm text-white/90' : 'bg-white/5 border border-white/10 rounded-tl-sm text-white/80'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
                       <ReactMarkdown>
                         {msg.content}
                       </ReactMarkdown>
                     </div>
 
-                    {canEditConversation && (
-                      <div className={`flex items-center gap-2 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <button
-                          type="button"
-                          onClick={() => handleReturnToMessage(msg.id)}
-                          className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
-                          title="Criar ramificação até esta mensagem"
-                        >
-                          <Undo2 size={11} />
-                          Voltar
-                        </button>
-                        {msg.role === "user" && (
-                          <button
-                            type="button"
-                            onClick={() => handleEditMessage(msg.id)}
-                            className="flex h-6 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10px] text-white/45 transition-colors hover:border-white/20 hover:text-white/75"
-                            title="Criar ramificação editando esta mensagem"
-                          >
-                            <Pencil size={11} />
-                            Editar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleBranchFromMessage(msg.id)}
-                          className="flex h-6 items-center gap-1 rounded-full border border-[#9D7CFF]/20 bg-[#9D7CFF]/10 px-2 text-[10px] text-[#c7b7ff] transition-colors hover:border-[#9D7CFF]/35 hover:bg-[#9D7CFF]/15 hover:text-white"
-                          title="Criar uma ramificacao ate esta mensagem"
-                        >
-                          <MessageSquarePlus size={11} />
-                          Ramificar
-                        </button>
-                      </div>
-                    )}
+
 
                     {/* Plan Card */}
                     {msg.plan && !msg.jobId && (
@@ -3127,6 +3113,55 @@ export default function FlowDashboardPage() {
           >
             <Trash2 size={12} className="text-red-500" />
             Excluir
+          </button>
+        </div>
+      )}
+
+      {messageContextMenu && (
+        <div
+          data-context-menu="true"
+          className="fixed z-[100] min-w-[140px] bg-[#121214]/98 border border-white/10 rounded-xl shadow-2xl py-1.5 backdrop-blur-xl text-xs select-none"
+          style={{
+            position: "fixed",
+            top: messageContextMenu.y,
+            left: messageContextMenu.x,
+            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.05) inset",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              handleReturnToMessage(messageContextMenu.messageId);
+              setMessageContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Undo2 size={12} className="text-white/50" />
+            Voltar
+          </button>
+          
+          {messageContextMenu.role === "user" && (
+            <button
+              onClick={() => {
+                handleEditMessage(messageContextMenu.messageId);
+                setMessageContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-white/90 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Pencil size={12} className="text-white/50" />
+              Editar
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              handleBranchFromMessage(messageContextMenu.messageId);
+              setMessageContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-[#c7b7ff] flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <MessageSquarePlus size={12} className="text-[#9D7CFF]/70" />
+            Ramificar
           </button>
         </div>
       )}
