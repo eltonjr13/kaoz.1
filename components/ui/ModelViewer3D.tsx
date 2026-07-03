@@ -156,13 +156,6 @@ export default function ModelViewer3D({ src, alt = "Objeto 3D", title }: ModelVi
         onMouseUp={handleMouseUp}
         className="relative group w-full rounded-2xl overflow-hidden border border-white/10 bg-[#0a0a0f]/90 aspect-square flex flex-col items-center justify-center cursor-pointer"
       >
-        {/* Title Tag */}
-        {title && (
-          <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/5 text-[10px] font-semibold text-white/80 backdrop-blur-sm">
-            <Box size={10} className="text-[#9D7CFF]" />
-            {title}
-          </div>
-        )}
 
         {/* Hover Expand Overlay */}
         {scriptLoaded && !isLoading && (
@@ -247,11 +240,6 @@ export default function ModelViewer3D({ src, alt = "Objeto 3D", title }: ModelVi
 
           {/* Centered Large 3D Viewport */}
           <div className="relative w-full max-w-4xl h-[80vh] rounded-3xl border border-white/10 bg-[#07070a]/50 flex items-center justify-center overflow-hidden">
-            {/* Model Title */}
-            <div className="absolute top-5 left-5 z-10 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/50 border border-white/5 text-xs font-semibold text-white/90 backdrop-blur-md">
-              <Box size={14} className="text-[#9D7CFF]" />
-              {title || "Visualização do Objeto 3D"}
-            </div>
 
             {/* Load indicator in fullscreen */}
             {isLoading && (

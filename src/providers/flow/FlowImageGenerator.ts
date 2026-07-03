@@ -731,7 +731,9 @@ export class FlowImageGenerator {
 
       // 4.5. Upload reference image if provided
       if (options?.referenceImage) {
-        const skipUpload = !options.forceReferenceUpload && (options.referenceImage === this.lastUploadedReferenceImage);
+        const skipUpload = options.useExistingFlowReference === true
+          && !options.forceReferenceUpload
+          && options.referenceImage === this.lastUploadedReferenceImage;
         await this.uploadReferenceImage(
           page,
           options.referenceImage,

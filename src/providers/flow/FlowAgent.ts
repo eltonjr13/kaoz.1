@@ -608,7 +608,7 @@ export class FlowAgent {
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
         referenceImage: referencePath,
-        forceReferenceUpload: hasInputReference || isFirstGeneratedView,
+        forceReferenceUpload: isFirstGeneratedView,
         useExistingFlowReference: useExistingReferenceAsset
       });
 
