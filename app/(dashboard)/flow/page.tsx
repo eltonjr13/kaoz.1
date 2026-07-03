@@ -2803,7 +2803,7 @@ export default function FlowDashboardPage() {
                          </div>
                          {msg.imageResult.paths && msg.imageResult.paths.length > 0 ? (
                            <div className="grid grid-cols-2 gap-2">
-                             {msg.imageResult.paths.slice(0, 4).map((p, idx) => {
+                             {msg.imageResult.paths.map((p, idx) => {
                                const isRegenerating = regenerating3dImage?.messageId === msg.id && regenerating3dImage.imageIndex === idx;
                                const canRegenerate = msg.plan?.imagePackageMode === 'turnaround3d' && idx > 0 && !msg.model3dResult?.path;
                                const imageLabel = TURNAROUND_IMAGE_LABELS[idx] || `Imagem ${idx + 1}`;
