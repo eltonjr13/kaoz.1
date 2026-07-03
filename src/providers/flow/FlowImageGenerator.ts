@@ -85,7 +85,7 @@ export class FlowImageGenerator {
         if (imgs.length > 0) return true;
 
         let parent = textbox.parentElement;
-        for (let i = 0; i < 3 && parent; i++) {
+        for (let i = 0; i < 8 && parent && parent !== document.body; i++) {
           const containerImgs = parent.querySelectorAll('img');
           for (const img of Array.from(containerImgs)) {
             const src = img.src || '';
@@ -193,6 +193,95 @@ export class FlowImageGenerator {
     return alreadyAttached && skipUpload && !forceReferenceSelection;
   }
 
+  private async clearPromptDraft(page: Page): Promise<void> {
+    const promptInput = page.locator('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea').first();
+    const isVisible = await promptInput.isVisible().catch(() => false);
+    if (!isVisible) return;
+
+    await promptInput.click().catch(() => undefined);
+    await page.keyboard.press('Control+A').catch(() => undefined);
+    await page.keyboard.press('Backspace').catch(() => undefined);
+    await page.waitForTimeout(300);
+  }
+
+  private async clearPromptReferenceAttachments(page: Page): Promise<void> {
+    await this.clearPromptDraft(page);
+
+    const removedCount = await page.evaluate(() => {
+      const textbox = document.querySelector<HTMLElement>('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea');
+      if (!textbox) return 0;
+      const textboxRect = textbox.getBoundingClientRect();
+
+      const findPromptRoot = () => {
+        let parent = textbox.parentElement;
+        let promptRoot = textbox.parentElement;
+        for (let depth = 0; depth < 8 && parent && parent !== document.body; depth++) {
+          if (parent.querySelector("img")) {
+            promptRoot = parent;
+          }
+          parent = parent.parentElement;
+        }
+        return promptRoot;
+      };
+      const promptRoot = findPromptRoot();
+      if (!promptRoot) return 0;
+
+      const isReferenceImage = (image: HTMLImageElement) => {
+        const rect = image.getBoundingClientRect();
+        const isThumbnailSize = rect.width > 20 && rect.height > 20 && rect.width < 240 && rect.height < 240;
+        const isPromptArea = rect.bottom >= textboxRect.top - 260 && rect.top <= textboxRect.bottom + 80;
+        const isPromptColumn = rect.left >= textboxRect.left - 80 && rect.left <= textboxRect.right + 80;
+        return isThumbnailSize && isPromptArea && isPromptColumn;
+      };
+      const looksLikeRemoveControl = (element: HTMLElement) => {
+        const text = element.textContent?.trim() || "";
+        const label = element.getAttribute("aria-label") || element.getAttribute("title") || "";
+        const className = element.className?.toString() || "";
+        return /close|remove|delete|cancel|clear|fechar|remover|excluir/i.test(`${text} ${label} ${className}`);
+      };
+      const clickControlNearImage = (image: HTMLImageElement) => {
+        const rect = image.getBoundingClientRect();
+        const points = [
+          [rect.right - 6, rect.top + 6],
+          [rect.right + 6, rect.top - 6],
+          [rect.right - 12, rect.top + 12]
+        ];
+
+        for (const [x, y] of points) {
+          const target = document.elementFromPoint(x, y);
+          const control = target?.closest<HTMLElement>("button, [role='button']");
+          if (control && promptRoot.contains(control)) {
+            control.click();
+            return true;
+          }
+        }
+        return false;
+      };
+
+      let removed = 0;
+      for (const image of Array.from(promptRoot.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage)) {
+        const card = image.closest<HTMLElement>("div, [role='listitem'], [data-testid]");
+        const control = card
+          ? Array.from(card.querySelectorAll<HTMLElement>("button, [role='button']")).find(looksLikeRemoveControl)
+          : null;
+
+        if (control) {
+          control.click();
+          removed++;
+        } else if (clickControlNearImage(image)) {
+          removed++;
+        }
+      }
+
+      return removed;
+    }).catch(() => 0);
+
+    if (removedCount > 0) {
+      logger.info(`Removi ${removedCount} anexo(s) antigo(s) do prompt antes de anexar a nova referencia.`);
+      await page.waitForTimeout(800);
+    }
+  }
+
   private async confirmReferenceInclude(dialog: Locator): Promise<void> {
     const includeBtn = dialog.locator('button:has-text("Incluir no comando"), button:has-text("Include in prompt"), button:has-text("Incluir")').first();
     if (await includeBtn.isVisible()) {
@@ -241,6 +330,7 @@ export class FlowImageGenerator {
     } else if (useExistingFlowReference) {
       logger.info('Referencia existente solicitada, mas nenhum anexo confiavel foi detectado. Reenviando o arquivo local para evitar midia antiga.');
     }
+    await this.clearPromptReferenceAttachments(page);
 
     const fileInput = page.locator('input[type="file"]').first();
     try {
