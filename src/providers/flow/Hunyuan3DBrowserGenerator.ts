@@ -326,6 +326,46 @@ export class Hunyuan3DBrowserGenerator {
   private async startGeneration(page: Page) {
     await this.dismissPopups(page);
 
+    if (await this.clickGenerateButton(page)) {
+      await page.waitForTimeout(2500);
+      return;
+    }
+
+    throw new Error("Nao encontrei o botao de gerar no Hunyuan 3D depois do upload.");
+  }
+
+  private async clickGenerateButton(page: Page): Promise<boolean> {
+    const clicked = await page.evaluate((generateNow) => {
+      const isVisibleAction = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width >= 40 && rect.height >= 24;
+      };
+      const isDisabledAction = (element: HTMLElement) => {
+        const className = element.className?.toString() || "";
+        return element.getAttribute("disabled") !== null ||
+          element.getAttribute("aria-disabled") === "true" ||
+          className.includes("t-is-disabled");
+      };
+      const candidates = [...document.querySelectorAll<HTMLElement>(
+        ".sideBarLeft-generateBtn, .linear-gradien-button, .t-button, button, [role='button']"
+      )];
+
+      for (const element of candidates) {
+        const text = element.textContent?.trim() || "";
+        if (!text.includes(generateNow) || !isVisibleAction(element) || isDisabledAction(element)) continue;
+
+        element.scrollIntoView({ block: "center", inline: "center" });
+        element.click();
+        return true;
+      }
+
+      return false;
+    }, UI_TEXT.generateNow).catch(() => false);
+    if (clicked) {
+      logger.info("Botao visivel de gerar clicado no Hunyuan 3D.");
+      return true;
+    }
+
     const generateButton = await this.firstVisible([
       page.getByRole("button", { name: UI_TEXT.generateNow }).first(),
       page.locator("button").filter({ hasText: UI_TEXT.generateNow }).first(),
@@ -337,7 +377,8 @@ export class Hunyuan3DBrowserGenerator {
 
     if (generateButton) {
       await generateButton.click();
-      return;
+      logger.info("Botao de gerar clicado no Hunyuan 3D via locator fallback.");
+      return true;
     }
 
     const clickedGenerate = await page.evaluate((generateNow) => {
@@ -352,9 +393,8 @@ export class Hunyuan3DBrowserGenerator {
       return true;
     }, UI_TEXT.generateNow);
 
-    if (!clickedGenerate) {
-      throw new Error("Nao encontrei o botao de gerar no Hunyuan 3D depois do upload.");
-    }
+    if (clickedGenerate) logger.info("Botao de gerar clicado no Hunyuan 3D via fallback DOM.");
+    return clickedGenerate;
   }
 
   private async waitForDownload(page: Page, jobId: string): Promise<string[]> {
