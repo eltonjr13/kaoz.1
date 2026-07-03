@@ -148,11 +148,12 @@ export class FlowProvider {
   async queryWebLLM(
     model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini',
     prompt: string,
-    referenceImagePath?: string
+    referenceImagePath?: string,
+    options: { onTextChunk?: (chunk: string) => void } = {}
   ): Promise<string> {
     this.activeTasksCount++;
     try {
-      return await this.llmAutomation.queryWebLLM(model, prompt, referenceImagePath);
+      return await this.llmAutomation.queryWebLLM(model, prompt, referenceImagePath, options);
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }

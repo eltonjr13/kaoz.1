@@ -51,12 +51,23 @@ export function normalizeAgentLLMSettings(settings: Partial<AgentLLMSettings>): 
   };
 }
 
+let cachedSettings: AgentLLMSettings | null = null;
+let cachedSettingsTime = 0;
+
 export async function readAgentLLMSettings(): Promise<AgentLLMSettings> {
+  const now = Date.now();
+  if (cachedSettings && now - cachedSettingsTime < 5000) {
+    return cachedSettings;
+  }
   try {
     const settings = JSON.parse(await readFile(SETTINGS_FILE, "utf8")) as Partial<AgentLLMSettings>;
-    return normalizeAgentLLMSettings(settings);
+    cachedSettings = normalizeAgentLLMSettings(settings);
+    cachedSettingsTime = now;
+    return cachedSettings;
   } catch {
-    return getEnvAgentLLMSettings();
+    cachedSettings = getEnvAgentLLMSettings();
+    cachedSettingsTime = now;
+    return cachedSettings;
   }
 }
 

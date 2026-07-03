@@ -101,6 +101,34 @@ interface PendingPlan {
   } | null;
 }
 
+interface FlowChatAction {
+  flow?: PlannedFlow;
+  optimizedPrompt?: string;
+  explanation?: string;
+  targetJobId?: string | null;
+  strategy?: string;
+  scriptOutline?: string | null;
+  creativeSteps?: string[];
+  requestedImageCount?: number;
+  adCreativePlan?: PendingPlan["adCreativePlan"];
+}
+
+interface FlowChatResponse {
+  success?: boolean;
+  message?: string;
+  action?: FlowChatAction | null;
+  error?: string;
+}
+
+interface FlowChatStreamPayload extends FlowChatResponse {
+  text?: string;
+}
+
+interface FlowChatStreamEvent {
+  event: string;
+  data: FlowChatStreamPayload;
+}
+
 export interface ChatMessageState {
   id: string;
   role: 'user' | 'assistant';
@@ -265,6 +293,31 @@ const getFlowDownloadUrl = (mediaPath?: string | null) => {
     return `${url}&download=true`;
   }
   return url;
+};
+
+const parseFlowChatStreamEvent = (block: string): FlowChatStreamEvent | null => {
+  const lines = block.split(/\r?\n/);
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) return null;
+
+  try {
+    return {
+      event,
+      data: JSON.parse(dataLines.join("\n")) as FlowChatStreamPayload
+    };
+  } catch {
+    return null;
+  }
 };
 
 async function generate3dBaseImage(params: {
@@ -1548,6 +1601,74 @@ export default function FlowDashboardPage() {
         parts: [{ text: m.content }]
       }));
 
+    const assistantMessageId = createChatId("assistant");
+    let streamedContent = "";
+    const appendAssistantChunk = (chunk: string) => {
+      if (!chunk) return;
+
+      streamedContent += chunk;
+      shouldAutoScrollRef.current = true;
+      setChatMessages(prev => {
+        const existingIndex = prev.findIndex(m => m.id === assistantMessageId);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
+            content: streamedContent
+          };
+          return next;
+        }
+
+        return [
+          ...prev,
+          {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: streamedContent,
+            timestamp: new Date().toISOString()
+          }
+        ];
+      });
+    };
+
+    const showAssistantStatus = (statusText: string) => {
+      if (!statusText || streamedContent) return;
+
+      shouldAutoScrollRef.current = true;
+      setChatMessages(prev => {
+        const existingIndex = prev.findIndex(m => m.id === assistantMessageId);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
+            content: statusText
+          };
+          return next;
+        }
+
+        return [
+          ...prev,
+          {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: statusText,
+            timestamp: new Date().toISOString()
+          }
+        ];
+      });
+    };
+
+    const upsertAgentMessage = (agentMsg: ChatMessageState) => {
+      setChatMessages(prev => {
+        const existingIndex = prev.findIndex(m => m.id === agentMsg.id);
+        if (existingIndex < 0) return [...prev, agentMsg];
+
+        const next = [...prev];
+        next[existingIndex] = agentMsg;
+        return next;
+      });
+    };
+
     try {
       const res = await fetch("/api/flow/chat", {
         method: "POST",
@@ -1557,13 +1678,57 @@ export default function FlowDashboardPage() {
           avatarId: selectedAvatarId,
           useAvatarPersonality,
           useCortexMemory,
-          model: agentModel
+          model: agentModel,
+          stream: true
         })
       });
-      const data = await res.json();
+      let streamedData: FlowChatResponse | null = null;
+      if (res.body && res.headers.get("content-type")?.includes("text/event-stream")) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        const processStreamBlock = (block: string) => {
+          const parsed = parseFlowChatStreamEvent(block);
+          if (!parsed) return;
+
+          if (parsed.event === "chunk") {
+            appendAssistantChunk(parsed.data.text || "");
+          } else if (parsed.event === "status") {
+            showAssistantStatus(parsed.data.text || "");
+          } else if (parsed.event === "final") {
+            streamedData = parsed.data;
+          } else if (parsed.event === "error") {
+            throw new Error(parsed.data.error || "Falha no stream do chat.");
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split(/\n\n/);
+          buffer = blocks.pop() || "";
+          for (const block of blocks) {
+            processStreamBlock(block);
+          }
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processStreamBlock(buffer);
+        }
+
+        if (!streamedData) {
+          throw new Error("O stream do chat terminou sem resposta final.");
+        }
+      }
+
+      const data: FlowChatResponse = streamedData || await res.json();
       
       const agentMsg: ChatMessageState = {
-        id: (Date.now() + 1).toString(),
+        id: assistantMessageId,
         role: 'assistant',
         content: data.message || "Aqui está o que preparei.",
         timestamp: new Date().toISOString()
@@ -1580,8 +1745,8 @@ export default function FlowDashboardPage() {
           kind: plannedKind, 
           flow: data.action.flow,
           originalPrompt: message,
-          prompt: data.action.optimizedPrompt,
-          explanation: data.action.explanation,
+          prompt: data.action.optimizedPrompt || message,
+          explanation: data.action.explanation || "",
           model: agentModel,
           aspectRatio: (plannedKind === 'image' || isAdCreative) ? imageRatio : videoRatio,
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
@@ -1620,7 +1785,7 @@ export default function FlowDashboardPage() {
         }
       }
 
-      setChatMessages(prev => [...prev, agentMsg]);
+      upsertAgentMessage(agentMsg);
       if (options.speakResponse) {
         await speakAssistantResponse(agentMsg.content);
       }
@@ -2811,7 +2976,7 @@ export default function FlowDashboardPage() {
               </div>
             ))}
 
-            {isLoading && (
+            {isLoading && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
               <div className="flex gap-3 self-start">
                 <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center shrink-0">
                    <Bot size={12} className="text-[#9D7CFF]" />

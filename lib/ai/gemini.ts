@@ -102,47 +102,148 @@ async function prepareContents(
   return contents;
 }
 
+function tryParseJson<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonObjectCandidate<T>(responseText: string): T | null {
+  const firstBrace = responseText.indexOf("{");
+  const lastBrace = responseText.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null;
+  return tryParseJson<T>(responseText.slice(firstBrace, lastBrace + 1));
+}
+
+function buildParseFallback<T>(responseText: string, fallback: T): T {
+  console.error("Falha ao analisar a resposta JSON do Gemini. Resposta original:\n", responseText);
+
+  // Se o fallback esperar uma propriedade "message", reaproveitamos o texto bruto
+  // como a própria mensagem, evitando descartar a fala da IA!
+  if (fallback && typeof fallback === "object" && "message" in fallback) {
+    return {
+      ...fallback,
+      message: responseText.trim()
+    };
+  }
+
+  return fallback;
+}
+
 function parseGeminiResponse<T>(responseText: string, fallback: T): T {
   if (!responseText) return fallback;
 
-  // 1. Try direct parsing
-  try {
-    return JSON.parse(responseText);
-  } catch {
-    // Keep going
+  const cleanedText = responseText.replace(/```json|```/g, "").trim();
+  return (
+    tryParseJson<T>(responseText) ||
+    parseJsonObjectCandidate<T>(responseText) ||
+    tryParseJson<T>(cleanedText) ||
+    buildParseFallback(responseText, fallback)
+  );
+}
+
+function decodeJsonEscape(value: string): string {
+  switch (value) {
+    case "n":
+      return "\n";
+    case "r":
+      return "\r";
+    case "t":
+      return "\t";
+    case "b":
+      return "\b";
+    case "f":
+      return "\f";
+    case '"':
+    case "\\":
+    case "/":
+      return value;
+    default:
+      return value;
+  }
+}
+
+function findPartialJsonStringStart(responseText: string, fieldName: string): number | null {
+  const keyIndex = responseText.indexOf(`"${fieldName}"`);
+  if (keyIndex === -1) return null;
+
+  const colonIndex = responseText.indexOf(":", keyIndex + fieldName.length + 2);
+  if (colonIndex === -1) return null;
+
+  let valueStartIndex = colonIndex + 1;
+  while (valueStartIndex < responseText.length && /\s/.test(responseText[valueStartIndex])) {
+    valueStartIndex++;
   }
 
-  // 2. Try to find the outermost JSON object braces
-  const firstBrace = responseText.indexOf("{");
-  const lastBrace = responseText.lastIndexOf("}");
-  
-  if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
-    const candidate = responseText.slice(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(candidate) as T;
-    } catch {
-      // Keep going
+  return responseText[valueStartIndex] === '"' ? valueStartIndex + 1 : null;
+}
+
+function readJsonEscape(responseText: string, slashIndex: number): { value: string; nextIndex: number } | null {
+  const escaped = responseText[slashIndex + 1];
+  if (!escaped) return null;
+
+  if (escaped !== "u") {
+    return {
+      value: decodeJsonEscape(escaped),
+      nextIndex: slashIndex + 1
+    };
+  }
+
+  const hex = responseText.slice(slashIndex + 2, slashIndex + 6);
+  if (!/^[0-9a-fA-F]{4}$/.test(hex)) return null;
+
+  return {
+    value: String.fromCharCode(parseInt(hex, 16)),
+    nextIndex: slashIndex + 5
+  };
+}
+
+function readPartialJsonString(responseText: string, startIndex: number): string {
+  let value = "";
+  for (let index = startIndex; index < responseText.length; index++) {
+    const char = responseText[index];
+
+    if (char === '"') {
+      return value;
+    }
+
+    if (char === "\\") {
+      const escapeResult = readJsonEscape(responseText, index);
+      if (!escapeResult) return value;
+
+      value += escapeResult.value;
+      index = escapeResult.nextIndex;
+    } else {
+      value += char;
     }
   }
 
-  // 3. Try to clean typical markdown wrappers and trim
-  try {
-    const cleanedText = responseText.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleanedText) as T;
-  } catch {
-    console.error("Falha ao analisar a resposta JSON do Gemini. Resposta original:\n", responseText);
-    
-    // Se o fallback esperar uma propriedade "message", reaproveitamos o texto bruto 
-    // como a própria mensagem, evitando descartar a fala da IA!
-    if (fallback && typeof fallback === "object" && "message" in fallback) {
-      return {
-        ...fallback,
-        message: responseText.trim()
-      };
-    }
-    
-    return fallback;
-  }
+  return value;
+}
+
+function extractPartialJsonStringField(responseText: string, fieldName: string): string | null {
+  const valueStartIndex = findPartialJsonStringStart(responseText, fieldName);
+  return valueStartIndex === null ? null : readPartialJsonString(responseText, valueStartIndex);
+}
+
+function createMessageChunkHandler(onMessageChunk?: (chunk: string) => void): ((chunk: string) => void) | undefined {
+  if (!onMessageChunk) return undefined;
+
+  let streamedResponseText = "";
+  let streamedMessage = "";
+
+  return (chunk: string) => {
+    streamedResponseText += chunk;
+    const nextMessage = extractPartialJsonStringField(streamedResponseText, "message");
+    if (nextMessage === null || nextMessage.length <= streamedMessage.length) return;
+
+    const delta = nextMessage.slice(streamedMessage.length);
+    streamedMessage = nextMessage;
+    onMessageChunk(delta);
+  };
 }
 
 export async function analyzeAndGenerateScript(
@@ -439,6 +540,63 @@ function getLatestUserText(messages: ChatMessage[]) {
   return latestUserMessage?.parts.map((part) => part.text).join("\n").trim() || "";
 }
 
+function getImmediateChatResponse(messages: ChatMessage[], referenceImagePath?: string): ChatAgentResponse | null {
+  if (referenceImagePath) return null;
+
+  const latestUserText = getLatestUserText(messages);
+  const normalized = normalizeIntentText(latestUserText)
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized || normalized.length > 80) return null;
+
+  const actionTerms = [
+    "gerar",
+    "gera",
+    "criar",
+    "cria",
+    "fazer",
+    "faz",
+    "imagem",
+    "video",
+    "projeto",
+    "anuncio",
+    "campanha",
+    "editar",
+    "ajustar",
+    "corrigir",
+    "refinar"
+  ];
+
+  if (hasAnyTerm(normalized, actionTerms)) return null;
+
+  if (/^(oi|ola|hello|hey|salve|bom dia|boa tarde|boa noite)( mr chicken| senhor chicken| sr chicken| mister chicken)?$/.test(normalized)) {
+    return {
+      message: "Oi! Me diga o que voce quer criar ou ajustar.",
+      action: null
+    };
+  }
+
+  if (/^(obrigado|obrigada|valeu|thanks|thank you)$/.test(normalized)) {
+    return {
+      message: "De nada. Quando quiser, sigo com o proximo passo.",
+      action: null
+    };
+  }
+
+  return null;
+}
+
+function preserveChatResponseAction(response: ChatAgentResponse, messages: ChatMessage[]): ChatAgentResponse {
+  if (!response.action) return response;
+
+  return {
+    ...response,
+    action: preservePromptFidelity(response.action, getLatestUserText(messages))
+  };
+}
+
 export async function classifyIntention(intention: string): Promise<FlowDecision> {
   const agentPlannerInstructions = `
 Modo agente autonomo:
@@ -570,10 +728,19 @@ export interface ChatAgentResponse {
 export async function chatWithAgent(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
-  executeWebQuery?: (compiledPrompt: string, referenceImagePath?: string) => Promise<string>,
+  executeWebQuery?: (
+    compiledPrompt: string,
+    referenceImagePath?: string,
+    options?: { onTextChunk?: (chunk: string) => void }
+  ) => Promise<string>,
   referenceImagePath?: string,
-  options?: { useCortexMemory?: boolean }
+  options?: { useCortexMemory?: boolean; onMessageChunk?: (chunk: string) => void }
 ): Promise<ChatAgentResponse> {
+  const immediateResponse = getImmediateChatResponse(messages, referenceImagePath);
+  if (immediateResponse) {
+    return immediateResponse;
+  }
+
   let personalityContext = "Você é o Sr. Chicken, um assistente virtual e chatbot inteligente para o 'AI UGC Reaction Studio'. Responda em português.";
   if (avatarPersonality) {
     // Exclui campos específicos de roteirização que confundem o chatbot (como as instruções detalhadas de react)
@@ -628,8 +795,10 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
 
   try {
     let responseText = "{}";
+    const handleTextChunk = createMessageChunkHandler(options?.onMessageChunk);
+
     if (executeWebQuery) {
-      responseText = await executeWebQuery(compiledPrompt, referenceImagePath);
+      responseText = await executeWebQuery(compiledPrompt, referenceImagePath, { onTextChunk: handleTextChunk });
     } else {
       throw new Error("O callback de consulta ao modelo de IA e obrigatorio nesta arquitetura.");
     }
@@ -638,10 +807,7 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
       message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
       action: null
     });
-    if (parsed.action) {
-      parsed.action = preservePromptFidelity(parsed.action, getLatestUserText(messages));
-    }
-    return parsed;
+    return preserveChatResponseAction(parsed, messages);
   } catch (err) {
     console.error("Falha na interacao com o chat via modelo de IA:", err);
     return {

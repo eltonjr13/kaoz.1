@@ -22,10 +22,10 @@ type GradioAudioOutput = string | { url?: string };
 function extractVoiceSettings(settings: VoiceSettings | null | undefined) {
   const s = settings || {};
   return {
-    ns: s.inference_steps ?? 32,
+    ns: s.inference_steps ?? 16,
     gs: s.guidance_scale ?? 3.0,
     dn: s.denoise_ratio ?? 0.8,
-    sp: s.speed ?? 1.0,
+    sp: s.speed ?? 1.1,
     du: s.duration ?? 0,
     pp: s.preprocess_prompt ?? true,
     po: s.postprocess_output ?? true
@@ -95,6 +95,34 @@ async function downloadVoiceAudio(audioUrl: string, jobId: string): Promise<stri
   return publicPath;
 }
 
+const globalForGradio = globalThis as unknown as {
+  omniVoiceClient?: Client;
+  omniVoiceApiUrl?: string;
+};
+
+async function getGradioClient(apiUrl: string): Promise<Client> {
+  if (globalForGradio.omniVoiceClient && globalForGradio.omniVoiceApiUrl === apiUrl) {
+    console.log("[OmniVoice] Reutilizando conexão Gradio existente.");
+    return globalForGradio.omniVoiceClient;
+  }
+
+  if (globalForGradio.omniVoiceClient) {
+    try {
+      // @ts-ignore
+      globalForGradio.omniVoiceClient.close?.();
+    } catch (e) {
+      console.error("[OmniVoice] Erro ao fechar conexão antiga:", e);
+    }
+  }
+
+  console.log(`[OmniVoice] Conectando à API Gradio: ${apiUrl}`);
+  const client = await Client.connect(apiUrl);
+  globalForGradio.omniVoiceClient = client;
+  globalForGradio.omniVoiceApiUrl = apiUrl;
+  console.log("[OmniVoice] Conectado com sucesso à API Gradio!");
+  return client;
+}
+
 export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
   const apiUrl = await getOmniVoiceApiUrl();
 
@@ -102,26 +130,15 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
     throw new Error("OMNIVOICE_API_URL nao configurada. Defina a URL nas configuracoes do OmniVoice ou no .env.local.");
   }
 
-  // Connect to Gradio client
-  console.log(`[OmniVoice] Conectando à API Gradio: ${apiUrl}`);
-  const app = await Client.connect(apiUrl);
-  console.log("[OmniVoice] Conectado com sucesso à API Gradio!");
+  // Connect to Gradio client (reusing connection if possible)
+  const app = await getGradioClient(apiUrl);
 
   // Extract advanced voice parameters with safe fallbacks
   const voiceParams = extractVoiceSettings(input.settings);
 
   console.log(`[OmniVoice] Parâmetros de Dublagem - Steps: ${voiceParams.ns}, Guidance: ${voiceParams.gs}, Denoise: ${voiceParams.dn}, Speed: ${voiceParams.sp}, Duration: ${voiceParams.du}, Preprocess: ${voiceParams.pp}, Postprocess: ${voiceParams.po}`);
 
-  let result;
-  try {
-    result = await predictVoice(app, input, voiceParams);
-  } finally {
-    try {
-      app.close();
-    } catch (closeErr) {
-      console.error("[OmniVoice] Erro ao fechar conexão Gradio:", closeErr);
-    }
-  }
+  const result = await predictVoice(app, input, voiceParams);
 
   const data = result.data as GradioAudioOutput[];
   const audioData = data?.[0];
@@ -131,10 +148,19 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
     throw new Error("Gradio não retornou uma URL válida para o áudio gerado.");
   }
 
-  const publicPath = await downloadVoiceAudio(audioUrl, input.jobId);
+  let finalAudioPath = audioUrl;
+  
+  if (audioUrl.startsWith("http")) {
+    console.log("[OmniVoice] Retornando URL direta para baixa latência. Iniciando cache em background...");
+    downloadVoiceAudio(audioUrl, input.jobId).catch(err => {
+      console.error("[OmniVoice] Falha no download em background:", err);
+    });
+  } else {
+    finalAudioPath = await downloadVoiceAudio(audioUrl, input.jobId);
+  }
 
   return {
-    audioPath: publicPath,
+    audioPath: finalAudioPath,
     durationSeconds: 15
   };
 }

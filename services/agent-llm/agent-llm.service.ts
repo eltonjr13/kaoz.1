@@ -14,6 +14,7 @@ type ProcessResult = {
 type QueryOptions = {
   cwd?: string;
   referenceImagePath?: string;
+  onTextChunk?: (chunk: string) => void;
 };
 
 const MAX_OUTPUT_CHARS = 250_000;
@@ -120,7 +121,14 @@ function terminateProcessTree(pid: number | undefined): void {
 async function runProcess(
   command: string,
   args: string[],
-  options: { cwd?: string; input?: string; timeoutMs: number; extraPathEntries?: string[]; label?: string }
+  options: {
+    cwd?: string;
+    input?: string;
+    timeoutMs: number;
+    extraPathEntries?: string[];
+    label?: string;
+    onStdoutChunk?: (chunk: string) => void;
+  }
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -144,7 +152,9 @@ async function runProcess(
     }, options.timeoutMs);
 
     child.stdout.on("data", (chunk: Buffer) => {
-      stdout = truncateOutput(stdout + chunk.toString("utf8"));
+      const text = chunk.toString("utf8");
+      stdout = truncateOutput(stdout + text);
+      options.onStdoutChunk?.(text);
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
@@ -199,12 +209,19 @@ function assertSuccessfulProcess(result: ProcessResult, providerName: string): v
   throw new Error(`${providerName} retornou codigo ${result.exitCode}: ${details}`);
 }
 
+const resolvedCommandCache = new Map<string, string>();
+
 async function resolveRunnableCommand(command: string): Promise<string> {
+  if (resolvedCommandCache.has(command)) {
+    return resolvedCommandCache.get(command)!;
+  }
   const status = await checkCommandStatus(command);
   if (!status.available) {
     throw new Error(status.error || `Comando ${command} nao encontrado.`);
   }
-  return status.resolvedPath || command;
+  const resolved = status.resolvedPath || command;
+  resolvedCommandCache.set(command, resolved);
+  return resolved;
 }
 
 async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
@@ -237,6 +254,7 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
       timeoutMs: settings.timeoutMs,
       extraPathEntries: [path.dirname(command)],
       label: `Codex CLI (${settings.codexModel})`,
+      onStdoutChunk: options.onTextChunk,
     });
     assertSuccessfulProcess(result, "Codex CLI");
 
@@ -248,8 +266,44 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
 }
 
 async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
-  const shouldUseInlinePrompt = false;
+  const shouldUseInlinePrompt = prompt.length <= MAX_INLINE_GROK_PROMPT_CHARS;
   const promptPath = shouldUseInlinePrompt ? null : await writeTempFile("grok-prompt", prompt);
+  const shouldStream = Boolean(options.onTextChunk);
+  let streamedText = "";
+  let streamingLineBuffer = "";
+
+  const handleStreamingLine = (line: string) => {
+    const cleaned = cleanCliOutput(line);
+    if (!cleaned) return;
+
+    try {
+      const event = JSON.parse(cleaned) as { type?: string; data?: unknown };
+      if (event.type !== "text" || typeof event.data !== "string") return;
+
+      streamedText += event.data;
+      options.onTextChunk?.(event.data);
+    } catch {
+      // Ignore non-JSON diagnostic lines.
+    }
+  };
+
+  const handleStreamingChunk = shouldStream
+    ? (chunk: string) => {
+        streamingLineBuffer += chunk;
+        const lines = streamingLineBuffer.split(/\r?\n/);
+        streamingLineBuffer = lines.pop() || "";
+        for (const line of lines) {
+          handleStreamingLine(line);
+        }
+      }
+    : undefined;
+
+  const flushStreamingBuffer = () => {
+    if (!streamingLineBuffer) return;
+    handleStreamingLine(streamingLineBuffer);
+    streamingLineBuffer = "";
+  };
+
   try {
     const command = await resolveRunnableCommand(settings.grokCommand);
     const args = [
@@ -257,7 +311,7 @@ async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: Q
       ...(shouldUseInlinePrompt ? ["-p", prompt] : ["--prompt-file", promptPath as string]),
       "--model", settings.grokModel,
       "--effort", "low",
-      "--output-format", "plain",
+      "--output-format", shouldStream ? "streaming-json" : "plain",
       "--cwd", options.cwd || process.cwd(),
       "--no-alt-screen",
       "--disable-web-search",
@@ -274,8 +328,13 @@ async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: Q
       timeoutMs: settings.timeoutMs,
       extraPathEntries: [path.dirname(command)],
       label: `Grok CLI (${settings.grokModel})`,
+      onStdoutChunk: handleStreamingChunk,
     });
     assertSuccessfulProcess(result, "Grok CLI");
+    flushStreamingBuffer();
+    if (shouldStream) {
+      return cleanCliOutput(streamedText);
+    }
     return cleanCliOutput(result.stdout);
   } finally {
     await removeTempFile(promptPath);

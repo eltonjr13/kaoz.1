@@ -7,6 +7,9 @@ import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUti
 import { queryConfiguredAgentCli } from '@/services/agent-llm/agent-llm.service';
 
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+type QueryWebLLMOptions = {
+  onTextChunk?: (chunk: string) => void;
+};
 
 export class FlowLLMAutomation {
   constructor(private session: FlowSession, private config: FlowConfig) {}
@@ -146,9 +149,16 @@ export class FlowLLMAutomation {
     }
   }
 
-  private async queryConfiguredCli(prompt: string, referenceImagePath?: string): Promise<string | null> {
+  private async queryConfiguredCli(
+    prompt: string,
+    referenceImagePath?: string,
+    options: QueryWebLLMOptions = {}
+  ): Promise<string | null> {
     try {
-      const result = await queryConfiguredAgentCli(prompt, { referenceImagePath });
+      const result = await queryConfiguredAgentCli(prompt, {
+        referenceImagePath,
+        onTextChunk: options.onTextChunk,
+      });
       return result ? this.cleanLLMResponse(result) : null;
     } catch (err) {
       logger.warn('[Agente MrChicken] CLI configurada indisponivel. Usando fallback existente.', err);
@@ -165,17 +175,12 @@ export class FlowLLMAutomation {
     rawPrompt: string,
     type: 'image' | 'video'
   ): Promise<string> {
+
     const promptTemplate = `Melhore o seguinte prompt de geração de ${
       type === 'video' ? 'vídeo' : 'imagem'
     } para torná-lo profissional, ultra-detalhado e de alto impacto visual. Retorne apenas o prompt melhorado em inglês, sem comentários adicionais, sem aspas e sem explicações: '${rawPrompt}'`;
 
     logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
-
-    const cliResult = await this.queryConfiguredCli(promptTemplate);
-    if (cliResult) {
-      logger.info('[Agente MrChicken] Prompt otimizado via CLI configurada.');
-      return cliResult;
-    }
 
     const apiResult = await this.optimizeWithApi(model, promptTemplate);
     if (apiResult) {
@@ -183,6 +188,11 @@ export class FlowLLMAutomation {
       return apiResult;
     }
 
+    const cliResult = await this.queryConfiguredCli(promptTemplate);
+    if (cliResult) {
+      logger.info('[Agente MrChicken] Prompt otimizado via CLI configurada.');
+      return cliResult;
+    }
     if (this.shouldSkipWebAutomation(model)) {
       logger.warn(
         `[Agente MrChicken] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
@@ -214,8 +224,26 @@ export class FlowLLMAutomation {
   /**
    * Executa uma consulta direta ao LLM para o chat, priorizando a CLI configurada antes do navegador.
    */
-  async queryWebLLM(model: LLMModel, prompt: string, referenceImagePath?: string): Promise<string> {
-    const cliResult = await this.queryConfiguredCli(prompt, referenceImagePath);
+  async queryWebLLM(
+    model: LLMModel,
+    prompt: string,
+    referenceImagePath?: string,
+    options: QueryWebLLMOptions = {}
+  ): Promise<string> {
+    // 1. Tentar API direta primeiro se não houver imagem (muito mais rápido, sem spawn)
+    if (!referenceImagePath) {
+      const apiResult = await this.optimizeWithApi(model, prompt);
+      if (apiResult) {
+        logger.info(`[Agente MrChicken] Resposta obtida via API rápida do modelo: ${model}.`);
+        if (options.onTextChunk) {
+          options.onTextChunk(apiResult);
+        }
+        return apiResult;
+      }
+    }
+
+    // 2. Fallback para CLI configurada
+    const cliResult = await this.queryConfiguredCli(prompt, referenceImagePath, options);
     if (cliResult) {
       logger.info('[Agente MrChicken] Resposta obtida via CLI configurada.');
       return cliResult;
