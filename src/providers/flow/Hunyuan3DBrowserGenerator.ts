@@ -148,19 +148,19 @@ export class Hunyuan3DBrowserGenerator {
     if (hasFileInput) return true;
 
     const formSignal = await this.firstVisible([
-      page.getByText(UI_TEXT.addMultiView).first(),
-      page.getByText(UI_TEXT.imageTo3d).first(),
-      page.getByText("Multi-view").first()
+      page.getByText(UI_TEXT.addMultiView),
+      page.getByText(UI_TEXT.imageTo3d),
+      page.getByText("Multi-view")
     ]);
     return Boolean(formSignal);
   }
 
   private async selectImageTo3DMode(page: Page) {
     const modeButton = await this.firstVisible([
-      page.getByText(UI_TEXT.imageTo3d).first(),
-      page.getByText("Image to 3D").first(),
-      page.getByText("Image-to-3D").first(),
-      page.getByText("Multi-view").first()
+      page.getByText(UI_TEXT.imageTo3d),
+      page.getByText("Image to 3D"),
+      page.getByText("Image-to-3D"),
+      page.getByText("Multi-view")
     ]);
 
     if (modeButton) {
@@ -169,9 +169,9 @@ export class Hunyuan3DBrowserGenerator {
     }
 
     const multiImageButton = await this.firstVisible([
-      page.getByText(UI_TEXT.multiImage).first(),
-      page.getByText("Multi-image").first(),
-      page.getByText("Multiple images").first()
+      page.getByText(UI_TEXT.multiImage, { exact: true }),
+      page.getByText("Multi-image", { exact: true }),
+      page.getByText("Multiple images", { exact: true })
     ]);
 
     if (multiImageButton) {
@@ -223,12 +223,12 @@ export class Hunyuan3DBrowserGenerator {
     if (!forceNewSlot && await page.locator('input[type="file"]').count() > 0) return;
 
     const uploadButton = await this.firstVisible([
-      page.getByText(UI_TEXT.addMultiView).first(),
-      page.getByText(UI_TEXT.upload).first(),
-      page.getByText("Upload").first(),
-      page.getByText("Image").first(),
-      page.locator('[class*="upload"]').first(),
-      page.locator('[class*="Upload"]').first()
+      page.locator('button').filter({ hasText: UI_TEXT.addMultiView }),
+      page.getByText(UI_TEXT.upload),
+      page.getByText("Upload"),
+      page.getByText("Image"),
+      page.locator('[class*="upload"]'),
+      page.locator('[class*="Upload"]')
     ]);
 
     if (uploadButton) {
@@ -239,8 +239,11 @@ export class Hunyuan3DBrowserGenerator {
 
   private async openMultiViewDialog(page: Page) {
     const addMultiViewButton = await this.firstVisible([
-      page.getByText(UI_TEXT.addMultiView).first(),
-      page.locator('[class*="multi"], [class*="view"]').filter({ hasText: UI_TEXT.addMultiView }).first()
+      page.locator('button.hy-multiple-views-upload-v2'),
+      page.locator('button').filter({ hasText: UI_TEXT.addMultiView }),
+      page.locator('[role="button"]').filter({ hasText: UI_TEXT.addMultiView }),
+      page.getByText(UI_TEXT.addMultiView),
+      page.locator('[class*="multi"], [class*="view"]').filter({ hasText: UI_TEXT.addMultiView })
     ]);
 
     if (!addMultiViewButton) {
@@ -252,7 +255,10 @@ export class Hunyuan3DBrowserGenerator {
   }
 
   private async uploadViewImage(page: Page, labels: string[], imagePath: string) {
-    const slot = await this.firstVisible(labels.map((label) => page.getByText(label, { exact: false }).first()));
+    const slot = await this.firstVisible(labels.flatMap((label) => [
+      page.locator('.hy-multi-view-grid .hy-upload-card').filter({ hasText: label }),
+      page.getByText(label, { exact: false })
+    ]));
     if (!slot) {
       throw new Error(`Nao encontrei o slot de upload ${labels[0]} no Hunyuan 3D.`);
     }
@@ -426,8 +432,12 @@ export class Hunyuan3DBrowserGenerator {
 
   private async firstVisible(locators: Locator[]): Promise<Locator | null> {
     for (const locator of locators) {
-      if (await locator.isVisible().catch(() => false)) {
-        return locator;
+      const count = await locator.count().catch(() => 0);
+      for (let index = 0; index < Math.min(count, 25); index++) {
+        const candidate = locator.nth(index);
+        if (await candidate.isVisible().catch(() => false)) {
+          return candidate;
+        }
       }
     }
     return null;
