@@ -596,7 +596,10 @@ export class FlowAgent {
     for (const view of viewsToGenerate) {
       const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
       const isFirstGeneratedView = view === viewsToGenerate[0];
-      const useExistingReferenceAsset = options.useExistingFlowReference || !isFirstGeneratedView;
+      const hasInputReference = Boolean(options.inputReferenceImage);
+      const useExistingReferenceAsset = hasInputReference
+        ? false
+        : options.useExistingFlowReference || !isFirstGeneratedView;
 
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
@@ -605,7 +608,7 @@ export class FlowAgent {
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
         referenceImage: referencePath,
-        forceReferenceUpload: isFirstGeneratedView,
+        forceReferenceUpload: hasInputReference || isFirstGeneratedView,
         useExistingFlowReference: useExistingReferenceAsset
       });
 
@@ -1245,12 +1248,15 @@ Retorne estritamente um JSON no formato:
 
     let personality: unknown = null;
     let avatarReferenceImage: string | undefined;
+    const usesInputOnlyTurnaround = options.imagePackageMode === 'turnaround3d' && Boolean(options.inputReferenceImage);
     try {
       const avatar = await this.findAvatar(options.avatarId);
       personality = options.useAvatarPersonality === false ? null : avatar.personality;
-      avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
-      if (avatarReferenceImage) {
-        await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
+      if (!usesInputOnlyTurnaround) {
+        avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
+        if (avatarReferenceImage) {
+          await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
+        }
       }
     } catch (err) {
       logger.warn(`[FlowAgent] Falha ao carregar avatar ${options.avatarId}. Usando dados genéricos.`, err);
@@ -1258,7 +1264,9 @@ Retorne estritamente um JSON no formato:
 
     const executionOptions = {
       ...options,
-      avatarReferenceImage: options.inputReferenceImage || avatarReferenceImage
+      avatarReferenceImage: options.inputReferenceImage && !usesInputOnlyTurnaround
+        ? options.inputReferenceImage
+        : avatarReferenceImage
     };
     if (options.inputReferenceImage) {
       await this.logAgentEvent(jobId, "planning", "Usando a imagem anexada pelo usuario como referencia visual da geracao.");

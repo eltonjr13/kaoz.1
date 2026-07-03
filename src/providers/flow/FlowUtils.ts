@@ -150,6 +150,17 @@ export async function pollCondition(
 }
 
 /**
+ * Normalizes Flow project URLs by removing nested routes such as /trash.
+ */
+export function normalizeFlowProjectUrl(url: string): string | null {
+  if (!url.startsWith('https://') || !url.includes('/project/')) return null;
+
+  const [prefix, suffix] = url.split('/project/');
+  const projectId = suffix?.split(/[/?#]/)[0];
+  return projectId ? `${prefix}/project/${projectId}` : null;
+}
+
+/**
  * Gets the saved project URL if it exists.
  */
 export function getSavedProjectUrl(): string | null {
@@ -157,9 +168,7 @@ export function getSavedProjectUrl(): string | null {
   if (fs.existsSync(filePath)) {
     try {
       const url = fs.readFileSync(filePath, 'utf-8').trim();
-      if (url.startsWith('https://') && url.includes('/project/')) {
-        return url;
-      }
+      return normalizeFlowProjectUrl(url);
     } catch {
       // Ignore
     }
@@ -173,9 +182,10 @@ export function getSavedProjectUrl(): string | null {
 export function saveProjectUrl(url: string): void {
   const filePath = 'storage/flow_project_url.txt';
   try {
+    const normalizedUrl = normalizeFlowProjectUrl(url) || url;
     ensureDirExists('storage/');
-    fs.writeFileSync(filePath, url, 'utf-8');
-    logger.info(`Workspace URL salvo: ${url}`);
+    fs.writeFileSync(filePath, normalizedUrl, 'utf-8');
+    logger.info(`Workspace URL salvo: ${normalizedUrl}`);
   } catch (err) {
     logger.warn('Falha ao salvar URL do projeto workspace.', err);
   }

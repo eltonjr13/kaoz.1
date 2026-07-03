@@ -2,9 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Locator, Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename } from './FlowUtils';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
+
+const PROMPT_TEXTBOX_SELECTOR = 'div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea';
+
 export class FlowImageGenerator {
   private lastUploadedReferenceImage: string | null = null;
   private lastProjectUrl: string | null = null;
@@ -77,12 +80,27 @@ export class FlowImageGenerator {
   private async isReferenceImageAttached(page: Page): Promise<boolean> {
     try {
       // eslint-disable-next-line complexity
-      const isAttached = await page.evaluate(() => {
-        const textbox = document.querySelector('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea');
+      const isAttached = await page.evaluate((promptSelector) => {
+        const visibleTextboxes = Array.from(document.querySelectorAll<HTMLElement>(promptSelector))
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            return rect.width > 10 && rect.height > 10 && style.display !== "none" && style.visibility !== "hidden";
+          })
+          .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+        const textbox = visibleTextboxes[0];
         if (!textbox) return false;
 
-        const imgs = Array.from(document.querySelectorAll('div[role="textbox"] img, div[contenteditable="true"] img, [contenteditable="true"] img'));
-        if (imgs.length > 0) return true;
+        const textboxRect = textbox.getBoundingClientRect();
+        const isPromptThumbnail = (image: HTMLImageElement) => {
+          const rect = image.getBoundingClientRect();
+          const style = window.getComputedStyle(image);
+          const isVisible = rect.width > 20 && rect.height > 20 && style.display !== "none" && style.visibility !== "hidden";
+          const isNearPrompt = rect.bottom >= textboxRect.top - 360 && rect.top <= textboxRect.bottom + 160;
+          return isVisible && isNearPrompt && rect.width < 280 && rect.height < 280;
+        };
+
+        if (Array.from(document.querySelectorAll<HTMLImageElement>('img')).some(isPromptThumbnail)) return true;
 
         let parent = textbox.parentElement;
         for (let i = 0; i < 8 && parent && parent !== document.body; i++) {
@@ -98,7 +116,7 @@ export class FlowImageGenerator {
           parent = parent.parentElement;
         }
         return false;
-      });
+      }, PROMPT_TEXTBOX_SELECTOR);
       return isAttached;
     } catch (err) {
       logger.warn('Falha ao verificar se imagem de referência já está anexada:', err);
@@ -194,44 +212,47 @@ export class FlowImageGenerator {
   }
 
   private async clearPromptDraft(page: Page): Promise<void> {
-    const promptInput = page.locator('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea').first();
-    const isVisible = await promptInput.isVisible().catch(() => false);
-    if (!isVisible) return;
+    const focused = await page.evaluate((promptSelector) => {
+      const visibleTextboxes = Array.from(document.querySelectorAll<HTMLElement>(promptSelector))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          return rect.width > 10 && rect.height > 10 && style.display !== "none" && style.visibility !== "hidden";
+        })
+        .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+      const promptInput = visibleTextboxes[0];
+      if (!promptInput) return false;
+      promptInput.focus();
+      promptInput.click();
+      return true;
+    }, PROMPT_TEXTBOX_SELECTOR).catch(() => false);
+    if (!focused) return;
 
-    await promptInput.click().catch(() => undefined);
     await page.keyboard.press('Control+A').catch(() => undefined);
     await page.keyboard.press('Backspace').catch(() => undefined);
     await page.waitForTimeout(300);
   }
 
-  private async clearPromptReferenceAttachments(page: Page): Promise<void> {
-    await this.clearPromptDraft(page);
-
-    const removedCount = await page.evaluate(() => {
-      const textbox = document.querySelector<HTMLElement>('div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea');
-      if (!textbox) return 0;
-      const textboxRect = textbox.getBoundingClientRect();
-
-      const findPromptRoot = () => {
-        let parent = textbox.parentElement;
-        let promptRoot = textbox.parentElement;
-        for (let depth = 0; depth < 8 && parent && parent !== document.body; depth++) {
-          if (parent.querySelector("img")) {
-            promptRoot = parent;
-          }
-          parent = parent.parentElement;
-        }
-        return promptRoot;
+  // eslint-disable-next-line complexity
+  private async removeVisiblePromptReferenceAttachments(page: Page): Promise<{ removed: number; remaining: number }> {
+    return page.evaluate((promptSelector) => {
+      const isVisibleElement = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
       };
-      const promptRoot = findPromptRoot();
-      if (!promptRoot) return 0;
+      const textboxes = Array.from(document.querySelectorAll<HTMLElement>(promptSelector))
+        .filter(isVisibleElement)
+        .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+      const textbox = textboxes[0];
+      if (!textbox) return { removed: 0, remaining: 0 };
+      const textboxRect = textbox.getBoundingClientRect();
 
       const isReferenceImage = (image: HTMLImageElement) => {
         const rect = image.getBoundingClientRect();
-        const isThumbnailSize = rect.width > 20 && rect.height > 20 && rect.width < 240 && rect.height < 240;
-        const isPromptArea = rect.bottom >= textboxRect.top - 260 && rect.top <= textboxRect.bottom + 80;
-        const isPromptColumn = rect.left >= textboxRect.left - 80 && rect.left <= textboxRect.right + 80;
-        return isThumbnailSize && isPromptArea && isPromptColumn;
+        const isThumbnailSize = rect.width > 20 && rect.height > 20 && rect.width < 280 && rect.height < 280;
+        const isPromptArea = rect.bottom >= textboxRect.top - 360 && rect.top <= textboxRect.bottom + 160;
+        return isThumbnailSize && isPromptArea && isVisibleElement(image);
       };
       const looksLikeRemoveControl = (element: HTMLElement) => {
         const text = element.textContent?.trim() || "";
@@ -244,26 +265,37 @@ export class FlowImageGenerator {
         const points = [
           [rect.right - 6, rect.top + 6],
           [rect.right + 6, rect.top - 6],
-          [rect.right - 12, rect.top + 12]
+          [rect.right - 12, rect.top + 12],
+          [rect.left + 8, rect.top + 8]
         ];
 
         for (const [x, y] of points) {
           const target = document.elementFromPoint(x, y);
           const control = target?.closest<HTMLElement>("button, [role='button']");
-          if (control && promptRoot.contains(control)) {
+          if (control && isVisibleElement(control)) {
             control.click();
             return true;
           }
         }
         return false;
       };
+      const findControlInCard = (image: HTMLImageElement) => {
+        let parent: HTMLElement | null = image.parentElement;
+        for (let depth = 0; depth < 6 && parent && parent !== document.body; depth++) {
+          const control = Array.from(parent.querySelectorAll<HTMLElement>("button, [role='button']"))
+            .find((candidate) => isVisibleElement(candidate) && looksLikeRemoveControl(candidate));
+          if (control) return control;
+          parent = parent.parentElement;
+        }
+        return null;
+      };
 
       let removed = 0;
-      for (const image of Array.from(promptRoot.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage)) {
+      for (const image of Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage)) {
+        image.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
         const card = image.closest<HTMLElement>("div, [role='listitem'], [data-testid]");
-        const control = card
-          ? Array.from(card.querySelectorAll<HTMLElement>("button, [role='button']")).find(looksLikeRemoveControl)
-          : null;
+        card?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        const control = findControlInCard(image);
 
         if (control) {
           control.click();
@@ -273,13 +305,76 @@ export class FlowImageGenerator {
         }
       }
 
-      return removed;
-    }).catch(() => 0);
+      const remaining = Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage).length;
+      return { removed, remaining };
+    }, PROMPT_TEXTBOX_SELECTOR).catch(() => ({ removed: 0, remaining: 0 }));
+  }
 
-    if (removedCount > 0) {
-      logger.info(`Removi ${removedCount} anexo(s) antigo(s) do prompt antes de anexar a nova referencia.`);
+  private async clearPromptReferenceAttachments(page: Page): Promise<void> {
+    await this.clearPromptDraft(page);
+
+    let removedTotal = 0;
+    let remaining = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await this.removeVisiblePromptReferenceAttachments(page);
+      removedTotal += result.removed;
+      remaining = result.remaining;
+      if (result.removed === 0) break;
+      await page.waitForTimeout(500);
+    }
+
+    if (removedTotal > 0) {
+      logger.info(`Removi ${removedTotal} anexo(s) antigo(s) do prompt antes de anexar a nova referencia.`);
       await page.waitForTimeout(800);
     }
+    if (remaining > 0) {
+      throw new Error('Ainda existe anexo antigo no prompt do Flow depois da limpeza. Geracao bloqueada para evitar misturar imagens.');
+    }
+  }
+
+  private getCleanFlowEntryUrl(): string {
+    const targetUrl = this.config.imageUrl || this.config.flowUrl || 'https://flow.google';
+    const projectMarkerIndex = targetUrl.indexOf('/project/');
+    return projectMarkerIndex >= 0 ? `${targetUrl.slice(0, projectMarkerIndex)}/` : targetUrl;
+  }
+
+  private async openCleanWorkspaceForReferenceUpload(page: Page): Promise<void> {
+    const targetUrl = this.getCleanFlowEntryUrl();
+    logger.warn('Anexo antigo persistiu no prompt. Abrindo um workspace limpo do Flow antes do upload da nova referencia.');
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('domcontentloaded');
+
+    const entryButton = page.getByText(/Create with Google Flow|Criar com o Google Flow|Create with Flow|Criar com o Flow/i).first();
+    if (await entryButton.isVisible().catch(() => false)) {
+      await entryButton.click();
+      await page.waitForTimeout(4000);
+    }
+
+    const newProjectBtn = page.locator('button:has-text("Novo projeto"), button:has-text("New project")').first();
+    const canCreateProject = await newProjectBtn.waitFor({ state: 'visible', timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    if (canCreateProject) {
+      await newProjectBtn.click();
+      await page.waitForTimeout(4000);
+    }
+
+    const activeUrl = page.url();
+    const workspaceUrl = normalizeFlowProjectUrl(activeUrl);
+    if (workspaceUrl) {
+      if (workspaceUrl !== activeUrl) {
+        await page.goto(workspaceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      }
+      saveProjectUrl(workspaceUrl);
+      this.lastProjectUrl = workspaceUrl;
+    }
+
+    const workspaceTextbox = page.locator('[role="textbox"], div[contenteditable="true"]').first();
+    await workspaceTextbox.waitFor({ state: 'visible', timeout: 30000 });
+    const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
+    await promptPlusBtn.waitFor({ state: 'visible', timeout: 15000 });
+
+    this.lastUploadedReferenceImage = null;
   }
 
   private async confirmReferenceInclude(dialog: Locator): Promise<void> {
@@ -306,6 +401,23 @@ export class FlowImageGenerator {
     return true;
   }
 
+  private async preparePromptForFreshReference(
+    page: Page,
+    alreadyAttached: boolean,
+    forceReferenceSelection: boolean
+  ): Promise<void> {
+    if (alreadyAttached && forceReferenceSelection) {
+      await this.openCleanWorkspaceForReferenceUpload(page);
+      return;
+    }
+    try {
+      await this.clearPromptReferenceAttachments(page);
+    } catch (clearErr) {
+      logger.warn('Falha ao limpar anexos antigos no workspace atual.', clearErr);
+      await this.openCleanWorkspaceForReferenceUpload(page);
+    }
+  }
+
   /**
    * Uploads a reference image to the workspace.
    */
@@ -330,15 +442,16 @@ export class FlowImageGenerator {
     } else if (useExistingFlowReference) {
       logger.info('Referencia existente solicitada, mas nenhum anexo confiavel foi detectado. Reenviando o arquivo local para evitar midia antiga.');
     }
-    await this.clearPromptReferenceAttachments(page);
+    await this.preparePromptForFreshReference(page, alreadyAttached, forceReferenceSelection);
 
+    const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
     const fileInput = page.locator('input[type="file"]').first();
     try {
+      await promptPlusBtn.waitFor({ state: 'visible', timeout: 15000 });
+
       const uploadedFileThisRun = await this.prepareReferenceFile(page, fileInput, referenceImage);
 
       logger.info('Abrindo menu de mídia do prompt...');
-      const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
-      await promptPlusBtn.waitFor({ state: 'visible', timeout: 10000 });
       await promptPlusBtn.click();
       await page.waitForTimeout(2000);
 
@@ -373,8 +486,10 @@ export class FlowImageGenerator {
     logger.info('Abrindo Flow.', { targetUrl });
     
     const currentUrl = page.url();
-    const isCurrentUrlProject = currentUrl.includes('/project/');
-    if (!isCurrentUrlProject || (savedUrl && !currentUrl.includes(savedUrl))) {
+    const currentProjectUrl = normalizeFlowProjectUrl(currentUrl);
+    const currentUrlWithoutQuery = currentUrl.split(/[?#]/)[0];
+    const isCurrentUrlProjectRoot = Boolean(currentProjectUrl && currentUrlWithoutQuery === currentProjectUrl);
+    if (!isCurrentUrlProjectRoot || (savedUrl && currentProjectUrl !== savedUrl)) {
       logger.info('Navegando para Google Flow:', { targetUrl });
       try {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -453,15 +568,18 @@ export class FlowImageGenerator {
 
       // Save the active workspace URL for subsequent runs
       const activeUrl = page.url();
-      if (activeUrl.includes('/project/')) {
-        saveProjectUrl(activeUrl);
+      const activeProjectUrl = normalizeFlowProjectUrl(activeUrl);
+      if (activeProjectUrl) {
+        if (activeUrl.split(/[?#]/)[0] !== activeProjectUrl) {
+          await page.goto(activeProjectUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        }
+        saveProjectUrl(activeProjectUrl);
       }
 
-      const currentProjectUrl = activeUrl.includes('/project/') ? activeUrl : null;
-      if (currentProjectUrl !== this.lastProjectUrl) {
-        logger.info(`URL do workspace alterada ou nova sessão detectada: ${currentProjectUrl}. Resetando cache de upload.`);
+      if (activeProjectUrl !== this.lastProjectUrl) {
+        logger.info(`URL do workspace alterada ou nova sessão detectada: ${activeProjectUrl}. Resetando cache de upload.`);
         this.lastUploadedReferenceImage = null;
-        this.lastProjectUrl = currentProjectUrl;
+        this.lastProjectUrl = activeProjectUrl;
       }
 
       // 3. Switch model mode to Image (Nano Banana) or configure popover options
