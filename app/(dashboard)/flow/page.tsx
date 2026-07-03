@@ -1548,7 +1548,7 @@ export default function FlowDashboardPage() {
       voiceSpeakingRef.current = false;
       setVoiceSpeaking(false);
       if (voiceEnabledRef.current) {
-        setVoiceStatus("Diga Hello Mr Chicken para ativar.");
+        setVoiceStatus("Voz ativada. Pode falar.");
         try {
           voiceRecognitionRef.current?.start();
         } catch {
@@ -1798,10 +1798,8 @@ export default function FlowDashboardPage() {
 
   const handleVoiceCommand = async (command: string) => {
     const cleanCommand = normalizeVoiceText(command);
-    if (!cleanCommand || isLoading || voiceSpeakingRef.current) return;
+    if (!cleanCommand || isLoading) return;
 
-    voiceAwaitingCommandRef.current = false;
-    setVoiceAwaitingCommand(false);
     setVoiceStatus("MrChicken esta pensando...");
     setVoiceError("");
     setDraftMessage("");
@@ -1810,24 +1808,17 @@ export default function FlowDashboardPage() {
   };
 
   const handleVoiceTranscript = (transcript: string) => {
-    if (voiceSpeakingRef.current || isLoading) return;
-
-    const wakeResult = extractWakeCommand(transcript);
-    if (wakeResult.activated) {
-      if (wakeResult.command) {
-        void handleVoiceCommand(wakeResult.command);
-        return;
+    if (voiceSpeakingRef.current) {
+      if (voiceAudioRef.current) {
+        voiceAudioRef.current.pause();
+        voiceAudioRef.current.currentTime = 0;
+        voiceAudioRef.current.dispatchEvent(new Event('ended'));
       }
-
-      voiceAwaitingCommandRef.current = true;
-      setVoiceAwaitingCommand(true);
-      setVoiceStatus("Ativado. Diga seu comando.");
-      return;
+      voiceSpeakingRef.current = false;
+      setVoiceSpeaking(false);
     }
 
-    if (voiceAwaitingCommandRef.current) {
-      void handleVoiceCommand(transcript);
-    }
+    void handleVoiceCommand(transcript);
   };
 
   const startVoiceWakeListening = () => {
@@ -1858,11 +1849,11 @@ export default function FlowDashboardPage() {
       setVoiceStatus("Escuta pausada.");
     };
     recognition.onend = () => {
-      if (!voiceEnabledRef.current || voiceSpeakingRef.current) return;
+      if (!voiceEnabledRef.current) return;
       window.setTimeout(() => {
         try {
           recognition.start();
-          setVoiceStatus(voiceAwaitingCommandRef.current ? "Ativado. Diga seu comando." : "Diga Hello Mr Chicken para ativar.");
+          setVoiceStatus("Voz ativada. Pode falar.");
         } catch {
           setVoiceStatus("Escuta pausada.");
         }
@@ -1873,7 +1864,7 @@ export default function FlowDashboardPage() {
     voiceEnabledRef.current = true;
     setVoiceEnabled(true);
     setVoiceError("");
-    setVoiceStatus("Diga Hello Mr Chicken para ativar.");
+    setVoiceStatus("Voz ativada. Pode falar.");
 
     try {
       recognition.start();
