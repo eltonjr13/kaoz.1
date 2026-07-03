@@ -357,7 +357,6 @@ const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             ref={ref}
             className={cn(
               "rounded-3xl border border-[#444444] bg-[#1F2023] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.24)] transition-all duration-300",
-              isLoading && "border-red-500/70",
               className
             )}
             onDragOver={onDragOver}
@@ -475,6 +474,7 @@ interface PromptInputBoxProps {
   showOptions?: boolean;
   useCortexMemory?: boolean;
   onCortexMemoryChange?: (value: boolean) => void;
+  onStop?: () => void;
   // Voice mode props
   voiceEnabled?: boolean;
   voiceSpeaking?: boolean;
@@ -495,6 +495,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     showOptions = false,
     useCortexMemory = true,
     onCortexMemoryChange,
+    onStop,
     voiceEnabled = false,
     voiceSpeaking = false,
     voiceAwaitingCommand = false,
@@ -767,7 +768,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute bottom-full left-0 w-full rounded-t-2xl bg-[#9D7CFF]/10 backdrop-blur-md border border-b-0 border-[#9D7CFF]/20 p-2 z-50 flex items-center justify-between"
+            className="absolute bottom-full left-[2%] w-[96%] rounded-t-2xl bg-[#9D7CFF]/10 backdrop-blur-md border border-[#444444] border-b-0 p-2 pb-3 z-50 flex items-center justify-between"
           >
             <div className="flex items-center gap-2 overflow-hidden flex-1">
               <div className="flex items-center justify-center w-2 h-2 rounded-full bg-[#9D7CFF] animate-pulse shrink-0 ml-2" />
@@ -999,14 +1000,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 </button>
               )}
               {voiceError && voiceEnabled && (
-                <span className="text-[10px] text-rose-400 truncate max-w-[100px]" title={voiceError}>
-                  {voiceError}
+                <span className="text-[10px] text-rose-400 truncate max-w-[100px]" title={String(voiceError)}>
+                  {String(voiceError)}
                 </span>
               )}
             </div>
           </div>
 
-          <PromptInputAction tooltip={isRecording ? "Parar gravação" : hasContent ? "Send message" : "Gravar áudio"}>
+          <PromptInputAction tooltip={isLoading ? "Cancelar/Parar" : isRecording ? "Parar gravação" : hasContent ? "Send message" : "Gravar áudio"}>
             <Button
               variant="default"
               size={isRecording ? "sm" : "icon"}
@@ -1015,9 +1016,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 isRecording
                   ? "h-9 rounded-[12px] bg-[#123b74] px-3 text-[#b8d7ff] hover:bg-[#17498f]"
                   : "h-8 w-8 rounded-full",
-                !hasContent && !isRecording && "text-[#1F2023]"
+                isLoading && "bg-rose-500 text-white hover:bg-rose-600 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.4)] animate-pulse",
+                !hasContent && !isRecording && !isLoading && "text-[#1F2023]"
               )}
               onClick={() => {
+                if (isLoading && onStop) {
+                  onStop();
+                  return;
+                }
                 if (isRecording) {
                   void handleStopRecording();
                   return;
@@ -1025,18 +1031,18 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 if (hasContent) handleSubmit();
                 else void handleStartRecording();
               }}
-              disabled={isLoading}
-              aria-label={isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
-              title={isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
+              disabled={isLoading && !onStop}
+              aria-label={isLoading ? "Parar tarefa" : isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
+              title={isLoading ? "Parar tarefa" : isRecording ? "Parar gravação" : hasContent ? "Enviar mensagem" : "Gravar áudio"}
               style={{
-                backgroundColor: isRecording ? "#123b74" : "#ffffff",
-                borderColor: isRecording ? "rgba(91,158,255,0.28)" : "rgba(255,255,255,0.28)",
-                color: isRecording ? "#b8d7ff" : "#1F2023",
+                backgroundColor: isRecording ? "#123b74" : undefined,
+                borderColor: isRecording ? "rgba(91,158,255,0.28)" : undefined,
+                color: isRecording ? "#b8d7ff" : undefined,
                 opacity: 1,
               }}
             >
               {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Square className="h-3.5 w-3.5 fill-current" />
               ) : isRecording ? (
                 <span className="flex items-center gap-2">
                   <span className="flex h-4 items-end gap-[3px]">

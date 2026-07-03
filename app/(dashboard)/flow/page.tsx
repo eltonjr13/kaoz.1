@@ -2773,9 +2773,6 @@ export default function FlowDashboardPage() {
                           <span className="text-[#9D7CFF] flex items-center gap-1.5 font-semibold">
                             <Loader2 size={12} className="animate-spin" /> Processando tarefa...
                           </span>
-                          <button onClick={() => handleStopJob(msg.id, msg.jobId!)} className="text-[10px] text-white/40 hover:text-red-400 flex items-center gap-1 cursor-pointer">
-                            <Square size={8} fill="currentColor" /> Cancelar
-                          </button>
                         </div>
                         {msg.plan?.imagePackageMode === 'turnaround3d' && msg.imageResult?.success && get3dEditSourcePath(msg) && (
                           <div className="overflow-hidden rounded-xl border border-white/10 bg-black">
@@ -3036,6 +3033,13 @@ export default function FlowDashboardPage() {
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
             <PromptInputBox
+              onStop={() => {
+                stop();
+                const runningJob = chatMessages.find(m => m.jobId && m.jobStatus === 'running');
+                if (runningJob) {
+                  void handleStopJob(runningJob.id, runningJob.jobId!);
+                }
+              }}
               isLoading={isLoading}
               value={draftMessage}
               onValueChange={setDraftMessage}
