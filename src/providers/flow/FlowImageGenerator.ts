@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { Locator, Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
@@ -20,10 +21,16 @@ export class FlowImageGenerator {
     return '.png';
   }
 
+  private generateImageId(): string {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+    const length = 9;
+    return Array.from({ length }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
+  }
+
   private async saveImageCardFallback(
     card: Locator,
-    itemNumber: number,
-    options?: ImageGenerationOptions
+    options?: ImageGenerationOptions,
+    filenameBase?: string
   ): Promise<{ success: boolean; path: string; filename: string; createdAt: string } | null> {
     try {
       const imageData = await card.evaluate(async (el) => {
@@ -50,8 +57,8 @@ export class FlowImageGenerator {
       const customFolder = options?.folderName && options?.originalFilename
         ? `${options.folderName}/${options.originalFilename}`
         : undefined;
-      const filename = options?.originalFilename
-        ? `${options.originalFilename}_${itemNumber}${ext}`
+      const filename = filenameBase
+        ? `${filenameBase}${ext}`
         : generateFilename('image', ext);
       const targetDir = customFolder
         ? path.resolve(this.config.downloadPath, 'patterns', customFolder)
@@ -893,9 +900,7 @@ export class FlowImageGenerator {
         const customFolder = options?.folderName && options?.originalFilename 
           ? `${options.folderName}/${options.originalFilename}` 
           : undefined;
-        const customFilename = options?.originalFilename 
-          ? `${options.originalFilename}_${i + 1}` 
-          : undefined;
+        const customFilename = this.generateImageId();
 
         let downloadResult: { success: boolean; path: string; filename: string; createdAt: string } | null = null;
         try {
@@ -917,7 +922,7 @@ export class FlowImageGenerator {
           );
         } catch (downloadErr) {
           logger.warn(`Download pelo preview falhou no item ${i + 1}. Tentando fallback direto do card.`, downloadErr);
-          downloadResult = await this.saveImageCardFallback(card, i + 1, options);
+          downloadResult = await this.saveImageCardFallback(card, options, customFilename);
         }
 
         if (downloadResult?.success) {
