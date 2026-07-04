@@ -1693,12 +1693,16 @@ export default function FlowDashboardPage() {
         const decoder = new TextDecoder();
         let buffer = "";
 
-        const processStreamBlock = (block: string) => {
+        const processStreamBlock = async (block: string) => {
           const parsed = parseFlowChatStreamEvent(block);
           if (!parsed) return;
 
           if (parsed.event === "chunk") {
-            appendAssistantChunk(parsed.data.text || "");
+            const text = parsed.data.text || "";
+            for (let i = 0; i < text.length; i += 4) {
+              appendAssistantChunk(text.slice(i, i + 4));
+              await new Promise(r => setTimeout(r, 15));
+            }
           } else if (parsed.event === "status") {
             showAssistantStatus(parsed.data.text || "");
           } else if (parsed.event === "final") {
@@ -1716,13 +1720,13 @@ export default function FlowDashboardPage() {
           const blocks = buffer.split(/\n\n/);
           buffer = blocks.pop() || "";
           for (const block of blocks) {
-            processStreamBlock(block);
+            await processStreamBlock(block);
           }
         }
 
         buffer += decoder.decode();
         if (buffer.trim()) {
-          processStreamBlock(buffer);
+          await processStreamBlock(buffer);
         }
 
         if (!streamedData) {

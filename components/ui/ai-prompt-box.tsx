@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, Mic, MicOff, Volume2, AudioLines, Square } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, X, SlidersHorizontal, BrainCog, Mic, MicOff, Volume2, AudioLines, Square, Timer } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSpeechDictation } from "@/lib/speech/use-speech-dictation";
 
@@ -484,6 +484,43 @@ interface PromptInputBoxProps {
   voiceTranscript?: string;
   onVoiceToggle?: () => void;
 }
+
+const LatencyTimer = ({ isActive }: { isActive: boolean }) => {
+  const [ms, setMs] = React.useState(0);
+  const [finalMs, setFinalMs] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (isActive) {
+      setFinalMs(null);
+      let animationFrameId: number;
+      const startTime = performance.now();
+      
+      const update = () => {
+        setMs(Math.floor(performance.now() - startTime));
+        animationFrameId = requestAnimationFrame(update);
+      };
+      
+      animationFrameId = requestAnimationFrame(update);
+      
+      return () => {
+        cancelAnimationFrame(animationFrameId);
+        setFinalMs(Math.floor(performance.now() - startTime));
+      };
+    }
+  }, [isActive]);
+
+  const displayMs = isActive ? ms : (finalMs ?? 0);
+
+  if (!isActive && finalMs === null) return null;
+
+  return (
+    <div className="flex items-center gap-1 text-[#9D7CFF] bg-[#9D7CFF]/10 px-2 py-0.5 rounded text-[10px] font-mono border border-[#9D7CFF]/20 ml-2 shrink-0">
+      <Timer className="w-3 h-3" />
+      <span>{displayMs}ms</span>
+    </div>
+  );
+};
+
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
   const {
     onSend = () => {},
@@ -778,6 +815,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 {voiceTranscript || voiceStatus || <span className="text-[#9D7CFF]/70 italic">Ouvindo...</span>}
               </p>
             </div>
+            <LatencyTimer isActive={isLoading} />
           </motion.div>
         )}
       </AnimatePresence>

@@ -253,13 +253,17 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
 
     const instantPrompt = `[System Directive: Do not use <thought> blocks, planning, or subagents. Respond immediately and directly with the final answer.]\n\n${prompt}`;
 
+    const handleCodexChunk = options.onTextChunk ? (chunk: string) => {
+      options.onTextChunk!(chunk);
+    } : undefined;
+
     const result = await runProcess(command, args, {
       cwd: options.cwd,
       input: instantPrompt,
       timeoutMs: settings.timeoutMs,
       extraPathEntries: [path.dirname(command)],
       label: `Codex CLI (${settings.codexModel})`,
-      onStdoutChunk: options.onTextChunk,
+      onStdoutChunk: handleCodexChunk,
     });
     assertSuccessfulProcess(result, "Codex CLI");
 

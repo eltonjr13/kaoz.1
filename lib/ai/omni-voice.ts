@@ -47,7 +47,7 @@ async function predictVoice(app: Client, input: GenerateVoiceInput, voiceParams:
       input.script,         // vc_text
       "Portuguese (pt)",    // vc_lang
       ref_audio,            // vc_ref_audio
-      null,                 // vc_ref_text
+      "",                   // vc_ref_text
       ns,                   // vc_ns
       gs,                   // vc_gs
       dn,                   // vc_dn
@@ -148,7 +148,15 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
   const effectiveRefAudio = input.refAudioPath || config.defaultRefAudio;
   const effectiveInput = { ...input, refAudioPath: effectiveRefAudio };
 
-  const result = await predictVoice(app, effectiveInput, voiceParams);
+  let result;
+  try {
+    result = await predictVoice(app, effectiveInput, voiceParams);
+  } catch (error: any) {
+    console.warn("[OmniVoice] Erro na primeira tentativa (sessão expirada/servidor reiniciado). Reconectando...", error?.message || "");
+    delete globalForGradio.omniVoiceClient;
+    const newApp = await getGradioClient(apiUrl);
+    result = await predictVoice(newApp, effectiveInput, voiceParams);
+  }
 
   const data = result.data as GradioAudioOutput[];
   const audioData = data?.[0];
