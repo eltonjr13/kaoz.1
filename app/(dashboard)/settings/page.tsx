@@ -82,6 +82,7 @@ interface OmniVoiceConfig {
   lastError: string | null;
   lastCaptureAt: string | null;
   runStartedAt: string | null;
+  defaultRefAudio: string | null;
 }
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
@@ -255,7 +256,8 @@ function parseOmniVoiceConfig(data: Record<string, unknown>): OmniVoiceConfig {
     status: normalizeOmniVoiceStatus(data.status),
     lastError: stringOrNull(data.lastError),
     lastCaptureAt: stringOrNull(data.lastCaptureAt),
-    runStartedAt: stringOrNull(data.runStartedAt)
+    runStartedAt: stringOrNull(data.runStartedAt),
+    defaultRefAudio: stringOrNull(data.defaultRefAudio)
   };
 }
 
@@ -846,6 +848,36 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
     }
   };
 
+  const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setBusyAction("upload-audio");
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = reader.result as string;
+        const res = await fetch("/api/omnivoice/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "upload-audio", refAudioBase64: base64 })
+        });
+        const data = await res.json() as Record<string, unknown>;
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Falha ao enviar áudio.");
+        }
+        applyConfig(parseOmniVoiceConfig(data));
+        onStatusMessage({ text: "Áudio de referência salvo com sucesso.", type: "success" });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        onStatusMessage({ text: `Erro no upload: ${errMsg}`, type: "error" });
+      } finally {
+        setBusyAction(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const canTest = Boolean(apiUrl.trim() || config?.effectiveApiUrl);
   const isNotebookRunning = isActiveOmniVoiceStatus(config?.status);
 
@@ -871,10 +903,27 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
               placeholder="https://...gradio.live"
               className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] text-zinc-200 outline-none focus:border-white/25"
             />
-          </label>
+            </label>
         </div>
 
-        <label className="block space-y-1.5">
+        <div className="space-y-1.5 border-t border-white/[0.04] pt-4">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Voz Padrão (Clonagem)</span>
+          <p className="text-[10px] leading-relaxed text-zinc-500">Selecione um áudio base para padronizar a voz de todas as gerações.</p>
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <input 
+              type="file" 
+              accept="audio/*" 
+              onChange={handleAudioUpload} 
+              disabled={Boolean(busyAction)}
+              className="text-[11px] text-zinc-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-white/10 file:text-zinc-200 hover:file:bg-white/20 transition-all disabled:opacity-50"
+            />
+            {config?.defaultRefAudio && (
+              <audio src={config.defaultRefAudio} controls className="h-8 w-full md:w-64" />
+            )}
+          </div>
+        </div>
+
+        <label className="block space-y-1.5 border-t border-white/[0.04] pt-4">
           <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Saida do notebook</span>
           <textarea
             value={outputText}

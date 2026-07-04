@@ -11,6 +11,8 @@ import {
   startOmniVoiceNotebook
 } from "@/services/omnivoice/omnivoice.notebook-runtime";
 import { getFriendlyOmniVoiceError } from "@/services/omnivoice/omnivoice.errors";
+import { writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 
 export const runtime = "nodejs";
 
@@ -19,6 +21,7 @@ type OmniVoiceRequestBody = {
   notebookUrl?: unknown;
   apiUrl?: unknown;
   outputText?: unknown;
+  refAudioBase64?: unknown;
 };
 
 type OmniVoiceActionHandler = (body: OmniVoiceRequestBody) => Promise<Response>;
@@ -117,11 +120,36 @@ async function handleTest(body: OmniVoiceRequestBody) {
   });
 }
 
+async function handleUploadAudio(body: OmniVoiceRequestBody) {
+  const base64Data = typeof body.refAudioBase64 === "string" ? body.refAudioBase64 : "";
+  if (!base64Data) {
+    return jsonError("Nenhum dado de áudio fornecido.");
+  }
+
+  // Remove the prefix e.g., "data:audio/wav;base64,"
+  const base64String = base64Data.split(",")[1] || base64Data;
+  const buffer = Buffer.from(base64String, "base64");
+
+  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  await mkdir(outputDir, { recursive: true });
+  const diskPath = path.join(outputDir, "default_ref.wav");
+  const publicPath = `/uploads/audio/default_ref.wav`;
+
+  await writeFile(diskPath, buffer);
+
+  await writeOmniVoiceSettings({
+    defaultRefAudio: publicPath
+  });
+
+  return NextResponse.json(await getOmniVoiceRuntimeConfig());
+}
+
 const ACTION_HANDLERS: Record<string, OmniVoiceActionHandler> = {
   save: handleSave,
   "start-notebook": handleStartNotebook,
   "capture-url": handleCaptureUrl,
-  test: handleTest
+  test: handleTest,
+  "upload-audio": handleUploadAudio
 };
 
 export async function POST(request: Request) {

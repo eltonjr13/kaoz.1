@@ -1,7 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { getOmniVoiceApiUrl } from "@/services/omnivoice/omnivoice.settings";
+import { getOmniVoiceRuntimeConfig } from "@/services/omnivoice/omnivoice.settings";
 import type { VoiceSettings } from "@/types";
 
 export type GenerateVoiceInput = {
@@ -35,8 +35,13 @@ function extractVoiceSettings(settings: VoiceSettings | null | undefined) {
 async function predictVoice(app: Client, input: GenerateVoiceInput, voiceParams: ReturnType<typeof extractVoiceSettings>) {
   const { ns, gs, dn, sp, du, pp, po } = voiceParams;
   if (input.refAudioPath) {
-    console.log(`[OmniVoice] Iniciando Clonagem de Voz usando: ${input.refAudioPath}`);
-    const ref_audio = handle_file(input.refAudioPath);
+    // If it's a relative path starting with /uploads, resolve it to public dir
+    let audioDiskPath = input.refAudioPath;
+    if (audioDiskPath.startsWith("/uploads/")) {
+      audioDiskPath = path.join(process.cwd(), "public", audioDiskPath.replace(/^\//, ""));
+    }
+    console.log(`[OmniVoice] Iniciando Clonagem de Voz usando: ${audioDiskPath}`);
+    const ref_audio = handle_file(audioDiskPath);
     console.log("[OmniVoice] Enviando requisição de clonagem para o Gradio (isso pode levar de 30 a 60 segundos)...");
     const result = await app.predict(0, [
       input.script,         // vc_text
@@ -124,7 +129,8 @@ async function getGradioClient(apiUrl: string): Promise<Client> {
 }
 
 export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
-  const apiUrl = await getOmniVoiceApiUrl();
+  const config = await getOmniVoiceRuntimeConfig();
+  const apiUrl = config.effectiveApiUrl;
 
   if (!apiUrl) {
     throw new Error("OMNIVOICE_API_URL nao configurada. Defina a URL nas configuracoes do OmniVoice ou no .env.local.");
@@ -138,7 +144,11 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
 
   console.log(`[OmniVoice] Parâmetros de Dublagem - Steps: ${voiceParams.ns}, Guidance: ${voiceParams.gs}, Denoise: ${voiceParams.dn}, Speed: ${voiceParams.sp}, Duration: ${voiceParams.du}, Preprocess: ${voiceParams.pp}, Postprocess: ${voiceParams.po}`);
 
-  const result = await predictVoice(app, input, voiceParams);
+  // Use default reference audio if none was explicitly provided
+  const effectiveRefAudio = input.refAudioPath || config.defaultRefAudio;
+  const effectiveInput = { ...input, refAudioPath: effectiveRefAudio };
+
+  const result = await predictVoice(app, effectiveInput, voiceParams);
 
   const data = result.data as GradioAudioOutput[];
   const audioData = data?.[0];

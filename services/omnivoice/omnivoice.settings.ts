@@ -10,6 +10,7 @@ export interface OmniVoiceSettings {
   lastError: string | null;
   lastCaptureAt: string | null;
   runStartedAt: string | null;
+  defaultRefAudio: string | null;
 }
 
 export interface OmniVoiceRuntimeConfig extends OmniVoiceSettings {
@@ -27,7 +28,8 @@ const DEFAULT_SETTINGS: OmniVoiceSettings = {
   status: "idle",
   lastError: null,
   lastCaptureAt: null,
-  runStartedAt: null
+  runStartedAt: null,
+  defaultRefAudio: null
 };
 
 export function normalizeHttpUrl(value: unknown): string {
@@ -64,7 +66,8 @@ function normalizeSettings(raw: Partial<OmniVoiceSettings>): OmniVoiceSettings {
     status: normalizeStatus(raw.status),
     lastError: nullableString(raw.lastError),
     lastCaptureAt: nullableString(raw.lastCaptureAt),
-    runStartedAt: nullableString(raw.runStartedAt)
+    runStartedAt: nullableString(raw.runStartedAt),
+    defaultRefAudio: nullableString(raw.defaultRefAudio)
   };
 }
 
