@@ -58,7 +58,7 @@ async function testOmniVoiceStream() {
     console.log('Áudio salvo em "teste_saida_stream.wav".');
   });
 
-  ws.on('error', (err) => {
+  ws.on('error', (err: Error) => {
     console.error('Erro no WebSocket:', err);
   });
 }
