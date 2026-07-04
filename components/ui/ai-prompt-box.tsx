@@ -481,6 +481,7 @@ interface PromptInputBoxProps {
   voiceAwaitingCommand?: boolean;
   voiceStatus?: string;
   voiceError?: string;
+  voiceTranscript?: string;
   onVoiceToggle?: () => void;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
@@ -501,6 +502,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     voiceAwaitingCommand = false,
     voiceStatus = "",
     voiceError = "",
+    voiceTranscript = "",
     onVoiceToggle,
   } = props;
   const [internalInput, setInternalInput] = React.useState("");
@@ -773,7 +775,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             <div className="flex items-center gap-2 overflow-hidden flex-1">
               <div className="flex items-center justify-center w-2 h-2 rounded-full bg-[#9D7CFF] animate-pulse shrink-0 ml-2" />
               <p className="text-[#D1D5DB] text-[13px] truncate">
-                {voiceStatus || <span className="text-[#9D7CFF]/70 italic">Ouvindo...</span>}
+                {voiceTranscript || voiceStatus || <span className="text-[#9D7CFF]/70 italic">Ouvindo...</span>}
               </p>
             </div>
           </motion.div>

@@ -58,16 +58,8 @@ export class FlowLLMAutomation {
   }
 
   private async optimizeWithGeminiApi(prompt: string): Promise<string | null> {
-    if (!process.env.GEMINI_API_KEY) {
-      return null;
-    }
-
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-      contents: prompt
-    });
-    return this.cleanLLMResponse(response.text || '');
+    // Gemini API desativada a pedido do usuario para forçar o uso exclusivo da CLI configurada.
+    return null;
   }
 
   private async optimizeWithOpenAIApi(prompt: string): Promise<string | null> {

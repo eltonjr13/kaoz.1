@@ -252,7 +252,7 @@ export async function analyzeAndGenerateScript(
   workDir: string,
   avatarPersonality?: Record<string, unknown> | null
 ): Promise<GeminiAnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  throw new Error("GEMINI API desativada a pedido do usuario."); const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada no .env.local.");
   }
@@ -332,7 +332,7 @@ export async function analyzeVideoForStep1(
   videoPath: string,
   workDir: string
 ): Promise<Step1AnalysisResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  throw new Error("GEMINI API desativada a pedido do usuario."); const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada no .env.local.");
   }
@@ -398,7 +398,7 @@ export async function generateScriptFromAnalysis(
   transcription: string,
   avatarPersonality?: Record<string, unknown> | null
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  throw new Error("GEMINI API desativada a pedido do usuario."); const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada no .env.local.");
   }
@@ -666,7 +666,7 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    throw new Error("GEMINI API desativada a pedido do usuario."); const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY nao configurada no .env.local.");
     }

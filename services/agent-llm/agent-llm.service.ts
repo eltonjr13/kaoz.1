@@ -234,6 +234,9 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
       "--ignore-rules",
       "--model", settings.codexModel,
       "-c", "model_reasoning_effort=low",
+      "--disable", "multi_agent",
+      "--disable", "browser_use",
+      "--disable", "memories",
       "--sandbox", "read-only",
       "--color", "never",
       "--ephemeral",
@@ -248,9 +251,11 @@ async function runCodexCli(settings: AgentLLMSettings, prompt: string, options: 
 
     args.push("-");
 
+    const instantPrompt = `[System Directive: Do not use <thought> blocks, planning, or subagents. Respond immediately and directly with the final answer.]\n\n${prompt}`;
+
     const result = await runProcess(command, args, {
       cwd: options.cwd,
-      input: prompt,
+      input: instantPrompt,
       timeoutMs: settings.timeoutMs,
       extraPathEntries: [path.dirname(command)],
       label: `Codex CLI (${settings.codexModel})`,

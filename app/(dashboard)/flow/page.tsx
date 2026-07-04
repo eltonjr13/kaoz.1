@@ -829,6 +829,7 @@ export default function FlowDashboardPage() {
   const [voiceSpeaking, setVoiceSpeaking] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("Voz desligada.");
   const [voiceError, setVoiceError] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = chatScrollContainerRef.current;
@@ -1836,16 +1837,20 @@ export default function FlowDashboardPage() {
     voiceRecognitionRef.current?.abort();
     const recognition = new Recognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = "pt-BR";
     recognition.onresult = (event) => {
+      let interim = "";
       for (let index = event.resultIndex; index < event.results.length; index++) {
         const result = event.results[index];
         const transcript = result?.[0]?.transcript;
         if (result?.isFinal && transcript) {
           handleVoiceTranscript(transcript);
+        } else if (transcript) {
+          interim += transcript;
         }
       }
+      setVoiceTranscript(interim);
     };
     recognition.onerror = (event) => {
       const errorMessage = event.message || event.error || "Falha no reconhecimento de voz.";
@@ -1885,6 +1890,7 @@ export default function FlowDashboardPage() {
     setVoiceEnabled(false);
     setVoiceAwaitingCommand(false);
     setVoiceStatus("Voz desligada.");
+    setVoiceTranscript("");
     voiceRecognitionRef.current?.abort();
     voiceRecognitionRef.current = null;
     voiceAudioRef.current?.pause();
@@ -3054,6 +3060,7 @@ export default function FlowDashboardPage() {
               voiceAwaitingCommand={voiceAwaitingCommand}
               voiceStatus={voiceStatus}
               voiceError={voiceError}
+              voiceTranscript={voiceTranscript}
               onVoiceToggle={toggleVoiceMode}
             />
             <AnimatePresence>
