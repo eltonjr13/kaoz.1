@@ -58,7 +58,28 @@ export async function playCartesiaVoiceWebSocket(
       ws.onmessage = async (event) => {
         if (typeof event.data === "string") {
           const data = JSON.parse(event.data);
-          if (data.type === "done") {
+          if (data.type === "chunk" && data.data) {
+            // Decode base64
+            const binaryString = atob(data.data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const buffer = bytes.buffer;
+            const f32Array = new Float32Array(buffer);
+            
+            const audioBuffer = audioContext.createBuffer(1, f32Array.length, 44100);
+            audioBuffer.copyToChannel(f32Array, 0);
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            
+            const playTime = Math.max(audioContext.currentTime, nextStartTime);
+            source.start(playTime);
+            nextStartTime = playTime + audioBuffer.duration;
+          } else if (data.type === "done") {
             ws.close();
             // Resolve quickly after receiving done
             setTimeout(() => resolve(), 2000);
@@ -66,21 +87,6 @@ export async function playCartesiaVoiceWebSocket(
             ws.close();
             reject(new Error(data.error));
           }
-        } else if (event.data instanceof Blob) {
-          // It's binary audio data (PCM f32le)
-          const buffer = await event.data.arrayBuffer();
-          const f32Array = new Float32Array(buffer);
-          
-          const audioBuffer = audioContext.createBuffer(1, f32Array.length, 44100);
-          audioBuffer.copyToChannel(f32Array, 0);
-          
-          const source = audioContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(audioContext.destination);
-          
-          const playTime = Math.max(audioContext.currentTime, nextStartTime);
-          source.start(playTime);
-          nextStartTime = playTime + audioBuffer.duration;
         }
       };
 
