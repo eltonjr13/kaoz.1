@@ -6,7 +6,7 @@ import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
 import { queryConfiguredAgentCli } from '@/services/agent-llm/agent-llm.service';
 
-type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
 type QueryWebLLMOptions = {
   onTextChunk?: (chunk: string) => void;
 };
@@ -123,7 +123,90 @@ export class FlowLLMAutomation {
     return this.cleanLLMResponse(text);
   }
 
-  private async optimizeWithApi(model: LLMModel, prompt: string): Promise<string | null> {
+  private async optimizeWithCerebrasApi(
+    prompt: string,
+    options: QueryWebLLMOptions = {},
+    referenceImagePath?: string
+  ): Promise<string | null> {
+    if (!process.env.CEREBRAS_API_KEY) {
+      return null;
+    }
+
+    const cerebras = new OpenAI({
+      apiKey: process.env.CEREBRAS_API_KEY,
+      baseURL: process.env.CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1'
+    });
+
+    const model = process.env.CEREBRAS_MODEL || 'gemma-4-31b';
+    const shouldStream = Boolean(options.onTextChunk);
+
+    const messages: any[] = [];
+    if (referenceImagePath) {
+      try {
+        const fs = await import('node:fs');
+        const fileBuffer = fs.readFileSync(referenceImagePath);
+        const base64Image = fileBuffer.toString('base64');
+        const mimeType = referenceImagePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${mimeType};base64,${base64Image}`
+              }
+            }
+          ]
+        });
+      } catch (err) {
+        logger.error('[Agente MrChicken] Falha ao ler imagem de referencia para Cerebras:', err);
+        messages.push({ role: 'user', content: prompt });
+      }
+    } else {
+      messages.push({ role: 'user', content: prompt });
+    }
+
+    const extraBody: Record<string, any> = {};
+    if (model.includes('glm')) {
+      extraBody.clear_thinking = true;
+    }
+
+    if (shouldStream) {
+      const responseStream: any = await cerebras.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.7,
+        stream: true,
+        extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+      } as any);
+
+      let fullText = '';
+      for await (const chunk of responseStream) {
+        const text = chunk.choices[0]?.delta?.content || '';
+        if (text) {
+          fullText += text;
+          options.onTextChunk?.(text);
+        }
+      }
+      return this.cleanLLMResponse(fullText);
+    } else {
+      const response = await cerebras.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.7,
+        extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+      } as any);
+      return this.cleanLLMResponse(response.choices[0]?.message?.content || '');
+    }
+  }
+
+  private async optimizeWithApi(
+    model: LLMModel,
+    prompt: string,
+    options?: QueryWebLLMOptions,
+    referenceImagePath?: string
+  ): Promise<string | null> {
     try {
       switch (model) {
         case 'gemini':
@@ -134,6 +217,8 @@ export class FlowLLMAutomation {
           return await this.optimizeWithDeepSeekApi(prompt);
         case 'claude':
           return await this.optimizeWithClaudeApi(prompt);
+        case 'cerebras':
+          return await this.optimizeWithCerebrasApi(prompt, options, referenceImagePath);
       }
     } catch (err) {
       logger.warn(`[Agente MrChicken] API do modelo ${model} indisponivel.`, err);
@@ -222,12 +307,12 @@ export class FlowLLMAutomation {
     referenceImagePath?: string,
     options: QueryWebLLMOptions = {}
   ): Promise<string> {
-    // 1. Tentar API direta primeiro se não houver imagem (muito mais rápido, sem spawn)
-    if (!referenceImagePath) {
-      const apiResult = await this.optimizeWithApi(model, prompt);
+    // 1. Tentar API direta se não houver imagem OR se for o Cerebras (que não possui automação web)
+    if (!referenceImagePath || model === 'cerebras') {
+      const apiResult = await this.optimizeWithApi(model, prompt, options, referenceImagePath);
       if (apiResult) {
         logger.info(`[Agente MrChicken] Resposta obtida via API rápida do modelo: ${model}.`);
-        if (options.onTextChunk) {
+        if (model !== 'cerebras' && options.onTextChunk) {
           options.onTextChunk(apiResult);
         }
         return apiResult;
@@ -239,6 +324,10 @@ export class FlowLLMAutomation {
     if (cliResult) {
       logger.info('[Agente MrChicken] Resposta obtida via CLI configurada.');
       return cliResult;
+    }
+
+    if (model === 'cerebras') {
+      throw new Error("Cerebras API key não configurada ou erro na chamada direta da API.");
     }
 
     logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);

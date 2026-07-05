@@ -19,10 +19,10 @@ type FlowChatRequestBody = {
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
-type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek';
+type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras';
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
-const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek"]);
+const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras"]);
 
 function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
   if (!body || typeof body !== "object" || !Array.isArray((body as FlowChatRequestBody).messages)) {

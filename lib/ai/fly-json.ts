@@ -1,10 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { OpenAI } from "openai";
 
-export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek";
+export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras";
 
 export function parseFlyAiModel(value: unknown): FlyAiModel {
-  return value === "chatgpt" || value === "claude" || value === "deepseek" || value === "gemini"
+  return value === "chatgpt" || value === "claude" || value === "deepseek" || value === "gemini" || value === "cerebras"
     ? value
     : "gemini";
 }
@@ -77,6 +77,26 @@ async function generateWithClaude(prompt: string): Promise<string> {
   return data.content?.find((part) => part.type === "text")?.text || "{}";
 }
 
+async function generateWithCerebras(prompt: string): Promise<string> {
+  const cerebras = new OpenAI({
+    apiKey: requireEnv("CEREBRAS_API_KEY"),
+    baseURL: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1"
+  });
+  const model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
+  const extraBody: Record<string, any> = {};
+  if (model.includes("glm")) {
+    extraBody.clear_thinking = true;
+  }
+  const response = await cerebras.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.7,
+    extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+  } as any);
+  return response.choices[0]?.message?.content || "{}";
+}
+
 export async function generateFlyJson(model: FlyAiModel, prompt: string): Promise<string> {
   switch (model) {
     case "chatgpt":
@@ -87,5 +107,7 @@ export async function generateFlyJson(model: FlyAiModel, prompt: string): Promis
       return generateWithDeepSeek(prompt);
     case "gemini":
       return generateWithGemini(prompt);
+    case "cerebras":
+      return generateWithCerebras(prompt);
   }
 }

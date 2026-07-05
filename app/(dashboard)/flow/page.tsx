@@ -73,7 +73,7 @@ interface PendingPlan {
   originalPrompt: string;
   prompt: string;
   explanation: string;
-  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini';
+  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
   aspectRatio: string;
   quantity?: string;
   mediaModel?: string;
@@ -771,7 +771,7 @@ export default function FlowDashboardPage() {
   const hasAppliedModeFromUrlRef = useRef(false);
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
-  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini'>('gemini');
+  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras'>('gemini');
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
   

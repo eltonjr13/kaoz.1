@@ -173,9 +173,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parametro 'model' e obrigatorio." }, { status: 400 });
     }
 
-    if (model !== "deepseek" && model !== "claude" && model !== "chatgpt" && model !== "gemini") {
+    if (model !== "deepseek" && model !== "claude" && model !== "chatgpt" && model !== "gemini" && model !== "cerebras") {
       return NextResponse.json(
-        { error: "Modelo nao suportado. Escolha entre: deepseek, claude, chatgpt ou gemini." },
+        { error: "Modelo nao suportado. Escolha entre: deepseek, claude, chatgpt, gemini ou cerebras." },
         { status: 400 }
       );
     }
@@ -183,7 +183,6 @@ export async function POST(request: Request) {
     if (body?.approvedPlan && !approvedPlan) {
       return NextResponse.json({ error: "Plano aprovado invalido." }, { status: 400 });
     }
-
     if (action === "plan-agent" || action === "plan-project") {
       if (!prompt || (action === "plan-project" && !avatarId)) {
         return NextResponse.json(
@@ -255,7 +254,7 @@ export async function POST(request: Request) {
       void flowProvider.runAgentTask({
         topic: taskPrompt,
         avatarId,
-        model: model as "deepseek" | "claude" | "chatgpt" | "gemini",
+        model: model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras",
         imageModel,
         imageQuantity,
         requestedImageCount,
@@ -298,7 +297,7 @@ export async function POST(request: Request) {
 
     console.log(`[API AGENT] Otimizando prompt via Playwright com o modelo: ${model} para ${type}...`);
     const optimizedPrompt = await flowProvider.optimizePrompt(
-      model as "deepseek" | "claude" | "chatgpt" | "gemini",
+      model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras",
       prompt,
       type as "image" | "video"
     );

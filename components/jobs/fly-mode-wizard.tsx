@@ -94,8 +94,8 @@ interface FlyModeWizardProps {
   avatars: Avatar[];
   selectedAvatarId: string;
   setSelectedAvatarId: (id: string) => void;
-  agentModel: 'gemini' | 'chatgpt' | 'claude' | 'deepseek';
-  setAgentModel: (model: 'gemini' | 'chatgpt' | 'claude' | 'deepseek') => void;
+  agentModel: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras';
+  setAgentModel: (model: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras') => void;
   useCortexMemory: boolean;
 }
 
@@ -151,7 +151,7 @@ interface FlyCampaign {
   questions: string[];
   answers: string[];
   avatar_id: string | null;
-  model: "gemini" | "chatgpt" | "claude" | "deepseek";
+  model: "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras";
   plan: CampaignPlan;
   jobs?: FlyCampaignJob[];
 }
@@ -806,6 +806,7 @@ export function FlyModeWizard({
                             <option value="chatgpt">ChatGPT GPT-4o</option>
                             <option value="claude">Claude 3.5 Sonnet</option>
                             <option value="deepseek">DeepSeek R1</option>
+                            <option value="cerebras">Cerebras (Inference Ultra-Rápida)</option>
                           </select>
                           <span className="absolute left-12 top-2 text-[10px] font-medium text-[#A1A1AA] pointer-events-none">Modelo de IA</span>
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#A1A1AA]">

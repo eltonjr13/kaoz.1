@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cartesia/cartesia-js": "^3.2.0",
     "@google/genai": "^2.7.0",
     "@gradio/client": "^2.2.1",
     "@radix-ui/react-dialog": "^1.1.17",

@@ -389,6 +389,10 @@ export async function runAgentCli(settings: AgentLLMSettings, prompt: string, op
     return runAntigravityCli(settings, prompt, options);
   }
 
+  if (settings.provider === "cerebras") {
+    return runCerebrasApi(prompt, options);
+  }
+
   throw new Error("Provider de CLI nao ativo.");
 }
 
@@ -617,14 +621,14 @@ async function checkAntigravityStatus(settings: AgentLLMSettings): Promise<Agent
   }
 }
 
-function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser">): string[] {
+function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser" | "cerebras">): string[] {
   if (provider === "antigravity-cli") return [];
   return provider === "codex-cli"
     ? ["login", "--device-auth"]
     : ["login", "--oauth"];
 }
 
-function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser">): string {
+function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser" | "cerebras">): string {
   if (provider === "antigravity-cli") return settings.antigravityCommand;
   return provider === "codex-cli" ? settings.codexCommand : settings.grokCommand;
 }
@@ -682,6 +686,9 @@ export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: A
   if (provider === "browser") {
     throw new Error("O provider Navegador usa os logins web existentes.");
   }
+  if (provider === "cerebras") {
+    throw new Error("O provider Cerebras utiliza a chave de API (CEREBRAS_API_KEY) e não requer login de navegador.");
+  }
 
   const command = getProviderCommand(settings, provider);
   const status = await checkCommandStatus(command);
@@ -700,4 +707,71 @@ export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Prom
   ]);
 
   return { codex, grok, antigravity };
+}
+
+async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promise<string> {
+  const apiKey = process.env.CEREBRAS_API_KEY;
+  if (!apiKey) {
+    throw new Error("CEREBRAS_API_KEY não configurada no servidor.");
+  }
+  const baseURL = process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1";
+  const model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
+  
+  const { OpenAI } = await import("openai");
+  const cerebras = new OpenAI({ apiKey, baseURL });
+  const shouldStream = Boolean(options.onTextChunk);
+
+  const messages: any[] = [];
+  if (options.referenceImagePath) {
+    const fs = await import("node:fs");
+    const base64Image = fs.readFileSync(options.referenceImagePath).toString("base64");
+    const mimeType = options.referenceImagePath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+    messages.push({
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${mimeType};base64,${base64Image}`
+          }
+        }
+      ]
+    });
+  } else {
+    messages.push({ role: "user", content: prompt });
+  }
+
+  const extraBody: Record<string, any> = {};
+  if (model.includes("glm")) {
+    extraBody.clear_thinking = true;
+  }
+
+  if (shouldStream) {
+    const responseStream: any = await cerebras.chat.completions.create({
+      model,
+      messages,
+      temperature: 0.7,
+      stream: true,
+      extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+    } as any);
+
+    let fullText = "";
+    for await (const chunk of responseStream) {
+      const text = chunk.choices[0]?.delta?.content || "";
+      if (text) {
+        fullText += text;
+        options.onTextChunk?.(text);
+      }
+    }
+    return fullText.trim();
+  } else {
+    const response = await cerebras.chat.completions.create({
+      model,
+      messages,
+      temperature: 0.7,
+      extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+    } as any);
+    return response.choices[0]?.message?.content?.trim() || "";
+  }
 }

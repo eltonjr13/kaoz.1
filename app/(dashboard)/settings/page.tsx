@@ -18,7 +18,13 @@ import {
   Mic,
   Volume2,
   Save,
-  Terminal
+  Terminal,
+  Zap,
+  MoreVertical,
+  ChevronDown,
+  ChevronUp,
+  Compass,
+  Rocket
 } from "lucide-react";
 
 interface PortalConfig {
@@ -45,7 +51,7 @@ interface SpeechConfig {
   chunkMs: number;
 }
 
-type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli";
+type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras";
 
 interface AgentLLMCommandStatus {
   command: string;
@@ -116,26 +122,43 @@ const AGENT_LLM_OPTIONS: Array<{
   id: AgentLLMProvider;
   name: string;
   description: string;
+  category: "api" | "cli" | "browser";
+  icon: any;
 }> = [
   {
     id: "browser",
     name: "Navegador",
-    description: "Mantem a automacao web atual."
+    description: "Automação web simulando humano.",
+    category: "browser",
+    icon: Compass
   },
   {
     id: "codex-cli",
     name: "Codex CLI",
-    description: "Usa codex exec com modelo rapido."
+    description: "Usa codex exec com modelo rapido.",
+    category: "cli",
+    icon: Terminal
   },
   {
     id: "grok-cli",
     name: "Grok CLI",
-    description: "Usa grok headless com modelo fast."
+    description: "Usa grok headless com modelo fast.",
+    category: "cli",
+    icon: Terminal
   },
   {
     id: "antigravity-cli",
     name: "Antigravity CLI",
-    description: "Usa agy --print com permissões."
+    description: "Usa agy --print com permissões.",
+    category: "cli",
+    icon: Rocket
+  },
+  {
+    id: "cerebras",
+    name: "Cerebras API",
+    description: "API direta e ultra-veloz do Cerebras.",
+    category: "api",
+    icon: Zap
   }
 ];
 
@@ -302,12 +325,13 @@ function getAgentLLMOptionName(provider: AgentLLMProvider): string {
 }
 
 function getProviderStatus(config: AgentLLMConfig | null, provider: AgentLLMProvider): AgentLLMCommandStatus | null {
-  if (!config?.status || provider === "browser") return null;
+  if (!config?.status || provider === "browser" || provider === "cerebras") return null;
   if (provider === "antigravity-cli") return config.status.antigravity;
   return provider === "codex-cli" ? config.status.codex : config.status.grok;
 }
 
-function getAgentLLMStatusText(status: AgentLLMCommandStatus | null): string {
+function getAgentLLMStatusText(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
+  if (provider === "cerebras") return "Conexão Direta (API)";
   if (!status) return "Usando navegador";
   if (!status.available) return "Comando ausente";
   if (status.authenticated === true) return "Conectado";
@@ -315,17 +339,18 @@ function getAgentLLMStatusText(status: AgentLLMCommandStatus | null): string {
   return "Instalado";
 }
 
-function getAgentLLMStatusClass(status: AgentLLMCommandStatus | null): string {
+function getAgentLLMStatusClass(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
+  if (provider === "cerebras") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
   if (!status) return "border-white/10 bg-white/5 text-zinc-400";
   if (!status.available || status.authenticated === false) return "border-rose-500/20 bg-rose-500/10 text-rose-400";
   if (status.authenticated === true) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
   return "border-amber-500/20 bg-amber-500/10 text-amber-300";
 }
 
-function AgentLLMStatusBadge({ status }: { status: AgentLLMCommandStatus | null }) {
+function AgentLLMStatusBadge({ status, provider }: { status: AgentLLMCommandStatus | null; provider?: AgentLLMProvider }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold ${getAgentLLMStatusClass(status)}`}>
-      {getAgentLLMStatusText(status)}
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold ${getAgentLLMStatusClass(status, provider)}`}>
+      {getAgentLLMStatusText(status, provider)}
     </span>
   );
 }
@@ -354,126 +379,164 @@ function AgentLLMActionButton({ label, action, busyAction, disabled = false, ico
   );
 }
 
-type AgentLLMProviderGridProps = {
+
+type AgentLLMCardProps = {
   provider: AgentLLMProvider;
+  option: typeof AGENT_LLM_OPTIONS[0];
   config: AgentLLMConfig | null;
+  isSelected: boolean;
+  isExpanded: boolean;
   disabled: boolean;
-  onSelect: (provider: AgentLLMProvider) => void;
-};
-
-function AgentLLMProviderGrid({ provider, config, disabled, onSelect }: AgentLLMProviderGridProps) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      {AGENT_LLM_OPTIONS.map((option) => {
-        const selected = provider === option.id;
-        const status = getProviderStatus(config, option.id);
-
-        return (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => onSelect(option.id)}
-            disabled={disabled}
-            className={`text-left rounded-[10px] border p-4 transition-all disabled:opacity-60 ${
-              selected
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-                : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20 hover:bg-white/[0.06]"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[12px] font-bold uppercase tracking-widest">{option.name}</span>
-              {selected ? <CheckCircle size={12} className="text-emerald-400" /> : null}
-            </div>
-            <p className="mt-2 min-h-8 text-[11px] leading-relaxed text-zinc-500">{option.description}</p>
-            <AgentLLMStatusBadge status={status} />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-type AgentLLMProviderFieldsProps = {
-  provider: AgentLLMProvider;
+  onSelect: () => void;
+  onToggleExpand: () => void;
+  
+  // Fields props
   command: string;
   model: string;
   models: string[];
   onCommandChange: (value: string) => void;
   onModelChange: (value: string) => void;
-};
 
-function AgentLLMProviderFields({
-  provider,
-  command,
-  model,
-  models,
-  onCommandChange,
-  onModelChange
-}: AgentLLMProviderFieldsProps) {
-  if (provider === "browser") return null;
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-3">
-      <label className="space-y-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Comando</span>
-        <input
-          value={command}
-          onChange={(event) => onCommandChange(event.target.value)}
-          className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
-        />
-      </label>
-      <label className="space-y-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Modelo</span>
-        {models.length > 0 ? (
-          <select
-            value={model}
-            onChange={(event) => onModelChange(event.target.value)}
-            className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
-          >
-            {models.map((modelOption) => (
-              <option key={modelOption} value={modelOption} className="bg-zinc-900 text-zinc-200">{modelOption}</option>
-            ))}
-          </select>
-        ) : (
-          <input
-            value={model}
-            onChange={(event) => onModelChange(event.target.value)}
-            className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
-          />
-        )}
-      </label>
-    </div>
-  );
-}
-
-type AgentLLMActionBarProps = {
-  provider: AgentLLMProvider;
-  selectedStatus: AgentLLMCommandStatus | null;
+  // Actions props
   busyAction: string | null;
   onAction: (action: string, successText: string) => void;
 };
 
-function AgentLLMActionBar({ provider, selectedStatus, busyAction, onAction }: AgentLLMActionBarProps) {
+function AgentLLMCard({
+  provider,
+  option,
+  config,
+  isSelected,
+  isExpanded,
+  disabled,
+  onSelect,
+  onToggleExpand,
+  command,
+  model,
+  models,
+  onCommandChange,
+  onModelChange,
+  busyAction,
+  onAction
+}: AgentLLMCardProps) {
+  const status = getProviderStatus(config, provider);
+  const Icon = option.icon;
   const hasBusyAction = Boolean(busyAction);
-  const providerName = getAgentLLMOptionName(provider);
-
+  const isCerebras = provider === "cerebras";
+  
   return (
-    <div className="flex flex-col gap-3 border-t border-white/[0.04] pt-4 md:flex-row md:items-center md:justify-between">
-      <div className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <AgentLLMStatusBadge status={selectedStatus} />
-          <span className="text-[10px] text-zinc-600">{providerName}</span>
+    <div className={`relative flex flex-col rounded-2xl border transition-all overflow-hidden ${
+      isSelected
+        ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+        : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
+    }`}>
+      {isSelected && (
+        <div className="absolute top-0 right-0 rounded-bl-xl bg-emerald-500/20 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 border-b border-l border-emerald-500/30">
+          Ativo
         </div>
-        {selectedStatus?.authMessage && (
-          <p className="text-[10px] leading-relaxed text-zinc-500">{selectedStatus.authMessage}</p>
-        )}
+      )}
+
+      {/* Header / Main Card Area */}
+      <div 
+        className="flex items-start p-4 cursor-pointer"
+        onClick={() => {
+          if (!disabled) onSelect();
+        }}
+      >
+        <div className={`mt-0.5 mr-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+          isSelected ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-300" : "border-white/10 bg-white/5 text-zinc-400"
+        }`}>
+          <Icon size={20} strokeWidth={1.5} />
+        </div>
+        
+        <div className="flex-1 min-w-0 pr-8">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className={`text-sm font-bold ${isSelected ? "text-emerald-100" : "text-zinc-200"}`}>
+              {option.name}
+            </h3>
+            {isCerebras && (
+              <span className="rounded-full bg-[#ff4f00]/10 border border-[#ff4f00]/20 px-2 py-0.5 text-[9px] font-bold text-[#ff4f00] uppercase tracking-wider">
+                Recomendado
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-500 mb-3">{option.description}</p>
+          
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
+              {option.category === "api" ? "API Direta" : option.category === "cli" ? "CLI Local" : "Navegador"}
+            </span>
+            <AgentLLMStatusBadge status={status} provider={provider} />
+            {(model && !isCerebras && provider !== "browser") && (
+              <span className="inline-flex rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
+                {model}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <AgentLLMActionButton label="Conectar" action="connect" busyAction={busyAction} disabled={hasBusyAction || provider === "browser"} icon={Play} onClick={() => onAction("connect", "Janela de conexao aberta.")} />
-        <AgentLLMActionButton label="Atualizar" action="status" busyAction={busyAction} disabled={hasBusyAction} icon={RefreshCw} onClick={() => onAction("status", "Status atualizado.")} />
-        <AgentLLMActionButton label="Testar" action="test" busyAction={busyAction} disabled={hasBusyAction || provider === "browser"} icon={CheckCircle} onClick={() => onAction("test", "CLI testada com sucesso.")} />
-        <AgentLLMActionButton label="Salvar" action="save" busyAction={busyAction} disabled={hasBusyAction} icon={Save} onClick={() => onAction("save", `Resposta do agente alterada para ${providerName}.`)} />
-      </div>
+
+      {/* Menu / Expand Toggle */}
+      {provider !== "browser" && provider !== "cerebras" && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+          className="absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          {isExpanded ? <ChevronUp size={14} /> : <MoreVertical size={14} />}
+        </button>
+      )}
+      
+      {/* Expanded Actions & Config */}
+      {isExpanded && provider !== "browser" && provider !== "cerebras" && (
+        <div className="border-t border-white/5 bg-black/20 p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <label className="space-y-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Comando</span>
+              <input
+                value={command}
+                onChange={(event) => onCommandChange(event.target.value)}
+                className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Modelo</span>
+              {models.length > 0 ? (
+                <select
+                  value={model}
+                  onChange={(event) => onModelChange(event.target.value)}
+                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                >
+                  {models.map((modelOption) => (
+                    <option key={modelOption} value={modelOption} className="bg-zinc-900 text-zinc-200">{modelOption}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={model}
+                  onChange={(event) => onModelChange(event.target.value)}
+                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                />
+              )}
+            </label>
+          </div>
+          
+          {status?.authMessage && (
+            <p className="mb-4 text-[10px] leading-relaxed text-zinc-500 bg-white/5 p-2 rounded-lg border border-white/5">{status.authMessage}</p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <AgentLLMActionButton label="Conectar" action="connect" busyAction={busyAction} disabled={hasBusyAction} icon={Play} onClick={() => onAction("connect", "Janela de conexao aberta.")} />
+            <AgentLLMActionButton label="Testar" action="test" busyAction={busyAction} disabled={hasBusyAction} icon={CheckCircle} onClick={() => onAction("test", "CLI testada com sucesso.")} />
+            <AgentLLMActionButton label="Salvar" action="save" busyAction={busyAction} disabled={hasBusyAction} icon={Save} onClick={() => onAction("save", "Configuração salva com sucesso.")} />
+            <div className="flex-1" />
+            <AgentLLMActionButton label="Atualizar" action="status" busyAction={busyAction} disabled={hasBusyAction} icon={RefreshCw} onClick={() => onAction("status", "Status atualizado.")} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -488,6 +551,8 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
   const [antigravityModel, setAntigravityModel] = useState("gemini-3.5-pro");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   const selectedStatus = getProviderStatus(config, provider);
   const selectedCommand = provider === "codex-cli" ? codexCommand : provider === "antigravity-cli" ? antigravityCommand : grokCommand;
@@ -581,23 +646,91 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     }
   };
 
+  const handleSelectProvider = async (newProvider: AgentLLMProvider) => {
+    if (newProvider === provider) return;
+    setProvider(newProvider);
+    setExpandedCard(null); // auto collapse when switching
+    setBusyAction("select_" + newProvider);
+    try {
+      const payload = buildPayload("save");
+      payload.provider = newProvider;
+      const res = await fetch("/api/agent-llm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Falha na CLI do agente.");
+      }
+      applyConfig(parseAgentLLMConfig(data));
+      onStatusMessage({ text: `Agente alterado para ${getAgentLLMOptionName(newProvider)}.`, type: "success" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      onStatusMessage({ text: `Erro ao alterar agente: ${errMsg}`, type: "error" });
+      if (config) setProvider(config.provider);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const renderCard = (option: typeof AGENT_LLM_OPTIONS[0]) => {
+    const isSelected = provider === option.id;
+    // We only pass the fields props if this card's option is selected.
+    // If not selected, it shouldn't show active config editing anyway.
+    return (
+      <AgentLLMCard
+        key={option.id}
+        provider={option.id}
+        option={option}
+        config={config}
+        isSelected={isSelected}
+        isExpanded={expandedCard === option.id}
+        disabled={hasBusyAction}
+        onSelect={() => handleSelectProvider(option.id)}
+        onToggleExpand={() => setExpandedCard(prev => prev === option.id ? null : option.id)}
+        command={isSelected ? selectedCommand : (option.id === "codex-cli" ? codexCommand : option.id === "antigravity-cli" ? antigravityCommand : grokCommand)}
+        model={isSelected ? selectedModel : (option.id === "codex-cli" ? codexModel : option.id === "antigravity-cli" ? antigravityModel : grokModel)}
+        models={isSelected ? selectedModels : []}
+        onCommandChange={option.id === "codex-cli" ? setCodexCommand : option.id === "antigravity-cli" ? setAntigravityCommand : setGrokCommand}
+        onModelChange={updateSelectedModel}
+        busyAction={busyAction}
+        onAction={runAction}
+      />
+    );
+  };
+
   return (
-    <div className="space-y-3">
-      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+    <div className="space-y-4">
+      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5 mb-2">
         <Terminal size={14} className="text-zinc-400" />
         <span>Resposta do agente</span>
       </h2>
-      <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4 space-y-4">
-        <AgentLLMProviderGrid provider={provider} config={config} disabled={hasBusyAction} onSelect={setProvider} />
-        <AgentLLMProviderFields
-          provider={provider}
-          command={selectedCommand}
-          model={selectedModel}
-          models={selectedModels}
-          onCommandChange={provider === "codex-cli" ? setCodexCommand : provider === "antigravity-cli" ? setAntigravityCommand : setGrokCommand}
-          onModelChange={updateSelectedModel}
-        />
-        <AgentLLMActionBar provider={provider} selectedStatus={selectedStatus} busyAction={busyAction} onAction={runAction} />
+      
+      <div className="space-y-6">
+        {/* API Diretas */}
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">API Diretas</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {AGENT_LLM_OPTIONS.filter(o => o.category === "api").map(renderCard)}
+          </div>
+        </section>
+
+        {/* Ferramentas CLI */}
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Ferramentas CLI</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {AGENT_LLM_OPTIONS.filter(o => o.category === "cli").map(renderCard)}
+          </div>
+        </section>
+
+        {/* Navegador */}
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Navegador</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {AGENT_LLM_OPTIONS.filter(o => o.category === "browser").map(renderCard)}
+          </div>
+        </section>
       </div>
     </div>
   );
