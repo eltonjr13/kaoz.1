@@ -1534,7 +1534,7 @@ export default function FlowDashboardPage() {
       const ttsConfig = await ttsRes.json().catch(() => null);
 
       if (ttsConfig?.provider === "cartesia") {
-        let emotion = ttsConfig.cartesiaEmotion || "positivity";
+        let emotion = ttsConfig.cartesiaEmotion || "auto";
         if (emotion === "happy") emotion = "positivity";
         if (emotion === "sad") emotion = "sadness";
         if (emotion === "fear") emotion = "curiosity";
@@ -1548,7 +1548,7 @@ export default function FlowDashboardPage() {
           ttsConfig.cartesiaVoiceId,
           text,
           model,
-          ttsConfig.cartesiaSpeed,
+          ttsConfig.cartesiaSpeed || "auto",
           emotion
         );
       } else if (ttsConfig?.provider === "browser") {

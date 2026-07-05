@@ -145,23 +145,42 @@ export function TTSProviderCard({
               />
             </label>
             
-            <label className="space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-2">
-                Voz
-                {isLoadingVoices && <Loader2 size={10} className="animate-spin text-zinc-400" />}
-              </span>
-              <select
-                value={voiceId}
-                onChange={(event) => onVoiceIdChange(event.target.value)}
-                className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                disabled={isLoadingVoices || availableVoices.length === 0}
-              >
-                <option value="" className="bg-zinc-900 text-zinc-200">Selecione uma voz</option>
-                {availableVoices.map((v) => (
-                  <option key={v.id} value={v.id} className="bg-zinc-900 text-zinc-200">{v.name}</option>
-                ))}
-              </select>
-            </label>
+            <div className="space-y-3 md:col-span-2">
+              <label className="space-y-1.5 block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center justify-between">
+                  <span>Selecionar Voz da Biblioteca</span>
+                  {isLoadingVoices && <Loader2 size={10} className="animate-spin text-zinc-400" />}
+                </span>
+                <select
+                  value={availableVoices.some(v => v.id === voiceId) ? voiceId : ""}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      onVoiceIdChange(event.target.value);
+                    }
+                  }}
+                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                  disabled={isLoadingVoices || availableVoices.length === 0}
+                >
+                  <option value="" className="bg-zinc-900 text-zinc-200">
+                    {availableVoices.length === 0 ? "Insira a API Key para carregar..." : "Selecione uma voz..."}
+                  </option>
+                  {availableVoices.map((v) => (
+                    <option key={v.id} value={v.id} className="bg-zinc-900 text-zinc-200">{v.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5 block">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">ID de Voz Personalizado (UUID)</span>
+                <input
+                  type="text"
+                  value={voiceId}
+                  onChange={(event) => onVoiceIdChange(event.target.value)}
+                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                  placeholder="Cole o UUID do seu clone de voz (ex: db6b0ed5-d5d3-463d-ae85-518a07d3c2b4)"
+                />
+              </label>
+            </div>
 
             <label className="space-y-1.5">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Modelo</span>
@@ -183,6 +202,7 @@ export function TTSProviderCard({
                 onChange={(event) => onSpeedChange(event.target.value)}
                 className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
               >
+                <option value="auto" className="bg-zinc-900 text-zinc-200">Automática (Recomendado)</option>
                 <option value="slowest" className="bg-zinc-900 text-zinc-200">Muito Lenta</option>
                 <option value="slow" className="bg-zinc-900 text-zinc-200">Lenta</option>
                 <option value="normal" className="bg-zinc-900 text-zinc-200">Normal</option>
@@ -198,6 +218,7 @@ export function TTSProviderCard({
                 onChange={(event) => onEmotionChange(event.target.value)}
                 className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
               >
+                <option value="auto" className="bg-zinc-900 text-zinc-200">Automática (Recomendado)</option>
                 <option value="positivity" className="bg-zinc-900 text-zinc-200">Feliz (Positivity)</option>
                 <option value="sadness" className="bg-zinc-900 text-zinc-200">Triste (Sadness)</option>
                 <option value="anger" className="bg-zinc-900 text-zinc-200">Bravo (Anger)</option>

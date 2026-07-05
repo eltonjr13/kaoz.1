@@ -21,9 +21,9 @@ export async function playCartesiaVoiceWebSocket(
   apiKey: string,
   voiceId: string,
   text: string,
-  model = "sonic",
-  speed = "normal",
-  emotion = "positivity"
+  model = "sonic-3.5",
+  speed = "auto",
+  emotion = "auto"
 ) {
   return new Promise<void>((resolve, reject) => {
     try {
@@ -35,18 +35,28 @@ export async function playCartesiaVoiceWebSocket(
 
       ws.onopen = () => {
         const contextId = "mrchicken-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 8);
+        
+        const controls: Record<string, any> = {};
+        if (speed && speed !== "auto") {
+          controls.speed = speed;
+        }
+        if (emotion && emotion !== "auto") {
+          controls.emotion = [`${emotion}:highest`];
+        }
+
+        const voicePayload: Record<string, any> = {
+          mode: "id",
+          id: voiceId
+        };
+        if (Object.keys(controls).length > 0) {
+          voicePayload.__experimental_controls = controls;
+        }
+
         ws.send(JSON.stringify({
           context_id: contextId,
           model_id: model,
           transcript: text,
-          voice: {
-            mode: "id",
-            id: voiceId,
-            __experimental_controls: {
-              speed: speed,
-              emotion: [`${emotion}:highest`]
-            }
-          },
+          voice: voicePayload,
           output_format: {
             container: "raw",
             encoding: "pcm_f32le",

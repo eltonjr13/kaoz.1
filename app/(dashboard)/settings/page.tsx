@@ -875,8 +875,8 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
   const [cartesiaApiKey, setCartesiaApiKey] = useState("");
   const [cartesiaVoiceId, setCartesiaVoiceId] = useState("");
   const [cartesiaModel, setCartesiaModel] = useState("sonic-3.5");
-  const [cartesiaSpeed, setCartesiaSpeed] = useState("normal");
-  const [cartesiaEmotion, setCartesiaEmotion] = useState("positivity");
+  const [cartesiaSpeed, setCartesiaSpeed] = useState("auto");
+  const [cartesiaEmotion, setCartesiaEmotion] = useState("auto");
   
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -893,9 +893,9 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     if (model === "sonic") model = "sonic-3.5";
     if (model === "sonic-multilingual") model = "sonic-3";
     setCartesiaModel(model);
-    setCartesiaSpeed(nextConfig.cartesiaSpeed || "normal");
+    setCartesiaSpeed(nextConfig.cartesiaSpeed || "auto");
     
-    let emotion = nextConfig.cartesiaEmotion || "positivity";
+    let emotion = nextConfig.cartesiaEmotion || "auto";
     if (emotion === "happy") emotion = "positivity";
     if (emotion === "sad") emotion = "sadness";
     if (emotion === "fear") emotion = "curiosity";
