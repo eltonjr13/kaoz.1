@@ -319,6 +319,11 @@ button {
   outline: none;
 }
 
+select option {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
 .field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--brand);
 }

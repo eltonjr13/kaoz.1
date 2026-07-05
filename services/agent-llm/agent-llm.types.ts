@@ -1,4 +1,4 @@
-export type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli";
+export type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli";
 
 export interface AgentLLMSettings {
   provider: AgentLLMProvider;
@@ -6,6 +6,8 @@ export interface AgentLLMSettings {
   codexModel: string;
   grokCommand: string;
   grokModel: string;
+  antigravityCommand: string;
+  antigravityModel: string;
   timeoutMs: number;
 }
 
@@ -23,4 +25,5 @@ export interface AgentLLMCommandStatus {
 export interface AgentLLMRuntimeStatus {
   codex: AgentLLMCommandStatus;
   grok: AgentLLMCommandStatus;
+  antigravity: AgentLLMCommandStatus;
 }

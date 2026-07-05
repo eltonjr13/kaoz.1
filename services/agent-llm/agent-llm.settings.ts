@@ -7,12 +7,13 @@ const SETTINGS_FILE = path.join(DATA_DIR, "agent-llm-settings.json");
 const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
 const DEFAULT_CODEX_MODEL = "gpt-5.4-mini";
 const DEFAULT_GROK_MODEL = "grok-composer-2.5-fast";
+const DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.5-pro";
 const DEFAULT_TIMEOUT_MS = 90000;
 const MIN_TIMEOUT_MS = 90000;
 const MAX_TIMEOUT_MS = 180000;
 
 export function normalizeAgentLLMProvider(value: unknown): AgentLLMProvider {
-  if (value === "codex-cli" || value === "grok-cli" || value === "browser") {
+  if (value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser") {
     return value;
   }
   return DEFAULT_PROVIDER;
@@ -35,6 +36,8 @@ export function getEnvAgentLLMSettings(): AgentLLMSettings {
     codexModel: stringOrDefault(process.env.CODEX_CLI_MODEL, DEFAULT_CODEX_MODEL),
     grokCommand: stringOrDefault(process.env.GROK_CLI_COMMAND, "grok"),
     grokModel: stringOrDefault(process.env.GROK_CLI_MODEL, DEFAULT_GROK_MODEL),
+    antigravityCommand: stringOrDefault(process.env.ANTIGRAVITY_CLI_COMMAND, "agy"),
+    antigravityModel: stringOrDefault(process.env.ANTIGRAVITY_CLI_MODEL, DEFAULT_ANTIGRAVITY_MODEL),
     timeoutMs: normalizeTimeoutMs(process.env.AGENT_CLI_TIMEOUT_MS),
   };
 }
@@ -47,6 +50,8 @@ export function normalizeAgentLLMSettings(settings: Partial<AgentLLMSettings>): 
     codexModel: stringOrDefault(settings.codexModel, defaults.codexModel),
     grokCommand: stringOrDefault(settings.grokCommand, defaults.grokCommand),
     grokModel: stringOrDefault(settings.grokModel, defaults.grokModel),
+    antigravityCommand: stringOrDefault(settings.antigravityCommand, defaults.antigravityCommand),
+    antigravityModel: stringOrDefault(settings.antigravityModel, defaults.antigravityModel),
     timeoutMs: normalizeTimeoutMs(settings.timeoutMs ?? defaults.timeoutMs),
   };
 }

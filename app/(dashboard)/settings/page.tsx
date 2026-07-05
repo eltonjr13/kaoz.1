@@ -45,7 +45,7 @@ interface SpeechConfig {
   chunkMs: number;
 }
 
-type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli";
+type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli";
 
 interface AgentLLMCommandStatus {
   command: string;
@@ -64,10 +64,13 @@ interface AgentLLMConfig {
   codexModel: string;
   grokCommand: string;
   grokModel: string;
+  antigravityCommand: string;
+  antigravityModel: string;
   timeoutMs: number;
   status: {
     codex: AgentLLMCommandStatus;
     grok: AgentLLMCommandStatus;
+    antigravity: AgentLLMCommandStatus;
   } | null;
 }
 
@@ -128,7 +131,33 @@ const AGENT_LLM_OPTIONS: Array<{
     id: "grok-cli",
     name: "Grok CLI",
     description: "Usa grok headless com modelo fast."
+  },
+  {
+    id: "antigravity-cli",
+    name: "Antigravity CLI",
+    description: "Usa agy --print com permissões."
   }
+];
+
+const ANTIGRAVITY_FALLBACK_MODELS = [
+  "gemini-3.5-pro",
+  "gemini-3.5-flash",
+  "gemini-3.1-pro",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-thinking",
+  "claude-3-7-sonnet"
+];
+
+const CODEX_FALLBACK_MODELS = [
+  "gpt-5.5",
+  "gpt-5.5-pro",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.4-nano",
+  "gpt-5.3-codex",
+  "gpt-5.2",
+  "gpt-5.2-codex",
+  "gpt-oss-120b"
 ];
 
 const PORTALS: PortalConfig[] = [
@@ -192,7 +221,7 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
 }
 
 function parseAgentLLMProvider(value: unknown): AgentLLMProvider {
-  return value === "codex-cli" || value === "grok-cli" || value === "browser" ? value : "browser";
+  return value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" ? value : "browser";
 }
 
 function parseCommandStatus(value: unknown): AgentLLMCommandStatus {
@@ -220,11 +249,14 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
     codexModel: stringOrEmpty(data.codexModel) || "gpt-5.4-mini",
     grokCommand: stringOrEmpty(data.grokCommand) || "grok",
     grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
+    antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
+    antigravityModel: stringOrEmpty(data.antigravityModel) || "gemini-3.5-pro",
     timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : 45000,
     status: status
       ? {
         codex: parseCommandStatus(status.codex),
-        grok: parseCommandStatus(status.grok)
+        grok: parseCommandStatus(status.grok),
+        antigravity: parseCommandStatus(status.antigravity)
       }
       : null
   };
@@ -271,6 +303,7 @@ function getAgentLLMOptionName(provider: AgentLLMProvider): string {
 
 function getProviderStatus(config: AgentLLMConfig | null, provider: AgentLLMProvider): AgentLLMCommandStatus | null {
   if (!config?.status || provider === "browser") return null;
+  if (provider === "antigravity-cli") return config.status.antigravity;
   return provider === "codex-cli" ? config.status.codex : config.status.grok;
 }
 
@@ -330,7 +363,7 @@ type AgentLLMProviderGridProps = {
 
 function AgentLLMProviderGrid({ provider, config, disabled, onSelect }: AgentLLMProviderGridProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {AGENT_LLM_OPTIONS.map((option) => {
         const selected = provider === option.id;
         const status = getProviderStatus(config, option.id);
@@ -398,7 +431,7 @@ function AgentLLMProviderFields({
             className="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-white/25"
           >
             {models.map((modelOption) => (
-              <option key={modelOption} value={modelOption}>{modelOption}</option>
+              <option key={modelOption} value={modelOption} className="bg-zinc-900 text-zinc-200">{modelOption}</option>
             ))}
           </select>
         ) : (
@@ -452,14 +485,23 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [codexModel, setCodexModel] = useState("gpt-5.4-mini");
   const [grokCommand, setGrokCommand] = useState("grok");
   const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
+  const [antigravityCommand, setAntigravityCommand] = useState("agy");
+  const [antigravityModel, setAntigravityModel] = useState("gemini-3.5-pro");
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const selectedStatus = getProviderStatus(config, provider);
-  const selectedCommand = provider === "codex-cli" ? codexCommand : grokCommand;
-  const selectedModel = provider === "codex-cli" ? codexModel : grokModel;
+  const selectedCommand = provider === "codex-cli" ? codexCommand : provider === "antigravity-cli" ? antigravityCommand : grokCommand;
+  const selectedModel = provider === "codex-cli" ? codexModel : provider === "antigravity-cli" ? antigravityModel : grokModel;
+  
+  const fallbackModels = provider === "antigravity-cli" 
+    ? ANTIGRAVITY_FALLBACK_MODELS 
+    : provider === "codex-cli" 
+      ? CODEX_FALLBACK_MODELS 
+      : [];
+      
   const selectedModels = provider === "browser"
     ? []
-    : Array.from(new Set([selectedModel, ...(selectedStatus?.models || [])].filter(Boolean)));
+    : Array.from(new Set([selectedModel, ...fallbackModels, ...(selectedStatus?.models || [])].filter(Boolean)));
   const hasBusyAction = Boolean(busyAction);
 
   const applyConfig = useCallback((nextConfig: AgentLLMConfig) => {
@@ -469,6 +511,8 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     setCodexModel(nextConfig.codexModel);
     setGrokCommand(nextConfig.grokCommand);
     setGrokModel(nextConfig.grokModel);
+    setAntigravityCommand(nextConfig.antigravityCommand);
+    setAntigravityModel(nextConfig.antigravityModel);
   }, []);
 
   useEffect(() => {
@@ -500,15 +544,19 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     codexModel,
     grokCommand,
     grokModel,
+    antigravityCommand,
+    antigravityModel,
     timeoutMs: config?.timeoutMs || 45000
   });
 
   const updateSelectedModel = (model: string) => {
     if (provider === "codex-cli") {
       setCodexModel(model);
-      return;
+    } else if (provider === "antigravity-cli") {
+      setAntigravityModel(model);
+    } else {
+      setGrokModel(model);
     }
-    setGrokModel(model);
   };
 
   const runAction = async (action: string, successText: string) => {
@@ -546,7 +594,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
           command={selectedCommand}
           model={selectedModel}
           models={selectedModels}
-          onCommandChange={provider === "codex-cli" ? setCodexCommand : setGrokCommand}
+          onCommandChange={provider === "codex-cli" ? setCodexCommand : provider === "antigravity-cli" ? setAntigravityCommand : setGrokCommand}
           onModelChange={updateSelectedModel}
         />
         <AgentLLMActionBar provider={provider} selectedStatus={selectedStatus} busyAction={busyAction} onAction={runAction} />

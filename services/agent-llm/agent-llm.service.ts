@@ -350,6 +350,26 @@ async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: Q
   }
 }
 
+async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
+  const command = await resolveRunnableCommand(settings.antigravityCommand);
+  const args = [
+    "--print", prompt,
+    "--model", settings.antigravityModel,
+    "--dangerously-skip-permissions",
+    "--sandbox",
+  ];
+
+  const result = await runProcess(command, args, {
+    cwd: options.cwd,
+    timeoutMs: settings.timeoutMs,
+    extraPathEntries: [path.dirname(command)],
+    label: `Antigravity CLI (${settings.antigravityModel})`,
+    onStdoutChunk: options.onTextChunk,
+  });
+  assertSuccessfulProcess(result, "Antigravity CLI");
+  return cleanCliOutput(result.stdout);
+}
+
 export async function runAgentCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions = {}): Promise<string> {
   if (settings.provider === "codex-cli") {
     return runCodexCli(settings, prompt, options);
@@ -362,6 +382,13 @@ export async function runAgentCli(settings: AgentLLMSettings, prompt: string, op
     return runGrokCli(settings, prompt, options);
   }
 
+  if (settings.provider === "antigravity-cli") {
+    if (options.referenceImagePath) {
+      throw new Error("Antigravity CLI não suporta imagem de referência via arg simples (ainda).");
+    }
+    return runAntigravityCli(settings, prompt, options);
+  }
+
   throw new Error("Provider de CLI nao ativo.");
 }
 
@@ -371,6 +398,10 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
 
   if (settings.provider === "grok-cli" && options.referenceImagePath) {
     throw new Error("Grok CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
+  }
+
+  if (settings.provider === "antigravity-cli" && options.referenceImagePath) {
+    throw new Error("Antigravity CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
   }
 
   return runAgentCli(settings, prompt, options);
@@ -428,12 +459,22 @@ async function findGrokWindowsFallback(): Promise<string | null> {
   ]);
 }
 
+async function findAntigravityWindowsFallback(): Promise<string | null> {
+  // A CLI do Antigravity geralmente está no PATH pelo instalador,
+  // mas podemos checar um caminho padrão se houver.
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  return findLatestExistingFile([
+    path.join(localAppData, "Google", "Antigravity", "bin", "agy.exe"),
+  ]);
+}
+
 async function findCommandFallback(command: string): Promise<string | null> {
   if (process.platform !== "win32") return null;
 
   const name = path.basename(command).toLowerCase().replace(/\.exe$/, "");
   if (name === "codex") return findCodexWindowsFallback();
   if (name === "grok") return findGrokWindowsFallback();
+  if (name === "agy" || name === "antigravity") return findAntigravityWindowsFallback();
   return null;
 }
 
@@ -546,13 +587,45 @@ async function checkGrokStatus(settings: AgentLLMSettings): Promise<AgentLLMComm
   }
 }
 
+async function checkAntigravityStatus(settings: AgentLLMSettings): Promise<AgentLLMCommandStatus> {
+  const command = await checkCommandStatus(settings.antigravityCommand);
+  if (!command.available) return command;
+
+  try {
+    const runnableCommand = command.resolvedPath || settings.antigravityCommand;
+    const result = await runProcess(runnableCommand, ["models"], {
+      timeoutMs: 10000,
+      extraPathEntries: [path.dirname(runnableCommand)],
+    });
+    const output = cleanCliOutput(`${result.stdout}\n${result.stderr}`);
+    const { activeModel, models } = parseModelLines(output);
+    const notAuthenticated = /not authenticated|login/i.test(output);
+    return {
+      ...command,
+      authenticated: !notAuthenticated && result.exitCode === 0,
+      authMessage: output.split(/\r?\n/).find(Boolean) || null,
+      activeModel: activeModel || settings.antigravityModel,
+      models: models.length > 0 ? models : [settings.antigravityModel],
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ...command,
+      authenticated: false,
+      authMessage: message,
+    };
+  }
+}
+
 function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser">): string[] {
+  if (provider === "antigravity-cli") return [];
   return provider === "codex-cli"
     ? ["login", "--device-auth"]
     : ["login", "--oauth"];
 }
 
 function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser">): string {
+  if (provider === "antigravity-cli") return settings.antigravityCommand;
   return provider === "codex-cli" ? settings.codexCommand : settings.grokCommand;
 }
 
@@ -620,10 +693,11 @@ export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: A
 }
 
 export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {
-  const [codex, grok] = await Promise.all([
+  const [codex, grok, antigravity] = await Promise.all([
     checkCodexStatus(settings),
     checkGrokStatus(settings),
+    checkAntigravityStatus(settings),
   ]);
 
-  return { codex, grok };
+  return { codex, grok, antigravity };
 }
