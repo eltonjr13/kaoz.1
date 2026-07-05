@@ -35,6 +35,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
+import { playCartesiaVoiceWebSocket } from "@/lib/cartesia";
 
 interface GenerationResult {
   success: boolean;
@@ -1528,23 +1529,55 @@ export default function FlowDashboardPage() {
 
     try {
       voiceAudioRef.current?.pause();
-      const res = await fetch("/api/omnivoice/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-      });
-      const data = await res.json() as { audioPath?: string; error?: string };
-      if (!res.ok || !data.audioPath) {
-        throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
-      }
 
-      const audio = new Audio(data.audioPath);
-      voiceAudioRef.current = audio;
-      await new Promise<void>((resolve, reject) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => reject(new Error("Nao foi possivel tocar o audio gerado."));
-        void audio.play().catch(reject);
-      });
+      const ttsRes = await fetch("/api/tts/config");
+      const ttsConfig = await ttsRes.json().catch(() => null);
+
+      if (ttsConfig?.provider === "cartesia") {
+        let emotion = ttsConfig.cartesiaEmotion || "positivity";
+        if (emotion === "happy") emotion = "positivity";
+        if (emotion === "sad") emotion = "sadness";
+        if (emotion === "fear") emotion = "curiosity";
+
+        let model = ttsConfig.cartesiaModel || "sonic-3.5";
+        if (model === "sonic") model = "sonic-3.5";
+        if (model === "sonic-multilingual") model = "sonic-3";
+
+        await playCartesiaVoiceWebSocket(
+          ttsConfig.cartesiaApiKey,
+          ttsConfig.cartesiaVoiceId,
+          text,
+          model,
+          ttsConfig.cartesiaSpeed,
+          emotion
+        );
+      } else if (ttsConfig?.provider === "browser") {
+        await new Promise<void>((resolve, reject) => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.onend = () => resolve();
+          utterance.onerror = () => reject(new Error("Falha na sintese de voz do navegador."));
+          window.speechSynthesis.speak(utterance);
+        });
+      } else {
+        // Fallback to OmniVoice
+        const res = await fetch("/api/omnivoice/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await res.json() as { audioPath?: string; error?: string };
+        if (!res.ok || !data.audioPath) {
+          throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+        }
+
+        const audio = new Audio(data.audioPath);
+        voiceAudioRef.current = audio;
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Nao foi possivel tocar o audio gerado."));
+          void audio.play().catch(reject);
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setVoiceError(message);

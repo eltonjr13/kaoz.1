@@ -24,8 +24,12 @@ import {
   ChevronDown,
   ChevronUp,
   Compass,
-  Rocket
+  Rocket,
+  Activity
 } from "lucide-react";
+import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
+import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
+import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -95,6 +99,33 @@ interface OmniVoiceConfig {
 }
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
+
+const TTS_OPTIONS: TTSOption[] = [
+  {
+    id: "cartesia",
+    name: "Cartesia (Sonic)",
+    description: "Vozes ultrarrealistas e de baixíssima latência.",
+    icon: Zap,
+  },
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    description: "Sintetização de voz líder de mercado (Breve).",
+    icon: Volume2,
+  },
+  {
+    id: "omnivoice",
+    name: "OmniVoice",
+    description: "Geração de voz via Notebook/Gradio do OmniVoice.",
+    icon: Cpu,
+  },
+  {
+    id: "browser",
+    name: "Navegador",
+    description: "Voz nativa do navegador (Baixa qualidade).",
+    icon: Globe,
+  }
+];
 
 const SPEECH_OPTIONS: Array<{
   id: SpeechProviderName;
@@ -736,7 +767,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   );
 }
 
-function SpeechSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
   const [speechConfig, setSpeechConfig] = useState<SpeechConfig | null>(null);
   const [savingSpeechProvider, setSavingSpeechProvider] = useState<SpeechProviderName | null>(null);
 
@@ -833,6 +864,179 @@ function SpeechSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: S
           O servidor Faster-Whisper local e iniciado automaticamente quando Whisper ou Whisper Speed estiver ativo.
         </p>
       </div>
+    </div>
+  );
+}
+
+function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  const [config, setConfig] = useState<TTSConfig | null>(null);
+  const [provider, setProvider] = useState<TTSProviderName>("omnivoice");
+  
+  const [cartesiaApiKey, setCartesiaApiKey] = useState("");
+  const [cartesiaVoiceId, setCartesiaVoiceId] = useState("");
+  const [cartesiaModel, setCartesiaModel] = useState("sonic-3.5");
+  const [cartesiaSpeed, setCartesiaSpeed] = useState("normal");
+  const [cartesiaEmotion, setCartesiaEmotion] = useState("positivity");
+  
+  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const hasBusyAction = Boolean(busyAction);
+
+  const applyConfig = useCallback((nextConfig: TTSConfig) => {
+    setConfig(nextConfig);
+    setProvider(nextConfig.provider);
+    setCartesiaApiKey(nextConfig.cartesiaApiKey || "");
+    setCartesiaVoiceId(nextConfig.cartesiaVoiceId || "");
+    let model = nextConfig.cartesiaModel || "sonic-3.5";
+    if (model === "sonic") model = "sonic-3.5";
+    if (model === "sonic-multilingual") model = "sonic-3";
+    setCartesiaModel(model);
+    setCartesiaSpeed(nextConfig.cartesiaSpeed || "normal");
+    
+    let emotion = nextConfig.cartesiaEmotion || "positivity";
+    if (emotion === "happy") emotion = "positivity";
+    if (emotion === "sad") emotion = "sadness";
+    if (emotion === "fear") emotion = "curiosity";
+    setCartesiaEmotion(emotion);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadConfig() {
+      try {
+        const res = await fetch("/api/tts/config", { cache: "no-store" });
+        if (res.ok && isMounted) {
+          applyConfig(await res.json());
+        }
+      } catch (err) {
+        console.error("Erro ao carregar configuracao de TTS:", err);
+      }
+    }
+    void loadConfig();
+    return () => { isMounted = false; };
+  }, [applyConfig]);
+
+  useEffect(() => {
+    if (provider === "cartesia" && cartesiaApiKey) {
+      let isMounted = true;
+      setIsLoadingVoices(true);
+      fetchCartesiaVoices(cartesiaApiKey)
+        .then(voices => {
+          if (isMounted) setAvailableVoices(voices);
+        })
+        .catch(() => {
+          if (isMounted) setAvailableVoices([]);
+        })
+        .finally(() => {
+          if (isMounted) setIsLoadingVoices(false);
+        });
+      return () => { isMounted = false; };
+    }
+  }, [provider, cartesiaApiKey]);
+
+  const handleSelectProvider = async (newProvider: TTSProviderName) => {
+    if (newProvider === provider) return;
+    setProvider(newProvider);
+    setExpandedCard(null);
+    setBusyAction("select_" + newProvider);
+    try {
+      const res = await fetch("/api/tts/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: newProvider })
+      });
+      if (!res.ok) throw new Error("Falha ao selecionar.");
+      applyConfig(await res.json());
+      onStatusMessage({ text: `Provedor de voz alterado.`, type: "success" });
+    } catch (err) {
+      onStatusMessage({ text: `Erro ao alterar provedor de voz.`, type: "error" });
+      if (config) setProvider(config.provider);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleAction = async (action: string, successText: string) => {
+    setBusyAction(action);
+    try {
+      if (action === "test") {
+        if (provider === "cartesia") {
+          await playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
+          onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
+        }
+      } else if (action === "save") {
+        const payload: Partial<TTSConfig> = { provider };
+        if (provider === "cartesia") {
+          payload.cartesiaApiKey = cartesiaApiKey;
+          payload.cartesiaVoiceId = cartesiaVoiceId;
+          payload.cartesiaModel = cartesiaModel;
+          payload.cartesiaSpeed = cartesiaSpeed;
+          payload.cartesiaEmotion = cartesiaEmotion;
+        }
+        
+        const res = await fetch("/api/tts/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Falha ao salvar.");
+        applyConfig(await res.json());
+        onStatusMessage({ text: successText, type: "success" });
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      onStatusMessage({ text: `Erro: ${errMsg}`, type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3 mb-8">
+      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+        <Volume2 size={14} className="text-zinc-400" />
+        <span>Provedores de Voz (TTS)</span>
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {TTS_OPTIONS.map((option) => (
+          <TTSProviderCard
+            key={option.id}
+            provider={option.id}
+            option={option}
+            config={config}
+            isSelected={provider === option.id}
+            isExpanded={expandedCard === option.id}
+            disabled={hasBusyAction}
+            onSelect={() => handleSelectProvider(option.id)}
+            onToggleExpand={() => setExpandedCard(prev => prev === option.id ? null : option.id)}
+            apiKey={cartesiaApiKey}
+            voiceId={cartesiaVoiceId}
+            model={cartesiaModel}
+            speed={cartesiaSpeed}
+            emotion={cartesiaEmotion}
+            availableVoices={availableVoices}
+            isLoadingVoices={isLoadingVoices}
+            onApiKeyChange={setCartesiaApiKey}
+            onVoiceIdChange={setCartesiaVoiceId}
+            onModelChange={setCartesiaModel}
+            onSpeedChange={setCartesiaSpeed}
+            onEmotionChange={setCartesiaEmotion}
+            busyAction={busyAction}
+            onAction={handleAction}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VoiceAndTranscriptionPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  return (
+    <div className="space-y-8">
+      <TTSSettingsPanel onStatusMessage={onStatusMessage} />
+      <STTPanel onStatusMessage={onStatusMessage} />
     </div>
   );
 }
@@ -1414,7 +1618,7 @@ export default function SettingsPage() {
         {/* TAB: Voz */}
         {activeTab === "voz" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <SpeechSettingsPanel onStatusMessage={setStatusMessage} />
+            <VoiceAndTranscriptionPanel onStatusMessage={setStatusMessage} />
           </div>
         )}
 
