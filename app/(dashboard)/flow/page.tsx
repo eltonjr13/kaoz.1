@@ -35,7 +35,57 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
-import { playCartesiaVoiceWebSocket } from "@/lib/cartesia";
+import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
+
+class SpeechQueue {
+  private queue: Promise<void> = Promise.resolve();
+  private cancelCurrent: (() => void) | null = null;
+  private isCancelled = false;
+  private activeCount = 0;
+  private onIdle: (() => void) | null = null;
+
+  constructor(onIdle?: () => void) {
+    this.onIdle = onIdle || null;
+  }
+
+  enqueue(speakFn: () => { promise: Promise<void>; cancel: () => void }) {
+    if (this.isCancelled) return;
+    
+    this.activeCount++;
+    this.queue = this.queue.then(() => {
+      if (this.isCancelled) {
+        this.activeCount--;
+        this.checkIdle();
+        return;
+      }
+      const { promise, cancel } = speakFn();
+      this.cancelCurrent = cancel;
+      return promise.then(() => {
+        this.cancelCurrent = null;
+        this.activeCount--;
+        this.checkIdle();
+      });
+    });
+  }
+
+  private checkIdle() {
+    if (this.activeCount === 0 && this.onIdle) {
+      this.onIdle();
+    }
+  }
+
+  cancelAll() {
+    this.isCancelled = true;
+    if (this.cancelCurrent) {
+      this.cancelCurrent();
+      this.cancelCurrent = null;
+    }
+    this.activeCount = 0;
+    this.queue = Promise.resolve();
+    this.isCancelled = false;
+    this.checkIdle();
+  }
+}
 
 interface GenerationResult {
   success: boolean;
@@ -825,6 +875,27 @@ export default function FlowDashboardPage() {
   const voiceAwaitingCommandRef = useRef(false);
   const voiceSpeakingRef = useRef(false);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechQueueRef = useRef<SpeechQueue | null>(null);
+  if (!speechQueueRef.current) {
+    speechQueueRef.current = new SpeechQueue(() => {
+      voiceSpeakingRef.current = false;
+      setVoiceSpeaking(false);
+      if (voiceEnabledRef.current) {
+        setVoiceStatus("Voz ativada. Pode falar.");
+      }
+    });
+  }
+  const cartesiaStreamCancelRef = useRef<(() => void) | null>(null);
+
+  const cancelAllVoicePlayback = useCallback(() => {
+    speechQueueRef.current?.cancelAll();
+    if (cartesiaStreamCancelRef.current) {
+      cartesiaStreamCancelRef.current();
+      cartesiaStreamCancelRef.current = null;
+    }
+    voiceSpeakingRef.current = false;
+    setVoiceSpeaking(false);
+  }, []);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceAwaitingCommand, setVoiceAwaitingCommand] = useState(false);
   const [voiceSpeaking, setVoiceSpeaking] = useState(false);
@@ -1708,6 +1779,122 @@ export default function FlowDashboardPage() {
     };
 
     try {
+      cancelAllVoicePlayback();
+      const ttsRes = await fetch("/api/tts/config").catch(() => null);
+      const ttsConfig = ttsRes ? await ttsRes.json().catch(() => null) : null;
+
+      let cartesiaStream: any = null;
+      if (options.speakResponse && ttsConfig?.provider === "cartesia") {
+        let emotion = ttsConfig.cartesiaEmotion || "auto";
+        if (emotion === "happy") emotion = "positivity";
+        if (emotion === "sad") emotion = "sadness";
+        if (emotion === "fear") emotion = "curiosity";
+
+        let model = ttsConfig.cartesiaModel || "sonic-3.5";
+        if (model === "sonic") model = "sonic-3.5";
+        if (model === "sonic-multilingual") model = "sonic-3";
+
+        setVoiceSpeaking(true);
+        setVoiceStatus("MrChicken esta falando...");
+
+        try {
+          cartesiaStream = playCartesiaVoiceStream(
+            ttsConfig.cartesiaApiKey,
+            ttsConfig.cartesiaVoiceId,
+            model,
+            ttsConfig.cartesiaSpeed || "auto",
+            emotion
+          );
+          cartesiaStreamCancelRef.current = cartesiaStream.cancel;
+          
+          cartesiaStream.promise.then(() => {
+            voiceSpeakingRef.current = false;
+            setVoiceSpeaking(false);
+            if (voiceEnabledRef.current) {
+              setVoiceStatus("Voz ativada. Pode falar.");
+            }
+          }).catch((err: any) => {
+            console.error("Erro na reprodução do stream Cartesia:", err);
+          });
+        } catch (streamErr) {
+          console.error("Erro ao iniciar o stream Cartesia:", streamErr);
+        }
+      }
+
+      const speakTextChunk = (textToSpeak: string, isLast = false) => {
+        if (!options.speakResponse) return;
+
+        if (cartesiaStream) {
+          cartesiaStream.sendChunk(textToSpeak, isLast);
+          return;
+        }
+        
+        speechQueueRef.current?.enqueue(() => {
+          if (ttsConfig?.provider === "browser") {
+            setVoiceSpeaking(true);
+            setVoiceStatus("MrChicken esta falando...");
+            
+            let utterance: SpeechSynthesisUtterance | null = null;
+            const promise = new Promise<void>((resolve, reject) => {
+              utterance = new SpeechSynthesisUtterance(textToSpeak);
+              utterance.onend = () => resolve();
+              utterance.onerror = () => reject(new Error("Falha na sintese de voz do navegador."));
+              window.speechSynthesis.speak(utterance);
+            });
+            return {
+              promise: promise.catch(() => {}),
+              cancel: () => {
+                if (utterance) window.speechSynthesis.cancel();
+              }
+            };
+          } else {
+            // Fallback to OmniVoice
+            setVoiceSpeaking(true);
+            setVoiceStatus("MrChicken esta falando...");
+            let audio: HTMLAudioElement | null = null;
+            let isCancelled = false;
+
+            const promise = new Promise<void>(async (resolve, reject) => {
+              try {
+                if (isCancelled) { resolve(); return; }
+                const res = await fetch("/api/omnivoice/speak", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text: textToSpeak })
+                });
+                const data = await res.json() as { audioPath?: string; error?: string };
+                if (isCancelled) { resolve(); return; }
+                if (!res.ok || !data.audioPath) {
+                  throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+                }
+
+                audio = new Audio(data.audioPath);
+                voiceAudioRef.current = audio;
+                
+                audio.onended = () => resolve();
+                audio.onerror = () => reject(new Error("Nao foi possivel tocar o audio gerado."));
+                void audio.play().catch(reject);
+              } catch (err) {
+                reject(err);
+              }
+            });
+
+            return {
+              promise: promise.catch(() => {}),
+              cancel: () => {
+                isCancelled = true;
+                if (audio) {
+                  try {
+                    audio.pause();
+                    audio.currentTime = 0;
+                  } catch {}
+                }
+              }
+            };
+          }
+        });
+      };
+
       const res = await fetch("/api/flow/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1725,6 +1912,7 @@ export default function FlowDashboardPage() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let sentenceBuffer = "";
 
         const processStreamBlock = async (block: string) => {
           const parsed = parseFlowChatStreamEvent(block);
@@ -1732,6 +1920,26 @@ export default function FlowDashboardPage() {
 
           if (parsed.event === "chunk") {
             const text = parsed.data.text || "";
+            sentenceBuffer += text;
+
+            // Split and queue complete sentences
+            const sentenceBoundaryRegex = /([.?!;\n]+)/g;
+            let match;
+            let lastIndex = 0;
+            
+            while ((match = sentenceBoundaryRegex.exec(sentenceBuffer)) !== null) {
+              const boundaryIndex = match.index + match[0].length;
+              const sentence = sentenceBuffer.substring(lastIndex, boundaryIndex).trim();
+              if (sentence) {
+                speakTextChunk(sentence, false);
+              }
+              lastIndex = boundaryIndex;
+            }
+            
+            if (lastIndex > 0) {
+              sentenceBuffer = sentenceBuffer.substring(lastIndex);
+            }
+
             for (let i = 0; i < text.length; i += 4) {
               appendAssistantChunk(text.slice(i, i + 4));
               await new Promise(r => setTimeout(r, 15));
@@ -1760,6 +1968,12 @@ export default function FlowDashboardPage() {
         buffer += decoder.decode();
         if (buffer.trim()) {
           await processStreamBlock(buffer);
+        }
+
+        if (sentenceBuffer.trim()) {
+          speakTextChunk(sentenceBuffer.trim(), true);
+        } else if (cartesiaStream) {
+          speakTextChunk(" ", true);
         }
 
         if (!streamedData) {
@@ -1828,9 +2042,6 @@ export default function FlowDashboardPage() {
       }
 
       upsertAgentMessage(agentMsg);
-      if (options.speakResponse) {
-        await speakAssistantResponse(agentMsg.content);
-      }
     } catch (err) {
        console.error(err);
     } finally {
@@ -1850,14 +2061,11 @@ export default function FlowDashboardPage() {
   };
 
   const handleVoiceTranscript = (transcript: string) => {
-    if (voiceSpeakingRef.current) {
-      if (voiceAudioRef.current) {
-        voiceAudioRef.current.pause();
-        voiceAudioRef.current.currentTime = 0;
-        voiceAudioRef.current.dispatchEvent(new Event('ended'));
-      }
-      voiceSpeakingRef.current = false;
-      setVoiceSpeaking(false);
+    cancelAllVoicePlayback();
+    if (voiceAudioRef.current) {
+      voiceAudioRef.current.pause();
+      voiceAudioRef.current.currentTime = 0;
+      voiceAudioRef.current.dispatchEvent(new Event('ended'));
     }
 
     void handleVoiceCommand(transcript);
@@ -1930,10 +2138,8 @@ export default function FlowDashboardPage() {
     setVoiceTranscript("");
     voiceRecognitionRef.current?.abort();
     voiceRecognitionRef.current = null;
-    voiceAudioRef.current?.pause();
+    cancelAllVoicePlayback();
     voiceAudioRef.current = null;
-    voiceSpeakingRef.current = false;
-    setVoiceSpeaking(false);
   };
 
   const toggleVoiceMode = () => {
@@ -1948,9 +2154,9 @@ export default function FlowDashboardPage() {
     return () => {
       voiceEnabledRef.current = false;
       voiceRecognitionRef.current?.abort();
-      voiceAudioRef.current?.pause();
+      cancelAllVoicePlayback();
     };
-  }, []);
+  }, [cancelAllVoicePlayback]);
 
   const handleApplyPlan = async (msgId: string) => {
     const msgIndex = chatMessages.findIndex(m => m.id === msgId);

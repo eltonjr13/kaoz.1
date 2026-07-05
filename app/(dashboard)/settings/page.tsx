@@ -963,7 +963,8 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     try {
       if (action === "test") {
         if (provider === "cartesia") {
-          await playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
+          const testAudio = playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
+          await testAudio.promise;
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
         }
       } else if (action === "save") {
