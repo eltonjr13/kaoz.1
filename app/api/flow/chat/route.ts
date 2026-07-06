@@ -5,6 +5,7 @@ import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { readAgentLLMSettings } from "@/services/agent-llm/agent-llm.settings";
 
 export const dynamic = "force-dynamic";
 
@@ -194,6 +195,8 @@ export async function POST(request: Request) {
     const cortexMemoryEnabled = useCortexMemory !== false;
     const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
     const modelName = resolveFlowChatModel(model);
+    const settings = await readAgentLLMSettings();
+    const hasExternalTools = modelName === "cerebras" || settings.provider.endsWith("-cli");
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
@@ -206,7 +209,7 @@ export async function POST(request: Request) {
       {
         useCortexMemory: cortexMemoryEnabled,
         onMessageChunk,
-        hasExternalTools: modelName === "cerebras",
+        hasExternalTools,
       }
     );
 
