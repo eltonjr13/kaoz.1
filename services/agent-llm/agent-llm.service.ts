@@ -22,7 +22,7 @@ const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 const MCP_TOOL_TIMEOUT_MS = 45_000;
 const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
-const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar)\b/;
+const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|playlist|musica|crie|adicione|tocar)\b/;
 const USD_BRL_INTENT_PATTERN = /\b(dolar|usd|usdbrl|usd brl|cotacao do dolar|cotacao dolar)\b/;
 
 function normalizeToolIntentText(text: string): string {
@@ -825,7 +825,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   if (chatTools) {
     messages.push({
       role: "system",
-      content: "Voce e o Agente MrChicken, um assistente autonomo com acesso a ferramentas. Para pedidos de internet, pesquisa, URLs, sites ou dados atuais, use as ferramentas disponiveis antes de responder. Nunca diga genericamente que nao tem acesso a internet quando ferramentas foram fornecidas. Se Google Search bloquear automacao, tente uma pagina direta do servico quando possivel, como Google Finance para cotacoes."
+      content: "Voce e o Agente MrChicken, um assistente autonomo. VOCE POSSUI FERRAMENTAS REAIS DO SPOTIFY CONECTADAS (create_playlist, search_tracks, etc). REGRA CRITICA: Quando o usuario pedir para criar uma playlist, VOCE DEVE OBRIGATORIAMENTE EMITIR UM TOOL CALL para 'create_playlist'. NUNCA responda apenas com texto dizendo que 'tentou' ou que deu erro '401 Unauthorized'. NUNCA invente resultados. Voce deve executar a ferramenta de verdade usando o schema JSON. Confie nas suas ferramentas."
     });
   }
 
