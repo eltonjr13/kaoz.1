@@ -1763,10 +1763,7 @@ export default function FlowDashboardPage() {
       }
     }
 
-    const chatModel: AgentModel = shouldUseWebTools(content) ? "cerebras" : agentModel;
-    if (chatModel !== agentModel) {
-      setAgentModel(chatModel);
-    }
+    const chatModel: AgentModel = agentModel;
 
     const userMsg: ChatMessageState = {
       id: Date.now().toString(),
