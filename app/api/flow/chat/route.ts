@@ -20,6 +20,10 @@ type FlowChatRequestBody = {
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
 type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras';
+type SpotifyDirectCommand = {
+  toolName: string;
+  args: Record<string, unknown>;
+};
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
 const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras"]);
@@ -34,6 +38,122 @@ function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
 
 function resolveFlowChatModel(model?: string): FlowChatModel {
   return model && FLOW_CHAT_MODELS.has(model) ? (model as FlowChatModel) : "gemini";
+}
+
+function normalizeCommandText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function getLatestUserMessageText(messages: ChatMessage[]): string {
+  const latest = [...messages].reverse().find((message) => message.role === "user");
+  return latest?.parts.map((part) => part.text).join("\n").trim() || "";
+}
+
+function cleanSpotifyQuery(value?: string): string {
+  return (value || "")
+    .replace(/\b(no|na|meu|minha|spotify|agora|por favor|pra mim|para mim)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractSpotifyQuery(text: string, normalized: string, verbs: string[]): string {
+  const quoted = text.match(/["“”']([^"“”']+)["“”']/)?.[1];
+  if (quoted) return cleanSpotifyQuery(quoted);
+
+  for (const verb of verbs) {
+    const index = normalized.indexOf(verb);
+    if (index === -1) continue;
+    const candidate = text.slice(index + verb.length);
+    const cleaned = cleanSpotifyQuery(candidate);
+    if (cleaned) return cleaned;
+  }
+
+  return "";
+}
+
+function detectSpotifyDirectCommand(messages: ChatMessage[]): SpotifyDirectCommand | null {
+  const text = getLatestUserMessageText(messages);
+  const normalized = normalizeCommandText(text);
+  if (!normalized) return null;
+  const hasSpotifyPlaybackContext = /\b(spotify|musica|som|reproducao|tocando|faixa|playlist|volume|fila)\b/.test(normalized);
+
+  if (/\b(dispositivo|dispositivos|devices|aparelhos)\b/.test(normalized)) {
+    return { toolName: "list_devices", args: {} };
+  }
+
+  if (/\b(pausar|pause|pausa|parar|pare)\b/.test(normalized)) {
+    return { toolName: "pause_music", args: {} };
+  }
+
+  if (/\b(proxima|proximo|next|passar musica|passe a musica|avancar|pula|pular)\b/.test(normalized) && hasSpotifyPlaybackContext) {
+    return { toolName: "next_track", args: {} };
+  }
+
+  if (/\b(anterior|previous|voltar musica|volte a musica|volta uma)\b/.test(normalized) && hasSpotifyPlaybackContext) {
+    return { toolName: "previous_track", args: {} };
+  }
+
+  const volume = normalized.match(/\bvolume\b\D{0,12}(\d{1,3})\s*%?/);
+  if (volume) {
+    return { toolName: "set_volume", args: { volume_percent: Number(volume[1]) } };
+  }
+
+  const asksToResume = /\b(continuar|continue|continua|retomar|retome|resume|resumir|voltar a tocar|volte a tocar|tocar de novo|play)\b/.test(normalized);
+  const isLikelyCreativeContinuation = /\b(projeto|roteiro|texto|prompt|imagem|video|historia|historia|conversa|resposta)\b/.test(normalized);
+  if (asksToResume && !isLikelyCreativeContinuation) {
+    return { toolName: "play_music", args: {} };
+  }
+
+  if (/\b(fila|queue)\b/.test(normalized) && hasSpotifyPlaybackContext) {
+    const query = extractSpotifyQuery(text, normalized, ["coloca", "coloque", "adiciona", "adicione", "bota", "poe", "põe"]);
+    return { toolName: "add_to_queue", args: query ? { query } : {} };
+  }
+
+  if (/\b(tocar|toque|toca|reproduzir|reproduza|play)\b/.test(normalized) && hasSpotifyPlaybackContext) {
+    const query = extractSpotifyQuery(text, normalized, ["tocar", "toque", "toca", "reproduzir", "reproduza", "play"]);
+    return { toolName: "play_music", args: query ? { query } : {} };
+  }
+
+  return null;
+}
+
+function extractMcpText(toolResult: any): string {
+  const content = toolResult?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => typeof item?.text === "string" ? item.text : JSON.stringify(item))
+      .join("\n")
+      .trim();
+  }
+  return content ? JSON.stringify(content) : "";
+}
+
+async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<ChatAgentResponse> {
+  const { McpManager } = await import("@/services/mcp/mcp.manager");
+  const mcpManager = await McpManager.getInstance();
+  let tool = (await mcpManager.getAllTools())
+    .find((entry) => entry.tool.name === command.toolName && entry.serverId === "spotify-mcp-server-local");
+
+  if (!tool) {
+    await mcpManager.refreshConnections();
+    tool = (await mcpManager.getAllTools())
+      .find((entry) => entry.tool.name === command.toolName && entry.serverId === "spotify-mcp-server-local");
+  }
+
+  if (!tool) {
+    return {
+      message: `A ferramenta Spotify '${command.toolName}' nao esta carregada. Reinicie o servidor do MrChicken para recarregar o MCP do Spotify.`,
+      action: null,
+    };
+  }
+
+  const result = await mcpManager.callTool(tool.serverId, tool.tool.name, command.args);
+  const text = extractMcpText(result);
+  return {
+    message: result?.isError ? `Erro no Spotify: ${text}` : text,
+    action: null,
+  };
 }
 
 async function loadChatPersonality(avatarId?: string, useAvatarPersonality?: boolean): Promise<Record<string, unknown> | null> {
@@ -196,6 +316,7 @@ export async function POST(request: Request) {
     const modelName = resolveFlowChatModel(model);
     const hasExternalTools = modelName === "cerebras";
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
+    const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
 
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
       messages,
@@ -210,6 +331,23 @@ export async function POST(request: Request) {
         hasExternalTools,
       }
     );
+
+    if (spotifyDirectCommand) {
+      if (stream === true) {
+        cleanupInPost = false;
+        return createChatStreamResponse(
+          () => runSpotifyDirectCommand(spotifyDirectCommand),
+          () => cleanupReferenceImage(referenceImagePath)
+        );
+      }
+
+      const response = await runSpotifyDirectCommand(spotifyDirectCommand);
+      return NextResponse.json({
+        success: true,
+        message: response.message,
+        action: response.action,
+      });
+    }
 
     if (stream === true) {
       cleanupInPost = false;

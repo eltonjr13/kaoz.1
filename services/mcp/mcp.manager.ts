@@ -63,6 +63,11 @@ export class McpManager {
     return Array.from(this.statuses.values());
   }
 
+  public async refreshConnections(): Promise<void> {
+    await this.loadSettings();
+    await this.initializeConnections();
+  }
+
   private async initializeConnections() {
     // Close existing connections
     for (const [id, client] of this.clients.entries()) {

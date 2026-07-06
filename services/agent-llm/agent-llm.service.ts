@@ -22,10 +22,11 @@ const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 const MCP_TOOL_TIMEOUT_MS = 45_000;
 const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
-const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|playlist|musica|crie|adicione|tocar)\b/;
+const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|playlist|musica|crie|adicione|tocar|toque|pausar|pause|parar|dispositivo|dispositivos|proxima|anterior|volume|fila)\b/;
 const USD_BRL_INTENT_PATTERN = /\b(dolar|usd|usdbrl|usd brl|cotacao do dolar|cotacao dolar)\b/;
 const SPOTIFY_PLAYLIST_CREATE_PATTERN = /\bspotify\b[\s\S]*\bplaylist\b|\bplaylist\b[\s\S]*\bspotify\b/;
 const PLAYLIST_CREATE_VERB_PATTERN = /\b(crie|criar|cria|criar uma|criar nova|nova playlist|create|make)\b/;
+const SPOTIFY_PLAYBACK_INTENT_PATTERN = /\b(spotify|musica|reproducao|tocando|tocar|toque|pausar|pause|parar|dispositivo|dispositivos|proxima|anterior|volume|fila)\b/;
 
 function normalizeToolIntentText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -34,6 +35,33 @@ function normalizeToolIntentText(text: string): string {
 function shouldForceSpotifyPlaylistCreate(normalizedPrompt: string): boolean {
   return SPOTIFY_PLAYLIST_CREATE_PATTERN.test(normalizedPrompt) &&
     PLAYLIST_CREATE_VERB_PATTERN.test(normalizedPrompt);
+}
+
+function getForcedSpotifyToolName(normalizedPrompt: string): string | null {
+  if (shouldForceSpotifyPlaylistCreate(normalizedPrompt)) return "create_playlist";
+  if (!SPOTIFY_PLAYBACK_INTENT_PATTERN.test(normalizedPrompt)) return null;
+  if (/\b(dispositivo|dispositivos|devices|aparelhos)\b/.test(normalizedPrompt)) return "list_devices";
+  if (/\b(pausar|pause|pausa|parar|pare)\b/.test(normalizedPrompt)) return "pause_music";
+  if (/\b(proxima|proximo|next|passar musica|passe a musica|avancar)\b/.test(normalizedPrompt)) return "next_track";
+  if (/\b(anterior|previous|voltar musica|volte a musica)\b/.test(normalizedPrompt)) return "previous_track";
+  if (/\b(volume|vol)\b/.test(normalizedPrompt)) return "set_volume";
+  if (/\b(fila|queue)\b/.test(normalizedPrompt)) return "add_to_queue";
+  if (/\b(tocar|toque|play|reproduzir|resume|retomar)\b/.test(normalizedPrompt)) return "play_music";
+  return null;
+}
+
+function extractSpotifyPlaybackArgs(prompt: string, normalizedPrompt: string, toolName: string): Record<string, unknown> {
+  if (toolName === "set_volume") {
+    const volume = normalizedPrompt.match(/\b(\d{1,3})\s*%?\b/)?.[1];
+    return volume ? { volume_percent: Number(volume) } : {};
+  }
+  if (toolName === "play_music" || toolName === "add_to_queue") {
+    const query =
+      prompt.match(/(?:tocar|toque|reproduzir|play|fila|queue)\s+["“”']([^"“”']+)["“”']/i)?.[1]?.trim() ||
+      prompt.match(/(?:tocar|toque|reproduzir|play|fila|queue)\s+(.+)$/i)?.[1]?.trim();
+    return query ? { query } : {};
+  }
+  return {};
 }
 
 function extractSpotifyPlaylistCreateArgs(prompt: string, normalizedPrompt: string): { name: string; public: boolean } {
@@ -836,12 +864,16 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   });
   const tools = [...builtInTools, ...mcpTools];
   const chatTools = tools.length > 0 ? tools : undefined;
-  const forcedSpotifyPlaylistTool = shouldForceSpotifyPlaylistCreate(normalizedPrompt)
-    ? mcpTools.find(t => t.function.name === "create_playlist")
+  const forcedSpotifyToolName = getForcedSpotifyToolName(normalizedPrompt);
+  const forcedSpotifyTool = forcedSpotifyToolName
+    ? mcpTools.find(t => t.function.name === forcedSpotifyToolName)
     : undefined;
-  const forcedSpotifyPlaylistMapping = forcedSpotifyPlaylistTool
-    ? mcpToolMap.get(forcedSpotifyPlaylistTool.function.name)
+  const forcedSpotifyToolMapping = forcedSpotifyTool
+    ? mcpToolMap.get(forcedSpotifyTool.function.name)
     : undefined;
+  if (forcedSpotifyToolName && !forcedSpotifyTool) {
+    throw new Error(`Ferramenta Spotify '${forcedSpotifyToolName}' nao esta carregada no MCP. Reinicie o servidor do MrChicken para recarregar as ferramentas.`);
+  }
 
   const requiresWebTool =
     Boolean(chatTools) &&
@@ -851,7 +883,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   if (chatTools) {
     messages.push({
       role: "system",
-      content: "Voce e o Agente MrChicken, um assistente autonomo. VOCE POSSUI FERRAMENTAS REAIS DO SPOTIFY CONECTADAS (create_playlist, search_tracks, etc). REGRA CRITICA: Quando o usuario pedir para criar uma playlist, VOCE DEVE OBRIGATORIAMENTE EMITIR UM TOOL CALL para 'create_playlist'. NUNCA responda apenas com texto dizendo que 'tentou' ou que deu erro '401 Unauthorized'. NUNCA invente resultados. Voce deve executar a ferramenta de verdade usando o schema JSON. Confie nas suas ferramentas."
+      content: "Voce e o Agente MrChicken, um assistente autonomo. VOCE POSSUI FERRAMENTAS REAIS DO SPOTIFY CONECTADAS: create_playlist, search_tracks, add_tracks_to_playlist, list_devices, get_playback_state, play_music, pause_music, next_track, previous_track, transfer_playback, add_to_queue e set_volume. REGRA CRITICA: quando o usuario pedir qualquer acao do Spotify, VOCE DEVE emitir um TOOL CALL real para a ferramenta adequada. NUNCA responda apenas com texto dizendo que tentou, que pausou, que nao ha ferramenta ou que nao tem acesso. NUNCA invente resultados. Se a ferramenta retornar isError ou texto de erro, informe a falha real ao usuario."
     });
   }
 
@@ -908,8 +940,8 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
     for (let step = 0; step < 5; step++) {
       const toolChoice = !chatTools
         ? undefined
-        : forcedSpotifyPlaylistTool && !hasUsedTool
-        ? { type: "function", function: { name: forcedSpotifyPlaylistTool.function.name } }
+        : forcedSpotifyTool && !hasUsedTool
+        ? { type: "function", function: { name: forcedSpotifyTool.function.name } }
         : builtInTools.length > 0 && !hasUsedTool
         ? { type: "function", function: { name: USD_BRL_TOOL_NAME } }
         : requiresWebTool && !hasUsedTool
@@ -981,7 +1013,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
               currentMessages.push({
                 role: "tool",
                 tool_call_id: call.id,
-                content: toolOutput
+                content: toolResult?.isError ? `Error: ${toolOutput}` : toolOutput
               });
             } catch (e: any) {
                console.error("ERRO NA FERRAMENTA MCP:", originalName, e.message);
@@ -1002,13 +1034,15 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
         continue;
       }
       
-      if (forcedSpotifyPlaylistTool && !hasUsedTool) {
-        if (!mcpManager || !forcedSpotifyPlaylistMapping) {
-          throw new Error("Ferramenta obrigatoria create_playlist indisponivel no runtime MCP.");
+      if (forcedSpotifyTool && !hasUsedTool) {
+        if (!mcpManager || !forcedSpotifyToolMapping) {
+          throw new Error(`Ferramenta obrigatoria ${forcedSpotifyTool.function.name} indisponivel no runtime MCP.`);
         }
 
-        const [serverId, originalName] = forcedSpotifyPlaylistMapping.split("|||");
-        const args = extractSpotifyPlaylistCreateArgs(prompt, normalizedPrompt);
+        const [serverId, originalName] = forcedSpotifyToolMapping.split("|||");
+        const args = originalName === "create_playlist"
+          ? extractSpotifyPlaylistCreateArgs(prompt, normalizedPrompt)
+          : extractSpotifyPlaybackArgs(prompt, normalizedPrompt, originalName);
         const toolResult: any = await withTimeout(
           mcpManager.callTool(serverId, originalName, args),
           MCP_TOOL_TIMEOUT_MS,
@@ -1016,7 +1050,13 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
         );
         const toolOutput = toolResult?.content
           ? (typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content))
-          : "Playlist criada com sucesso.";
+          : "Ferramenta executada.";
+        if (toolResult?.isError) {
+          return JSON.stringify({
+            message: `Erro ao executar ${originalName}: ${toolOutput}`,
+            action: null
+          });
+        }
 
         return JSON.stringify({
           message: toolOutput,
