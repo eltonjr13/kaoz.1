@@ -939,7 +939,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
                 throw new Error("MCP manager nao inicializado para esta consulta.");
               }
               const args = functionCall.arguments ? JSON.parse(functionCall.arguments) : {};
-              const toolResult = await withTimeout(
+              const toolResult: any = await withTimeout(
                 mcpManager.callTool(serverId, originalName, args),
                 MCP_TOOL_TIMEOUT_MS,
                 `Ferramenta MCP ${originalName}`
