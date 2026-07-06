@@ -4,7 +4,7 @@ import { OpenAI } from 'openai';
 import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
-import { queryConfiguredAgentCli } from '@/services/agent-llm/agent-llm.service';
+import { queryConfiguredAgentCli, runCerebrasApi } from '@/services/agent-llm/agent-llm.service';
 
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
 type QueryWebLLMOptions = {
@@ -218,7 +218,10 @@ export class FlowLLMAutomation {
         case 'claude':
           return await this.optimizeWithClaudeApi(prompt);
         case 'cerebras':
-          return await this.optimizeWithCerebrasApi(prompt, options, referenceImagePath);
+          return this.cleanLLMResponse(await runCerebrasApi(prompt, {
+            referenceImagePath,
+            onTextChunk: options?.onTextChunk,
+          }));
       }
     } catch (err) {
       logger.warn(`[Agente MrChicken] API do modelo ${model} indisponivel.`, err);

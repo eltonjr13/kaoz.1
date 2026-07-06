@@ -193,6 +193,13 @@ export class FlowProvider {
     await this.session.close();
   }
 
+  /**
+   * Captures the current active browser page as a base64 encoded jpeg.
+   */
+  async captureBrowserState(): Promise<string | null> {
+    return await this.session.captureScreenshotBase64();
+  }
+
 
   // ==========================================
   // FUTURAS EXPANSÕES

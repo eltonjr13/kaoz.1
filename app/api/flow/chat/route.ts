@@ -206,6 +206,7 @@ export async function POST(request: Request) {
       {
         useCortexMemory: cortexMemoryEnabled,
         onMessageChunk,
+        hasExternalTools: modelName === "cerebras",
       }
     );
 

@@ -725,16 +725,25 @@ export interface ChatAgentResponse {
   action: FlowDecision | null;
 }
 
+type ExecuteWebQuery = (
+  compiledPrompt: string,
+  referenceImagePath?: string,
+  options?: { onTextChunk?: (chunk: string) => void }
+) => Promise<string>;
+
+function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
+  if (!executeWebQuery) {
+    throw new Error("O callback de consulta ao modelo de IA e obrigatorio nesta arquitetura.");
+  }
+  return executeWebQuery;
+}
+
 export async function chatWithAgent(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
-  executeWebQuery?: (
-    compiledPrompt: string,
-    referenceImagePath?: string,
-    options?: { onTextChunk?: (chunk: string) => void }
-  ) => Promise<string>,
+  executeWebQuery?: ExecuteWebQuery,
   referenceImagePath?: string,
-  options?: { useCortexMemory?: boolean; onMessageChunk?: (chunk: string) => void }
+  options?: { useCortexMemory?: boolean; onMessageChunk?: (chunk: string) => void; hasExternalTools?: boolean }
 ): Promise<ChatAgentResponse> {
   const immediateResponse = getImmediateChatResponse(messages, referenceImagePath);
   if (immediateResponse) {
@@ -787,7 +796,12 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
     const roleName = m.role === 'user' ? 'USUÁRIO' : 'MR CHICKEN (VOCÊ)';
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
   }
-  compiledPrompt += `[INSTRUÇÃO FINAL E CRÍTICA PARA A IA]:
+  compiledPrompt += options?.hasExternalTools
+    ? `[INSTRUCAO FINAL E CRITICA PARA A IA]:
+Voce esta executando com ferramentas externas disponiveis no runtime. Para pedidos de internet, pesquisa, navegacao, verificacao de informacoes atuais, URLs ou sites, use as ferramentas antes de responder.
+Se uma ferramenta retornar dados, use esses dados na propriedade "message". Se uma ferramenta falhar ou o site bloquear automacao, explique a falha concreta da ferramenta; nunca diga genericamente que voce nao tem acesso a internet.
+Responda no final EXCLUSIVAMENTE com o objeto JSON valido esperado, baseado na ultima mensagem do historico. Nao escreva NENHUM texto fora do JSON.`
+    : `[INSTRUÇÃO FINAL E CRÍTICA PARA A IA]:
 Você está executando dentro de um proxy/sandbox cego e não possui acesso a ferramentas de pesquisa, leitura de arquivos, comandos de terminal ou subagentes locais.
 VOCÊ NÃO PODE CONSULTAR, EXECUTAR, PESQUISAR OU LER ARQUIVOS DO PROJETO.
 Sua tarefa é agir EXCLUSIVAMENTE como um chatbot inteligente que RESPONDE IMEDIATAMENTE. Não diga "vou analisar", "vou procurar", "consultando". Se você não souber algo, simplesmente responda "Não tenho acesso a essas informações no momento" na propriedade "message".
@@ -797,11 +811,8 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
     let responseText = "{}";
     const handleTextChunk = createMessageChunkHandler(options?.onMessageChunk);
 
-    if (executeWebQuery) {
-      responseText = await executeWebQuery(compiledPrompt, referenceImagePath, { onTextChunk: handleTextChunk });
-    } else {
-      throw new Error("O callback de consulta ao modelo de IA e obrigatorio nesta arquitetura.");
-    }
+    const requiredWebQuery = requireWebQuery(executeWebQuery);
+    responseText = await requiredWebQuery(compiledPrompt, referenceImagePath, { onTextChunk: handleTextChunk });
 
     const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
       message: "Desculpe, ocorreu um erro ao formatar minha resposta.",

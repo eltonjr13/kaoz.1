@@ -20,6 +20,78 @@ type QueryOptions = {
 const MAX_OUTPUT_CHARS = 250_000;
 const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
+const MCP_TOOL_TIMEOUT_MS = 45_000;
+const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
+const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar)\b/;
+const USD_BRL_INTENT_PATTERN = /\b(dolar|usd|usdbrl|usd brl|cotacao do dolar|cotacao dolar)\b/;
+
+function normalizeToolIntentText(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function createUsdBrlRateTool() {
+  return {
+    type: "function" as const,
+    function: {
+      name: USD_BRL_TOOL_NAME,
+      description: "Consulta rapidamente a cotacao atual de USD para BRL em uma fonte financeira publica.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false
+      }
+    }
+  };
+}
+
+async function getUsdBrlRateToolResult(): Promise<string> {
+  const response = await fetch("https://economia.awesomeapi.com.br/json/last/USD-BRL", {
+    signal: AbortSignal.timeout(8_000)
+  });
+  if (!response.ok) {
+    throw new Error(`Fonte de cotacao retornou HTTP ${response.status}`);
+  }
+
+  const data = await response.json() as {
+    USDBRL?: {
+      bid?: string;
+      ask?: string;
+      high?: string;
+      low?: string;
+      pctChange?: string;
+      create_date?: string;
+    };
+  };
+  const quote = data.USDBRL;
+  if (!quote?.bid) {
+    throw new Error("Fonte de cotacao nao retornou USD-BRL.");
+  }
+
+  return JSON.stringify({
+    source: "AwesomeAPI Economia USD-BRL",
+    pair: "USD/BRL",
+    bid: quote.bid,
+    ask: quote.ask,
+    high: quote.high,
+    low: quote.low,
+    pctChange: quote.pctChange,
+    updatedAt: quote.create_date
+  });
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs}ms.`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-9;]*m/g, "");
@@ -709,7 +781,7 @@ export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Prom
   return { codex, grok, antigravity };
 }
 
-async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promise<string> {
+export async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promise<string> {
   const apiKey = process.env.CEREBRAS_API_KEY;
   if (!apiKey) {
     throw new Error("CEREBRAS_API_KEY não configurada no servidor.");
@@ -719,9 +791,44 @@ async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promi
   
   const { OpenAI } = await import("openai");
   const cerebras = new OpenAI({ apiKey, baseURL });
-  const shouldStream = Boolean(options.onTextChunk);
+
+  const normalizedPrompt = normalizeToolIntentText(prompt);
+  const builtInTools = USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
+  const mcpToolMap = new Map<string, string>();
+  let mcpManager: any = null;
+  let allMcpTools: Array<{ serverId: string; tool: { name: string; description?: string; inputSchema?: unknown } }> = [];
+  if (builtInTools.length === 0) {
+    const { McpManager } = await import("../mcp/mcp.manager");
+    mcpManager = await McpManager.getInstance();
+    allMcpTools = await mcpManager.getAllTools();
+  }
+  const mcpTools = allMcpTools.map(t => {
+    const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+    mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
+    return {
+      type: "function" as const,
+      function: {
+        name: sanitizedName,
+        description: t.tool.description || `Ferramenta MCP`,
+        parameters: t.tool.inputSchema || { type: "object", properties: {} }
+      }
+    };
+  });
+  const tools = [...builtInTools, ...mcpTools];
+  const chatTools = tools.length > 0 ? tools : undefined;
+
+  const requiresWebTool =
+    Boolean(chatTools) &&
+    WEB_INTENT_PATTERN.test(normalizedPrompt);
 
   const messages: any[] = [];
+  if (chatTools) {
+    messages.push({
+      role: "system",
+      content: "Voce e o Agente MrChicken, um assistente autonomo com acesso a ferramentas. Para pedidos de internet, pesquisa, URLs, sites ou dados atuais, use as ferramentas disponiveis antes de responder. Nunca diga genericamente que nao tem acesso a internet quando ferramentas foram fornecidas. Se Google Search bloquear automacao, tente uma pagina direta do servico quando possivel, como Google Finance para cotacoes."
+    });
+  }
+
   if (options.referenceImagePath) {
     const fs = await import("node:fs");
     const base64Image = fs.readFileSync(options.referenceImagePath).toString("base64");
@@ -747,6 +854,8 @@ async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promi
     extraBody.clear_thinking = true;
   }
 
+  const shouldStream = Boolean(options.onTextChunk) && !chatTools;
+
   if (shouldStream) {
     const responseStream: any = await cerebras.chat.completions.create({
       model,
@@ -766,12 +875,107 @@ async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promi
     }
     return fullText.trim();
   } else {
-    const response = await cerebras.chat.completions.create({
-      model,
-      messages,
-      temperature: 0.7,
-      extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
-    } as any);
-    return response.choices[0]?.message?.content?.trim() || "";
+    let currentMessages = [...messages];
+    let finalResponse = "";
+    let hasUsedTool = false;
+
+    for (let step = 0; step < 5; step++) {
+      const response = await cerebras.chat.completions.create({
+        model,
+        messages: currentMessages,
+        temperature: 0.7,
+        tools: chatTools,
+        tool_choice: chatTools
+          ? (builtInTools.length > 0 && !hasUsedTool
+              ? { type: "function", function: { name: USD_BRL_TOOL_NAME } }
+              : (requiresWebTool && !hasUsedTool ? "required" : "auto"))
+          : undefined,
+        extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+      } as any);
+      
+      const choice = response.choices[0];
+      const message = choice?.message;
+      if (!message) break;
+      
+      currentMessages.push(message);
+      
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        for (const call of message.tool_calls) {
+          if (!("function" in call)) {
+            currentMessages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: `Error: Unsupported tool call type`
+            });
+            continue;
+          }
+
+          const functionCall = call.function;
+          if (functionCall.name === USD_BRL_TOOL_NAME) {
+            try {
+              const toolOutput = await getUsdBrlRateToolResult();
+              hasUsedTool = true;
+              currentMessages.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: toolOutput
+              });
+            } catch (e: any) {
+              const message = e instanceof Error ? e.message : String(e);
+              currentMessages.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: `Error: ${message}`
+              });
+            }
+            continue;
+          }
+
+          const mapping = mcpToolMap.get(functionCall.name);
+          if (mapping) {
+            const [serverId, originalName] = mapping.split("|||");
+            try {
+              if (!mcpManager) {
+                throw new Error("MCP manager nao inicializado para esta consulta.");
+              }
+              const args = functionCall.arguments ? JSON.parse(functionCall.arguments) : {};
+              const toolResult = await withTimeout(
+                mcpManager.callTool(serverId, originalName, args),
+                MCP_TOOL_TIMEOUT_MS,
+                `Ferramenta MCP ${originalName}`
+              );
+              hasUsedTool = true;
+              const toolOutput = toolResult?.content ? (typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content)) : "Success";
+              currentMessages.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: toolOutput
+              });
+            } catch (e: any) {
+               console.error("ERRO NA FERRAMENTA MCP:", originalName, e.message);
+               currentMessages.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: `Error: ${e.message}`
+              });
+            }
+          } else {
+            currentMessages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: `Error: Tool not found`
+            });
+          }
+        }
+        continue;
+      }
+      
+      finalResponse = message.content || "";
+      if (options.onTextChunk) {
+        options.onTextChunk(finalResponse);
+      }
+      break;
+    }
+    return finalResponse.trim();
   }
 }

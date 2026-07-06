@@ -113,10 +113,18 @@ interface Avatar {
 }
 
 type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
+type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
 type PlannedFlow = AgentType | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
 const TURNAROUND_IMAGE_LABELS = ["Base", "Lateral esquerda", "Lateral direita", "Costas", "Topo", "Inferior"];
+const AGENT_MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
+  { value: "gemini", label: "Gemini" },
+  { value: "cerebras", label: "Cerebras + MCP" },
+  { value: "chatgpt", label: "ChatGPT" },
+  { value: "claude", label: "Claude" },
+  { value: "deepseek", label: "DeepSeek" },
+];
 
 interface PendingPlan {
   kind: AgentType;
@@ -124,7 +132,7 @@ interface PendingPlan {
   originalPrompt: string;
   prompt: string;
   explanation: string;
-  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
+  model: AgentModel;
   aspectRatio: string;
   quantity?: string;
   mediaModel?: string;
@@ -264,6 +272,7 @@ const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
 const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
 const CHAT_AUTO_SCROLL_THRESHOLD = 96;
 const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
+const AGENT_MODEL_KEY = "mrchicken:flow:agent_model";
 const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
 const WAKE_COMMAND_PATTERNS = [
@@ -277,6 +286,15 @@ const createChatId = (prefix: string) => {
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 };
+
+const isAgentModel = (value: string | null): value is AgentModel =>
+  AGENT_MODEL_OPTIONS.some((option) => option.value === value);
+
+const normalizeSearchText = (text: string) =>
+  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const shouldUseWebTools = (text: string) =>
+  /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar)\b/.test(normalizeSearchText(text));
 
 function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
@@ -822,7 +840,11 @@ export default function FlowDashboardPage() {
   const hasAppliedModeFromUrlRef = useRef(false);
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
-  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras'>('gemini');
+  const [agentModel, setAgentModel] = useState<AgentModel>(() => {
+    if (typeof window === "undefined") return "gemini";
+    const savedModel = localStorage.getItem(AGENT_MODEL_KEY);
+    return isAgentModel(savedModel) ? savedModel : "gemini";
+  });
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [flyModeActive, setFlyModeActive] = useState(false);
   
@@ -851,6 +873,39 @@ export default function FlowDashboardPage() {
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   const [editing3dBaseImagePath, setEditing3dBaseImagePath] = useState<string | null>(null);
   const [regenerating3dImage, setRegenerating3dImage] = useState<{ messageId: string; imageIndex: number } | null>(null);
+  
+  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const [browserImage, setBrowserImage] = useState<string | null>(null);
+  const [hasCheckedBrowserState, setHasCheckedBrowserState] = useState(false);
+
+  useEffect(() => {
+    if (!isBrowserOpen) return;
+    let isMounted = true;
+    setHasCheckedBrowserState(false);
+    const fetchBrowserState = async () => {
+      try {
+        const res = await fetch('/api/flow/browser-state');
+        if (!res.ok) {
+          if (isMounted) setHasCheckedBrowserState(true);
+          return;
+        }
+        const data = await res.json();
+        if (isMounted) {
+          setBrowserImage(data.image || null);
+          setHasCheckedBrowserState(true);
+        }
+      } catch (err) {
+        if (isMounted) setHasCheckedBrowserState(true);
+      }
+    };
+    
+    fetchBrowserState();
+    const interval = setInterval(fetchBrowserState, 1500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isBrowserOpen]);
   
   useEffect(() => {
     if (hasAppliedModeFromUrlRef.current) return;
@@ -1102,6 +1157,18 @@ export default function FlowDashboardPage() {
           <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#8B5CF6]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
         </label>
 
+        <div className="flex flex-col gap-2">
+          <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Modelo do agente</div>
+          <CustomDropdown
+            value={agentModel}
+            onChange={(value) => {
+              if (isAgentModel(value)) setAgentModel(value);
+            }}
+            options={AGENT_MODEL_OPTIONS}
+            title="Modelo usado pelo chat; Cerebras + MCP habilita ferramentas de navegador."
+          />
+        </div>
+
         {/* Ratio + Quantity */}
         {agentType !== "project" && (
           <div className="grid grid-cols-2 gap-4">
@@ -1308,6 +1375,10 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     localStorage.setItem(USE_CORTEX_MEMORY_KEY, String(useCortexMemory));
   }, [useCortexMemory]);
+
+  useEffect(() => {
+    localStorage.setItem(AGENT_MODEL_KEY, agentModel);
+  }, [agentModel]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -1692,6 +1763,11 @@ export default function FlowDashboardPage() {
       }
     }
 
+    const chatModel: AgentModel = shouldUseWebTools(content) ? "cerebras" : agentModel;
+    if (chatModel !== agentModel) {
+      setAgentModel(chatModel);
+    }
+
     const userMsg: ChatMessageState = {
       id: Date.now().toString(),
       role: 'user',
@@ -1903,7 +1979,7 @@ export default function FlowDashboardPage() {
           avatarId: selectedAvatarId,
           useAvatarPersonality,
           useCortexMemory,
-          model: agentModel,
+          model: chatModel,
           stream: true
         })
       });
@@ -2003,7 +2079,7 @@ export default function FlowDashboardPage() {
           originalPrompt: message,
           prompt: data.action.optimizedPrompt || message,
           explanation: data.action.explanation || "",
-          model: agentModel,
+          model: chatModel,
           aspectRatio: (plannedKind === 'image' || isAdCreative) ? imageRatio : videoRatio,
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
           avatarId: selectedAvatarId,
@@ -2868,6 +2944,14 @@ export default function FlowDashboardPage() {
               )}
               <div className="flex items-center gap-1">
                 <button 
+                  onClick={(e) => { e.stopPropagation(); setIsBrowserOpen(!isBrowserOpen); }} 
+                  className={`p-2 rounded-xl transition-all duration-300 cursor-pointer ${isBrowserOpen ? "bg-[#9D7CFF]/15 text-[#9D7CFF]" : "hover:bg-white/10 hover:text-white text-white/40"}`} 
+                  title="Visão do Agente (Manus)"
+                >
+                  <Square size={16} />
+                </button>
+                <div className="w-[1px] h-4 bg-white/10 mx-1" />
+                <button 
                   onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
                   className="p-2 hover:bg-[#9D7CFF]/15 hover:text-[#9D7CFF] rounded-xl transition-all duration-300 text-white/60 cursor-pointer" 
                   title="Nova conversa"
@@ -3273,6 +3357,60 @@ export default function FlowDashboardPage() {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isBrowserOpen && (
+          <motion.div
+            drag
+            dragMomentum={false}
+            initial={{ opacity: 0, scale: 0.9, x: 20 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.9, x: 20 }}
+            className="absolute top-24 right-4 z-50 w-[420px] rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl flex flex-col gap-2 cursor-grab active:cursor-grabbing"
+          >
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-xs font-medium text-white/70">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                Navegador do Agente
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onPointerDown={(e) => e.stopPropagation()} 
+                  className="text-white/40 hover:text-white transition-colors cursor-pointer" 
+                  title="Atualizar navegador"
+                >
+                  <RefreshCw size={13} />
+                </button>
+                <button 
+                  onPointerDown={(e) => e.stopPropagation()} 
+                  onClick={() => setIsBrowserOpen(false)} 
+                  className="text-white/40 hover:text-white transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div 
+              className="relative aspect-video w-full overflow-hidden rounded-xl bg-black border border-white/5 cursor-default"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {!browserImage && hasCheckedBrowserState && (
+                <div className="absolute inset-0 z-10 flex h-full w-full items-center justify-center bg-black px-4 text-center text-xs text-white/35">
+                  Nenhuma sessao visual do Flow ativa. Ferramentas MCP rodam em segundo plano.
+                </div>
+              )}
+              {browserImage ? (
+                <img src={browserImage} alt="Browser state" className="w-full h-full object-cover" draggable={false} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-white/30 text-center px-4">
+                  Aguardando inicialização do navegador...
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

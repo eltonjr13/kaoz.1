@@ -573,4 +573,19 @@ export class FlowSession {
       }
     }
   }
+
+  /**
+   * Captures a base64 encoded jpeg of the current page.
+   */
+  async captureScreenshotBase64(): Promise<string | null> {
+    if (!this.activePage || this.activePage.isClosed()) {
+      return null;
+    }
+    try {
+      const buffer = await this.activePage.screenshot({ type: 'jpeg', quality: 50, scale: 'css' });
+      return buffer.toString('base64');
+    } catch (err) {
+      return null;
+    }
+  }
 }

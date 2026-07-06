@@ -25,11 +25,13 @@ import {
   ChevronUp,
   Compass,
   Rocket,
-  Activity
+  Activity,
+  Server
 } from "lucide-react";
 import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
 import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia";
+import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1336,7 +1338,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1578,6 +1580,17 @@ export default function SettingsPage() {
         >
           OmniVoice
         </button>
+        <button
+          onClick={() => setActiveTab("mcp")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+            activeTab === "mcp"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          <Server size={14} className={activeTab === "mcp" ? "text-emerald-400" : "text-zinc-500"} />
+          MCP
+        </button>
       </div>
 
       {/* Info Status Board */}
@@ -1627,6 +1640,13 @@ export default function SettingsPage() {
         {activeTab === "omnivoice" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <OmniVoiceSettingsPanel onStatusMessage={setStatusMessage} />
+          </div>
+        )}
+
+        {/* TAB: MCP */}
+        {activeTab === "mcp" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <McpSettingsPanel onStatusMessage={setStatusMessage} />
           </div>
         )}
 
