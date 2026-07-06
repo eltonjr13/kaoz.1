@@ -1,6 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
-import { queryConfiguredAgentCli } from "./services/agent-llm/agent-llm.service.ts";
+import { queryConfiguredAgentCli } from "./services/agent-llm/agent-llm.service";
 
 async function run() {
   console.log("Iniciando query...");
