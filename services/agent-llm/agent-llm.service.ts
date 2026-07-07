@@ -22,7 +22,22 @@ const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 const MCP_TOOL_TIMEOUT_MS = 45_000;
 const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
-const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|playlist|musica|crie|adicione|tocar|toque|pausar|pause|parar|dispositivo|dispositivos|proxima|anterior|volume|fila)\b/;
+const SPOTIFY_SERVER_ID = "spotify-mcp-server-local";
+const SPOTIFY_TOOL_NAMES = new Set([
+  "create_playlist",
+  "search_tracks",
+  "add_tracks_to_playlist",
+  "list_devices",
+  "get_playback_state",
+  "play_music",
+  "pause_music",
+  "next_track",
+  "previous_track",
+  "transfer_playback",
+  "add_to_queue",
+  "set_volume"
+]);
+const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar)\b/;
 const USD_BRL_INTENT_PATTERN = /\b(dolar|usd|usdbrl|usd brl|cotacao do dolar|cotacao dolar)\b/;
 const SPOTIFY_PLAYLIST_CREATE_PATTERN = /\bspotify\b[\s\S]*\bplaylist\b|\bplaylist\b[\s\S]*\bspotify\b/;
 const PLAYLIST_CREATE_VERB_PATTERN = /\b(crie|criar|cria|criar uma|criar nova|nova playlist|create|make)\b/;
@@ -68,6 +83,27 @@ function getForcedSpotifyToolName(normalizedPrompt: string): string | null {
   if (/\b(fila|queue)\b/.test(normalizedPrompt)) return "add_to_queue";
   if (/\b(tocar|toque|play|reproduzir|resume|retomar)\b/.test(normalizedPrompt)) return "play_music";
   return null;
+}
+
+function hasSpotifyIntent(normalizedPrompt: string): boolean {
+  if (/\b(spotify|playlist)\b/.test(normalizedPrompt)) return true;
+  const hasPlaybackAction = /\b(tocar|toque|play|reproduzir|pausar|pause|parar|proxima|proximo|anterior|volume|fila|queue)\b/.test(normalizedPrompt);
+  const hasMusicContext = /\b(musica|som|reproducao|tocando|faixa|artista|album)\b/.test(normalizedPrompt);
+  return hasPlaybackAction && hasMusicContext;
+}
+
+function isSpotifyTool(serverId: string, toolName: string): boolean {
+  return serverId === SPOTIFY_SERVER_ID ||
+    serverId.toLowerCase().includes("spotify") ||
+    SPOTIFY_TOOL_NAMES.has(toolName);
+}
+
+function formatMissingSpotifyToolsMessage(missingToolName?: string): string {
+  const suffix = missingToolName ? ` A ferramenta '${missingToolName}' tambem nao foi encontrada.` : "";
+  return JSON.stringify({
+    message: `Nao consegui executar no Spotify porque o MCP do Spotify nao esta carregado.${suffix} Reinicie o servidor do MrChicken e verifique a configuracao do MCP Spotify.`,
+    action: null
+  });
 }
 
 function extractSpotifyPlaybackArgs(prompt: string, normalizedPrompt: string, toolName: string): Record<string, unknown> {
@@ -862,6 +898,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
 
   const toolIntentPrompt = extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
+  const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   const builtInTools = USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
   const mcpToolMap = new Map<string, string>();
   let mcpManager: any = null;
@@ -871,7 +908,10 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
     mcpManager = await McpManager.getInstance();
     allMcpTools = await mcpManager.getAllTools();
   }
-  let mcpTools = allMcpTools.map(t => {
+  let relevantMcpTools = spotifyIntent
+    ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
+    : allMcpTools;
+  let mcpTools = relevantMcpTools.map(t => {
     const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
     mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
     return {
@@ -890,11 +930,14 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
     ? mcpTools.find(t => t.function.name === forcedSpotifyToolName)
     : undefined;
 
-  if (forcedSpotifyToolName && !forcedSpotifyTool && mcpManager) {
+  if (((forcedSpotifyToolName && !forcedSpotifyTool) || (spotifyIntent && relevantMcpTools.length === 0)) && mcpManager) {
     await mcpManager.refreshConnections();
     allMcpTools = await mcpManager.getAllTools();
+    relevantMcpTools = spotifyIntent
+      ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
+      : allMcpTools;
     mcpToolMap.clear();
-    mcpTools = allMcpTools.map(t => {
+    mcpTools = relevantMcpTools.map(t => {
       const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
       mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
       return {
@@ -914,8 +957,11 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   const forcedSpotifyToolMapping = forcedSpotifyTool
     ? mcpToolMap.get(forcedSpotifyTool.function.name)
     : undefined;
+  if (spotifyIntent && mcpTools.length === 0) {
+    return formatMissingSpotifyToolsMessage();
+  }
   if (forcedSpotifyToolName && !forcedSpotifyTool) {
-    throw new Error(`Ferramenta Spotify '${forcedSpotifyToolName}' nao esta carregada no MCP. Reinicie o servidor do MrChicken para recarregar as ferramentas.`);
+    return formatMissingSpotifyToolsMessage(forcedSpotifyToolName);
   }
 
   const requiresWebTool =
@@ -926,7 +972,9 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   if (chatTools) {
     messages.push({
       role: "system",
-      content: "Voce e o Agente MrChicken, um assistente autonomo. VOCE POSSUI FERRAMENTAS REAIS DO SPOTIFY CONECTADAS: create_playlist, search_tracks, add_tracks_to_playlist, list_devices, get_playback_state, play_music, pause_music, next_track, previous_track, transfer_playback, add_to_queue e set_volume. REGRA CRITICA: quando o usuario pedir qualquer acao do Spotify, VOCE DEVE emitir um TOOL CALL real para a ferramenta adequada. NUNCA responda apenas com texto dizendo que tentou, que pausou, que nao ha ferramenta ou que nao tem acesso. NUNCA invente resultados. Se a ferramenta retornar isError ou texto de erro, informe a falha real ao usuario."
+      content: spotifyIntent
+        ? "Voce e o Agente MrChicken, um assistente autonomo. A ultima mensagem do usuario pede uma acao no Spotify. Use as ferramentas reais do Spotify para executar a acao antes de responder. Para pedidos compostos, raciocine em passos: procure faixas quando necessario, crie playlist quando solicitado, adicione faixas, controle playback/dispositivo/fila/volume conforme o pedido. NUNCA responda apenas com texto dizendo que tentou. NUNCA invente resultados. Se uma ferramenta retornar erro, informe a falha real ao usuario. No fim, responda em JSON valido no formato esperado pelo chat."
+        : "Voce e o Agente MrChicken, um assistente autonomo. Use ferramentas externas quando a ultima mensagem do usuario exigir dados atuais, navegacao ou execucao real. Se a ferramenta retornar erro, informe a falha concreta; nunca invente resultados."
     });
   }
 
@@ -987,7 +1035,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
         ? { type: "function", function: { name: forcedSpotifyTool.function.name } }
         : builtInTools.length > 0 && !hasUsedTool
         ? { type: "function", function: { name: USD_BRL_TOOL_NAME } }
-        : requiresWebTool && !hasUsedTool
+        : (spotifyIntent || requiresWebTool) && !hasUsedTool
         ? "required"
         : "auto";
 
