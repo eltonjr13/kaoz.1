@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
+import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
 
 type ProcessResult = {
   stdout: string;
@@ -973,7 +974,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
     messages.push({
       role: "system",
       content: spotifyIntent
-        ? "Voce e o Agente MrChicken, um assistente autonomo. A ultima mensagem do usuario pede uma acao no Spotify. Use as ferramentas reais do Spotify para executar a acao antes de responder. Para pedidos compostos, raciocine em passos: procure faixas quando necessario, crie playlist quando solicitado, adicione faixas, controle playback/dispositivo/fila/volume conforme o pedido. NUNCA responda apenas com texto dizendo que tentou. NUNCA invente resultados. Se uma ferramenta retornar erro, informe a falha real ao usuario. No fim, responda em JSON valido no formato esperado pelo chat."
+        ? "Voce e o Agente MrChicken, um assistente autonomo. A ultima mensagem do usuario pede uma acao no Spotify. Use as ferramentas reais do Spotify para executar a acao antes de responder. Para pedidos compostos, raciocine em passos: procure faixas quando necessario, crie playlist quando solicitado, adicione faixas, controle playback/dispositivo/fila/volume conforme o pedido. NUNCA responda apenas com texto dizendo que tentou. NUNCA invente resultados. Se uma ferramenta retornar erro, informe a falha real ao usuario. Resuma resultados do Spotify em linguagem natural curta; nunca copie JSON bruto, IDs de dispositivo, URIs ou campos tecnicos na mensagem final. No fim, responda em JSON valido no formato esperado pelo chat."
         : "Voce e o Agente MrChicken, um assistente autonomo. Use ferramentas externas quando a ultima mensagem do usuario exigir dados atuais, navegacao ou execucao real. Se a ferramenta retornar erro, informe a falha concreta; nunca invente resultados."
     });
   }
@@ -1144,13 +1145,17 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
           : "Ferramenta executada.";
         if (toolResult?.isError) {
           return JSON.stringify({
-            message: `Erro ao executar ${originalName}: ${toolOutput}`,
+            message: isSpotifyTool(serverId, originalName)
+              ? formatSpotifyToolResponse(originalName, toolOutput, true)
+              : `Erro ao executar ${originalName}: ${toolOutput}`,
             action: null
           });
         }
 
         return JSON.stringify({
-          message: toolOutput,
+          message: isSpotifyTool(serverId, originalName)
+            ? formatSpotifyToolResponse(originalName, toolOutput)
+            : toolOutput,
           action: null
         });
       }

@@ -5,6 +5,7 @@ import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-format";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +152,7 @@ async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<C
   const result = await mcpManager.callTool(tool.serverId, tool.tool.name, command.args);
   const text = extractMcpText(result);
   return {
-    message: result?.isError ? `Erro no Spotify: ${text}` : text,
+    message: formatSpotifyToolResponse(command.toolName, text, result?.isError === true),
     action: null,
   };
 }
