@@ -972,15 +972,15 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     }
   };
 
-  const handleAction = async (action: string, successText: string) => {
+  const handleAction = async (actionProvider: TTSProviderName, action: string, successText: string) => {
     setBusyAction(action);
     try {
       if (action === "test") {
-        if (provider === "cartesia") {
+        if (actionProvider === "cartesia") {
           const testAudio = playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
           await testAudio.promise;
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
-        } else if (provider === "fish-audio") {
+        } else if (actionProvider === "fish-audio") {
           const res = await fetch("/api/fish-audio/speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1004,15 +1004,15 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
         }
       } else if (action === "save") {
-        const payload: Partial<TTSConfig> = { provider };
-        if (provider === "cartesia") {
+        const payload: Partial<TTSConfig> = { provider: actionProvider };
+        if (actionProvider === "cartesia") {
           payload.cartesiaApiKey = cartesiaApiKey;
           payload.cartesiaVoiceId = cartesiaVoiceId;
           payload.cartesiaModel = cartesiaModel;
           payload.cartesiaSpeed = cartesiaSpeed;
           payload.cartesiaEmotion = cartesiaEmotion;
         }
-        if (provider === "fish-audio") {
+        if (actionProvider === "fish-audio") {
           payload.fishAudioApiKey = fishAudioApiKey;
           payload.fishAudioReferenceId = fishAudioReferenceId;
           payload.fishAudioModel = fishAudioModel;
@@ -1066,7 +1066,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
             onSpeedChange={setCartesiaSpeed}
             onEmotionChange={setCartesiaEmotion}
             busyAction={busyAction}
-            onAction={handleAction}
+            onAction={(action, successText) => handleAction(option.id, action, successText)}
           />
         ))}
       </div>
