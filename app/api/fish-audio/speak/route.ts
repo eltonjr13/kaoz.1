@@ -20,6 +20,21 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function handleFishAudioError(error: unknown) {
+  if (error instanceof FishAudioApiError) {
+    if (error.status === 402) {
+      console.warn("[Fish Audio Speak] Saldo de API insuficiente.");
+    } else {
+      console.warn("[Fish Audio Speak] Erro da API Fish Audio:", error.message);
+    }
+    return jsonError(error.message, error.status);
+  }
+
+  console.error("[Fish Audio Speak] Erro inesperado ao gerar voz:", error);
+  const message = error instanceof Error ? error.message : "Erro desconhecido no Fish Audio.";
+  return jsonError(message, 500);
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
@@ -43,17 +58,6 @@ export async function POST(request: Request) {
       audioPath: result.audioPath,
     });
   } catch (error) {
-    if (error instanceof FishAudioApiError) {
-      if (error.status === 402) {
-        console.warn("[Fish Audio Speak] Saldo de API insuficiente.");
-      } else {
-        console.warn("[Fish Audio Speak] Erro da API Fish Audio:", error.message);
-      }
-      return jsonError(error.message, error.status);
-    }
-
-    console.error("[Fish Audio Speak] Erro inesperado ao gerar voz:", error);
-    const message = error instanceof Error ? error.message : "Erro desconhecido no Fish Audio.";
-    return jsonError(message, 500);
+    return handleFishAudioError(error);
   }
 }
