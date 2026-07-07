@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { generateFishAudioSpeech } from "@/lib/fish-audio";
+import { FishAudioApiError, generateFishAudioSpeech } from "@/lib/fish-audio";
 import { readTTSConfig } from "@/services/tts/tts.settings";
 
 export const runtime = "nodejs";
@@ -43,7 +43,16 @@ export async function POST(request: Request) {
       audioPath: result.audioPath,
     });
   } catch (error) {
-    console.error("[Fish Audio Speak] Erro ao gerar voz:", error);
+    if (error instanceof FishAudioApiError) {
+      if (error.status === 402) {
+        console.warn("[Fish Audio Speak] Saldo de API insuficiente.");
+      } else {
+        console.warn("[Fish Audio Speak] Erro da API Fish Audio:", error.message);
+      }
+      return jsonError(error.message, error.status);
+    }
+
+    console.error("[Fish Audio Speak] Erro inesperado ao gerar voz:", error);
     const message = error instanceof Error ? error.message : "Erro desconhecido no Fish Audio.";
     return jsonError(message, 500);
   }
