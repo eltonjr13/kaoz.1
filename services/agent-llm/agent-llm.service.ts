@@ -32,6 +32,26 @@ function normalizeToolIntentText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function extractLatestUserPrompt(prompt: string): string {
+  const userMarkerPattern = /\nUSU[^\n]*:\n/g;
+  let lastUserMarker: RegExpExecArray | null = null;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = userMarkerPattern.exec(prompt)) !== null) {
+    lastUserMarker = match;
+  }
+
+  if (!lastUserMarker) return prompt;
+
+  const afterUserMarker = prompt.slice(lastUserMarker.index + lastUserMarker[0].length);
+  const nextSectionIndex = afterUserMarker.search(/\n\n(?:MR CHICKEN|\[INSTRU)/);
+  const latestUserPrompt = nextSectionIndex >= 0
+    ? afterUserMarker.slice(0, nextSectionIndex)
+    : afterUserMarker;
+
+  return latestUserPrompt.trim() || prompt;
+}
+
 function shouldForceSpotifyPlaylistCreate(normalizedPrompt: string): boolean {
   return SPOTIFY_PLAYLIST_CREATE_PATTERN.test(normalizedPrompt) &&
     PLAYLIST_CREATE_VERB_PATTERN.test(normalizedPrompt);
@@ -840,7 +860,8 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   const { OpenAI } = await import("openai");
   const cerebras = new OpenAI({ apiKey, baseURL });
 
-  const normalizedPrompt = normalizeToolIntentText(prompt);
+  const toolIntentPrompt = extractLatestUserPrompt(prompt);
+  const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const builtInTools = USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
   const mcpToolMap = new Map<string, string>();
   let mcpManager: any = null;
@@ -850,7 +871,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
     mcpManager = await McpManager.getInstance();
     allMcpTools = await mcpManager.getAllTools();
   }
-  const mcpTools = allMcpTools.map(t => {
+  let mcpTools = allMcpTools.map(t => {
     const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
     mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
     return {
@@ -862,12 +883,34 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
       }
     };
   });
-  const tools = [...builtInTools, ...mcpTools];
-  const chatTools = tools.length > 0 ? tools : undefined;
+  let tools = [...builtInTools, ...mcpTools];
+  let chatTools = tools.length > 0 ? tools : undefined;
   const forcedSpotifyToolName = getForcedSpotifyToolName(normalizedPrompt);
-  const forcedSpotifyTool = forcedSpotifyToolName
+  let forcedSpotifyTool = forcedSpotifyToolName
     ? mcpTools.find(t => t.function.name === forcedSpotifyToolName)
     : undefined;
+
+  if (forcedSpotifyToolName && !forcedSpotifyTool && mcpManager) {
+    await mcpManager.refreshConnections();
+    allMcpTools = await mcpManager.getAllTools();
+    mcpToolMap.clear();
+    mcpTools = allMcpTools.map(t => {
+      const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+      mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
+      return {
+        type: "function" as const,
+        function: {
+          name: sanitizedName,
+          description: t.tool.description || `Ferramenta MCP`,
+          parameters: t.tool.inputSchema || { type: "object", properties: {} }
+        }
+      };
+    });
+    tools = [...builtInTools, ...mcpTools];
+    chatTools = tools.length > 0 ? tools : undefined;
+    forcedSpotifyTool = mcpTools.find(t => t.function.name === forcedSpotifyToolName);
+  }
+
   const forcedSpotifyToolMapping = forcedSpotifyTool
     ? mcpToolMap.get(forcedSpotifyTool.function.name)
     : undefined;
@@ -1041,8 +1084,8 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
 
         const [serverId, originalName] = forcedSpotifyToolMapping.split("|||");
         const args = originalName === "create_playlist"
-          ? extractSpotifyPlaylistCreateArgs(prompt, normalizedPrompt)
-          : extractSpotifyPlaybackArgs(prompt, normalizedPrompt, originalName);
+          ? extractSpotifyPlaylistCreateArgs(toolIntentPrompt, normalizedPrompt)
+          : extractSpotifyPlaybackArgs(toolIntentPrompt, normalizedPrompt, originalName);
         const toolResult: any = await withTimeout(
           mcpManager.callTool(serverId, originalName, args),
           MCP_TOOL_TIMEOUT_MS,
