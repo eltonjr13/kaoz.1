@@ -122,6 +122,12 @@ const TTS_OPTIONS: TTSOption[] = [
     icon: Cpu,
   },
   {
+    id: "fish-audio",
+    name: "Fish Audio S2.1 Pro",
+    description: "TTS via API Fish Audio usando o modelo s2-pro.",
+    icon: Volume2,
+  },
+  {
     id: "browser",
     name: "Navegador",
     description: "Voz nativa do navegador (Baixa qualidade).",
@@ -879,6 +885,9 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
   const [cartesiaModel, setCartesiaModel] = useState("sonic-3.5");
   const [cartesiaSpeed, setCartesiaSpeed] = useState("auto");
   const [cartesiaEmotion, setCartesiaEmotion] = useState("auto");
+  const [fishAudioApiKey, setFishAudioApiKey] = useState("");
+  const [fishAudioReferenceId, setFishAudioReferenceId] = useState("");
+  const [fishAudioModel, setFishAudioModel] = useState("s2-pro");
   
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -896,6 +905,9 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     if (model === "sonic-multilingual") model = "sonic-3";
     setCartesiaModel(model);
     setCartesiaSpeed(nextConfig.cartesiaSpeed || "auto");
+    setFishAudioApiKey(nextConfig.fishAudioApiKey || "");
+    setFishAudioReferenceId(nextConfig.fishAudioReferenceId || "");
+    setFishAudioModel(nextConfig.fishAudioModel || "s2-pro");
     
     let emotion = nextConfig.cartesiaEmotion || "auto";
     if (emotion === "happy") emotion = "positivity";
@@ -968,6 +980,28 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
           const testAudio = playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
           await testAudio.promise;
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
+        } else if (provider === "fish-audio") {
+          const res = await fetch("/api/fish-audio/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: "Ola! Esta e uma mensagem de teste do sistema MrChicken.",
+              apiKey: fishAudioApiKey,
+              referenceId: fishAudioReferenceId,
+              model: fishAudioModel,
+            }),
+          });
+          const data = await res.json() as { audioPath?: string; error?: string };
+          if (!res.ok || !data.audioPath) {
+            throw new Error(data.error || "Nao foi possivel gerar a voz Fish Audio.");
+          }
+          const audio = new Audio(data.audioPath);
+          await new Promise<void>((resolve, reject) => {
+            audio.onended = () => resolve();
+            audio.onerror = () => reject(new Error("Nao foi possivel tocar o audio gerado."));
+            void audio.play().catch(reject);
+          });
+          onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
         }
       } else if (action === "save") {
         const payload: Partial<TTSConfig> = { provider };
@@ -977,6 +1011,11 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
           payload.cartesiaModel = cartesiaModel;
           payload.cartesiaSpeed = cartesiaSpeed;
           payload.cartesiaEmotion = cartesiaEmotion;
+        }
+        if (provider === "fish-audio") {
+          payload.fishAudioApiKey = fishAudioApiKey;
+          payload.fishAudioReferenceId = fishAudioReferenceId;
+          payload.fishAudioModel = fishAudioModel;
         }
         
         const res = await fetch("/api/tts/config", {
@@ -1014,16 +1053,16 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
             disabled={hasBusyAction}
             onSelect={() => handleSelectProvider(option.id)}
             onToggleExpand={() => setExpandedCard(prev => prev === option.id ? null : option.id)}
-            apiKey={cartesiaApiKey}
-            voiceId={cartesiaVoiceId}
-            model={cartesiaModel}
+            apiKey={option.id === "fish-audio" ? fishAudioApiKey : cartesiaApiKey}
+            voiceId={option.id === "fish-audio" ? fishAudioReferenceId : cartesiaVoiceId}
+            model={option.id === "fish-audio" ? fishAudioModel : cartesiaModel}
             speed={cartesiaSpeed}
             emotion={cartesiaEmotion}
             availableVoices={availableVoices}
             isLoadingVoices={isLoadingVoices}
-            onApiKeyChange={setCartesiaApiKey}
-            onVoiceIdChange={setCartesiaVoiceId}
-            onModelChange={setCartesiaModel}
+            onApiKeyChange={option.id === "fish-audio" ? setFishAudioApiKey : setCartesiaApiKey}
+            onVoiceIdChange={option.id === "fish-audio" ? setFishAudioReferenceId : setCartesiaVoiceId}
+            onModelChange={option.id === "fish-audio" ? setFishAudioModel : setCartesiaModel}
             onSpeedChange={setCartesiaSpeed}
             onEmotionChange={setCartesiaEmotion}
             busyAction={busyAction}

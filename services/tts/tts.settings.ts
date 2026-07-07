@@ -7,7 +7,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, "tts-settings.json");
 const DEFAULT_PROVIDER: TTSProviderName = "omnivoice";
 
 export function normalizeTTSProvider(value: unknown): TTSProviderName {
-  if (value === "cartesia" || value === "browser" || value === "elevenlabs" || value === "omnivoice") return value;
+  if (value === "cartesia" || value === "browser" || value === "elevenlabs" || value === "omnivoice" || value === "fish-audio") return value;
   return DEFAULT_PROVIDER;
 }
 
@@ -29,6 +29,10 @@ function normalizeModel(model: string | undefined): string {
   return model;
 }
 
+function normalizeFishAudioModel(model: string | undefined): string {
+  return model || "s2-pro";
+}
+
 export async function readTTSConfig(): Promise<TTSConfig> {
   try {
     const settings = JSON.parse(await readFile(SETTINGS_FILE, "utf8")) as Partial<TTSConfig>;
@@ -39,6 +43,9 @@ export async function readTTSConfig(): Promise<TTSConfig> {
       cartesiaModel: normalizeModel(settings.cartesiaModel),
       cartesiaSpeed: normalizeSpeed(settings.cartesiaSpeed),
       cartesiaEmotion: normalizeEmotion(settings.cartesiaEmotion),
+      fishAudioApiKey: settings.fishAudioApiKey || process.env.FISH_API_KEY || "",
+      fishAudioReferenceId: settings.fishAudioReferenceId || "",
+      fishAudioModel: normalizeFishAudioModel(settings.fishAudioModel),
     };
   } catch {
     return {
@@ -48,6 +55,9 @@ export async function readTTSConfig(): Promise<TTSConfig> {
       cartesiaModel: "sonic-3.5",
       cartesiaSpeed: "auto",
       cartesiaEmotion: "auto",
+      fishAudioApiKey: process.env.FISH_API_KEY || "",
+      fishAudioReferenceId: "",
+      fishAudioModel: "s2-pro",
     };
   }
 }
@@ -61,6 +71,9 @@ export async function writeTTSConfig(config: Partial<TTSConfig>): Promise<TTSCon
     cartesiaModel: config.cartesiaModel !== undefined ? normalizeModel(config.cartesiaModel) : current.cartesiaModel,
     cartesiaSpeed: config.cartesiaSpeed !== undefined ? normalizeSpeed(config.cartesiaSpeed) : current.cartesiaSpeed,
     cartesiaEmotion: config.cartesiaEmotion !== undefined ? normalizeEmotion(config.cartesiaEmotion) : current.cartesiaEmotion,
+    fishAudioApiKey: config.fishAudioApiKey !== undefined ? config.fishAudioApiKey : current.fishAudioApiKey,
+    fishAudioReferenceId: config.fishAudioReferenceId !== undefined ? config.fishAudioReferenceId : current.fishAudioReferenceId,
+    fishAudioModel: config.fishAudioModel !== undefined ? normalizeFishAudioModel(config.fishAudioModel) : current.fishAudioModel,
   };
   
   await mkdir(DATA_DIR, { recursive: true });

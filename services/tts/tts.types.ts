@@ -1,4 +1,4 @@
-export type TTSProviderName = "cartesia" | "browser" | "elevenlabs" | "omnivoice";
+export type TTSProviderName = "cartesia" | "browser" | "elevenlabs" | "omnivoice" | "fish-audio";
 
 export interface TTSConfig {
   provider: TTSProviderName;
@@ -7,6 +7,9 @@ export interface TTSConfig {
   cartesiaModel?: string; // e.g. "sonic-english" ou "sonic"
   cartesiaSpeed?: string; // e.g. "normal", "fast", "slow"
   cartesiaEmotion?: string; // e.g. "happy", "sad", "anger"
+  fishAudioApiKey?: string;
+  fishAudioReferenceId?: string;
+  fishAudioModel?: string;
 }
 
 export interface TTSProviderStatus {

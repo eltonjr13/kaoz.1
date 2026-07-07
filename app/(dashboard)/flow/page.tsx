@@ -1702,7 +1702,7 @@ export default function FlowDashboardPage() {
         });
       } else {
         // Fallback to OmniVoice
-        const res = await fetch("/api/omnivoice/speak", {
+        const res = await fetch(ttsConfig?.provider === "fish-audio" ? "/api/fish-audio/speak" : "/api/omnivoice/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text })
@@ -1930,7 +1930,7 @@ export default function FlowDashboardPage() {
             const promise = new Promise<void>(async (resolve, reject) => {
               try {
                 if (isCancelled) { resolve(); return; }
-                const res = await fetch("/api/omnivoice/speak", {
+                const res = await fetch(ttsConfig?.provider === "fish-audio" ? "/api/fish-audio/speak" : "/api/omnivoice/speak", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ text: textToSpeak })

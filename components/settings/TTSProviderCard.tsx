@@ -64,6 +64,14 @@ export function TTSProviderCard({
 }: TTSProviderCardProps) {
   const Icon = option.icon;
   const hasBusyAction = Boolean(busyAction);
+  const isCartesia = provider === "cartesia";
+  const isFishAudio = provider === "fish-audio";
+  const keyUrl = isFishAudio ? "https://fish.audio/go-api/api-keys" : "https://play.cartesia.ai/console";
+  const keyPlaceholder = isFishAudio ? "FISH_API_KEY" : "sk_...";
+  const voiceLabel = isFishAudio ? "Reference ID da voz" : "ID de Voz Personalizado";
+  const voicePlaceholder = isFishAudio
+    ? "Opcional: cole o reference_id da voz Fish Audio"
+    : "Cole o UUID do seu clone de voz";
   
   return (
     <div className={`relative flex flex-col rounded-2xl border transition-all overflow-hidden ${
@@ -99,7 +107,7 @@ export function TTSProviderCard({
           <p className="text-[11px] text-zinc-500 mb-3">{option.description}</p>
           
           <div className="flex flex-wrap gap-2">
-            {(provider === "cartesia" && voiceId) && (
+            {(isCartesia && voiceId) && (
               <span className="inline-flex rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
                 {availableVoices.find(v => v.id === voiceId)?.name || voiceId}
               </span>
@@ -134,18 +142,19 @@ export function TTSProviderCard({
             <label className="space-y-1.5 md:col-span-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex justify-between">
                 API Key
-                <a href="https://play.cartesia.ai/console" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">Obter Key</a>
+                <a href={keyUrl} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">Obter Key</a>
               </span>
               <input
                 type="password"
                 value={apiKey}
                 onChange={(event) => onApiKeyChange(event.target.value)}
                 className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                placeholder="sk_..."
+                placeholder={keyPlaceholder}
               />
             </label>
             
-            <div className="space-y-3 md:col-span-2">
+            {isCartesia && (
+              <div className="space-y-3 md:col-span-2">
               <label className="space-y-1.5 block">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center justify-between">
                   <span>Selecionar Voz da Biblioteca</span>
@@ -171,31 +180,54 @@ export function TTSProviderCard({
               </label>
 
               <label className="space-y-1.5 block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">ID de Voz Personalizado (UUID)</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{voiceLabel}</span>
                 <input
                   type="text"
                   value={voiceId}
                   onChange={(event) => onVoiceIdChange(event.target.value)}
                   className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                  placeholder="Cole o UUID do seu clone de voz (ex: db6b0ed5-d5d3-463d-ae85-518a07d3c2b4)"
+                  placeholder={voicePlaceholder}
                 />
               </label>
-            </div>
+              </div>
+            )}
 
-            <label className="space-y-1.5">
+            {isFishAudio && (
+              <label className="space-y-1.5 block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{voiceLabel}</span>
+                <input
+                  type="text"
+                  value={voiceId}
+                  onChange={(event) => onVoiceIdChange(event.target.value)}
+                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                  placeholder={voicePlaceholder}
+                />
+              </label>
+            )}
+
+            {!isFishAudio && (
+              <label className="space-y-1.5">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Modelo</span>
               <select
                 value={model}
                 onChange={(event) => onModelChange(event.target.value)}
                 className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
               >
-                <option value="sonic-3.5" className="bg-zinc-900 text-zinc-200">Sonic 3.5 (Flagship)</option>
-                <option value="sonic-3" className="bg-zinc-900 text-zinc-200">Sonic 3 (Standard)</option>
-                <option value="sonic-turbo" className="bg-zinc-900 text-zinc-200">Sonic Turbo (Ultra-low latency)</option>
+                {isFishAudio ? (
+                  <option value="s2-pro" className="bg-zinc-900 text-zinc-200">S2.1 Pro</option>
+                ) : (
+                  <>
+                    <option value="sonic-3.5" className="bg-zinc-900 text-zinc-200">Sonic 3.5 (Flagship)</option>
+                    <option value="sonic-3" className="bg-zinc-900 text-zinc-200">Sonic 3 (Standard)</option>
+                    <option value="sonic-turbo" className="bg-zinc-900 text-zinc-200">Sonic Turbo (Ultra-low latency)</option>
+                  </>
+                )}
               </select>
-            </label>
+              </label>
+            )}
 
-            <label className="space-y-1.5">
+            {!isFishAudio && (
+              <label className="space-y-1.5">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Velocidade</span>
               <select
                 value={speed}
@@ -209,9 +241,11 @@ export function TTSProviderCard({
                 <option value="fast" className="bg-zinc-900 text-zinc-200">Rápida</option>
                 <option value="fastest" className="bg-zinc-900 text-zinc-200">Muito Rápida</option>
               </select>
-            </label>
+              </label>
+            )}
 
-            <label className="space-y-1.5">
+            {!isFishAudio && (
+              <label className="space-y-1.5">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Emoção</span>
               <select
                 value={emotion}
@@ -225,13 +259,14 @@ export function TTSProviderCard({
                 <option value="curiosity" className="bg-zinc-900 text-zinc-200">Curioso (Curiosity)</option>
                 <option value="surprise" className="bg-zinc-900 text-zinc-200">Surpresa (Surprise)</option>
               </select>
-            </label>
+              </label>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button 
               onClick={() => onAction("test", "Voz testada com sucesso.")} 
-              disabled={hasBusyAction || !apiKey || !voiceId}
+              disabled={hasBusyAction || !apiKey || (isCartesia && !voiceId)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-bold text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {busyAction === "test" ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
