@@ -9,6 +9,8 @@ import { queryConfiguredAgentCli, runCerebrasApi } from '@/services/agent-llm/ag
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
 type QueryWebLLMOptions = {
   onTextChunk?: (chunk: string) => void;
+  browserFallbackPrompt?: string;
+  useExternalTools?: boolean;
 };
 
 export class FlowLLMAutomation {
@@ -221,6 +223,7 @@ export class FlowLLMAutomation {
           return this.cleanLLMResponse(await runCerebrasApi(prompt, {
             referenceImagePath,
             onTextChunk: options?.onTextChunk,
+            useExternalTools: options?.useExternalTools,
           }));
       }
     } catch (err) {
@@ -341,16 +344,17 @@ export class FlowLLMAutomation {
 
     try {
       const page = await this.session.getAutomationPage();
+      const browserPrompt = options.browserFallbackPrompt || prompt;
       
       switch (model) {
         case 'gemini':
-          return await this.automateGemini(page, prompt, referenceImagePath);
+          return await this.automateGemini(page, browserPrompt, referenceImagePath);
         case 'chatgpt':
-          return await this.automateChatGPT(page, prompt, referenceImagePath);
+          return await this.automateChatGPT(page, browserPrompt, referenceImagePath);
         case 'deepseek':
-          return await this.automateDeepSeek(page, prompt, referenceImagePath);
+          return await this.automateDeepSeek(page, browserPrompt, referenceImagePath);
         case 'claude':
-          return await this.automateClaude(page, prompt, referenceImagePath);
+          return await this.automateClaude(page, browserPrompt, referenceImagePath);
         default:
           throw new Error(`Modelo ${model} não suportado.`);
       }

@@ -16,6 +16,7 @@ type QueryOptions = {
   cwd?: string;
   referenceImagePath?: string;
   onTextChunk?: (chunk: string) => void;
+  useExternalTools?: boolean;
 };
 
 const MAX_OUTPUT_CHARS = 250_000;
@@ -899,12 +900,13 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
 
   const toolIntentPrompt = extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
+  const useExternalTools = options.useExternalTools !== false;
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
-  const builtInTools = USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
+  const builtInTools = useExternalTools && USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
   const mcpToolMap = new Map<string, string>();
   let mcpManager: any = null;
   let allMcpTools: Array<{ serverId: string; tool: { name: string; description?: string; inputSchema?: unknown } }> = [];
-  if (builtInTools.length === 0) {
+  if (useExternalTools && builtInTools.length === 0) {
     const { McpManager } = await import("../mcp/mcp.manager");
     mcpManager = await McpManager.getInstance();
     allMcpTools = await mcpManager.getAllTools();

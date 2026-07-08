@@ -28,6 +28,7 @@ type SpotifyDirectCommand = {
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
 const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras"]);
+const EXTERNAL_TOOL_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|musica|playlist|tocando|volume|fila)\b/;
 
 function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
   if (!body || typeof body !== "object" || !Array.isArray((body as FlowChatRequestBody).messages)) {
@@ -116,6 +117,11 @@ function detectSpotifyDirectCommand(messages: ChatMessage[]): SpotifyDirectComma
   }
 
   return null;
+}
+
+function needsExternalTools(messages: ChatMessage[]): boolean {
+  const text = getLatestUserMessageText(messages);
+  return EXTERNAL_TOOL_INTENT_PATTERN.test(normalizeCommandText(text));
 }
 
 function extractMcpText(toolResult: any): string {
@@ -315,14 +321,14 @@ export async function POST(request: Request) {
     const cortexMemoryEnabled = useCortexMemory !== false;
     const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
     const modelName = resolveFlowChatModel(model);
-    const hasExternalTools = modelName === "cerebras";
+    const hasExternalTools = modelName === "cerebras" && needsExternalTools(messages);
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
 
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
       messages,
       personality,
-      async (compiledPrompt: string, imagePath?: string, queryOptions?: { onTextChunk?: (chunk: string) => void }) => {
+      async (compiledPrompt: string, imagePath?: string, queryOptions?: { onTextChunk?: (chunk: string) => void; browserFallbackPrompt?: string; useExternalTools?: boolean }) => {
         return await flowProvider.queryWebLLM(modelName, compiledPrompt, imagePath, queryOptions);
       },
       referenceImagePath,

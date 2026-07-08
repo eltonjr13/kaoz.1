@@ -725,10 +725,16 @@ export interface ChatAgentResponse {
   action: FlowDecision | null;
 }
 
+type ChatWithAgentOptions = {
+  useCortexMemory?: boolean;
+  onMessageChunk?: (chunk: string) => void;
+  hasExternalTools?: boolean;
+};
+
 type ExecuteWebQuery = (
   compiledPrompt: string,
   referenceImagePath?: string,
-  options?: { onTextChunk?: (chunk: string) => void }
+  options?: { onTextChunk?: (chunk: string) => void; browserFallbackPrompt?: string; useExternalTools?: boolean }
 ) => Promise<string>;
 
 function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
@@ -738,12 +744,86 @@ function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
   return executeWebQuery;
 }
 
+function isLikelyActionRequest(messages: ChatMessage[]): boolean {
+  const normalized = normalizeIntentText(getLatestUserText(messages))
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return false;
+
+  return /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/.test(normalized);
+}
+
+function buildChatPrompt(messages: ChatMessage[], systemInstruction: string, finalInstruction: string): string {
+  let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n[HISTORICO DA CONVERSA]:\n`;
+  for (const m of messages) {
+    const roleName = m.role === 'user' ? 'USUARIO' : 'MR CHICKEN (VOCE)';
+    compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
+  }
+  return `${compiledPrompt}${finalInstruction}`;
+}
+
+function shouldUseStructuredChatResponse(
+  options: ChatWithAgentOptions | undefined,
+  referenceImagePath: string | undefined,
+  messages: ChatMessage[]
+): boolean {
+  return Boolean(options?.hasExternalTools) || Boolean(referenceImagePath) || isLikelyActionRequest(messages);
+}
+
+function buildPlainChatPrompt(messages: ChatMessage[], personalityContext: string, useCortexMemory?: boolean): string {
+  const plainSystemInstruction = `
+${personalityContext}
+
+Modo Cortex: ${useCortexMemory === false ? "desligado" : "ligado"}.
+Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
+
+Responda em portugues, diretamente em texto normal. Nao retorne JSON, nao use bloco de codigo para a resposta inteira e nao inclua a chave "message".
+Seja mais util que uma execucao literal: identifique a intencao real do usuario, recomende o proximo passo mais forte e explique o criterio quando isso ajudar.
+Para pedidos abertos ou estrategicos, responda com diagnostico curto, plano pratico e tradeoffs relevantes. Para perguntas simples, seja curto.
+Quando houver ambiguidade leve, assuma o caminho mais provavel e diga a suposicao. Quando a informacao exigir internet, arquivos, terminal ou ferramentas e elas nao estiverem disponiveis neste modo, diga concretamente que nao tem acesso no momento.
+`;
+
+  const plainFinalInstruction = `[INSTRUCAO FINAL E CRITICA PARA A IA]:
+Voce esta executando no caminho rapido por API/CLI. Priorize baixa latencia: responda agora em texto natural, sem JSON e sem planejar uso de ferramentas indisponiveis.
+Nao diga "vou analisar", "vou procurar" ou "consultando". Entregue a melhor resposta possivel com o historico atual.`;
+
+  return buildChatPrompt(messages, plainSystemInstruction, plainFinalInstruction);
+}
+
+function parseChatModelResponse(responseText: string, messages: ChatMessage[], requiresStructuredResponse: boolean): ChatAgentResponse {
+  if (requiresStructuredResponse) {
+    const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
+      message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
+      action: null
+    });
+    return preserveChatResponseAction(parsed, messages);
+  }
+
+  const trimmedResponse = responseText.trim();
+  if (trimmedResponse.startsWith("{") || trimmedResponse.includes('"message"')) {
+    const maybeStructured = parseGeminiResponse<ChatAgentResponse>(trimmedResponse, {
+      message: trimmedResponse,
+      action: null
+    });
+    if (maybeStructured.action || maybeStructured.message !== trimmedResponse) {
+      return preserveChatResponseAction(maybeStructured, messages);
+    }
+  }
+
+  return {
+    message: trimmedResponse,
+    action: null
+  };
+}
+
 export async function chatWithAgent(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
   executeWebQuery?: ExecuteWebQuery,
   referenceImagePath?: string,
-  options?: { useCortexMemory?: boolean; onMessageChunk?: (chunk: string) => void; hasExternalTools?: boolean }
+  options?: ChatWithAgentOptions
 ): Promise<ChatAgentResponse> {
   const immediateResponse = getImmediateChatResponse(messages, referenceImagePath);
   if (immediateResponse) {
@@ -807,18 +887,26 @@ VOCÊ NÃO PODE CONSULTAR, EXECUTAR, PESQUISAR OU LER ARQUIVOS DO PROJETO.
 Sua tarefa é agir EXCLUSIVAMENTE como um chatbot inteligente que RESPONDE IMEDIATAMENTE. Não diga "vou analisar", "vou procurar", "consultando". Se você não souber algo, simplesmente responda "Não tenho acesso a essas informações no momento" na propriedade "message".
 Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na última mensagem do histórico. Não escreva NENHUM texto fora do JSON.`;
 
+  const structuredPrompt = compiledPrompt;
+  const requiresStructuredResponse = shouldUseStructuredChatResponse(options, referenceImagePath, messages);
+  if (!requiresStructuredResponse) {
+    compiledPrompt = buildPlainChatPrompt(messages, personalityContext, options?.useCortexMemory);
+  }
+
   try {
     let responseText = "{}";
-    const handleTextChunk = createMessageChunkHandler(options?.onMessageChunk);
+    const handleTextChunk = requiresStructuredResponse
+      ? createMessageChunkHandler(options?.onMessageChunk)
+      : options?.onMessageChunk;
 
     const requiredWebQuery = requireWebQuery(executeWebQuery);
-    responseText = await requiredWebQuery(compiledPrompt, referenceImagePath, { onTextChunk: handleTextChunk });
-
-    const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
-      message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
-      action: null
+    responseText = await requiredWebQuery(compiledPrompt, referenceImagePath, {
+      onTextChunk: handleTextChunk,
+      browserFallbackPrompt: structuredPrompt,
+      useExternalTools: Boolean(options?.hasExternalTools),
     });
-    return preserveChatResponseAction(parsed, messages);
+
+    return parseChatModelResponse(responseText, messages, requiresStructuredResponse);
   } catch (err) {
     console.error("Falha na interacao com o chat via modelo de IA:", err);
     return {

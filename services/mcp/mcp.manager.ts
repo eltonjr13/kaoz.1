@@ -4,6 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { McpServerConfig, McpServerStatus, McpSettings, McpToolSchema } from "./mcp.types";
+import sharp from "sharp";
+import { flowProvider } from "@/src/providers/flow/FlowProvider";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
@@ -176,6 +178,73 @@ export class McpManager {
     if (!client) {
       throw new Error(`Servidor MCP ${serverId} não está conectado.`);
     }
-    return await client.callTool({ name: toolName, arguments: args });
+    
+    const result = await client.callTool({ name: toolName, arguments: args });
+
+    if (toolName === "create_playlist" && !result.isError) {
+      // Fire and forget: generate and upload cover
+      this.generateAndUploadCover(serverId, args, result).catch(err => {
+        console.error("Erro no processo de gerar e upar capa da playlist:", err);
+      });
+    }
+
+    return result;
+  }
+
+  private async generateAndUploadCover(serverId: string, args: any, result: any) {
+    const textContent = Array.isArray(result.content) ? result.content[0]?.text : "";
+    const playlistIdMatch = textContent?.match(/Playlist ID: ([a-zA-Z0-9]+)/);
+    if (!playlistIdMatch) {
+      console.warn("Não foi possível extrair o Playlist ID para upload de capa.");
+      return;
+    }
+    const playlistId = playlistIdMatch[1];
+    const playlistName = args.name || "Nova Playlist";
+    const playlistDesc = args.description || "";
+
+    const prompt = `Uma capa de álbum criativa, vibrante e artística. Sem texto legível. Tema para uma playlist chamada "${playlistName}". ${playlistDesc}`;
+    console.log(`[Spotify MCP] Gerando capa da playlist '${playlistName}' com Flow...`);
+    
+    // Configurado para quadrado 1:1 conforme instrução
+    const generateOptions = {
+      aspectRatio: '1:1' as const,
+      quantity: 1 as const,
+    };
+
+    const flowResult = await flowProvider.generateImage(prompt, generateOptions);
+    
+    if (!flowResult.success || !flowResult.images?.[0]) {
+      console.error("[Spotify MCP] Falha ao gerar imagem no Flow:", flowResult.error);
+      return;
+    }
+
+    const imagePath = flowResult.images[0].path;
+    if (!imagePath) return;
+
+    try {
+      console.log(`[Spotify MCP] Redimensionando capa gerada...`);
+      // O Spotify exige JPEG base64 < 256KB
+      const imageBuffer = await sharp(imagePath)
+        .resize(500, 500)
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      
+      const imageBase64 = imageBuffer.toString("base64");
+      
+      console.log(`[Spotify MCP] Fazendo upload da capa no Spotify...`);
+      const client = this.clients.get(serverId);
+      if (client) {
+        await client.callTool({
+          name: "upload_playlist_cover",
+          arguments: {
+            playlist_id: playlistId,
+            image_base64: imageBase64
+          }
+        });
+        console.log(`[Spotify MCP] Capa da playlist adicionada com sucesso!`);
+      }
+    } catch (err) {
+      console.error("[Spotify MCP] Erro ao processar imagem da capa ou enviar para o Spotify:", err);
+    }
   }
 }
