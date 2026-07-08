@@ -332,6 +332,33 @@ function getAssistantSpeechText(content: string): string {
     .trim();
 }
 
+function queueCompleteSpeechSentences(
+  sentenceBuffer: string,
+  speakTextChunk: (textToSpeak: string, isLast?: boolean) => void,
+  minBatchChars = 0
+): string {
+  const sentenceBoundaryRegex = /([.?!;\n]+)/g;
+  let match;
+  let lastIndex = 0;
+  let pendingSpeech = "";
+
+  while ((match = sentenceBoundaryRegex.exec(sentenceBuffer)) !== null) {
+    const boundaryIndex = match.index + match[0].length;
+    const sentence = sentenceBuffer.substring(lastIndex, boundaryIndex).trim();
+    if (sentence) {
+      pendingSpeech = pendingSpeech ? `${pendingSpeech} ${sentence}` : sentence;
+      if (pendingSpeech.length >= minBatchChars) {
+        speakTextChunk(pendingSpeech, false);
+        pendingSpeech = "";
+      }
+    }
+    lastIndex = boundaryIndex;
+  }
+
+  const remainingText = lastIndex > 0 ? sentenceBuffer.substring(lastIndex) : sentenceBuffer;
+  return pendingSpeech ? `${pendingSpeech} ${remainingText}`.trimStart() : remainingText;
+}
+
 const sanitizeChatMessages = (messages: ChatMessageState[]) =>
   messages.map((msg) => {
     if (!msg.plan?.referenceImage) return msg;
@@ -1857,6 +1884,7 @@ export default function FlowDashboardPage() {
       const ttsConfig = ttsRes ? await ttsRes.json().catch(() => null) : null;
 
       let cartesiaStream: any = null;
+      const shouldBatchFishAudio = options.speakResponse && ttsConfig?.provider === "fish-audio";
       if (options.speakResponse && ttsConfig?.provider === "cartesia") {
         let emotion = ttsConfig.cartesiaEmotion || "auto";
         if (emotion === "happy") emotion = "positivity";
@@ -1901,6 +1929,22 @@ export default function FlowDashboardPage() {
           cartesiaStream.sendChunk(textToSpeak, isLast);
           return;
         }
+
+        let fishAudioPathPromise: Promise<string> | null = null;
+        if (ttsConfig?.provider === "fish-audio") {
+          fishAudioPathPromise = fetch("/api/fish-audio/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: textToSpeak })
+          }).then(async (res) => {
+            const data = await res.json() as { audioPath?: string; error?: string };
+            if (!res.ok || !data.audioPath) {
+              throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+            }
+            return data.audioPath;
+          });
+          void fishAudioPathPromise.catch(() => {});
+        }
         
         speechQueueRef.current?.enqueue(() => {
           if (ttsConfig?.provider === "browser") {
@@ -1930,18 +1974,21 @@ export default function FlowDashboardPage() {
             const promise = new Promise<void>(async (resolve, reject) => {
               try {
                 if (isCancelled) { resolve(); return; }
-                const res = await fetch(ttsConfig?.provider === "fish-audio" ? "/api/fish-audio/speak" : "/api/omnivoice/speak", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text: textToSpeak })
-                });
-                const data = await res.json() as { audioPath?: string; error?: string };
+                const audioPath = fishAudioPathPromise || fetch("/api/omnivoice/speak", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: textToSpeak })
+                  }).then(async (res) => {
+                    const data = await res.json() as { audioPath?: string; error?: string };
+                    if (!res.ok || !data.audioPath) {
+                      throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+                    }
+                    return data.audioPath;
+                  });
+                const audioUrl = await audioPath;
                 if (isCancelled) { resolve(); return; }
-                if (!res.ok || !data.audioPath) {
-                  throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
-                }
 
-                audio = new Audio(data.audioPath);
+                audio = new Audio(audioUrl);
                 voiceAudioRef.current = audio;
                 
                 audio.onended = () => resolve();
@@ -1987,36 +2034,25 @@ export default function FlowDashboardPage() {
         let buffer = "";
         let sentenceBuffer = "";
 
+        const processStreamTextChunk = async (text: string) => {
+          if (shouldBatchFishAudio) {
+            sentenceBuffer = queueCompleteSpeechSentences(sentenceBuffer + text, speakTextChunk, 180);
+          } else {
+            sentenceBuffer = queueCompleteSpeechSentences(sentenceBuffer + text, speakTextChunk);
+          }
+
+          for (let i = 0; i < text.length; i += 4) {
+            appendAssistantChunk(text.slice(i, i + 4));
+            await new Promise(r => setTimeout(r, 15));
+          }
+        };
+
         const processStreamBlock = async (block: string) => {
           const parsed = parseFlowChatStreamEvent(block);
           if (!parsed) return;
 
           if (parsed.event === "chunk") {
-            const text = parsed.data.text || "";
-            sentenceBuffer += text;
-
-            // Split and queue complete sentences
-            const sentenceBoundaryRegex = /([.?!;\n]+)/g;
-            let match;
-            let lastIndex = 0;
-            
-            while ((match = sentenceBoundaryRegex.exec(sentenceBuffer)) !== null) {
-              const boundaryIndex = match.index + match[0].length;
-              const sentence = sentenceBuffer.substring(lastIndex, boundaryIndex).trim();
-              if (sentence) {
-                speakTextChunk(sentence, false);
-              }
-              lastIndex = boundaryIndex;
-            }
-            
-            if (lastIndex > 0) {
-              sentenceBuffer = sentenceBuffer.substring(lastIndex);
-            }
-
-            for (let i = 0; i < text.length; i += 4) {
-              appendAssistantChunk(text.slice(i, i + 4));
-              await new Promise(r => setTimeout(r, 15));
-            }
+            await processStreamTextChunk(parsed.data.text || "");
           } else if (parsed.event === "status") {
             showAssistantStatus(parsed.data.text || "");
           } else if (parsed.event === "final") {

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-format";
+import { getQuickWebSearchResponse } from "@/services/web-search/quick-web-search";
 
 export const dynamic = "force-dynamic";
 
@@ -321,9 +322,28 @@ export async function POST(request: Request) {
     const cortexMemoryEnabled = useCortexMemory !== false;
     const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
     const modelName = resolveFlowChatModel(model);
-    const hasExternalTools = modelName === "cerebras" && needsExternalTools(messages);
-    referenceImagePath = saveReferenceImageIfPresent(referenceImage);
+    const wantsExternalTools = needsExternalTools(messages);
+    const hasExternalTools = modelName === "cerebras" && wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
+    const latestUserText = getLatestUserMessageText(messages);
+
+    if (wantsExternalTools && !spotifyDirectCommand && !referenceImage) {
+      if (stream === true) {
+        return createChatStreamResponse(
+          () => getQuickWebSearchResponse(latestUserText),
+          () => undefined
+        );
+      }
+
+      const response = await getQuickWebSearchResponse(latestUserText);
+      return NextResponse.json({
+        success: true,
+        message: response.message,
+        action: response.action,
+      });
+    }
+
+    referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
       messages,
