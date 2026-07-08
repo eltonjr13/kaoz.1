@@ -213,13 +213,11 @@ export class McpManager {
 
     const flowResult = await flowProvider.generateImage(prompt, generateOptions);
     
-    if (!flowResult.success || !flowResult.images?.[0]) {
+    const imagePath = flowResult.paths?.[0] || flowResult.path;
+    if (!flowResult.success || !imagePath) {
       console.error("[Spotify MCP] Falha ao gerar imagem no Flow:", flowResult.error);
       return;
     }
-
-    const imagePath = flowResult.images[0].path;
-    if (!imagePath) return;
 
     try {
       console.log(`[Spotify MCP] Redimensionando capa gerada...`);

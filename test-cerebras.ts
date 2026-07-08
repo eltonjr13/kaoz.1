@@ -1,6 +1,7 @@
 import { OpenAI } from "openai";
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+import { loadEnvConfig } from "@next/env";
+
+loadEnvConfig(process.cwd());
 
 const cerebras = new OpenAI({
     apiKey: process.env.CEREBRAS_API_KEY,
