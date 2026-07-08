@@ -124,7 +124,7 @@ const TTS_OPTIONS: TTSOption[] = [
   {
     id: "fish-audio",
     name: "Fish Audio S2.1 Pro",
-    description: "TTS via API Fish Audio usando o modelo s2-pro.",
+    description: "TTS via API Fish Audio usando o modelo gratuito s2.1-pro-free.",
     icon: Volume2,
   },
   {
@@ -887,7 +887,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
   const [cartesiaEmotion, setCartesiaEmotion] = useState("auto");
   const [fishAudioApiKey, setFishAudioApiKey] = useState("");
   const [fishAudioReferenceId, setFishAudioReferenceId] = useState("");
-  const [fishAudioModel, setFishAudioModel] = useState("s2-pro");
+  const [fishAudioModel, setFishAudioModel] = useState("s2.1-pro-free");
   
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -907,7 +907,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     setCartesiaSpeed(nextConfig.cartesiaSpeed || "auto");
     setFishAudioApiKey(nextConfig.fishAudioApiKey || "");
     setFishAudioReferenceId(nextConfig.fishAudioReferenceId || "");
-    setFishAudioModel(nextConfig.fishAudioModel || "s2-pro");
+    setFishAudioModel(nextConfig.fishAudioModel || "s2.1-pro-free");
     
     let emotion = nextConfig.cartesiaEmotion || "auto";
     if (emotion === "happy") emotion = "positivity";

@@ -13,6 +13,8 @@ export type FishAudioGenerateResult = {
   audioPath: string;
 };
 
+const DEFAULT_FISH_AUDIO_MODEL = "s2.1-pro-free";
+
 export class FishAudioApiError extends Error {
   constructor(
     message: string,
@@ -58,7 +60,7 @@ export async function generateFishAudioSpeech(input: FishAudioGenerateInput): Pr
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      model: input.model?.trim() || "s2-pro",
+      model: input.model?.trim() || DEFAULT_FISH_AUDIO_MODEL,
     },
     body: JSON.stringify(payload),
   });

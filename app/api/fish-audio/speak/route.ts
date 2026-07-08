@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       text,
       apiKey: stringOrEmpty(body.apiKey) || config.fishAudioApiKey || "",
       referenceId: stringOrEmpty(body.referenceId) || config.fishAudioReferenceId || "",
-      model: stringOrEmpty(body.model) || config.fishAudioModel || "s2-pro",
+      model: stringOrEmpty(body.model) || config.fishAudioModel || "s2.1-pro-free",
       jobId: `mrchicken-fish-audio-${randomUUID()}`,
     });
 

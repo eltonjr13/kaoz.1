@@ -5,6 +5,7 @@ import type { TTSProviderName, TTSConfig } from "./tts.types";
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const SETTINGS_FILE = path.join(DATA_DIR, "tts-settings.json");
 const DEFAULT_PROVIDER: TTSProviderName = "omnivoice";
+const DEFAULT_FISH_AUDIO_MODEL = "s2.1-pro-free";
 
 export function normalizeTTSProvider(value: unknown): TTSProviderName {
   if (value === "cartesia" || value === "browser" || value === "elevenlabs" || value === "omnivoice" || value === "fish-audio") return value;
@@ -30,7 +31,9 @@ function normalizeModel(model: string | undefined): string {
 }
 
 function normalizeFishAudioModel(model: string | undefined): string {
-  return model || "s2-pro";
+  const value = model?.trim();
+  if (!value || value === "s2-pro") return DEFAULT_FISH_AUDIO_MODEL;
+  return value;
 }
 
 export async function readTTSConfig(): Promise<TTSConfig> {
@@ -57,7 +60,7 @@ export async function readTTSConfig(): Promise<TTSConfig> {
       cartesiaEmotion: "auto",
       fishAudioApiKey: process.env.FISH_API_KEY || "",
       fishAudioReferenceId: "",
-      fishAudioModel: "s2-pro",
+      fishAudioModel: DEFAULT_FISH_AUDIO_MODEL,
     };
   }
 }
