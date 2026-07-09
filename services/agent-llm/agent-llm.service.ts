@@ -75,7 +75,6 @@ function shouldForceSpotifyPlaylistCreate(normalizedPrompt: string): boolean {
 }
 
 function getForcedSpotifyToolName(normalizedPrompt: string): string | null {
-  if (shouldForceSpotifyPlaylistCreate(normalizedPrompt)) return "create_playlist";
   if (!SPOTIFY_PLAYBACK_INTENT_PATTERN.test(normalizedPrompt)) return null;
   if (/\b(dispositivo|dispositivos|devices|aparelhos)\b/.test(normalizedPrompt)) return "list_devices";
   if (/\b(pausar|pause|pausa|parar|pare)\b/.test(normalizedPrompt)) return "pause_music";
@@ -586,7 +585,71 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
     throw new Error("Antigravity CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
   }
 
+  if (options.useExternalTools && settings.provider !== "cerebras") {
+    return runCliWithToolsLoop(settings, prompt, options);
+  }
+
   return runAgentCli(settings, prompt, options);
+}
+
+async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
+  const { McpManager } = await import("../mcp/mcp.manager");
+  const mcpManager = await McpManager.getInstance();
+  const allMcpTools = await mcpManager.getAllTools();
+  
+  const toolIntentPrompt = extractLatestUserPrompt(prompt);
+  const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
+  const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
+  
+  const relevantMcpTools = spotifyIntent
+    ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
+    : allMcpTools;
+
+  if (relevantMcpTools.length === 0) {
+    return runAgentCli(settings, prompt, options);
+  }
+
+  let toolsDescription = "\n\n[SISTEMA - ALERTA CRÍTICO: VOCÊ TEM ACESSO A FERRAMENTAS REAIS]\nATENÇÃO: Ignore qualquer limitação padrão sobre você não ter acesso à internet, à máquina do usuário ou a APIs (como a do Spotify). VOCÊ AGORA TEM ACESSO DIRETO A TUDO ISSO! Se o usuário pedir para você criar uma playlist, tocar música, buscar faixas ou executar um comando, VOCÊ PODE E DEVE FAZER ISSO sozinho usando as ferramentas abaixo. NUNCA diga que você não pode fazer isso.\n\nPara usar uma ferramenta, você deve retornar EXATAMENTE o seguinte formato em texto (o sistema vai interceptar isso e executar a ferramenta para você):\n\n<TOOL_CALL>\n{\"serverId\": \"o_id_do_servidor\", \"toolName\": \"o_nome_da_ferramenta\", \"args\": {\"chave\": \"valor\"}}\n</TOOL_CALL>\n\nFerramentas disponíveis:\n";
+  
+  for (const t of relevantMcpTools) {
+    toolsDescription += `- serverId: "${t.serverId}", toolName: "${t.tool.name}"\n  Descrição: ${t.tool.description}\n  Schema JSON de Argumentos: ${JSON.stringify(t.tool.inputSchema)}\n\n`;
+  }
+  
+  toolsDescription += "REGRAS IMPORTANTES:\n1. NUNCA diga que não tem integração. Use as ferramentas!\n2. NUNCA invente os resultados de uma busca ou criação. Emita a chamada da ferramenta primeiro e espere o sistema injetar a resposta.\n3. Para tarefas complexas (ex: criar playlist E adicionar músicas), emita UM <TOOL_CALL> de cada vez. O sistema retornará o <TOOL_RESULT> na próxima rodada e você continuará.\n4. Se precisar chamar uma ferramenta, você PODE dar uma breve resposta de que está iniciando a ação, e então colocar o <TOOL_CALL> no final.\n5. Se você já tem os dados finais ou concluiu o processo, responda normalmente e NÃO emita <TOOL_CALL>.\n";
+
+  let currentPrompt = prompt + toolsDescription;
+  
+  for (let loop = 0; loop < 10; loop++) {
+    const cliOutput = await runAgentCli(settings, currentPrompt, options);
+    
+    // Procura por blocos <TOOL_CALL> no output
+    const toolCallMatch = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
+    
+    if (!toolCallMatch) {
+      // Nenhum tool call encontrado, significa que a CLI deu a resposta final.
+      return cliOutput;
+    }
+    
+    let parsedCall;
+    try {
+      parsedCall = JSON.parse(toolCallMatch[1].trim());
+    } catch (e) {
+      console.warn("[Agent CLI Tool Loop] Erro de parse JSON na chamada da ferramenta:", e);
+      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "JSON invalido na chamada da ferramenta."}</TOOL_RESULT>\n`;
+      continue;
+    }
+    
+    try {
+      console.log(`[Agent CLI Tool Loop] Executando ferramenta: ${parsedCall.toolName} no servidor ${parsedCall.serverId}...`);
+      const result = await mcpManager.callTool(parsedCall.serverId, parsedCall.toolName, parsedCall.args);
+      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nO resultado acima é o output da sua ferramenta. Agora continue seu raciocínio emitindo o próximo <TOOL_CALL> ou a resposta final.\n`;
+    } catch (err: any) {
+      console.error(`[Agent CLI Tool Loop] Falha ao executar ferramenta:`, err);
+      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "${err.message || String(err)}"}</TOOL_RESULT>\nOcorreu um erro ao executar a ferramenta. Tente novamente ou retorne a resposta final.\n`;
+    }
+  }
+  
+  return JSON.stringify({ message: "Ops, excedi o limite de passos raciocinando com as ferramentas. Tente algo mais simples.", action: null });
 }
 
 async function checkPathCommand(command: string): Promise<AgentLLMCommandStatus> {
@@ -1042,14 +1105,29 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
         ? "required"
         : "auto";
 
-      const response = await cerebras.chat.completions.create({
-        model,
-        messages: currentMessages,
-        temperature: 0.7,
-        tools: chatTools,
-        tool_choice: toolChoice,
-        extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
-      } as any);
+      let response: any;
+      let retryCount = 0;
+      while (retryCount < 3) {
+        try {
+          response = await cerebras.chat.completions.create({
+            model,
+            messages: currentMessages,
+            temperature: 0.7,
+            tools: chatTools,
+            tool_choice: toolChoice,
+            extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
+          } as any);
+          break; // Sucesso
+        } catch (error: any) {
+          if (error.status === 429 && retryCount < 2) {
+            retryCount++;
+            console.warn(`[Agente MrChicken] Rate limit (429) no Cerebras. Aguardando ${retryCount * 2}s para retentar...`);
+            await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+          } else {
+            throw error;
+          }
+        }
+      }
       
       const choice = response.choices[0];
       const message = choice?.message;

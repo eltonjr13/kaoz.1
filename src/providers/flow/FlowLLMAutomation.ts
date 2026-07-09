@@ -241,6 +241,7 @@ export class FlowLLMAutomation {
       const result = await queryConfiguredAgentCli(prompt, {
         referenceImagePath,
         onTextChunk: options.onTextChunk,
+        useExternalTools: options.useExternalTools,
       });
       return result ? this.cleanLLMResponse(result) : null;
     } catch (err) {

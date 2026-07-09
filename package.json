@@ -19,6 +19,7 @@
     "@radix-ui/react-tooltip": "^1.2.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "framer-motion": "^12.41.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
@@ -29,6 +30,7 @@
     "react-dom": "19.2.6",
     "react-markdown": "^10.1.0",
     "sharp": "^0.35.3",
+    "spotify-web-api-node": "^5.0.2",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

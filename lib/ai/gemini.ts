@@ -775,6 +775,11 @@ function shouldUseStructuredChatResponse(
 }
 
 function buildPlainChatPrompt(messages: ChatMessage[], personalityContext: string, options?: ChatWithAgentOptions): string {
+  const hasTools = options?.hasExternalTools;
+  const toolsAccessStr = hasTools
+    ? "Quando a informacao exigir internet, arquivos, terminal ou ferramentas, use-as livremente atraves dos comandos de ferramenta fornecidos."
+    : "Quando a informacao exigir internet, arquivos, terminal ou ferramentas e elas nao estiverem disponiveis neste modo, diga concretamente que nao tem acesso no momento.";
+
   const plainSystemInstruction = `
 ${personalityContext}
 
@@ -784,11 +789,15 @@ ${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${
 Responda em portugues, diretamente em texto normal. Nao retorne JSON, nao use bloco de codigo para a resposta inteira e nao inclua a chave "message".
 Seja mais util que uma execucao literal: identifique a intencao real do usuario, recomende o proximo passo mais forte e explique o criterio quando isso ajudar.
 Para pedidos abertos ou estrategicos, responda com diagnostico curto, plano pratico e tradeoffs relevantes. Para perguntas simples, seja curto.
-Quando houver ambiguidade leve, assuma o caminho mais provavel e diga a suposicao. Quando a informacao exigir internet, arquivos, terminal ou ferramentas e elas nao estiverem disponiveis neste modo, diga concretamente que nao tem acesso no momento.
+Quando houver ambiguidade leve, assuma o caminho mais provavel e diga a suposicao. ${toolsAccessStr}
 `;
 
+  const finalInstructionStr = hasTools
+    ? "Voce esta executando no caminho rapido por API/CLI com suporte a ferramentas. Se o usuario pedir para voce executar uma acao que requer ferramenta (como criar playlist ou buscar musicas), voce DEVE usar as ferramentas disponiveis."
+    : "Voce esta executando no caminho rapido por API/CLI. Priorize baixa latencia: responda agora em texto natural, sem JSON e sem planejar uso de ferramentas indisponiveis.";
+
   const plainFinalInstruction = `[INSTRUCAO FINAL E CRITICA PARA A IA]:
-Voce esta executando no caminho rapido por API/CLI. Priorize baixa latencia: responda agora em texto natural, sem JSON e sem planejar uso de ferramentas indisponiveis.
+${finalInstructionStr}
 Nao diga "vou analisar", "vou procurar" ou "consultando". Entregue a melhor resposta possivel com o historico atual.`;
 
   return buildChatPrompt(messages, plainSystemInstruction, plainFinalInstruction);

@@ -232,14 +232,19 @@ export class McpManager {
       console.log(`[Spotify MCP] Fazendo upload da capa no Spotify...`);
       const client = this.clients.get(serverId);
       if (client) {
-        await client.callTool({
+        const uploadResult = await client.callTool({
           name: "upload_playlist_cover",
           arguments: {
             playlist_id: playlistId,
             image_base64: imageBase64
           }
         });
-        console.log(`[Spotify MCP] Capa da playlist adicionada com sucesso!`);
+        
+        if (uploadResult.isError) {
+          console.error(`[Spotify MCP] Falha ao adicionar capa:`, uploadResult.content);
+        } else {
+          console.log(`[Spotify MCP] Capa da playlist adicionada com sucesso!`);
+        }
       }
     } catch (err) {
       console.error("[Spotify MCP] Erro ao processar imagem da capa ou enviar para o Spotify:", err);
