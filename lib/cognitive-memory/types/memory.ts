@@ -1,5 +1,16 @@
 export type MemoryHierarchy = 'session' | 'project' | 'avatar' | 'global';
 export type TaskType = 'image' | 'video' | 'project' | 'refine' | 'ad-creative';
+export type ChatMemoryKind =
+  | 'user_preference'
+  | 'workflow_rule'
+  | 'creative_preference'
+  | 'avatar_style_signal'
+  | 'correction'
+  | 'project_fact'
+  | 'safety_boundary';
+export type ChatMemoryScope = MemoryHierarchy;
+export type ChatMemoryStatus = 'active' | 'pending_review' | 'rejected';
+export type ChatMemorySource = 'flow_chat' | 'job_feedback' | 'cortex_review' | 'manual';
 
 export interface BaseMetadata {
   avatarId: string;
@@ -33,4 +44,25 @@ export interface ProceduralRule extends BaseMetadata {
   successCount: number;
   failureCount: number;
   lastUpdated: string;
+}
+
+export interface ChatMemoryRecord {
+  id: string;
+  userId?: string;
+  avatarId?: string;
+  kind: ChatMemoryKind;
+  scope: ChatMemoryScope;
+  content: string;
+  evidence: string[];
+  confidenceScore: number;
+  status: ChatMemoryStatus;
+  occurrences: number;
+  source: ChatMemorySource;
+  createdAt: string;
+  updatedAt: string;
+  lastReinforcedAt: string;
+}
+
+export interface ChatMemoryStore {
+  memories: ChatMemoryRecord[];
 }
