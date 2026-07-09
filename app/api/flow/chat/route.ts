@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-format";
-import { getQuickWebSearchResponse } from "@/services/web-search/quick-web-search";
 import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
 import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
@@ -360,21 +359,6 @@ export async function POST(request: Request) {
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
 
-    if (wantsExternalTools && !spotifyDirectCommand && !referenceImage) {
-      if (stream === true) {
-        return createChatStreamResponse(
-          () => getQuickWebSearchResponse(latestUserText),
-          () => undefined
-        );
-      }
-
-      const response = await getQuickWebSearchResponse(latestUserText);
-      return NextResponse.json({
-        success: true,
-        message: response.message,
-        action: response.action,
-      });
-    }
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
