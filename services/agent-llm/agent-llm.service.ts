@@ -621,7 +621,6 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
   
   for (let loop = 0; loop < 10; loop++) {
     const cliOutput = await runAgentCli(settings, currentPrompt, options);
-    console.log("[Agent CLI Tool Loop] CLI Raw Output:", cliOutput);
     
     // Procura por blocos <TOOL_CALL> no output
     const toolCallMatch = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
