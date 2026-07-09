@@ -3,7 +3,7 @@ import { probeMediaInfo, runCommand, getFfmpegPath } from "@/lib/videos/render";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
-
+import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/AgentPersonalityResolver";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -730,6 +730,7 @@ type ChatWithAgentOptions = {
   onMessageChunk?: (chunk: string) => void;
   hasExternalTools?: boolean;
   relevantMemories?: string;
+  activeMemories?: any[];
 };
 
 type ExecuteWebQuery = (
@@ -831,14 +832,10 @@ export async function chatWithAgent(
     return immediateResponse;
   }
 
-  let personalityContext = "Você é o Sr. Chicken, um assistente virtual e chatbot inteligente para o 'AI UGC Reaction Studio'. Responda em português.";
-  if (avatarPersonality) {
-    // Exclui campos específicos de roteirização que confundem o chatbot (como as instruções detalhadas de react)
-    const cleanPersonality = { ...avatarPersonality };
-    delete cleanPersonality.instructions;
-    delete cleanPersonality.target_audience;
-    personalityContext += `\n\nInstrução especial: O usuário selecionou um Avatar com a seguinte personalidade. Tente adaptar sutilmente seu tom de voz e estilo para sintonizar com ela, mantendo seu papel de assistente Sr. Chicken:\n${JSON.stringify(cleanPersonality, null, 2)}`;
-  }
+  const personalityContext = AgentPersonalityResolver.resolve({
+    avatarPersonality,
+    activeMemories: options?.activeMemories
+  });
 
   const systemInstruction = `
 ${personalityContext}

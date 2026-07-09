@@ -379,6 +379,8 @@ export async function POST(request: Request) {
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
     let relevantMemories: string | undefined = undefined;
+    let activePersonalityMemories: any[] | undefined = undefined;
+
     if (cortexMemoryEnabled && latestUserText) {
       try {
         const storage = new JsonStorageProvider();
@@ -387,6 +389,9 @@ export async function POST(request: Request) {
         if (retrieved) {
           relevantMemories = retrieved;
         }
+        
+        // Buscar memórias ativas para construir a personalidade final do agente
+        activePersonalityMemories = await service.listActiveChatMemories({ avatarId });
       } catch (err) {
         console.warn("[API CHAT] Falha ao recuperar memórias relevantes do chat:", err);
       }
@@ -404,6 +409,7 @@ export async function POST(request: Request) {
         onMessageChunk,
         hasExternalTools,
         relevantMemories,
+        activeMemories: activePersonalityMemories,
       }
     );
 

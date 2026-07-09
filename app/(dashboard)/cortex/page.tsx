@@ -1,4 +1,5 @@
 import { CortexGraphClient } from "@/components/cortex/cortex-graph-client";
+import { CortexChatMemories } from "@/components/cortex/cortex-chat-memories";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default function CortexPage() {
         </div>
       </div>
       <CortexGraphClient />
+      <CortexChatMemories />
     </>
   );
 }
