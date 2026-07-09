@@ -1,213 +1,173 @@
-# AI UGC Reaction Studio
+# 🤖 kaoz.1 — Agente de IA com Córtex Cognitivo e Orquestrador de Ferramentas (MCP)
 
-SaaS em Next.js App Router para criar videos verticais de react com IA. O foco atual e transformar uma referencia viral em um job com avatar autorizado, roteiro curto, voz gerada, composicao vertical e arquivo final para revisao/download.
+**kaoz.1** é uma **Agente Autônoma de IA e Assistente Cognitiva Pessoal**. Equipada com uma arquitetura de memória persistente inspirada na estrutura cerebral humana e integração com o **Model Context Protocol (MCP)**, ela é capaz de executar tarefas locais de CLI, interagir com serviços web, gerenciar dispositivos e aplicativos de uso diário (como o Spotify) e aprender continuamente com base nas suas preferências e feedback.
 
-## Estado atual do projeto
+---
 
-O app ja possui uma experiencia funcional sem login. A rota `/login` redireciona para `/dashboard`, e as telas usam um workspace fixo definido por `APP_WORKSPACE_ID`.
+## 🧠 Arquitetura do Córtex Cognitivo (Cognitive Memory)
 
-Funcionalidades implementadas:
+A **kaoz.1** possui um sistema de aprendizado dinâmico e contínuo que armazena, associa e decai conceitos de acordo com o uso diário.
 
-- Landing page em `/` com entrada para dashboard e busca viral.
-- Dashboard em `/dashboard` com resumo de avatares, jobs recentes e videos finalizados.
-- Cadastro de avatares em `/avatars`, com consentimento obrigatorio e upload de imagem/video, alem de audio de referencia opcional.
-- Busca viral em `/viral-search`, gerando oportunidades por nicho para TikTok, Instagram e YouTube.
-- Criacao de jobs em `/jobs/new`, incluindo assunto, avatar e link de video fonte para colagem.
-- Selecao de layout por job, com 3 modelos: fonte cheia com expert flutuante, fonte dominante e divisao equilibrada.
-- Remocao opcional de fundo do expert no layout de fonte cheia, deixando o expert recortado sobre o video fonte.
-- Listagem de jobs em `/jobs`, com status, fonte usada e download quando houver render final.
-- APIs internas para avatares, jobs, busca viral e inicio do pipeline.
-- Persistencia local em `.generated/local-data` e uploads publicos no proprio computador.
-- Render local do video final via `ffmpeg`, com layout vertical: expert no topo e video fonte embaixo.
-- Otimização de prompts para imagem/vídeo em `/flow` utilizando agentes de IA de automação web via Playwright com suporte a Gemini, ChatGPT, Claude e DeepSeek.
-
-Pontos ainda parciais ou dependentes de servico externo:
-
-- A busca viral nao consome APIs externas; ela gera buscas, hooks e formatos a partir de padroes locais.
-- O lip-sync usa um provider HTTP desacoplado via `lib/ai/lipsync.ts`; a implementação MuseTalk 1.5 Oficial roda em `services/lipsync` e exige `LIPSYNC_API_URL`.
-- A voz depende de uma instancia OmniVoice/Gradio acessivel por `OMNIVOICE_API_URL`.
-- O download de Instagram/YouTube para render depende de `yt-dlp`.
-- A geracao de roteiro usa OpenAI quando `OPENAI_API_KEY` existe; sem chave, usa um texto fallback.
-- A remocao de fundo do expert depende de Python com `rembg`, `pillow` e `onnxruntime`.
-
-## Stack
-
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- OpenAI para roteiro
-- Gradio client para OmniVoice
-- Microserviço Python/FastAPI para MuseTalk lip-sync
-- ffmpeg/ffprobe para render
-- yt-dlp para baixar videos fonte remotos
-- Playwright para automação e raspagem web de LLMs gratuitas
-
-## Estrutura principal
-
-```text
-app/
-  api/
-    avatars/route.ts          API de listagem/criacao de avatares
-    jobs/route.ts             API de listagem/criacao de jobs
-    pipeline/start/route.ts   Inicio e execucao local do pipeline
-    viral-search/route.ts     API da busca viral local
-  (dashboard)/                Telas autenticadas na pratica, mas sem login ativo
-components/                   UI, forms, tabelas e layout
-lib/
-  ai/                         Roteiro OpenAI, voz OmniVoice e provider lip-sync
-  videos/                     Busca viral, parser de fonte, pipeline e render
-  local-store.ts              Persistencia local em JSON e uploads publicos
-types/                        Tipos de dominio
-services/lipsync/              Microserviço MuseTalk para gerar talking avatar
+```mermaid
+graph TD
+    User([Usuário]) -->|Mensagem de Chat| Extractor[Chat Memory Extractor]
+    Extractor -->|Regras / Preferências| ChatService[Chat Memory Service]
+    ChatService -->|Persistência| LocalStorage[(LocalStorage / JSON)]
+    
+    JobExecution[Execução de Tarefas / CLI] -->|Histórico e Logs| Hippocampus[Hipocampo - Episódico]
+    Hippocampus -->|Projeção Semântica| Cortex[Córtex Cerebral - Grafo Semântico]
+    
+    UserFeedback[Feedback do Usuário: Good/Bad] -->|Modulação Emocional| Amygdala[Amígdala]
+    Amygdala -->|Reforço ou Decaimento| Cortex
+    
+    subsystemBus[Event Bus] --> Conflict[Conflict Resolver]
+    subsystemBus --> Detector[Pattern Detector]
+    subsystemBus --> Pruner[Graph Pruner]
+    
+    Conflict -.-> Cortex
+    Detector -.-> Cortex
+    Pruner -.-> Cortex
 ```
 
-## Configuracao
+### Subsistemas de Memória
+*   **Hipocampo (Episódico):** Registra as experiências em tempo de execução. Salva o histórico de tarefas criadas, roteiros gerados, prompts executados e os resultados das ferramentas em detalhes estruturados.
+*   **Córtex Cerebral (Grafo Semântico):** Organiza o conhecimento em nós e conexões (entidades, conceitos e relações). Cada conceito possui um nível de confiança e uma taxa de relevância.
+*   **Amígdala (Modulação de Importância):** Se você der um feedback positivo (`good`) ou negativo (`bad`) sobre a execução de uma tarefa ou resposta de chat, a Amígdala ajusta o peso emocional e a confiança daquela informação no grafo, reforçando acertos e esquecendo erros.
+*   **Barramento de Eventos (Conflict Resolver, Pattern Detector & Graph Pruner):**
+    *   **Conflict Resolver:** Resolve contradições lógicas criadas por mudanças nas preferências do usuário.
+    *   **Pattern Detector:** Identifica padrões de falha repetitivos em execuções de avatares ou comandos.
+    *   **Graph Pruner:** Executa a compressão e o decaimento gradual de conexões pouco utilizadas no grafo de memória para otimizar o consumo de contexto das LLMs.
 
-1. Instale as dependencias:
+---
 
+## 💬 Extração Contínua de Preferências (Chat Memory Extractor)
+
+Durante o uso do Chat, a **kaoz.1** analisa e extrai regras implícitas e explícitas que você diz na conversa:
+*   **Detecção de Padrões:** Frases como *"não faça mais [X]"*, *"sempre que [Y], execute [Z]"*, *"prefiro usar [W]"* ou *"lembre-se que neste projeto [V]"* são detectadas imediatamente, categorizadas (como regras de workflow, preferências de estilo, correções ou fatos de projeto) e salvas em sua memória de longo prazo.
+*   **Redação Sensível Automatizada:** Um filtro ativo intercepta chaves de API, senhas, tokens de segurança, CPFs e dados financeiros nas mensagens, impedindo que dados críticos sejam registrados no Grafo Semântico.
+
+---
+
+## 🔌 Orquestração de Ferramentas & Model Context Protocol (MCP)
+
+A Agente utiliza o **Model Context Protocol (MCP)** para se transformar em um hub de ferramentas unificado:
+*   **Integração Spotify:** Comandos diretos de reprodução em linguagem natural (ex: *"toca aquela música indie no Spotify"* ou *"cria uma playlist chamada Foco"*). A agente interage via MCP para listar dispositivos ativos, tocar, pausar, gerenciar volume, adicionar na fila e montar playlists.
+*   **Pesquisas Financeiras e Web:** Ferramentas integradas de scraping rápido na internet (`quick-web-search.ts`) e consultas dinâmicas de cotação de moedas (ex: cotação USD/BRL).
+*   **Execução de CLI Local:** Capacidade de gerar e gerenciar subprocessos de linha de comando no sistema operacional local de forma inteligente e monitorável.
+
+---
+
+## 🎬 Estúdio de Criação UGC (Legacy Feature)
+
+Mesmo com foco em orquestração geral de tarefas, a suíte de vídeo original continua 100% ativa:
+*   **Pesquisa Viral:** Ferramenta interna em `/viral-search` para monitorar oportunidades e tópicos quentes no TikTok, Instagram e YouTube.
+*   **Cadastro de Avatares:** Permite registrar avatares autorizados com foto, vídeo base e voz customizada.
+*   **Pipeline de Vídeo em Background:**
+    *   Gera roteiro adaptado para a plataforma de destino.
+    *   Sintetiza voz realista via OmniVoice ou Fish Audio.
+    *   Executa sincronia labial (lip-sync) com MuseTalk 1.5.
+    *   Processa e recorta o fundo do expert com Python (`rembg`, `onnxruntime`).
+    *   Monta a renderização final no formato vertical via `ffmpeg`.
+
+---
+
+## 🛠️ Stack Tecnológica
+
+*   **Frontend & API:** Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS + Framer Motion.
+*   **Agentes & Orquestração:** SDK do Model Context Protocol (MCP), Playwright para automação de navegadores em LLMs gratuitas, integração direta com Gemini e OpenAI.
+*   **Voz & Áudio:** Fish Audio TTS, Cartesia.js, OmniVoice (via Gradio Client).
+*   **Processamento de Mídia:** FFMpeg/FFProbe local, python-rembg (pillow e onnxruntime para remoção de fundos), `yt-dlp` para downloads de vídeos de referência.
+
+---
+
+## ⚙️ Configuração e Instalação
+
+### 1. Instalar as dependências do Next.js
 ```bash
 npm install
 ```
 
-2. Copie o arquivo de ambiente:
-
+### 2. Configurar o ambiente
+Copie o arquivo `.env.example` para `.env.local`:
 ```bash
 copy .env.example .env.local
 ```
 
-3. Configure as variaveis em `.env.local`:
-
+Abra o arquivo `.env.local` e configure suas credenciais. Principais variáveis:
 ```env
+# Workspace ID de teste padrão
 APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
 
+# Chaves de IA & LLMs
 OPENAI_API_KEY=
-OMNIVOICE_API_KEY=
+# Configurações do Flow & Automação Web (Playwright)
+FLOW_HEADLESS=false # false é recomendado para que ChatGPT/Claude/DeepSeek contornem o Cloudflare Turnstile
+FLOW_URL=https://flow.google
+
+# Voz e Sintetização
+FISH_AUDIO_API_KEY=
 OMNIVOICE_API_URL=http://localhost:8000
+OMNIVOICE_API_KEY=
+
+# Lip-sync (MuseTalk)
 LIPSYNC_ENGINE=musetalk-v15
 LIPSYNC_API_URL=http://localhost:8010
 LIPSYNC_API_KEY=
-LIPSYNC_TIMEOUT_MS=1800000
-LIPSYNC_TRANSFER_MODE=upload
-LIPSYNC_DOWNLOADS_DIR=.generated/jobs
 
-# Configurações do Flow & Automação Web (Playwright)
-FLOW_HEADLESS=false # Definir como false para rodar visível (necessário para ChatGPT/Claude/DeepSeek passarem pelo Cloudflare)
-FLOW_BROWSER_DRIVER=extension
-FLOW_TIMEOUT=300000
-FLOW_DOWNLOAD_PATH=storage/generated/
-FLOW_PROFILE_PATH=storage/browser-profile/
-FLOW_EXTENSION_TOKEN=
-FLOW_EXTENSION_TASK_TIMEOUT=300000
-FLOW_URL=https://flow.google
-```
-
-As chaves de provedores de IA devem ficar apenas no servidor e nunca usar prefixo `NEXT_PUBLIC_`. Para detalhes do MuseTalk local/compartilhado, veja `docs/lipsync-musetalk.md`; para Kaggle/Colab, veja `docs/kaggle-musetalk-v15.md`.
-
-4. Para render local completo, deixe estes comandos disponiveis no worker:
-
-- `ffmpeg`
-- `ffprobe`
-- `yt-dlp`, ou Python com modulo `yt_dlp`
-
-Tambem e possivel configurar caminhos explicitos:
-
-```env
+# Caminhos locais para renderizadores (Opcional - se não estiverem no PATH global)
 FFMPEG_PATH=
 FFPROBE_PATH=
 YTDLP_PATH=
-YTDLP_COOKIES_PATH=
-YTDLP_COOKIES_FROM_BROWSER=
 REMBG_PYTHON_PATH=
 ```
 
-Para links do Instagram que exigem login, configure um destes caminhos de autenticacao para o `yt-dlp`:
-
-- `YTDLP_COOKIES_PATH`: arquivo de cookies no formato Netscape, recomendado para ambientes estaveis.
-- `YTDLP_COOKIES_FROM_BROWSER`: perfil do navegador para leitura local de cookies, por exemplo `chrome`, `edge` ou `firefox`.
-
-Depois de alterar essas variaveis no `.env.local`, reinicie o servidor Next.js para o worker carregar a nova configuracao.
-
-Para usar o recorte do expert, instale as dependencias Python no worker:
-
+### 3. Configurar dependências Python (opcional, apenas para o recortador de vídeo)
 ```bash
 python -m pip install rembg pillow onnxruntime
 ```
 
-## Rodando
-
+### 4. Rodar o servidor de desenvolvimento
 ```bash
 npm run dev
 ```
+Abra o navegador em `http://localhost:3000`.
 
-Depois abra:
+---
 
-- `http://localhost:3000` para a landing page.
-- `http://localhost:3000/dashboard` para a area principal.
-- `http://localhost:3000/viral-search` para comecar pela pesquisa de oportunidades.
+## 📂 Estrutura do Projeto
 
-## Scripts
-
-```bash
-npm run dev        # servidor de desenvolvimento
-npm run build      # build de producao
-npm run start      # servidor de producao apos build
-npm run lint       # ESLint sem warnings
-npm run typecheck  # TypeScript sem emitir arquivos
+```text
+app/
+  api/
+    agent-llm/              API de execução e configurações do agente
+    cortex/                 API de leitura e controle do Córtex Cognitivo
+    flow/chat/              Endpoint de stream do chat interativo da agente com MCP
+    fish-audio/             API de síntese de voz Fish Audio
+    mcp/                    Gerenciador de ferramentas e conexões MCP
+  (dashboard)/
+    cortex/                 Visualização interativa do grafo semântico em tempo real
+    flow/                   Chat principal de comando e interação com a agente kaoz.1
+    avatars/                Controle de avatares para o estúdio UGC
+    jobs/                   Status e gerenciamento dos renders de vídeos
+    viral-search/           Pesquisa de tendências e referências
+components/
+  cortex/                   Visualizador gráfico 2D/3D da memória do Córtex
+  mrchicken/                Painéis e componentes de IA do chat (Interface da Kaoz.1)
+lib/
+  cognitive-memory/         Núcleo do Córtex Cognitivo (Hippocampus, Cortex, Amygdala)
+  ai/                       Provedores de inteligência (Gemini, OpenAI, Cartesia)
+  videos/                   Motores de render, downloader e pipeline de vídeo UGC
+services/
+  agent-llm/                Serviço de gerenciamento do agente, processos e CLI
+  mcp/                      Gerenciamento e comunicação com servidores MCP externos
+  spotify/                  Formatador de respostas e mapeamento de comandos Spotify
+  web-search/               Mecanismo de busca online integrado
 ```
 
-## Fluxo de uso
+---
 
-1. Cadastre um avatar em `/avatars` e aceite o consentimento.
-2. Use `/viral-search` para gerar ideias, hooks e links de busca por nicho.
-3. Crie um job em `/jobs/new`, escolhendo avatar, assunto e opcionalmente um link de video fonte.
-4. Escolha o layout do render:
-   - `Fonte cheia + expert`: video fonte em tela cheia com expert menor no canto.
-   - `Fonte dominante`: video fonte no topo e expert menor embaixo.
-   - `Divisao equilibrada`: video fonte maior, mas com mais presenca do expert.
-   - Opcionalmente marque `Remover fundo do expert` para gerar o formato com expert recortado sobre a fonte.
-5. O app inicia o pipeline:
-   - gera roteiro;
-   - gera voz via OmniVoice;
-   - prepara o avatar para lip-sync via provider MuseTalk HTTP;
-   - baixa/prepara o video fonte quando informado;
-   - renderiza o video vertical final.
-6. Acompanhe o status e baixe o resultado em `/jobs`.
+## 📝 Notas de Desenvolvimento e Automação
 
-## Persistencia
-
-- Metadados: `.generated/local-data/*.json`
-- Avatares: `public/uploads/avatars`
-- Audios: `public/uploads/audio`
-- Renders locais: `public/uploads/renders`
-- Arquivos temporarios de job: `.generated/jobs`
-
-## Observacoes tecnicas
-
-- O projeto esta em modo workspace unico, nao em multiusuario real.
-- As politicas RLS do schema estao abertas para `anon` e `authenticated` dentro do desenho atual.
-- O middleware apenas desativa a tela de login redirecionando `/login` para `/dashboard`.
-- Para producao, antes de expor publicamente, e necessario revisar autenticacao, isolamento por usuario/workspace, politicas RLS e armazenamento de arquivos.
-- **Execução Assíncrona Local**: O pipeline local agora executa em background (segundo plano). Ao iniciar um novo vídeo, a resposta da API é imediata e o usuário é redirecionado para `/jobs`, onde o status atualiza dinamicamente conforme cada etapa avança.
-- **Botão Reiniciar**: Se um job falhar ou ficar travado (ex: devido a um reinício do servidor de desenvolvimento), é possível reiniciá-lo diretamente pela lista de jobs em `/jobs`.
-- **Logs em Tempo Real**: As saídas dos subprocessos (como progresso do FFmpeg e contagem de frames processados pelo Python `rembg`) são enviadas diretamente ao terminal do Next.js em tempo real, permitindo auditoria visual detalhada da renderização.
-- **Resiliência com OneDrive (Windows)**: O script de remoção de fundo possui um sistema de retry (5 tentativas com delay de 300ms) para evitar que o sincronismo automático do OneDrive crie bloqueios que quebrem o processamento com erro `FileNotFoundError`.
-- **Prevenção de Socket Leaks**: As conexões SSE do Gradio Client abertas no OmniVoice são explicitamente fechadas com `app.close()` após o término de cada predição de voz.
-
-## Login e Automação de IAs (Playwright)
-
-Para otimizar seus prompts de imagem e vídeo usando agentes inteligentes web, o MrChicken utiliza o **Playwright** para interagir diretamente com as interfaces web gratuitas do **Gemini, ChatGPT, Claude e DeepSeek**.
-
-### Configuração de Sessão de Login
-Como as automações rodam simulando um navegador, você precisa realizar o login nas plataformas uma vez para salvar os cookies e tokens de sessão.
-1. Acesse o painel de **Configurações** no menu lateral.
-2. Na seção **Contas & Login das IAs (Playwright Session)**, clique em **Fazer Login** para a IA desejada.
-3. Um navegador Chrome será aberto. Faça login na sua conta normalmente.
-4. O sistema detectará o login e aguardará **5 segundos** antes de fechar o navegador automaticamente. Esse atraso é obrigatório para garantir que o Chromium grave todos os dados de sessão no perfil (`storage/browser-profile/`).
-
-### Contornando Bloqueios (Cloudflare Turnstile)
-Plataformas como **ChatGPT, Claude e DeepSeek** possuem bloqueios severos contra navegadores ocultos (`headless: true`).
-* **Gemini** funciona normalmente em modo oculto (`FLOW_HEADLESS=true`).
-* Para garantir que os outros três modelos funcionem corretamente sem ser ejetados pelo Cloudflare, você deve rodar a automação em modo visível definindo **`FLOW_HEADLESS=false`** no arquivo `.env.local`.
-
-### Copiar com Segurança (Fallback de Clipboard)
-Em navegadores modernos, a API `navigator.clipboard` é bloqueada quando a aplicação é acessada fora de um contexto seguro (HTTP sem SSL ou IP de rede local). O sistema implementa uma função robusta de fallback (`document.execCommand('copy')`) nos botões de cópia para assegurar que a cópia de prompts/ganchos funcione em qualquer dispositivo ou rede.
+1.  **Sessões do Playwright (Navegador):** A agente usa um Chromium persistente para simular o navegador. Para realizar login em plataformas de chat gratuitas (Gemini, ChatGPT, Claude e DeepSeek) e contornar os desafios do Cloudflare, acesse a página de **Configurações** na aplicação e use a seção de gerenciamento de sessões para fazer o login manual inicial. Os cookies serão gravados localmente em `storage/browser-profile/`.
+2.  **OneDrive e Lock de Arquivos (Windows):** O pipeline de vídeo UGC implementa rotinas resilientes com até 5 retentativas no acesso a arquivos locais para contornar problemas de lock temporário causados pela sincronização ativa do OneDrive ou Dropbox.
+3.  **Desconexões SSE:** Para garantir o bom uso de memória, as chamadas via SSE Client abertas com os microsserviços são explicitamente terminadas ao fim de cada requisição.
