@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Avatar, ExpertBackgroundMode, JobStatus, ReactionJob, RenderLayout, VoiceSettings } from "@/types";
+import type { Avatar, ExpertBackgroundMode, JobStatus, ReactionJob, RenderLayout, VoiceDirection, VoiceSettings } from "@/types";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
@@ -26,6 +26,7 @@ type NewLocalJobInput = {
   expertBackgroundMode?: ExpertBackgroundMode;
   topic: string;
   voiceSettings?: VoiceSettings | null;
+  voiceDirection?: VoiceDirection | null;
   sourceVideoDescription?: string | null;
   sourceVideoTranscription?: string | null;
   trimStart?: string | null;
@@ -246,6 +247,7 @@ const defaultJobOptions = {
   renderLayout: "source_pip" as const,
   expertBackgroundMode: "original" as const,
   voiceSettings: null,
+  voiceDirection: null,
   sourceVideoDescription: null,
   sourceVideoTranscription: null,
   trimStart: null,
@@ -275,6 +277,7 @@ export async function createLocalJob(input: NewLocalJobInput): Promise<ReactionJ
     final_video_path: null,
     error_message: null,
     voice_settings: merged.voiceSettings,
+    voice_direction: merged.voiceDirection,
     source_video_description: merged.sourceVideoDescription,
     source_video_transcription: merged.sourceVideoTranscription,
     trim_start: merged.trimStart,

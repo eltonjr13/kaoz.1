@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createLocalJob, findLocalAvatar, listLocalJobs } from "@/lib/local-store";
 import { parseSourceVideoUrl } from "@/lib/videos/source-video";
 import type { ExpertBackgroundMode, RenderLayout } from "@/types";
+import { normalizeVoiceDirection } from "@/lib/ai/voice-direction";
+import { readTTSConfig } from "@/services/tts/tts.settings";
 
 const renderLayouts = new Set<RenderLayout>(["source_pip", "source_top_expert_bottom", "balanced_split"]);
 const expertBackgroundModes = new Set<ExpertBackgroundMode>(["original", "remove"]);
@@ -36,6 +38,7 @@ export async function POST(request: Request) {
     renderLayout?: unknown;
     expertBackgroundMode?: unknown;
     voiceSettings?: unknown;
+    voiceDirection?: unknown;
     sourceVideoDescription?: unknown;
     sourceVideoTranscription?: unknown;
     trimStart?: unknown;
@@ -63,12 +66,20 @@ export async function POST(request: Request) {
     expertBackgroundModes.has(body.expertBackgroundMode as ExpertBackgroundMode)
       ? (body.expertBackgroundMode as ExpertBackgroundMode)
       : "original";
-  const voiceSettings = body?.voiceSettings && typeof body.voiceSettings === "object" ? body.voiceSettings : null;
+  const currentTts = await readTTSConfig();
+  const configuredProvider = currentTts.provider === "cartesia" || currentTts.provider === "fish-audio" || currentTts.provider === "omnivoice"
+    ? currentTts.provider
+    : "omnivoice";
+  const rawVoiceSettings = body?.voiceSettings && typeof body.voiceSettings === "object" ? body.voiceSettings : {};
+  const voiceSettings = { ...rawVoiceSettings, provider: configuredProvider };
   const sourceVideoDescription = typeof body?.sourceVideoDescription === "string" ? body.sourceVideoDescription.trim() : "";
   const sourceVideoTranscription = typeof body?.sourceVideoTranscription === "string" ? body.sourceVideoTranscription.trim() : "";
   const trimStart = typeof body?.trimStart === "string" && body.trimStart.trim() ? body.trimStart.trim() : null;
   const trimEnd = typeof body?.trimEnd === "string" && body.trimEnd.trim() ? body.trimEnd.trim() : null;
   const scriptText = typeof body?.scriptText === "string" && body.scriptText.trim() ? body.scriptText.trim() : null;
+  const voiceDirection = scriptText && body?.voiceDirection
+    ? normalizeVoiceDirection(body.voiceDirection, scriptText)
+    : null;
 
   if (!topic || !avatarId) {
     return jsonError("Assunto e avatar sao obrigatorios.");
@@ -95,6 +106,7 @@ export async function POST(request: Request) {
     renderLayout,
     expertBackgroundMode,
     voiceSettings,
+    voiceDirection,
     sourceVideoDescription: sourceVideoDescription || null,
     sourceVideoTranscription: sourceVideoTranscription || null,
     trimStart,

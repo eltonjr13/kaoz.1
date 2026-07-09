@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Camera, CheckCircle, Download, ExternalLink, Play, RefreshCw, Rocket, RotateCcw, ChevronDown, ChevronUp, Scissors, Settings, Upload } from "lucide-react";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
-import type { Avatar, ExpertBackgroundMode, JobStatus, RenderLayout } from "@/types";
+import type { Avatar, ExpertBackgroundMode, JobStatus, RenderLayout, VoiceDirection } from "@/types";
 import { getSourceVideoPlatformLabel, parseSourceVideoUrl } from "@/lib/videos/source-video";
 
 function getMediaUrl(filePath: string | null | undefined) {
@@ -499,6 +499,7 @@ export function CreateJobForm({
 
   // Video analysis and editing states
   const [scriptText, setScriptText] = useState("");
+  const [voiceDirection, setVoiceDirection] = useState<VoiceDirection | null>(null);
   const [sourceVideoDescription, setSourceVideoDescription] = useState("");
   const [sourceVideoTranscription, setSourceVideoTranscription] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -635,6 +636,7 @@ export function CreateJobForm({
       }
 
       setScriptText(data.script || "");
+      setVoiceDirection(data.voiceDirection || null);
       setStep(3); // Avanca para a Etapa 3 de revisao do roteiro
     } catch (err) {
       console.error(err);
@@ -713,6 +715,7 @@ export function CreateJobForm({
           trimStart: shouldTrim ? trimStart.trim() || null : null,
           trimEnd: shouldTrim ? trimEnd.trim() || null : null,
           scriptText,
+          voiceDirection,
           sourceVideoDescription,
           sourceVideoTranscription,
           voiceSettings: {
@@ -1081,12 +1084,24 @@ export function CreateJobForm({
             <textarea
               id="scriptText"
               value={scriptText}
-              onChange={(e) => setScriptText(e.target.value)}
+              onChange={(e) => {
+                setScriptText(e.target.value);
+                setVoiceDirection(null);
+              }}
               rows={6}
               placeholder="Escreva ou edite o roteiro do react..."
               required
             />
             <span className="field-hint">Este texto sera falado pelo avatar e usado no Lip-sync.</span>
+            {voiceDirection?.cues.length ? (
+              <div className="field-hint" style={{ marginTop: 8 }}>
+                Direção vocal automática: {voiceDirection.cues.map((cue) => `${cue.effects.join(" + ")} (frase ${cue.sentence + 1})`).join(" · ")}. Ao editar o texto, a direção será recalculada antes da voz.
+              </div>
+            ) : (
+              <div className="field-hint" style={{ marginTop: 8 }}>
+                A direção vocal é decidida automaticamente pelo agente conforme o contexto do roteiro.
+              </div>
+            )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>

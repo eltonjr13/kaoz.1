@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findLocalAvatar } from "@/lib/local-store";
 import { generateScriptFromAnalysis } from "@/lib/ai/gemini";
+import { planVoiceDirection } from "@/lib/ai/voice-direction";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -41,7 +42,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      script
+      script,
+      voiceDirection: await planVoiceDirection(script)
     });
   } catch (error) {
     console.error("Erro ao gerar roteiro do vídeo:", error);

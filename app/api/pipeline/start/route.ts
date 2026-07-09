@@ -3,7 +3,8 @@ import path from "node:path";
 import { completeLocalJob, findLocalAvatar, findLocalJob, updateLocalJob, updateLocalJobStatus } from "@/lib/local-store";
 import { renderVerticalVideo, downloadSourceVideo, trimVideo } from "@/lib/videos/render";
 import { generateReactionScript } from "@/lib/ai/script";
-import { generateOmniVoice } from "@/lib/ai/omni-voice";
+import { generateJobVoice } from "@/lib/ai/voice";
+import { planVoiceDirection } from "@/lib/ai/voice-direction";
 import { generateLipSync } from "@/lib/ai/lipsync";
 import { spawn } from "node:child_process";
 import { mkdir, readdir } from "node:fs/promises";
@@ -238,14 +239,18 @@ export async function POST(request: Request) {
           }
 
           console.log(`[VOICE] Job ${jobId}: iniciando geração de voz com OmniVoice.`);
-          const voiceResult = await generateOmniVoice({
+          const voiceDirection = localJobRecord.voice_direction || await planVoiceDirection(scriptText);
+          if (!localJobRecord.voice_direction) {
+            await updateLocalJob(jobId, { voice_direction: voiceDirection });
+          }
+          const voiceResult = await generateJobVoice({
             script: scriptText,
-            voiceId: "default",
             jobId,
             refAudioPath,
-            settings: localJobRecord.voice_settings
+            settings: localJobRecord.voice_settings,
+            direction: voiceDirection
           });
-          await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: "omnivoice" });
+          await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: voiceResult.provider });
           console.log(`[VOICE] Job ${jobId}: voz gerada em ${voiceResult.audioPath}.`);
           
           voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));

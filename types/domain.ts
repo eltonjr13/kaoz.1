@@ -44,6 +44,8 @@ export type ViralVideo = {
 };
 
 export type VoiceSettings = {
+  /** Provider captured when the job is created, so regenerations are reproducible. */
+  provider?: "cartesia" | "fish-audio" | "omnivoice";
   inference_steps?: number;
   guidance_scale?: number;
   denoise_ratio?: number;
@@ -51,6 +53,34 @@ export type VoiceSettings = {
   duration?: number;
   preprocess_prompt?: boolean;
   postprocess_output?: boolean;
+};
+
+export type VoiceEffect =
+  | "pause"
+  | "long-pause"
+  | "whisper"
+  | "soft"
+  | "loud"
+  | "emphasis"
+  | "laugh"
+  | "chuckle"
+  | "giggle"
+  | "cry"
+  | "sigh"
+  | "inhale"
+  | "exhale"
+  | "singing"
+  | "sing-song";
+
+export type VoiceDirectionCue = {
+  sentence: number;
+  effects: VoiceEffect[];
+  reason: string;
+};
+
+export type VoiceDirection = {
+  version: 1;
+  cues: VoiceDirectionCue[];
 };
 
 export type ReactionJob = {
@@ -65,12 +95,13 @@ export type ReactionJob = {
   topic: string;
   status: JobStatus;
   script_text: string | null;
-  voice_provider: "omnivoice" | null;
+  voice_provider: "cartesia" | "fish-audio" | "omnivoice" | null;
   audio_path: string | null;
   lip_sync_video_path: string | null;
   final_video_path: string | null;
   error_message: string | null;
   voice_settings?: VoiceSettings | null;
+  voice_direction?: VoiceDirection | null;
   source_video_description?: string | null;
   source_video_transcription?: string | null;
   trim_start?: string | null;
