@@ -621,6 +621,7 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
   
   for (let loop = 0; loop < 10; loop++) {
     const cliOutput = await runAgentCli(settings, currentPrompt, options);
+    console.log("[Agent CLI Tool Loop] CLI Raw Output:", cliOutput);
     
     // Procura por blocos <TOOL_CALL> no output
     const toolCallMatch = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
@@ -630,13 +631,38 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
       return cliOutput;
     }
     
+    let rawJson = toolCallMatch[1].trim();
+    // Normalizar aspas inteligentes (smart quotes)
+    rawJson = rawJson
+      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, '"');
+
     let parsedCall;
     try {
-      parsedCall = JSON.parse(toolCallMatch[1].trim());
+      parsedCall = JSON.parse(rawJson);
     } catch (e) {
-      console.warn("[Agent CLI Tool Loop] Erro de parse JSON na chamada da ferramenta:", e);
-      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "JSON invalido na chamada da ferramenta."}</TOOL_RESULT>\n`;
-      continue;
+      // Tentativa 1: Remover aspas escapadas erroneamente (ex: \"serverId\" -> "serverId")
+      try {
+        const unescaped = rawJson.replace(/\\"/g, '"');
+        parsedCall = JSON.parse(unescaped);
+      } catch (e1) {
+        // Tentativa 2: Converter aspas simples para duplas
+        try {
+          const doubleQuoted = rawJson.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+          parsedCall = JSON.parse(doubleQuoted);
+        } catch (e2) {
+          // Tentativa 3: Ambas as correções juntas
+          try {
+            const cleanBoth = rawJson.replace(/\\"/g, '"').replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+            parsedCall = JSON.parse(cleanBoth);
+          } catch (e3) {
+            console.warn("[Agent CLI Tool Loop] Erro de parse JSON na chamada da ferramenta:", e);
+            console.warn("[Agent CLI Tool Loop] JSON bruto recebido que falhou:", toolCallMatch[1]);
+            currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "JSON invalido na chamada da ferramenta. NUNCA escape as aspas com barra invertida e use aspas duplas normais para chaves e valores. Exemplo correto: {\\"serverId\\": \\"spotify-mcp-server-local\\", \\"toolName\\": \\"search_tracks\\", \\"args\\": {\\"query\\": \\"nome\\"}}"}</TOOL_RESULT>\n`;
+            continue;
+          }
+        }
+      }
     }
     
     try {
