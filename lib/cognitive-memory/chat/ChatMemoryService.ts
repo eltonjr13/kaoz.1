@@ -151,6 +151,70 @@ export class ChatMemoryService {
     }
   }
 
+  public async retrieveRelevantMemories(
+    query: string,
+    options: { avatarId?: string; limit?: number } = {}
+  ): Promise<string> {
+    const data = await this.storage.readMemory();
+    const chatMemories = data.chat?.memories || [];
+    const limit = options.limit || 8;
+
+    if (!query || chatMemories.length === 0) {
+      return '';
+    }
+
+    // Normalizar a query e extrair palavras com mais de 3 letras
+    const normalizedQuery = this.normalizeContent(query);
+    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 3);
+
+    if (queryWords.length === 0) {
+      return '';
+    }
+
+    // Filtrar e pontuar memórias
+    const scoredMemories = chatMemories
+      .filter(m => {
+        // Apenas ativas
+        if (m.status !== 'active') return false;
+        // Correspondência de escopo
+        if (m.scope === 'global') return true;
+        if (m.scope === 'avatar' && options.avatarId && m.avatarId === options.avatarId) return true;
+        return false;
+      })
+      .map(m => {
+        const normalizedContent = this.normalizeContent(m.content);
+        let score = 0;
+        
+        // Match exato recebe um bônus enorme
+        if (normalizedContent.includes(normalizedQuery)) {
+          score += 100;
+        }
+
+        // Match por palavra
+        for (const word of queryWords) {
+          if (normalizedContent.includes(word)) {
+            score += 10;
+          }
+        }
+
+        // Bônus para confiança alta e mais ocorrências
+        score += (m.confidenceScore || 0) * 5;
+        score += Math.min(5, m.occurrences || 1);
+
+        return { memory: m, score };
+      })
+      .filter(sm => sm.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const topMemories = scoredMemories.slice(0, limit).map(sm => sm.memory);
+
+    if (topMemories.length === 0) {
+      return '';
+    }
+
+    return topMemories.map(m => `- ${m.content}`).join('\n');
+  }
+
   private normalizeContent(content: string): string {
     return content
       .normalize('NFD')

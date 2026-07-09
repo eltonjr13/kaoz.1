@@ -729,6 +729,7 @@ type ChatWithAgentOptions = {
   useCortexMemory?: boolean;
   onMessageChunk?: (chunk: string) => void;
   hasExternalTools?: boolean;
+  relevantMemories?: string;
 };
 
 type ExecuteWebQuery = (
@@ -772,13 +773,13 @@ function shouldUseStructuredChatResponse(
   return Boolean(options?.hasExternalTools) || Boolean(referenceImagePath) || isLikelyActionRequest(messages);
 }
 
-function buildPlainChatPrompt(messages: ChatMessage[], personalityContext: string, useCortexMemory?: boolean): string {
+function buildPlainChatPrompt(messages: ChatMessage[], personalityContext: string, options?: ChatWithAgentOptions): string {
   const plainSystemInstruction = `
 ${personalityContext}
 
-Modo Cortex: ${useCortexMemory === false ? "desligado" : "ligado"}.
+Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
-
+${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
 Responda em portugues, diretamente em texto normal. Nao retorne JSON, nao use bloco de codigo para a resposta inteira e nao inclua a chave "message".
 Seja mais util que uma execucao literal: identifique a intencao real do usuario, recomende o proximo passo mais forte e explique o criterio quando isso ajudar.
 Para pedidos abertos ou estrategicos, responda com diagnostico curto, plano pratico e tradeoffs relevantes. Para perguntas simples, seja curto.
@@ -834,22 +835,6 @@ export async function chatWithAgent(
   if (avatarPersonality) {
     // Exclui campos específicos de roteirização que confundem o chatbot (como as instruções detalhadas de react)
     const cleanPersonality = { ...avatarPersonality };
-    delete cleanPersonality.instructions;
-    delete cleanPersonality.target_audience;
-    personalityContext += `\n\nInstrução especial: O usuário selecionou um Avatar com a seguinte personalidade. Tente adaptar sutilmente seu tom de voz e estilo para sintonizar com ela, mantendo seu papel de assistente Sr. Chicken:\n${JSON.stringify(cleanPersonality, null, 2)}`;
-  }
-
-  const systemInstruction = `
-${personalityContext}
-
-Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
-Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
-
-Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
-1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
-2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
-
-A estrutura de "action" (se aplicável) deve ser:
 {
   "flow": "image" | "video" | "project" | "refine" | "ad-creative",
   "optimizedPrompt": "O prompt otimizado em inglês (se flow for image/video) ou instruções detalhadas em português (se project/refine/ad-creative).",
@@ -890,7 +875,7 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
   const structuredPrompt = compiledPrompt;
   const requiresStructuredResponse = shouldUseStructuredChatResponse(options, referenceImagePath, messages);
   if (!requiresStructuredResponse) {
-    compiledPrompt = buildPlainChatPrompt(messages, personalityContext, options?.useCortexMemory);
+    compiledPrompt = buildPlainChatPrompt(messages, personalityContext, options);
   }
 
   try {

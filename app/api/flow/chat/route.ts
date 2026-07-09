@@ -7,6 +7,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-format";
 import { getQuickWebSearchResponse } from "@/services/web-search/quick-web-search";
+import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
+import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
+import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -192,9 +195,35 @@ function cleanupReferenceImage(filePath?: string): void {
   }
 }
 
+async function processChatMemory(
+  userText: string,
+  agentResponse: string,
+  avatarId: string | undefined,
+  cortexMemoryEnabled: boolean
+) {
+  if (!cortexMemoryEnabled || !userText) return;
+  try {
+    const candidates = extractChatMemoryCandidates(userText, agentResponse, {
+      avatarId,
+      source: 'flow_chat'
+    });
+    if (candidates.length > 0) {
+      const storage = new JsonStorageProvider();
+      const service = new ChatMemoryService(storage);
+      await service.saveChatMemoryCandidates(candidates, {
+        cortexEnabled: cortexMemoryEnabled,
+        avatarId
+      });
+    }
+  } catch (err) {
+    console.warn("[API CHAT] Falha ao extrair/salvar memória do chat:", err);
+  }
+}
+
 function createChatStreamResponse(
   runChat: (send: StreamSender) => Promise<ChatAgentResponse>,
-  cleanup: () => void
+  cleanup: () => void,
+  onComplete?: (response: ChatAgentResponse) => void
 ): Response {
   const encoder = new TextEncoder();
   let cleanedUp = false;
@@ -240,6 +269,10 @@ function createChatStreamResponse(
           message: response.message,
           action: response.action,
         });
+
+        if (onComplete) {
+          onComplete(response);
+        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error("[API CHAT] Erro no stream do chat:", err);
@@ -345,6 +378,20 @@ export async function POST(request: Request) {
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
+    let relevantMemories: string | undefined = undefined;
+    if (cortexMemoryEnabled && latestUserText) {
+      try {
+        const storage = new JsonStorageProvider();
+        const service = new ChatMemoryService(storage);
+        const retrieved = await service.retrieveRelevantMemories(latestUserText, { avatarId });
+        if (retrieved) {
+          relevantMemories = retrieved;
+        }
+      } catch (err) {
+        console.warn("[API CHAT] Falha ao recuperar memórias relevantes do chat:", err);
+      }
+    }
+
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
       messages,
       personality,
@@ -356,6 +403,7 @@ export async function POST(request: Request) {
         useCortexMemory: cortexMemoryEnabled,
         onMessageChunk,
         hasExternalTools,
+        relevantMemories,
       }
     );
 
@@ -380,11 +428,17 @@ export async function POST(request: Request) {
       cleanupInPost = false;
       return createChatStreamResponse(
         (send) => runChat((chunk) => send("chunk", { text: chunk })),
-        () => cleanupReferenceImage(referenceImagePath)
+        () => cleanupReferenceImage(referenceImagePath),
+        (response) => {
+          processChatMemory(latestUserText, response.message, avatarId, cortexMemoryEnabled);
+        }
       );
     }
 
     const response = await runChat();
+    
+    // Processamento de memória no fluxo não-stream
+    processChatMemory(latestUserText, response.message, avatarId, cortexMemoryEnabled);
 
     return NextResponse.json({
       success: true,
