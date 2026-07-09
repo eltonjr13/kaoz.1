@@ -33,7 +33,7 @@ export async function POST(request: Request) {
         const chatMemoryService = new ChatMemoryService(storage);
         
         const candidateContext = {
-          avatarId: job.avatarId,
+          avatarId: job.avatar_id,
           source: 'job_feedback' as any
         };
 
