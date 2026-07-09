@@ -355,7 +355,7 @@ export async function POST(request: Request) {
     const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
     const modelName = resolveFlowChatModel(model);
     const wantsExternalTools = needsExternalTools(messages);
-    const hasExternalTools = modelName === "cerebras" && wantsExternalTools;
+    const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
 
