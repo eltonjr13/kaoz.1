@@ -738,7 +738,12 @@ type ChatWithAgentOptions = {
 type ExecuteWebQuery = (
   compiledPrompt: string,
   referenceImagePath?: string,
-  options?: { onTextChunk?: (chunk: string) => void; browserFallbackPrompt?: string; useExternalTools?: boolean }
+  options?: {
+    onTextChunk?: (chunk: string) => void;
+    browserFallbackPrompt?: string;
+    useExternalTools?: boolean;
+    toolIntentText?: string;
+  }
 ) => Promise<string>;
 
 function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
@@ -998,6 +1003,7 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
       onTextChunk: handleTextChunk,
       browserFallbackPrompt: structuredPrompt,
       useExternalTools: Boolean(options?.hasExternalTools),
+      toolIntentText: getLatestUserText(messages),
     });
 
     return parseChatModelResponse(responseText, messages, requiresStructuredResponse);

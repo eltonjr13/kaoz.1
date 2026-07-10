@@ -398,7 +398,12 @@ export async function POST(request: Request) {
     const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
       messages,
       personality,
-      async (compiledPrompt: string, imagePath?: string, queryOptions?: { onTextChunk?: (chunk: string) => void; browserFallbackPrompt?: string; useExternalTools?: boolean }) => {
+      async (compiledPrompt: string, imagePath?: string, queryOptions?: {
+        onTextChunk?: (chunk: string) => void;
+        browserFallbackPrompt?: string;
+        useExternalTools?: boolean;
+        toolIntentText?: string;
+      }) => {
         return await flowProvider.queryWebLLM(modelName, compiledPrompt, imagePath, queryOptions);
       },
       referenceImagePath,

@@ -149,7 +149,12 @@ export class FlowProvider {
     model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras',
     prompt: string,
     referenceImagePath?: string,
-    options: { onTextChunk?: (chunk: string) => void; browserFallbackPrompt?: string; useExternalTools?: boolean } = {}
+    options: {
+      onTextChunk?: (chunk: string) => void;
+      browserFallbackPrompt?: string;
+      useExternalTools?: boolean;
+      toolIntentText?: string;
+    } = {}
   ): Promise<string> {
     this.activeTasksCount++;
     try {

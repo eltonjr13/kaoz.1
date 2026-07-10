@@ -46,6 +46,13 @@ const {
   isContextDependentActionRequest,
   isLikelyActionRequest,
 } = await import(pathToFileURL(path.join(workspaceRoot, "lib/ai/gemini.ts")).href);
+const {
+  extractLatestUserPrompt,
+  getForcedSpotifyToolName,
+} = await import(pathToFileURL(path.join(
+  workspaceRoot,
+  "services/agent-llm/agent-llm.service.ts",
+)).href);
 
 const messages = [
   {
@@ -79,11 +86,13 @@ assert.equal(isContextDependentActionRequest([
 ]), false);
 
 let capturedPrompt = "";
+let capturedQueryOptions;
 const response = await chatWithAgent(
   messages,
   null,
-  async (compiledPrompt) => {
+  async (compiledPrompt, _referenceImagePath, queryOptions) => {
     capturedPrompt = compiledPrompt;
+    capturedQueryOptions = queryOptions;
 
     return JSON.stringify({
       message: "Vou ilustrar o momento mais emotivo da história.",
@@ -109,6 +118,23 @@ const response = await chatWithAgent(
 assert.match(capturedPrompt, /pintor triste/i);
 assert.doesNotMatch(capturedPrompt, /matem[aá]tica/i);
 assert.match(capturedPrompt, /CONTEXTO IMEDIATO - ÚNICA FONTE/i);
+assert.equal(
+  extractLatestUserPrompt(capturedPrompt),
+  "Gostei da história, gera uma ilustração sobre.",
+);
+assert.equal(
+  capturedQueryOptions?.toolIntentText,
+  "Gostei da história, gera uma ilustração sobre.",
+);
+assert.equal(capturedQueryOptions?.useExternalTools, false);
+assert.equal(
+  getForcedSpotifyToolName("nenhum topico anterior pode definir o sujeito da imagem ou video"),
+  null,
+);
+assert.equal(
+  getForcedSpotifyToolName("volte para a musica anterior no spotify"),
+  "previous_track",
+);
 assert.equal(response.action?.flow, "image");
 assert.match(response.action?.optimizedPrompt ?? "", /painter/i);
 assert.doesNotMatch(response.action?.optimizedPrompt ?? "", /math/i);

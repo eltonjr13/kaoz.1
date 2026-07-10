@@ -17,6 +17,7 @@ type QueryOptions = {
   referenceImagePath?: string;
   onTextChunk?: (chunk: string) => void;
   useExternalTools?: boolean;
+  toolIntentText?: string;
 };
 
 const MAX_OUTPUT_CHARS = 250_000;
@@ -43,13 +44,12 @@ const WEB_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pe
 const USD_BRL_INTENT_PATTERN = /\b(dolar|usd|usdbrl|usd brl|cotacao do dolar|cotacao dolar)\b/;
 const SPOTIFY_PLAYLIST_CREATE_PATTERN = /\bspotify\b[\s\S]*\bplaylist\b|\bplaylist\b[\s\S]*\bspotify\b/;
 const PLAYLIST_CREATE_VERB_PATTERN = /\b(crie|criar|cria|criar uma|criar nova|nova playlist|create|make)\b/;
-const SPOTIFY_PLAYBACK_INTENT_PATTERN = /\b(spotify|musica|reproducao|tocando|tocar|toque|pausar|pause|parar|dispositivo|dispositivos|proxima|anterior|volume|fila)\b/;
 
 function normalizeToolIntentText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-function extractLatestUserPrompt(prompt: string): string {
+export function extractLatestUserPrompt(prompt: string): string {
   const userMarkerPattern = /\nUSU[^\n]*:\n/g;
   let lastUserMarker: RegExpExecArray | null = null;
   let match: RegExpExecArray | null = null;
@@ -61,7 +61,9 @@ function extractLatestUserPrompt(prompt: string): string {
   if (!lastUserMarker) return prompt;
 
   const afterUserMarker = prompt.slice(lastUserMarker.index + lastUserMarker[0].length);
-  const nextSectionIndex = afterUserMarker.search(/\n\n(?:MR CHICKEN|\[INSTRU)/);
+  // Stop at any prompt section emitted after the user message. Restricting this
+  // to [INSTRU...] allowed [RESTRIÇÃO DE GROUNDING] to leak into tool intent.
+  const nextSectionIndex = afterUserMarker.search(/\n\n(?:MR CHICKEN|USU[^\n]*:|\[[^\n]+\])/);
   const latestUserPrompt = nextSectionIndex >= 0
     ? afterUserMarker.slice(0, nextSectionIndex)
     : afterUserMarker;
@@ -74,8 +76,10 @@ function shouldForceSpotifyPlaylistCreate(normalizedPrompt: string): boolean {
     PLAYLIST_CREATE_VERB_PATTERN.test(normalizedPrompt);
 }
 
-function getForcedSpotifyToolName(normalizedPrompt: string): string | null {
-  if (!SPOTIFY_PLAYBACK_INTENT_PATTERN.test(normalizedPrompt)) return null;
+export function getForcedSpotifyToolName(normalizedPrompt: string): string | null {
+  // Playback words such as "anterior" are not Spotify intent by themselves.
+  // Require an explicit Spotify/playlist mention or action + music context.
+  if (!hasSpotifyIntent(normalizedPrompt)) return null;
   if (/\b(dispositivo|dispositivos|devices|aparelhos)\b/.test(normalizedPrompt)) return "list_devices";
   if (/\b(pausar|pause|pausa|parar|pare)\b/.test(normalizedPrompt)) return "pause_music";
   if (/\b(proxima|proximo|next|passar musica|passe a musica|avancar)\b/.test(normalizedPrompt)) return "next_track";
@@ -597,7 +601,7 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
   const mcpManager = await McpManager.getInstance();
   const allMcpTools = await mcpManager.getAllTools();
   
-  const toolIntentPrompt = extractLatestUserPrompt(prompt);
+  const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   
@@ -986,7 +990,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   const { OpenAI } = await import("openai");
   const cerebras = new OpenAI({ apiKey, baseURL });
 
-  const toolIntentPrompt = extractLatestUserPrompt(prompt);
+  const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const useExternalTools = options.useExternalTools !== false;
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
@@ -1016,7 +1020,9 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   });
   let tools = [...builtInTools, ...mcpTools];
   let chatTools = tools.length > 0 ? tools : undefined;
-  const forcedSpotifyToolName = getForcedSpotifyToolName(normalizedPrompt);
+  const forcedSpotifyToolName = useExternalTools
+    ? getForcedSpotifyToolName(normalizedPrompt)
+    : null;
   let forcedSpotifyTool = forcedSpotifyToolName
     ? mcpTools.find(t => t.function.name === forcedSpotifyToolName)
     : undefined;

@@ -11,6 +11,7 @@ type QueryWebLLMOptions = {
   onTextChunk?: (chunk: string) => void;
   browserFallbackPrompt?: string;
   useExternalTools?: boolean;
+  toolIntentText?: string;
 };
 
 export class FlowLLMAutomation {
@@ -224,6 +225,7 @@ export class FlowLLMAutomation {
             referenceImagePath,
             onTextChunk: options?.onTextChunk,
             useExternalTools: options?.useExternalTools,
+            toolIntentText: options?.toolIntentText,
           }));
       }
     } catch (err) {
@@ -242,6 +244,7 @@ export class FlowLLMAutomation {
         referenceImagePath,
         onTextChunk: options.onTextChunk,
         useExternalTools: options.useExternalTools,
+        toolIntentText: options.toolIntentText,
       });
       return result ? this.cleanLLMResponse(result) : null;
     } catch (err) {
