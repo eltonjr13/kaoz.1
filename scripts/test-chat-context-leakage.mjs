@@ -44,6 +44,7 @@ registerHooks({
 const {
   chatWithAgent,
   isContextDependentActionRequest,
+  isImmediateContextReference,
   isLikelyActionRequest,
 } = await import(pathToFileURL(path.join(workspaceRoot, "lib/ai/gemini.ts")).href);
 const {
@@ -139,6 +140,94 @@ assert.equal(response.action?.flow, "image");
 assert.match(response.action?.optimizedPrompt ?? "", /painter/i);
 assert.doesNotMatch(response.action?.optimizedPrompt ?? "", /math/i);
 
+const alligatorJokeMessages = [
+  {
+    role: "user",
+    parts: [{ text: "Estou com problemas no livro de matemática." }],
+  },
+  {
+    role: "model",
+    parts: [{ text: "Elias estava triste em um banco da praça e desenhou um sol vermelho para uma menina." }],
+  },
+  {
+    role: "user",
+    parts: [{ text: "Ok, mas eu quero outra piada engraçada." }],
+  },
+  {
+    role: "model",
+    parts: [{
+      text: "Por que o jacaré tirou o jacarezinho da escola? Porque ele era réptil de ano.",
+    }],
+  },
+  {
+    role: "user",
+    parts: [{ text: "Essa foi engraçada, gera uma ilustração estilo HQ dessa piada." }],
+  },
+];
+
+assert.equal(isImmediateContextReference(alligatorJokeMessages), true);
+assert.equal(isContextDependentActionRequest(alligatorJokeMessages), true);
+
+let alligatorPrompt = "";
+const alligatorResponse = await chatWithAgent(
+  alligatorJokeMessages,
+  null,
+  async (compiledPrompt) => {
+    alligatorPrompt = compiledPrompt;
+    return JSON.stringify({
+      message: "Vou transformar a última piada em uma cena de HQ.",
+      action: {
+        flow: "image",
+        optimizedPrompt: "Humorous comic-book illustration of an alligator parent taking a young alligator out of school after repeating the grade, playful classroom setting, expressive characters, bold ink outlines and colorful panels",
+        explanation: "O prompt representa exclusivamente a piada do jacaré contada imediatamente antes.",
+      },
+    });
+  },
+  undefined,
+  {
+    useCortexMemory: true,
+    relevantMemories: "- O usuário prefere ilustrações sobre livros de matemática.",
+  },
+);
+
+assert.match(alligatorPrompt, /jacaré tirou o jacarezinho/i);
+assert.doesNotMatch(alligatorPrompt, /Elias|matem[aá]tica/i);
+assert.match(alligatorPrompt, /ÚNICA FONTE PARA O SUJEITO/i);
+assert.match(alligatorResponse.action?.optimizedPrompt ?? "", /alligator/i);
+
+let recoveryPrompt = "";
+const recoveryMessages = [
+  ...alligatorJokeMessages,
+  {
+    role: "model",
+    parts: [{ text: "De qual piada você está falando: a história de Elias ou a do livro de matemática?" }],
+  },
+  {
+    role: "user",
+    parts: [{ text: "Eu estou pensando dessa que você falou por último." }],
+  },
+];
+
+assert.equal(isImmediateContextReference(recoveryMessages), true);
+const recoveryResponse = await chatWithAgent(
+  recoveryMessages,
+  null,
+  async (compiledPrompt) => {
+    recoveryPrompt = compiledPrompt;
+    return "Você está falando da piada do jacaré que era réptil de ano.";
+  },
+  undefined,
+  {
+    useCortexMemory: true,
+    relevantMemories: "- Contexto persistente sobre álgebra avançada.",
+  },
+);
+
+assert.match(recoveryPrompt, /jacaré tirou o jacarezinho/i);
+assert.match(recoveryPrompt, /REGRA DE REFERÊNCIA RECENTE/i);
+assert.doesNotMatch(recoveryPrompt, /álgebra avançada/i);
+assert.match(recoveryResponse.message, /jacaré/i);
+
 let modelWasCalled = false;
 const clarification = await chatWithAgent(
   [{ role: "user", parts: [{ text: "Gera uma ilustração sobre isso." }] }],
@@ -154,5 +243,7 @@ assert.equal(clarification.action, null);
 assert.match(clarification.message, /qual conteúdo/i);
 
 console.log("PASS: o prompt usa o pintor da história imediata e exclui matemática/memórias antigas.");
+console.log("PASS: 'dessa piada' ancora a ação somente na piada mais recente do jacaré.");
+console.log("PASS: 'que você falou por último' usa a janela recente e ignora o Cortex.");
 console.log("PASS: a seção de grounding não vaza para a intenção de ferramentas nem força previous_track.");
 console.log("PASS: sem contexto imediato suficiente, o chatbot pede esclarecimento e não cria uma ação.");

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   chatWithAgent,
-  isContextDependentActionRequest,
+  isImmediateContextReference,
 } from "@/lib/ai/gemini";
 import type { ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
 import { findLocalAvatar } from "@/lib/local-store";
@@ -366,7 +366,7 @@ export async function POST(request: Request) {
     const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
-    const contextDependentActionRequest = isContextDependentActionRequest(messages);
+    const immediateContextReference = isImmediateContextReference(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
 
 
@@ -379,7 +379,7 @@ export async function POST(request: Request) {
     // grounded only in the immediately preceding exchange. Do not even retrieve
     // Cortex memories for this turn, so an old topic cannot compete in the
     // system-level context assembled by chatWithAgent.
-    if (cortexMemoryEnabled && latestUserText && !contextDependentActionRequest) {
+    if (cortexMemoryEnabled && latestUserText && !immediateContextReference) {
       try {
         const storage = new JsonStorageProvider();
         const service = new ChatMemoryService(storage);

@@ -765,7 +765,7 @@ export function isLikelyActionRequest(messages: ChatMessage[]): boolean {
 }
 
 const IMMEDIATE_CONTEXT_REFERENCE_PATTERN =
-  /\b(sobre isso|sobre isto|a respeito disso|a respeito disto|disso|disto|daquilo|dessa historia|desta historia|da historia|essa historia|esta historia|do que voce acabou de (?:dizer|contar|escrever)|que voce acabou de (?:dizer|contar|escrever)|que voce contou|dele|dela)\b|\b(sobre|disso|disto|daquilo|dele|dela)$/;
+  /\b(sobre isso|sobre isto|a respeito disso|a respeito disto|disso|disto|daquilo|do que voce acabou de (?:dizer|contar|escrever)|que voce acabou de (?:dizer|falar|contar|escrever|mencionar)|que voce (?:disse|falou|contou|escreveu|mencionou)(?: por ultimo)?|que foi (?:contada|contado|dita|dito|falada|falado|mencionada|mencionado)|dele|dela|por ultimo|agora pouco|logo acima)\b|\b(?:desse|dessa|deste|desta|esse|essa|este|esta|do|da)\s+(?:historia|piada|texto|conto|ideia|cena|resposta|exemplo|assunto|tema|mensagem)\b|\b(?:ultima|ultimo|mais recente)\s+(?:historia|piada|texto|conto|ideia|cena|resposta|exemplo|assunto|tema|mensagem)\b|\b(sobre|disso|disto|daquilo|dele|dela)$/;
 
 const EXPLICIT_OLDER_CONTEXT_PATTERN =
   /\b(no inicio|no comeco|la atras|primeira mensagem|primeiro assunto|assunto antigo|topico antigo|conversa antiga|historico antigo)\b/;
@@ -778,8 +778,10 @@ function normalizeActionReferenceText(messages: ChatMessage[]): string {
 }
 
 export function isContextDependentActionRequest(messages: ChatMessage[]): boolean {
-  if (!isLikelyActionRequest(messages)) return false;
+  return isLikelyActionRequest(messages) && isImmediateContextReference(messages);
+}
 
+export function isImmediateContextReference(messages: ChatMessage[]): boolean {
   const normalized = normalizeActionReferenceText(messages);
   if (!normalized || EXPLICIT_OLDER_CONTEXT_PATTERN.test(normalized)) return false;
 
@@ -833,6 +835,8 @@ function shouldUseStructuredChatResponse(
 
 function buildPlainChatPrompt(messages: ChatMessage[], personalityContext: string, options?: ChatWithAgentOptions): string {
   const hasTools = options?.hasExternalTools;
+  const immediateContextReference = isImmediateContextReference(messages);
+  const promptMessages = immediateContextReference ? messages.slice(-5) : messages;
   const toolsAccessStr = hasTools
     ? "Quando a informacao exigir internet, arquivos, terminal ou ferramentas, use-as livremente atraves dos comandos de ferramenta fornecidos."
     : "Quando a informacao exigir internet, arquivos, terminal ou ferramentas e elas nao estiverem disponiveis neste modo, diga concretamente que nao tem acesso no momento.";
@@ -842,8 +846,14 @@ ${personalityContext}
 
 Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
-${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
+${!immediateContextReference && options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
 ${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstruction}\n` : ""}
+${immediateContextReference ? `
+[REGRA DE REFERÊNCIA RECENTE]:
+- O usuário está apontando para algo dito recentemente. Use somente as mensagens recentes fornecidas abaixo e ignore memórias do Cortex ou assuntos antigos.
+- "Última piada/história/texto" significa a mensagem mais recente do assistente que realmente contém esse conteúdo, não uma pergunta de esclarecimento ou comentário posterior sobre ele.
+- Leia as mensagens da mais nova para a mais antiga e escolha a primeira que satisfaça exatamente o tipo citado pelo usuário.
+` : ""}
 Responda em portugues, diretamente em texto normal. Nao retorne JSON, nao use bloco de codigo para a resposta inteira e nao inclua a chave "message".
 Seja mais util que uma execucao literal: identifique a intencao real do usuario, recomende o proximo passo mais forte e explique o criterio quando isso ajudar.
 Para pedidos abertos ou estrategicos, responda com diagnostico curto, plano pratico e tradeoffs relevantes. Para perguntas simples, seja curto.
@@ -858,7 +868,7 @@ Quando houver ambiguidade leve, assuma o caminho mais provavel e diga a suposica
 ${finalInstructionStr}
 Nao diga "vou analisar", "vou procurar" ou "consultando". Entregue a melhor resposta possivel com o historico atual.`;
 
-  return buildChatPrompt(messages, plainSystemInstruction, plainFinalInstruction);
+  return buildChatPrompt(promptMessages, plainSystemInstruction, plainFinalInstruction);
 }
 
 function parseChatModelResponse(responseText: string, messages: ChatMessage[], requiresStructuredResponse: boolean): ChatAgentResponse {
@@ -899,6 +909,7 @@ export async function chatWithAgent(
     return immediateResponse;
   }
 
+  const immediateContextReference = isImmediateContextReference(messages);
   const contextDependentActionRequest = isContextDependentActionRequest(messages);
   if (requiresActionContextClarification(messages, referenceImagePath)) {
     return {
@@ -911,10 +922,10 @@ export async function chatWithAgent(
     avatarPersonality,
     // A memory can define tone/preferences, but must never become the subject of
     // an anaphoric action such as "gere uma ilustração sobre isso".
-    activeMemories: contextDependentActionRequest ? undefined : options?.activeMemories
+    activeMemories: immediateContextReference ? undefined : options?.activeMemories
   });
 
-  const relevantMemoryContext = !contextDependentActionRequest && options?.relevantMemories
+  const relevantMemoryContext = !immediateContextReference && options?.relevantMemories
     ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n`
     : "";
 
@@ -928,6 +939,7 @@ ${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstructio
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
 2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
+- "action" é um contrato interno que o aplicativo executará depois da sua resposta; não é uma ferramenta externa. Para pedidos de imagem/vídeo, nunca diga que não consegue gerar por falta de ferramentas: preencha "action" corretamente.
 
 A estrutura de "action" (se aplicável) deve ser:
 {
@@ -981,9 +993,10 @@ Voce esta executando com ferramentas externas disponiveis no runtime. Para pedid
 Se uma ferramenta retornar dados, use esses dados na propriedade "message". Se uma ferramenta falhar ou o site bloquear automacao, explique a falha concreta da ferramenta; nunca diga genericamente que voce nao tem acesso a internet.
 Responda no final EXCLUSIVAMENTE com o objeto JSON valido esperado, baseado na ultima mensagem do historico. Nao escreva NENHUM texto fora do JSON.`
     : `[INSTRUÇÃO FINAL E CRÍTICA PARA A IA]:
-Você está executando dentro de um proxy/sandbox cego e não possui acesso a ferramentas de pesquisa, leitura de arquivos, comandos de terminal ou subagentes locais.
-VOCÊ NÃO PODE CONSULTAR, EXECUTAR, PESQUISAR OU LER ARQUIVOS DO PROJETO.
-Sua tarefa é agir EXCLUSIVAMENTE como um chatbot inteligente que RESPONDE IMEDIATAMENTE. Não diga "vou analisar", "vou procurar", "consultando". Se você não souber algo, simplesmente responda "Não tenho acesso a essas informações no momento" na propriedade "message".
+Você não possui ferramentas EXTERNAS de pesquisa, leitura de arquivos, terminal ou subagentes neste turno.
+Isso NÃO se aplica ao objeto interno "action": ele é o mecanismo pelo qual o MrChicken executa geração de imagem, vídeo ou projeto depois da sua resposta.
+Quando o usuário pedir uma geração suportada, retorne "action" preenchida e nunca alegue falta de acesso a geradores de mídia.
+Não diga "vou analisar", "vou procurar" ou "consultando". Se uma pergunta realmente exigir dados externos indisponíveis, explique isso somente na propriedade "message".
 Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na última mensagem do histórico. Não escreva NENHUM texto fora do JSON.`;
 
   const structuredPrompt = compiledPrompt;
