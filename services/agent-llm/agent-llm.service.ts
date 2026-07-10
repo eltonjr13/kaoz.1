@@ -596,7 +596,7 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
     throw new Error("Antigravity CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
   }
 
-  if (options.useExternalTools && settings.provider !== "cerebras" && settings.provider !== "zenmux-grok") {
+  if (options.useExternalTools && settings.provider !== "cerebras" && settings.provider !== "zenmux-grok" && settings.provider !== "iamhc") {
     return runCliWithToolsLoop(settings, prompt, options);
   }
 

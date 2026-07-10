@@ -94,8 +94,8 @@ interface FlyModeWizardProps {
   avatars: Avatar[];
   selectedAvatarId: string;
   setSelectedAvatarId: (id: string) => void;
-  agentModel: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux';
-  setAgentModel: (model: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux') => void;
+  agentModel: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux' | 'iamhc';
+  setAgentModel: (model: 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux' | 'iamhc') => void;
   useCortexMemory: boolean;
 }
 
@@ -151,7 +151,7 @@ interface FlyCampaign {
   questions: string[];
   answers: string[];
   avatar_id: string | null;
-  model: "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras" | "zenmux";
+  model: "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras" | "zenmux" | "iamhc";
   plan: CampaignPlan;
   jobs?: FlyCampaignJob[];
 }
