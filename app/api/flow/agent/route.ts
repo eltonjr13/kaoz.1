@@ -173,9 +173,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parametro 'model' e obrigatorio." }, { status: 400 });
     }
 
-    if (model !== "deepseek" && model !== "claude" && model !== "chatgpt" && model !== "gemini" && model !== "cerebras") {
+    if (model !== "deepseek" && model !== "claude" && model !== "chatgpt" && model !== "gemini" && model !== "cerebras" && model !== "zenmux" && model !== "iamhc") {
       return NextResponse.json(
-        { error: "Modelo nao suportado. Escolha entre: deepseek, claude, chatgpt, gemini ou cerebras." },
+        { error: "Modelo nao suportado. Escolha entre: deepseek, claude, chatgpt, gemini, cerebras, zenmux ou iamhc." },
         { status: 400 }
       );
     }
@@ -254,7 +254,7 @@ export async function POST(request: Request) {
       void flowProvider.runAgentTask({
         topic: taskPrompt,
         avatarId,
-        model: model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras",
+        model: model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras" | "zenmux" | "iamhc",
         imageModel,
         imageQuantity,
         requestedImageCount,
@@ -297,7 +297,7 @@ export async function POST(request: Request) {
 
     console.log(`[API AGENT] Otimizando prompt via Playwright com o modelo: ${model} para ${type}...`);
     const optimizedPrompt = await flowProvider.optimizePrompt(
-      model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras",
+      model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras" | "zenmux" | "iamhc",
       prompt,
       type as "image" | "video"
     );

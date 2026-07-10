@@ -36,7 +36,7 @@ const TURNAROUND_VIEW_INSTRUCTIONS: Record<TurnaroundView, string> = {
 export interface AgentTaskOptions {
   topic: string;
   avatarId: string;
-  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
+  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
   imageModel?: string;
   imageQuantity?: GenerationQuantity;
   requestedImageCount?: number;
@@ -190,7 +190,7 @@ export class FlowAgent {
   }
 
   private async generateBackgroundVideoPrompt(
-    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras',
+    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc',
     topic: string,
     jobId: string,
     avatarId: string,

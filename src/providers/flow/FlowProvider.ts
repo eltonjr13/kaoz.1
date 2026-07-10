@@ -130,7 +130,7 @@ export class FlowProvider {
    * Optimizes a raw prompt using a web-automated LLM model via Playwright.
    */
   async optimizePrompt(
-    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras',
+    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc',
     prompt: string,
     type: 'image' | 'video'
   ): Promise<string> {
@@ -146,7 +146,7 @@ export class FlowProvider {
    * Força a execução de uma consulta direta ao LLM via Web Automation (Playwright), útil para chats.
    */
   async queryWebLLM(
-    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras',
+    model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc',
     prompt: string,
     referenceImagePath?: string,
     options: {

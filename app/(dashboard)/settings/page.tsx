@@ -57,7 +57,7 @@ interface SpeechConfig {
   chunkMs: number;
 }
 
-type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras";
+type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok";
 
 interface AgentLLMCommandStatus {
   command: string;
@@ -198,6 +198,13 @@ const AGENT_LLM_OPTIONS: Array<{
     description: "API direta e ultra-veloz do Cerebras.",
     category: "api",
     icon: Zap
+  },
+  {
+    id: "zenmux-grok",
+    name: "ZenMux Grok API",
+    description: "Integração via ZenMux AI usando Grok 4.5 Free.",
+    category: "api",
+    icon: Zap
   }
 ];
 
@@ -283,7 +290,9 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
 }
 
 function parseAgentLLMProvider(value: unknown): AgentLLMProvider {
-  return value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" ? value : "browser";
+  return value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" || value === "cerebras" || value === "zenmux-grok"
+    ? value
+    : "browser";
 }
 
 function parseCommandStatus(value: unknown): AgentLLMCommandStatus {
@@ -364,13 +373,13 @@ function getAgentLLMOptionName(provider: AgentLLMProvider): string {
 }
 
 function getProviderStatus(config: AgentLLMConfig | null, provider: AgentLLMProvider): AgentLLMCommandStatus | null {
-  if (!config?.status || provider === "browser" || provider === "cerebras") return null;
+  if (!config?.status || provider === "browser" || provider === "cerebras" || provider === "zenmux-grok") return null;
   if (provider === "antigravity-cli") return config.status.antigravity;
   return provider === "codex-cli" ? config.status.codex : config.status.grok;
 }
 
 function getAgentLLMStatusText(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
-  if (provider === "cerebras") return "Conexão Direta (API)";
+  if (provider === "cerebras" || provider === "zenmux-grok") return "Conexão Direta (API)";
   if (!status) return "Usando navegador";
   if (!status.available) return "Comando ausente";
   if (status.authenticated === true) return "Conectado";
@@ -379,7 +388,7 @@ function getAgentLLMStatusText(status: AgentLLMCommandStatus | null, provider?: 
 }
 
 function getAgentLLMStatusClass(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
-  if (provider === "cerebras") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
+  if (provider === "cerebras" || provider === "zenmux-grok") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
   if (!status) return "border-white/10 bg-white/5 text-zinc-400";
   if (!status.available || status.authenticated === false) return "border-rose-500/20 bg-rose-500/10 text-rose-400";
   if (status.authenticated === true) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
@@ -461,7 +470,7 @@ function AgentLLMCard({
   const status = getProviderStatus(config, provider);
   const Icon = option.icon;
   const hasBusyAction = Boolean(busyAction);
-  const isCerebras = provider === "cerebras";
+  const isApiProvider = provider === "cerebras" || provider === "zenmux-grok";
   
   return (
     <div className={`relative flex flex-col rounded-2xl border transition-all overflow-hidden ${
@@ -493,7 +502,7 @@ function AgentLLMCard({
             <h3 className={`text-sm font-bold ${isSelected ? "text-emerald-100" : "text-zinc-200"}`}>
               {option.name}
             </h3>
-            {isCerebras && (
+            {isApiProvider && (
               <span className="rounded-full bg-[#ff4f00]/10 border border-[#ff4f00]/20 px-2 py-0.5 text-[9px] font-bold text-[#ff4f00] uppercase tracking-wider">
                 Recomendado
               </span>
@@ -506,7 +515,7 @@ function AgentLLMCard({
               {option.category === "api" ? "API Direta" : option.category === "cli" ? "CLI Local" : "Navegador"}
             </span>
             <AgentLLMStatusBadge status={status} provider={provider} />
-            {(model && !isCerebras && provider !== "browser") && (
+            {(model && !isApiProvider && provider !== "browser") && (
               <span className="inline-flex rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
                 {model}
               </span>
@@ -516,7 +525,7 @@ function AgentLLMCard({
       </div>
 
       {/* Menu / Expand Toggle */}
-      {provider !== "browser" && provider !== "cerebras" && (
+      {provider !== "browser" && !isApiProvider && (
         <button
           type="button"
           onClick={(e) => {
@@ -530,7 +539,7 @@ function AgentLLMCard({
       )}
       
       {/* Expanded Actions & Config */}
-      {isExpanded && provider !== "browser" && provider !== "cerebras" && (
+      {isExpanded && provider !== "browser" && !isApiProvider && (
         <div className="border-t border-white/5 bg-black/20 p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <label className="space-y-1.5">

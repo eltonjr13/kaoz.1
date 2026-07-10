@@ -30,14 +30,14 @@ type FlowChatRequestBody = {
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
-type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras';
+type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux' | 'iamhc';
 type SpotifyDirectCommand = {
   toolName: string;
   args: Record<string, unknown>;
 };
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
-const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras"]);
+const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras", "zenmux", "iamhc"]);
 const EXTERNAL_TOOL_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|musica|playlist|tocando|volume|fila)\b/;
 
 function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {

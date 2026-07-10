@@ -53,7 +53,7 @@ interface PendingPlan {
   originalPrompt: string;
   prompt: string;
   explanation: string;
-  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
+  model: 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux';
   aspectRatio: string;
   quantity?: string;
   mediaModel?: string;
@@ -165,7 +165,7 @@ const extractImagePathsFromJob = (value?: string | null) => {
 export default function FlowDashboardPage() {
 
   // 2. Control States
-  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras'>('gemini');
+  const [agentModel, setAgentModel] = useState<'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux'>('gemini');
   const [agentPrompt, setAgentPrompt] = useState("");
   const [agentType, setAgentType] = useState<AgentType>('image');
   const [agentLoading, setAgentLoading] = useState(false);
@@ -1436,12 +1436,13 @@ export default function FlowDashboardPage() {
               { id: "chatgpt", name: "ChatGPT", description: "OpenAI ChatGPT Model" },
               { id: "deepseek", name: "DeepSeek", description: "DeepSeek Model" },
               { id: "claude", name: "Claude", description: "Anthropic Claude Model" },
-              { id: "cerebras", name: "Cerebras", description: "Cerebras Fast Inference Model" }
+              { id: "cerebras", name: "Cerebras", description: "Cerebras Fast Inference Model" },
+              { id: "zenmux", name: "ZenMux", description: "ZenMux Grok API" }
             ]}
             defaultModel={agentModel}
             onModelChange={(modelId) => {
               clearPendingPlan();
-              if (modelId === "gemini" || modelId === "chatgpt" || modelId === "deepseek" || modelId === "claude" || modelId === "cerebras") {
+              if (modelId === "gemini" || modelId === "chatgpt" || modelId === "deepseek" || modelId === "claude" || modelId === "cerebras" || modelId === "zenmux") {
                 setAgentModel(modelId);
               }
             }}
@@ -1753,7 +1754,7 @@ export default function FlowDashboardPage() {
                     className="grid grid-cols-5 gap-0.5 rounded-[14px] p-0.5"
                     style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                   >
-                    {(["gemini", "chatgpt", "deepseek", "claude", "cerebras"] as const).map((m) => {
+                    {(["gemini", "chatgpt", "deepseek", "claude", "cerebras", "zenmux"] as const).map((m) => {
                       const isActive = agentModel === m;
                       const label = m === "chatgpt" ? "GPT" : m === "deepseek" ? "Deep" : m === "gemini" ? "Gemini" : m === "claude" ? "Claude" : "Cere";
                       return (

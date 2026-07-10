@@ -1,4 +1,4 @@
-export type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras";
+export type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok" | "iamhc";
 
 export interface AgentLLMSettings {
   provider: AgentLLMProvider;

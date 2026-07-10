@@ -4,9 +4,9 @@ import { OpenAI } from 'openai';
 import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
-import { queryConfiguredAgentCli, runCerebrasApi } from '@/services/agent-llm/agent-llm.service';
+import { runFastInferenceApi } from '@/services/agent-llm/agent-llm.service';
 
-type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
+type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
 type QueryWebLLMOptions = {
   onTextChunk?: (chunk: string) => void;
   browserFallbackPrompt?: string;
@@ -61,8 +61,19 @@ export class FlowLLMAutomation {
   }
 
   private async optimizeWithGeminiApi(prompt: string): Promise<string | null> {
+    if (!process.env.GEMINI_API_KEY) return null;
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    return this.cleanLLMResponse(response.text || '');
+
+    /*
     // Gemini API desativada a pedido do usuario para forçar o uso exclusivo da CLI configurada.
     return null;
+    */
   }
 
   private async optimizeWithOpenAIApi(prompt: string): Promise<string | null> {
@@ -221,7 +232,21 @@ export class FlowLLMAutomation {
         case 'claude':
           return await this.optimizeWithClaudeApi(prompt);
         case 'cerebras':
-          return this.cleanLLMResponse(await runCerebrasApi(prompt, {
+          return this.cleanLLMResponse(await runFastInferenceApi('cerebras', prompt, {
+            referenceImagePath,
+            onTextChunk: options?.onTextChunk,
+            useExternalTools: options?.useExternalTools,
+            toolIntentText: options?.toolIntentText,
+          }));
+        case 'zenmux':
+          return this.cleanLLMResponse(await runFastInferenceApi('zenmux-grok', prompt, {
+            referenceImagePath,
+            onTextChunk: options?.onTextChunk,
+            useExternalTools: options?.useExternalTools,
+            toolIntentText: options?.toolIntentText,
+          }));
+        case 'iamhc':
+          return this.cleanLLMResponse(await runFastInferenceApi('iamhc', prompt, {
             referenceImagePath,
             onTextChunk: options?.onTextChunk,
             useExternalTools: options?.useExternalTools,
@@ -230,25 +255,6 @@ export class FlowLLMAutomation {
       }
     } catch (err) {
       logger.warn(`[Agente MrChicken] API do modelo ${model} indisponivel.`, err);
-      return null;
-    }
-  }
-
-  private async queryConfiguredCli(
-    prompt: string,
-    referenceImagePath?: string,
-    options: QueryWebLLMOptions = {}
-  ): Promise<string | null> {
-    try {
-      const result = await queryConfiguredAgentCli(prompt, {
-        referenceImagePath,
-        onTextChunk: options.onTextChunk,
-        useExternalTools: options.useExternalTools,
-        toolIntentText: options.toolIntentText,
-      });
-      return result ? this.cleanLLMResponse(result) : null;
-    } catch (err) {
-      logger.warn('[Agente MrChicken] CLI configurada indisponivel. Usando fallback existente.', err);
       return null;
     }
   }
@@ -275,11 +281,6 @@ export class FlowLLMAutomation {
       return apiResult;
     }
 
-    const cliResult = await this.queryConfiguredCli(promptTemplate);
-    if (cliResult) {
-      logger.info('[Agente MrChicken] Prompt otimizado via CLI configurada.');
-      return cliResult;
-    }
     if (this.shouldSkipWebAutomation(model)) {
       logger.warn(
         `[Agente MrChicken] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
@@ -318,26 +319,22 @@ export class FlowLLMAutomation {
     options: QueryWebLLMOptions = {}
   ): Promise<string> {
     // 1. Tentar API direta se não houver imagem OR se for o Cerebras (que não possui automação web)
-    if (!referenceImagePath || model === 'cerebras') {
+    if (!referenceImagePath || model === 'cerebras' || model === 'zenmux' || model === 'iamhc') {
       const apiResult = await this.optimizeWithApi(model, prompt, options, referenceImagePath);
       if (apiResult) {
         logger.info(`[Agente MrChicken] Resposta obtida via API rápida do modelo: ${model}.`);
-        if (model !== 'cerebras' && options.onTextChunk) {
+        // Cerebras e ZenMux já entregam cada fragmento por runFastInferenceApi.
+        // Reenviar apiResult aqui faz o cliente falar a resposta uma segunda vez.
+        if (model !== 'cerebras' && model !== 'zenmux' && model !== 'iamhc' && options.onTextChunk) {
           options.onTextChunk(apiResult);
         }
         return apiResult;
       }
     }
 
-    // 2. Fallback para CLI configurada
-    const cliResult = await this.queryConfiguredCli(prompt, referenceImagePath, options);
-    if (cliResult) {
-      logger.info('[Agente MrChicken] Resposta obtida via CLI configurada.');
-      return cliResult;
-    }
-
-    if (model === 'cerebras') {
-      throw new Error("Cerebras API key não configurada ou erro na chamada direta da API.");
+    if (model === 'cerebras' || model === 'zenmux' || model === 'iamhc') {
+      const provider = model === 'zenmux' ? 'ZenMux' : model === 'iamhc' ? 'IAMHC' : 'Cerebras';
+      throw new Error(`${provider} não está configurado ou não respondeu. Verifique a chave de API e o modelo no .env.local.`);
     }
 
     logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);

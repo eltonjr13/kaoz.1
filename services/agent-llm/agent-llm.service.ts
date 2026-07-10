@@ -571,10 +571,17 @@ export async function runAgentCli(settings: AgentLLMSettings, prompt: string, op
   }
 
   if (settings.provider === "cerebras") {
-    return runCerebrasApi(prompt, options);
+    return runFastInferenceApi("cerebras", prompt, options);
   }
 
-  throw new Error("Provider de CLI nao ativo.");
+  if (settings.provider === "zenmux-grok") {
+    return runFastInferenceApi("zenmux-grok", prompt, options);
+  }
+  if (settings.provider === "iamhc") {
+    return runFastInferenceApi("iamhc", prompt, options);
+  }
+
+  throw new Error("Provider de CLI ou API nao ativo.");
 }
 
 export async function queryConfiguredAgentCli(prompt: string, options: QueryOptions = {}): Promise<string | null> {
@@ -589,7 +596,7 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
     throw new Error("Antigravity CLI configurado, mas este fluxo recebeu imagem de referencia. Use codex-cli ou navegador para prompts com imagem.");
   }
 
-  if (options.useExternalTools && settings.provider !== "cerebras") {
+  if (options.useExternalTools && settings.provider !== "cerebras" && settings.provider !== "zenmux-grok") {
     return runCliWithToolsLoop(settings, prompt, options);
   }
 
@@ -891,14 +898,14 @@ async function checkAntigravityStatus(settings: AgentLLMSettings): Promise<Agent
   }
 }
 
-function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser" | "cerebras">): string[] {
+function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser" | "cerebras" | "zenmux-grok" | "iamhc">): string[] {
   if (provider === "antigravity-cli") return [];
   return provider === "codex-cli"
     ? ["login", "--device-auth"]
     : ["login", "--oauth"];
 }
 
-function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser" | "cerebras">): string {
+function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser" | "cerebras" | "zenmux-grok" | "iamhc">): string {
   if (provider === "antigravity-cli") return settings.antigravityCommand;
   return provider === "codex-cli" ? settings.codexCommand : settings.grokCommand;
 }
@@ -956,8 +963,8 @@ export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: A
   if (provider === "browser") {
     throw new Error("O provider Navegador usa os logins web existentes.");
   }
-  if (provider === "cerebras") {
-    throw new Error("O provider Cerebras utiliza a chave de API (CEREBRAS_API_KEY) e não requer login de navegador.");
+  if (provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") {
+    throw new Error(`O provider ${provider} utiliza a chave de API e não requer login de navegador.`);
   }
 
   const command = getProviderCommand(settings, provider);
@@ -979,16 +986,32 @@ export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Prom
   return { codex, grok, antigravity };
 }
 
-export async function runCerebrasApi(prompt: string, options: QueryOptions = {}): Promise<string> {
-  const apiKey = process.env.CEREBRAS_API_KEY;
-  if (!apiKey) {
-    throw new Error("CEREBRAS_API_KEY não configurada no servidor.");
-  }
-  const baseURL = process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1";
-  const model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
-  
+export async function runFastInferenceApi(provider: "cerebras" | "zenmux-grok" | "iamhc", prompt: string, options: QueryOptions = {}): Promise<string> {
   const { OpenAI } = await import("openai");
-  const cerebras = new OpenAI({ apiKey, baseURL });
+  let client: any;
+  let model: string;
+  
+  if (provider === "cerebras") {
+    const apiKey = process.env.CEREBRAS_API_KEY;
+    if (!apiKey) throw new Error("CEREBRAS_API_KEY não configurada no servidor.");
+    const baseURL = process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1";
+    model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
+    client = new OpenAI({ apiKey, baseURL });
+  } else if (provider === "zenmux-grok") {
+    const apiKey = process.env.ZENMUX_API_KEY;
+    if (!apiKey) throw new Error("ZENMUX_API_KEY não configurada no servidor.");
+    const baseURL = process.env.ZENMUX_BASE_URL || "https://zenmux.ai/api/v1";
+    model = process.env.ZENMUX_MODEL || "x-ai/grok-4.5-free";
+    client = new OpenAI({ apiKey, baseURL });
+  } else {
+    const apiKey = process.env.IAMHC_API_KEY;
+    if (!apiKey) throw new Error("IAMHC_API_KEY não configurada no servidor.");
+    const baseURL = process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1";
+    // The provider's /models response is key-specific. Use any returned Chinese
+    // model ID here (DeepSeek, Qwen, GLM, Kimi, Hunyuan, etc.).
+    model = process.env.IAMHC_MODEL || "deepseek-chat";
+    client = new OpenAI({ apiKey, baseURL });
+  }
 
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
@@ -1103,7 +1126,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
   const shouldStream = Boolean(options.onTextChunk) && !chatTools;
 
   if (shouldStream) {
-    const responseStream: any = await cerebras.chat.completions.create({
+    const responseStream: any = await client.chat.completions.create({
       model,
       messages,
       temperature: 0.7,
@@ -1140,7 +1163,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
       let retryCount = 0;
       while (retryCount < 3) {
         try {
-          response = await cerebras.chat.completions.create({
+          response = await client.chat.completions.create({
             model,
             messages: currentMessages,
             temperature: 0.7,
@@ -1152,7 +1175,7 @@ export async function runCerebrasApi(prompt: string, options: QueryOptions = {})
         } catch (error: any) {
           if (error.status === 429 && retryCount < 2) {
             retryCount++;
-            console.warn(`[Agente MrChicken] Rate limit (429) no Cerebras. Aguardando ${retryCount * 2}s para retentar...`);
+            console.warn(`[Agente MrChicken] Rate limit (429) no ${provider}. Aguardando ${retryCount * 2}s para retentar...`);
             await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
           } else {
             throw error;

@@ -1,10 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { OpenAI } from "openai";
 
-export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras";
+export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras" | "zenmux" | "iamhc";
 
 export function parseFlyAiModel(value: unknown): FlyAiModel {
-  return value === "chatgpt" || value === "claude" || value === "deepseek" || value === "gemini" || value === "cerebras"
+  return value === "chatgpt" || value === "claude" || value === "deepseek" || value === "gemini" || value === "cerebras" || value === "zenmux" || value === "iamhc"
     ? value
     : "gemini";
 }
@@ -97,6 +97,34 @@ async function generateWithCerebras(prompt: string): Promise<string> {
   return response.choices[0]?.message?.content || "{}";
 }
 
+async function generateWithZenmux(prompt: string): Promise<string> {
+  const zenmux = new OpenAI({
+    apiKey: requireEnv("ZENMUX_API_KEY"),
+    baseURL: process.env.ZENMUX_BASE_URL || "https://zenmux.ai/api/v1"
+  });
+  const response = await zenmux.chat.completions.create({
+    model: process.env.ZENMUX_MODEL || "x-ai/grok-4.5-free",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.7
+  } as any);
+  return response.choices[0]?.message?.content || "{}";
+}
+
+async function generateWithIamhc(prompt: string): Promise<string> {
+  const client = new OpenAI({
+    apiKey: requireEnv("IAMHC_API_KEY"),
+    baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1"
+  });
+  const response = await client.chat.completions.create({
+    model: process.env.IAMHC_MODEL || "deepseek-chat",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.7
+  } as any);
+  return response.choices[0]?.message?.content || "{}";
+}
+
 export async function generateFlyJson(model: FlyAiModel, prompt: string): Promise<string> {
   switch (model) {
     case "chatgpt":
@@ -109,5 +137,9 @@ export async function generateFlyJson(model: FlyAiModel, prompt: string): Promis
       return generateWithGemini(prompt);
     case "cerebras":
       return generateWithCerebras(prompt);
+    case "zenmux":
+      return generateWithZenmux(prompt);
+    case "iamhc":
+      return generateWithIamhc(prompt);
   }
 }

@@ -13,7 +13,7 @@ const MIN_TIMEOUT_MS = 90000;
 const MAX_TIMEOUT_MS = 180000;
 
 export function normalizeAgentLLMProvider(value: unknown): AgentLLMProvider {
-  if (value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" || value === "cerebras") {
+  if (value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" || value === "cerebras" || value === "zenmux-grok" || value === "iamhc") {
     return value;
   }
   return DEFAULT_PROVIDER;

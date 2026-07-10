@@ -114,7 +114,7 @@ interface Avatar {
 }
 
 type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
-type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras';
+type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux';
 type PlannedFlow = AgentType | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
@@ -122,6 +122,7 @@ const TURNAROUND_IMAGE_LABELS = ["Base", "Lateral esquerda", "Lateral direita", 
 const AGENT_MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
   { value: "gemini", label: "Gemini" },
   { value: "cerebras", label: "Cerebras + MCP" },
+  { value: "zenmux", label: "ZenMux + MCP" },
   { value: "chatgpt", label: "ChatGPT" },
   { value: "claude", label: "Claude" },
   { value: "deepseek", label: "DeepSeek" },
@@ -1193,7 +1194,7 @@ export default function FlowDashboardPage() {
               if (isAgentModel(value)) setAgentModel(value);
             }}
             options={AGENT_MODEL_OPTIONS}
-            title="Modelo usado pelo chat; Cerebras + MCP habilita ferramentas de navegador."
+            title="Modelo usado pelo chat; Cerebras/ZenMux + MCP habilita ferramentas de navegador."
           />
         </div>
 
