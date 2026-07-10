@@ -4,7 +4,7 @@ import { OpenAI } from 'openai';
 import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
-import { runFastInferenceApi } from '@/services/agent-llm/agent-llm.service';
+import { runFastInferenceApi, runSelectedChatModelCli } from '@/services/agent-llm/agent-llm.service';
 
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
 type QueryWebLLMOptions = {
@@ -222,7 +222,7 @@ export class FlowLLMAutomation {
     referenceImagePath?: string
   ): Promise<string | null> {
     try {
-      switch (model) {
+      switch (model as LLMModel) {
         case 'gemini':
           return await this.optimizeWithGeminiApi(prompt);
         case 'chatgpt':
@@ -275,6 +275,10 @@ export class FlowLLMAutomation {
 
     logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
 
+    if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
+      return this.cleanLLMResponse(await runSelectedChatModelCli(model, promptTemplate));
+    }
+
     const apiResult = await this.optimizeWithApi(model, promptTemplate);
     if (apiResult) {
       logger.info(`[Agente MrChicken] Prompt otimizado via API do modelo: ${model}.`);
@@ -291,7 +295,7 @@ export class FlowLLMAutomation {
     try {
       const page = await this.session.getAutomationPage();
       
-      switch (model) {
+      switch (model as LLMModel) {
         case 'gemini':
           return await this.automateGemini(page, promptTemplate);
         case 'chatgpt':
@@ -318,6 +322,15 @@ export class FlowLLMAutomation {
     referenceImagePath?: string,
     options: QueryWebLLMOptions = {}
   ): Promise<string> {
+    // The named models from the chat selector always use their own local CLI.
+    // No API or Playwright/browser fallback is allowed for this path.
+    if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
+      return this.cleanLLMResponse(await runSelectedChatModelCli(model, prompt, {
+        referenceImagePath,
+        onTextChunk: options.onTextChunk,
+      }));
+    }
+
     // 1. Tentar API direta se não houver imagem OR se for o Cerebras (que não possui automação web)
     if (!referenceImagePath || model === 'cerebras' || model === 'zenmux' || model === 'iamhc') {
       const apiResult = await this.optimizeWithApi(model, prompt, options, referenceImagePath);
@@ -336,6 +349,8 @@ export class FlowLLMAutomation {
       const provider = model === 'zenmux' ? 'ZenMux' : model === 'iamhc' ? 'IAMHC' : 'Cerebras';
       throw new Error(`${provider} não está configurado ou não respondeu. Verifique a chave de API e o modelo no .env.local.`);
     }
+
+    throw new Error(`Modelo ${model} nao possui um executor LLM configurado.`);
 
     logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);
 

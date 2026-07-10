@@ -20,6 +20,9 @@ type QueryOptions = {
   toolIntentText?: string;
 };
 
+/** Models exposed by the Flow chat model selector. */
+export type SelectedChatModelCli = "gemini" | "chatgpt" | "claude" | "deepseek";
+
 const MAX_OUTPUT_CHARS = 250_000;
 const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
@@ -363,6 +366,40 @@ async function runProcess(
   });
 }
 
+async function checkCommandStatus(command: string): Promise<AgentLLMCommandStatus> {
+  const normalizedCommand = command.trim();
+  if (!normalizedCommand) {
+    return baseCommandStatus(command, { error: "Informe um comando de CLI." });
+  }
+
+  if (isPathLike(normalizedCommand)) {
+    try {
+      await access(normalizedCommand);
+      return baseCommandStatus(command, { available: true, resolvedPath: normalizedCommand });
+    } catch {
+      return baseCommandStatus(command, { error: `Executavel nao encontrado em: ${normalizedCommand}` });
+    }
+  }
+
+  try {
+    const lookup = commandLookupTool();
+    const result = await runProcess(lookup.command, [...lookup.args, normalizedCommand], {
+      timeoutMs: 10_000,
+      label: `Localizacao do comando ${normalizedCommand}`,
+    });
+    const resolvedPath = cleanCliOutput(result.stdout).split(/\r?\n/).find(Boolean) || null;
+    if (result.exitCode === 0 && resolvedPath) {
+      return baseCommandStatus(command, { available: true, resolvedPath });
+    }
+  } catch {
+    // Return the same actionable status below when the OS lookup is unavailable.
+  }
+
+  return baseCommandStatus(command, {
+    error: `Comando '${normalizedCommand}' nao encontrado no PATH. Instale o CLI ou informe o caminho completo do executavel.`,
+  });
+}
+
 async function writeTempFile(prefix: string, contents = ""): Promise<string> {
   const tempDir = path.join(os.tmpdir(), "mrchicken-agent-cli");
   await mkdir(tempDir, { recursive: true });
@@ -551,6 +588,76 @@ async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, opt
   return cleanCliOutput(result.stdout);
 }
 
+function envOrDefault(name: string, fallback: string): string {
+  const value = process.env[name]?.trim();
+  return value || fallback;
+}
+
+function expandCliArgumentTemplate(template: string, prompt: string, model: string): string[] {
+  return template.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map((argument) =>
+    argument.replace(/^['"]|['"]$/g, "").replaceAll("{prompt}", prompt).replaceAll("{model}", model)
+  ) || [];
+}
+
+async function runProviderPromptCli(
+  label: string,
+  commandName: string,
+  model: string,
+  argsTemplate: string,
+  prompt: string,
+  options: QueryOptions,
+  timeoutMs: number,
+): Promise<string> {
+  let command: string;
+  try {
+    command = await resolveRunnableCommand(commandName);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} indisponivel. Configure o executavel em ${label.replace(/ CLI$/, "").toUpperCase()}_CLI_COMMAND. ${detail}`);
+  }
+  const result = await runProcess(command, expandCliArgumentTemplate(argsTemplate, prompt, model), {
+    cwd: options.cwd,
+    timeoutMs,
+    extraPathEntries: [path.dirname(command)],
+    label: `${label} (${model})`,
+    onStdoutChunk: options.onTextChunk,
+  });
+  assertSuccessfulProcess(result, label);
+  return cleanCliOutput(result.stdout);
+}
+
+/**
+ * Executes the CLI that belongs to the model selected in Flow's chat.
+ * It intentionally does not fall back to API or Playwright/browser automation.
+ * *_CLI_ARGS accepts {prompt} and {model} placeholders for CLI variants.
+ */
+export async function runSelectedChatModelCli(
+  model: SelectedChatModelCli,
+  prompt: string,
+  options: QueryOptions = {},
+): Promise<string> {
+  const settings = await readAgentLLMSettings();
+
+  if (model === "chatgpt") return runCodexCli(settings, prompt, options);
+
+  // The non-Codex CLIs do not share a universal image flag. Preserve the
+  // selection and provide the local path so a CLI with workspace/file access
+  // can inspect it, instead of falling back to browser automation.
+  const promptWithReference = options.referenceImagePath
+    ? `${prompt}\n\n[Imagem de referencia local disponivel em: ${options.referenceImagePath}]`
+    : prompt;
+
+  if (model === "gemini") {
+    return runProviderPromptCli("Gemini CLI", envOrDefault("GEMINI_CLI_COMMAND", "gemini"), envOrDefault("GEMINI_CLI_MODEL", "gemini-2.5-pro"), envOrDefault("GEMINI_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+  }
+
+  if (model === "claude") {
+    return runProviderPromptCli("Claude CLI", envOrDefault("CLAUDE_CLI_COMMAND", "claude"), envOrDefault("CLAUDE_CLI_MODEL", "claude-sonnet-4-5"), envOrDefault("CLAUDE_CLI_ARGS", "-p {prompt} --model {model} --output-format text"), promptWithReference, options, settings.timeoutMs);
+  }
+
+  return runProviderPromptCli("DeepSeek CLI", envOrDefault("DEEPSEEK_CLI_COMMAND", "deepseek"), envOrDefault("DEEPSEEK_CLI_MODEL", "deepseek-chat"), envOrDefault("DEEPSEEK_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+}
+
 export async function runAgentCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions = {}): Promise<string> {
   if (settings.provider === "codex-cli") {
     return runCodexCli(settings, prompt, options);
@@ -607,461 +714,41 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
   const { McpManager } = await import("../mcp/mcp.manager");
   const mcpManager = await McpManager.getInstance();
   const allMcpTools = await mcpManager.getAllTools();
-  
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
-  
   const relevantMcpTools = spotifyIntent
-    ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
+    ? allMcpTools.filter((tool) => isSpotifyTool(tool.serverId, tool.tool.name))
     : allMcpTools;
 
-  if (relevantMcpTools.length === 0) {
-    return runAgentCli(settings, prompt, options);
-  }
+  if (relevantMcpTools.length === 0) return runAgentCli(settings, prompt, options);
 
-  let toolsDescription = "\n\n[SISTEMA - ALERTA CRÍTICO: VOCÊ TEM ACESSO A FERRAMENTAS REAIS]\nATENÇÃO: Ignore qualquer limitação padrão sobre você não ter acesso à internet, à máquina do usuário ou a APIs (como a do Spotify). VOCÊ AGORA TEM ACESSO DIRETO A TUDO ISSO! Se o usuário pedir para você criar uma playlist, tocar música, buscar faixas ou executar um comando, VOCÊ PODE E DEVE FAZER ISSO sozinho usando as ferramentas abaixo. NUNCA diga que você não pode fazer isso.\n\nPara usar uma ferramenta, você deve retornar EXATAMENTE o seguinte formato em texto (o sistema vai interceptar isso e executar a ferramenta para você):\n\n<TOOL_CALL>\n{\"serverId\": \"o_id_do_servidor\", \"toolName\": \"o_nome_da_ferramenta\", \"args\": {\"chave\": \"valor\"}}\n</TOOL_CALL>\n\nFerramentas disponíveis:\n";
-  
-  for (const t of relevantMcpTools) {
-    toolsDescription += `- serverId: "${t.serverId}", toolName: "${t.tool.name}"\n  Descrição: ${t.tool.description}\n  Schema JSON de Argumentos: ${JSON.stringify(t.tool.inputSchema)}\n\n`;
+  let toolsDescription = "\n\n[FERRAMENTAS MCP]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\\\"serverId\\\":\\\"...\\\",\\\"toolName\\\":\\\"...\\\",\\\"args\\\":{}}</TOOL_CALL>.\n";
+  for (const tool of relevantMcpTools) {
+    toolsDescription += `- serverId: "${tool.serverId}", toolName: "${tool.tool.name}", schema: ${JSON.stringify(tool.tool.inputSchema)}\n`;
   }
-  
-  toolsDescription += "REGRAS IMPORTANTES:\n1. NUNCA diga que não tem integração. Use as ferramentas!\n2. NUNCA invente os resultados de uma busca ou criação. Emita a chamada da ferramenta primeiro e espere o sistema injetar a resposta.\n3. Para tarefas complexas (ex: criar playlist E adicionar músicas), emita UM <TOOL_CALL> de cada vez. O sistema retornará o <TOOL_RESULT> na próxima rodada e você continuará.\n4. Se precisar chamar uma ferramenta, você PODE dar uma breve resposta de que está iniciando a ação, e então colocar o <TOOL_CALL> no final.\n5. Se você já tem os dados finais ou concluiu o processo, responda normalmente e NÃO emita <TOOL_CALL>.\n";
 
   let currentPrompt = prompt + toolsDescription;
-  
   for (let loop = 0; loop < 10; loop++) {
     const cliOutput = await runAgentCli(settings, currentPrompt, options);
-    
-    // Procura por blocos <TOOL_CALL> no output
-    const toolCallMatch = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
-    
-    if (!toolCallMatch) {
-      // Nenhum tool call encontrado, significa que a CLI deu a resposta final.
-      return cliOutput;
-    }
-    
-    let rawJson = toolCallMatch[1].trim();
-    // Normalizar aspas inteligentes (smart quotes)
-    rawJson = rawJson
-      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
-      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, '"');
+    const match = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
+    if (!match) return cliOutput;
 
-    let parsedCall;
     try {
-      parsedCall = JSON.parse(rawJson);
-    } catch (e) {
-      // Tentativa 1: Remover aspas escapadas erroneamente (ex: \"serverId\" -> "serverId")
-      try {
-        const unescaped = rawJson.replace(/\\"/g, '"');
-        parsedCall = JSON.parse(unescaped);
-      } catch (e1) {
-        // Tentativa 2: Converter aspas simples para duplas
-        try {
-          const doubleQuoted = rawJson.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
-          parsedCall = JSON.parse(doubleQuoted);
-        } catch (e2) {
-          // Tentativa 3: Ambas as correções juntas
-          try {
-            const cleanBoth = rawJson.replace(/\\"/g, '"').replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
-            parsedCall = JSON.parse(cleanBoth);
-          } catch (e3) {
-            console.warn("[Agent CLI Tool Loop] Erro de parse JSON na chamada da ferramenta:", e);
-            console.warn("[Agent CLI Tool Loop] JSON bruto recebido que falhou:", toolCallMatch[1]);
-            currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "JSON invalido na chamada da ferramenta. NUNCA escape as aspas com barra invertida e use aspas duplas normais para chaves e valores. Exemplo correto: {\\"serverId\\": \\"spotify-mcp-server-local\\", \\"toolName\\": \\"search_tracks\\", \\"args\\": {\\"query\\": \\"nome\\"}}"}</TOOL_RESULT>\n`;
-            continue;
-          }
-        }
-      }
-    }
-    
-    try {
-      console.log(`[Agent CLI Tool Loop] Executando ferramenta: ${parsedCall.toolName} no servidor ${parsedCall.serverId}...`);
-      const result = await mcpManager.callTool(parsedCall.serverId, parsedCall.toolName, parsedCall.args);
-      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nO resultado acima é o output da sua ferramenta. Agora continue seu raciocínio emitindo o próximo <TOOL_CALL> ou a resposta final.\n`;
-    } catch (err: any) {
-      console.error(`[Agent CLI Tool Loop] Falha ao executar ferramenta:`, err);
-      currentPrompt += `\n<TOOL_CALL>${toolCallMatch[1]}</TOOL_CALL>\n<TOOL_RESULT>{"error": "${err.message || String(err)}"}</TOOL_RESULT>\nOcorreu um erro ao executar a ferramenta. Tente novamente ou retorne a resposta final.\n`;
+      const call = JSON.parse(match[1]) as { serverId: string; toolName: string; args?: Record<string, unknown> };
+      const result = await mcpManager.callTool(call.serverId, call.toolName, call.args || {});
+      currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      currentPrompt += `\n<TOOL_RESULT>{"error":${JSON.stringify(message)}}</TOOL_RESULT>\nTente novamente ou responda ao usuario.`;
     }
   }
-  
-  return JSON.stringify({ message: "Ops, excedi o limite de passos raciocinando com as ferramentas. Tente algo mais simples.", action: null });
-}
 
-async function checkPathCommand(command: string): Promise<AgentLLMCommandStatus> {
-  try {
-    await access(command);
-    return baseCommandStatus(command, { available: true, resolvedPath: command });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return baseCommandStatus(command, { error: message });
-  }
-}
+  return JSON.stringify({ message: "Limite de etapas das ferramentas atingido.", action: null });
 
-async function findLatestExistingFile(files: string[]): Promise<string | null> {
-  const existing: Array<{ file: string; mtimeMs: number }> = [];
-  for (const file of files) {
-    try {
-      const fileStat = await stat(file);
-      existing.push({ file, mtimeMs: fileStat.mtimeMs });
-    } catch {
-      // Keep looking.
-    }
-  }
-  existing.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return existing[0]?.file || null;
-}
-
-async function findCodexWindowsFallback(): Promise<string | null> {
-  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-  const codexBinRoot = path.join(localAppData, WINDOWS_CODEX_BIN_ROOT);
-
-  try {
-    const entries = await readdir(codexBinRoot, { withFileTypes: true });
-    const candidates = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(codexBinRoot, entry.name, "codex.exe"));
-    const bundled = await findLatestExistingFile(candidates);
-    if (bundled) return bundled;
-  } catch {
-    // Keep looking in WindowsApps below.
-  }
-
-  const windowsApps = path.join(localAppData, "Microsoft", "WindowsApps");
-  return findLatestExistingFile([
-    path.join(windowsApps, "codex.exe"),
-    path.join(windowsApps, "codex"),
-  ]);
-}
-
-async function findGrokWindowsFallback(): Promise<string | null> {
-  return findLatestExistingFile([
-    path.join(os.homedir(), ".grok", "bin", "grok.exe"),
-  ]);
-}
-
-async function findAntigravityWindowsFallback(): Promise<string | null> {
-  // A CLI do Antigravity geralmente está no PATH pelo instalador,
-  // mas podemos checar um caminho padrão se houver.
-  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-  return findLatestExistingFile([
-    path.join(localAppData, "Google", "Antigravity", "bin", "agy.exe"),
-  ]);
-}
-
-async function findCommandFallback(command: string): Promise<string | null> {
-  if (process.platform !== "win32") return null;
-
-  const name = path.basename(command).toLowerCase().replace(/\.exe$/, "");
-  if (name === "codex") return findCodexWindowsFallback();
-  if (name === "grok") return findGrokWindowsFallback();
-  if (name === "agy" || name === "antigravity") return findAntigravityWindowsFallback();
-  return null;
-}
-
-export async function checkCommandStatus(command: string): Promise<AgentLLMCommandStatus> {
-  if (!command.trim()) {
-    return baseCommandStatus(command, { error: "Comando vazio." });
-  }
-
-  if (isPathLike(command)) {
-    return checkPathCommand(command);
-  }
-
-  const resolvedPath = await resolveCommandPath(command);
-  if (resolvedPath) {
-    return baseCommandStatus(command, { available: true, resolvedPath });
-  }
-
-  return baseCommandStatus(command, { error: "Comando nao encontrado." });
-}
-
-async function resolveCommandPath(command: string): Promise<string | null> {
-  const fallbackPath = await findCommandFallback(command);
-  if (fallbackPath) return fallbackPath;
-
-  const lookup = commandLookupTool();
-  try {
-    const result = await runProcess(lookup.command, [...lookup.args, command], {
-      timeoutMs: 5000,
-    });
-    const resolvedPath = cleanCliOutput(result.stdout).split(/\r?\n/).find(Boolean) || null;
-    if (result.exitCode === 0 && resolvedPath) {
-      return resolvedPath;
-    }
-  } catch {
-  }
-  return findCommandFallback(command);
-}
-
-function parseModelLines(output: string): { activeModel: string | null; models: string[] } {
-  const lines = cleanCliOutput(output).split(/\r?\n/);
-  const activeModel = lines
-    .map((line) => line.match(/^Default model:\s*(.+)$/i)?.[1]?.trim())
-    .find(Boolean) || null;
-  const models = lines
-    .map((line) => line.match(/^\s*[-*]\s+([^\s(]+)(?:\s+\(default\))?/i)?.[1]?.trim())
-    .filter((model): model is string => Boolean(model));
-
-  return {
-    activeModel,
-    models: Array.from(new Set(models)),
-  };
-}
-
-function getCodexAuthFilePath(): string {
-  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-  return path.join(codexHome, "auth.json");
-}
-
-async function checkCodexStatus(settings: AgentLLMSettings): Promise<AgentLLMCommandStatus> {
-  const command = await checkCommandStatus(settings.codexCommand);
-  if (!command.available) return command;
-
-  try {
-    await access(getCodexAuthFilePath());
-    return {
-      ...command,
-      authenticated: true,
-      authMessage: "Credencial local encontrada.",
-      activeModel: settings.codexModel,
-      models: [settings.codexModel],
-    };
-  } catch {
-    return {
-      ...command,
-      authenticated: false,
-      authMessage: "Conecte ou teste para confirmar a credencial do Codex.",
-      activeModel: settings.codexModel,
-      models: [settings.codexModel],
-    };
-  }
-}
-
-async function checkGrokStatus(settings: AgentLLMSettings): Promise<AgentLLMCommandStatus> {
-  const command = await checkCommandStatus(settings.grokCommand);
-  if (!command.available) return command;
-
-  try {
-    const runnableCommand = command.resolvedPath || settings.grokCommand;
-    const result = await runProcess(runnableCommand, ["models"], {
-      timeoutMs: 10000,
-      extraPathEntries: [path.dirname(runnableCommand)],
-    });
-    const output = cleanCliOutput(`${result.stdout}\n${result.stderr}`);
-    const { activeModel, models } = parseModelLines(output);
-    const notAuthenticated = /not authenticated/i.test(output);
-    return {
-      ...command,
-      authenticated: !notAuthenticated && result.exitCode === 0,
-      authMessage: output.split(/\r?\n/).find(Boolean) || null,
-      activeModel: activeModel || settings.grokModel,
-      models: models.length > 0 ? models : [settings.grokModel],
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      ...command,
-      authenticated: false,
-      authMessage: message,
-    };
-  }
-}
-
-async function checkAntigravityStatus(settings: AgentLLMSettings): Promise<AgentLLMCommandStatus> {
-  const command = await checkCommandStatus(settings.antigravityCommand);
-  if (!command.available) return command;
-
-  try {
-    const runnableCommand = command.resolvedPath || settings.antigravityCommand;
-    const result = await runProcess(runnableCommand, ["models"], {
-      timeoutMs: 10000,
-      extraPathEntries: [path.dirname(runnableCommand)],
-    });
-    const output = cleanCliOutput(`${result.stdout}\n${result.stderr}`);
-    const { activeModel, models } = parseModelLines(output);
-    const notAuthenticated = /not authenticated|login/i.test(output);
-    return {
-      ...command,
-      authenticated: !notAuthenticated && result.exitCode === 0,
-      authMessage: output.split(/\r?\n/).find(Boolean) || null,
-      activeModel: activeModel || settings.antigravityModel,
-      models: models.length > 0 ? models : [settings.antigravityModel],
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      ...command,
-      authenticated: false,
-      authMessage: message,
-    };
-  }
-}
-
-function getLoginArgs(provider: Exclude<AgentLLMProvider, "browser" | "cerebras" | "zenmux-grok" | "iamhc">): string[] {
-  if (provider === "antigravity-cli") return [];
-  return provider === "codex-cli"
-    ? ["login", "--device-auth"]
-    : ["login", "--oauth"];
-}
-
-function getProviderCommand(settings: AgentLLMSettings, provider: Exclude<AgentLLMProvider, "browser" | "cerebras" | "zenmux-grok" | "iamhc">): string {
-  if (provider === "antigravity-cli") return settings.antigravityCommand;
-  return provider === "codex-cli" ? settings.codexCommand : settings.grokCommand;
-}
-
-async function launchVisibleCommand(command: string, args: string[], title: string): Promise<string | null> {
-  if (process.platform === "win32") {
-    const commandLine = [cmdQuote(command), ...args.map(cmdQuote)].join(" ");
-    const launcherPath = await writeTempCommandFile("agent-login", [
-      "@echo off",
-      `title ${title}`,
-      `cd /d ${cmdQuote(process.cwd())}`,
-      `set "PATH=${path.dirname(command)};%PATH%"`,
-      "echo MrChicken - conexao da CLI do agente",
-      `echo Provider: ${title}`,
-      `echo Comando: ${commandLine}`,
-      "echo.",
-      commandLine,
-      "set EXIT_CODE=%ERRORLEVEL%",
-      "echo.",
-      "echo Processo finalizado com codigo %EXIT_CODE%.",
-      "echo Se o login abriu no navegador, conclua a autenticacao e depois use Atualizar no painel.",
-      "pause",
-      "",
-    ].join("\r\n"));
-
-    const launcher = spawn("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy", "Bypass",
-      "-Command",
-      [
-        "Start-Process",
-        "-FilePath", psQuote("cmd.exe"),
-        "-ArgumentList", `@(${psQuote("/k")}, ${psQuote(launcherPath)})`,
-        "-WorkingDirectory", psQuote(process.cwd()),
-      ].join(" "),
-    ], {
-      detached: true,
-      env: buildProcessEnv([path.dirname(command)]),
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    launcher.unref();
-    return launcherPath;
-  }
-
-  const child = spawn(command, args, {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  return null;
-}
-
-export async function startAgentLLMLogin(settings: AgentLLMSettings, provider: AgentLLMProvider): Promise<string | null> {
-  if (provider === "browser") {
-    throw new Error("O provider Navegador usa os logins web existentes.");
-  }
-  if (provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") {
-    throw new Error(`O provider ${provider} utiliza a chave de API e não requer login de navegador.`);
-  }
-
-  const command = getProviderCommand(settings, provider);
-  const status = await checkCommandStatus(command);
-  if (!status.available) {
-    throw new Error(status.error || `Comando ${command} nao encontrado.`);
-  }
-
-  return launchVisibleCommand(status.resolvedPath || command, getLoginArgs(provider), `MrChicken ${provider}`);
-}
-
-export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {
-  const [codex, grok, antigravity] = await Promise.all([
-    checkCodexStatus(settings),
-    checkGrokStatus(settings),
-    checkAntigravityStatus(settings),
-  ]);
-
-  return { codex, grok, antigravity };
-}
-
-export async function runFastInferenceApi(provider: "cerebras" | "zenmux-grok" | "iamhc", prompt: string, options: QueryOptions = {}): Promise<string> {
-  const { OpenAI } = await import("openai");
-  let client: any;
-  let model: string;
-  
-  if (provider === "cerebras") {
-    const apiKey = process.env.CEREBRAS_API_KEY;
-    if (!apiKey) throw new Error("CEREBRAS_API_KEY não configurada no servidor.");
-    const baseURL = process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1";
-    model = process.env.CEREBRAS_MODEL || "gemma-4-31b";
-    client = new OpenAI({ apiKey, baseURL });
-  } else if (provider === "zenmux-grok") {
-    const apiKey = process.env.ZENMUX_API_KEY;
-    if (!apiKey) throw new Error("ZENMUX_API_KEY não configurada no servidor.");
-    const baseURL = process.env.ZENMUX_BASE_URL || "https://zenmux.ai/api/v1";
-    model = process.env.ZENMUX_MODEL || "x-ai/grok-4.5-free";
-    client = new OpenAI({ apiKey, baseURL });
-  } else {
-    const apiKey = process.env.IAMHC_API_KEY;
-    if (!apiKey) throw new Error("IAMHC_API_KEY não configurada no servidor.");
-    const baseURL = process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1";
-    // The provider's /models response is key-specific. Use any returned Chinese
-    // model ID here (DeepSeek, Qwen, GLM, Kimi, Hunyuan, etc.).
-    const configured = await readAgentLLMSettings();
-    model = configured.iamhcModel || process.env.IAMHC_MODEL || "DeepSeek-V4-Flash";
-    client = new OpenAI({ apiKey, baseURL });
-  }
-
-  const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
-  const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
-  const useExternalTools = options.useExternalTools !== false;
-  const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
-  const builtInTools = useExternalTools && USD_BRL_INTENT_PATTERN.test(normalizedPrompt) ? [createUsdBrlRateTool()] : [];
-  const mcpToolMap = new Map<string, string>();
-  let mcpManager: any = null;
-  let allMcpTools: Array<{ serverId: string; tool: { name: string; description?: string; inputSchema?: unknown } }> = [];
-  if (useExternalTools && builtInTools.length === 0) {
-    const { McpManager } = await import("../mcp/mcp.manager");
-    mcpManager = await McpManager.getInstance();
-    allMcpTools = await mcpManager.getAllTools();
-  }
-  let relevantMcpTools = spotifyIntent
-    ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
-    : allMcpTools;
-  let mcpTools = relevantMcpTools.map(t => {
-    const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-    mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
-    return {
-      type: "function" as const,
-      function: {
-        name: sanitizedName,
-        description: t.tool.description || `Ferramenta MCP`,
-        parameters: t.tool.inputSchema || { type: "object", properties: {} }
-      }
-    };
-  });
-  let tools = [...builtInTools, ...mcpTools];
-  let chatTools = tools.length > 0 ? tools : undefined;
-  const forcedSpotifyToolName = useExternalTools
-    ? getForcedSpotifyToolName(normalizedPrompt)
-    : null;
-  let forcedSpotifyTool = forcedSpotifyToolName
-    ? mcpTools.find(t => t.function.name === forcedSpotifyToolName)
-    : undefined;
-
-  if (((forcedSpotifyToolName && !forcedSpotifyTool) || (spotifyIntent && relevantMcpTools.length === 0)) && mcpManager) {
-    await mcpManager.refreshConnections();
-    allMcpTools = await mcpManager.getAllTools();
-    relevantMcpTools = spotifyIntent
-      ? allMcpTools.filter(t => isSpotifyTool(t.serverId, t.tool.name))
-      : allMcpTools;
-    mcpToolMap.clear();
-    mcpTools = relevantMcpTools.map(t => {
-      const sanitizedName = t.tool.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-      mcpToolMap.set(sanitizedName, t.serverId + "|||" + t.tool.name);
-      return {
+  /* Legacy, malformed duplicated implementation retained below while this
+   * source is repaired. It is unreachable and intentionally ignored. */
+  /*
         type: "function" as const,
         function: {
           name: sanitizedName,
@@ -1303,4 +990,75 @@ export async function runFastInferenceApi(provider: "cerebras" | "zenmux-grok" |
     }
     return finalResponse.trim();
   }
+}
+  */
+}
+
+export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {
+  const [codex, grok, antigravity] = await Promise.all([
+    checkCommandStatus(settings.codexCommand),
+    checkCommandStatus(settings.grokCommand),
+    checkCommandStatus(settings.antigravityCommand),
+  ]);
+  return { codex, grok, antigravity };
+}
+
+export async function startAgentLLMLogin(
+  settings: AgentLLMSettings,
+  provider: AgentLLMProvider,
+): Promise<string | null> {
+  if (provider === "browser" || provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") {
+    throw new Error(`O provider ${provider} nao possui login por CLI.`);
+  }
+  const commandName = provider === "codex-cli"
+    ? settings.codexCommand
+    : provider === "grok-cli"
+      ? settings.grokCommand
+      : settings.antigravityCommand;
+  const command = await resolveRunnableCommand(commandName);
+  const child = spawn(command, ["login"], {
+    cwd: process.cwd(),
+    env: buildProcessEnv([path.dirname(command)]),
+    detached: true,
+    stdio: "ignore",
+    windowsHide: false,
+  });
+  child.unref();
+  return command;
+}
+
+export async function runFastInferenceApi(
+  provider: "cerebras" | "zenmux-grok" | "iamhc",
+  prompt: string,
+  options: QueryOptions = {},
+): Promise<string> {
+  const config = provider === "cerebras"
+    ? {
+        apiKey: process.env.CEREBRAS_API_KEY,
+        baseURL: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1",
+        model: process.env.CEREBRAS_MODEL || "gemma-4-31b",
+      }
+    : provider === "zenmux-grok"
+      ? {
+          apiKey: process.env.ZENMUX_API_KEY,
+          baseURL: process.env.ZENMUX_BASE_URL || "https://api.zenmux.ai/v1",
+          model: process.env.ZENMUX_MODEL || "grok-4-fast",
+        }
+      : {
+          apiKey: process.env.IAMHC_API_KEY,
+          baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1",
+          model: process.env.IAMHC_MODEL || "DeepSeek-V4-Flash",
+        };
+  if (!config.apiKey) throw new Error(`Chave de API ausente para ${provider}.`);
+
+  const { OpenAI } = await import("openai");
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+  const response = await client.chat.completions.create({
+    model: config.model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+  });
+  const text = response.choices[0]?.message?.content || "";
+  options.onTextChunk?.(text);
+  return text;
 }
