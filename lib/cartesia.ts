@@ -33,9 +33,11 @@ export function playCartesiaVoiceWebSocket(
   let ws: WebSocket | null = null;
   let audioContext: AudioContext | null = null;
   let isCancelled = false;
+  let resolvePromise: (() => void) | null = null;
   const activeSources: AudioBufferSourceNode[] = [];
 
   const promise = new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
     try {
       if (isCancelled) {
         resolve();
@@ -168,6 +170,7 @@ export function playCartesiaVoiceWebSocket(
       try {
         audioContext?.close();
       } catch {}
+      resolvePromise?.();
     }
   };
 }
@@ -344,6 +347,7 @@ export function playCartesiaVoiceStream(
       try { s.stop(); } catch {}
     });
     try { activeAudioContext.close(); } catch {}
+    resolvePromise();
   };
 
   return {

@@ -312,6 +312,17 @@ function normalizeVoiceText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function isLikelyAssistantEcho(transcript: string, assistantSpeech: string): boolean {
+  const heard = normalizeSearchText(transcript);
+  const spoken = normalizeSearchText(assistantSpeech);
+  if (!heard || !spoken) return false;
+  if (spoken.includes(heard) && heard.length >= 4) return true;
+
+  const spokenWords = new Set(spoken.split(/\s+/).filter((word) => word.length >= 4));
+  const matchingWords = heard.split(/\s+/).filter((word) => word.length >= 4 && spokenWords.has(word));
+  return matchingWords.length >= 2;
+}
+
 function extractWakeCommand(text: string): { activated: boolean; command: string } {
   const normalized = normalizeVoiceText(text);
   for (const pattern of WAKE_COMMAND_PATTERNS) {
@@ -960,6 +971,8 @@ export default function FlowDashboardPage() {
   const voiceAwaitingCommandRef = useRef(false);
   const voiceSpeakingRef = useRef(false);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activeAssistantSpeechRef = useRef("");
+  const voicePlaybackSessionRef = useRef(0);
   const speechQueueRef = useRef<SpeechQueue | null>(null);
   if (!speechQueueRef.current) {
     speechQueueRef.current = new SpeechQueue(() => {
@@ -973,11 +986,20 @@ export default function FlowDashboardPage() {
   const cartesiaStreamCancelRef = useRef<(() => void) | null>(null);
 
   const cancelAllVoicePlayback = useCallback(() => {
+    voicePlaybackSessionRef.current += 1;
     speechQueueRef.current?.cancelAll();
     if (cartesiaStreamCancelRef.current) {
       cartesiaStreamCancelRef.current();
       cartesiaStreamCancelRef.current = null;
     }
+    const audio = voiceAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      voiceAudioRef.current = null;
+    }
+    window.speechSynthesis?.cancel();
+    activeAssistantSpeechRef.current = "";
     voiceSpeakingRef.current = false;
     setVoiceSpeaking(false);
   }, []);
@@ -1693,7 +1715,9 @@ export default function FlowDashboardPage() {
   const speakAssistantResponse = useCallback(async (content: string) => {
     const text = getAssistantSpeechText(content);
     if (!text) return;
+    const playbackSession = ++voicePlaybackSessionRef.current;
 
+    activeAssistantSpeechRef.current = text;
     voiceSpeakingRef.current = true;
     setVoiceSpeaking(true);
     setVoiceStatus("MrChicken esta falando...");
@@ -1715,7 +1739,7 @@ export default function FlowDashboardPage() {
         if (model === "sonic") model = "sonic-3.5";
         if (model === "sonic-multilingual") model = "sonic-3";
 
-        await playCartesiaVoiceWebSocket(
+        const playback = playCartesiaVoiceWebSocket(
           ttsConfig.cartesiaApiKey,
           ttsConfig.cartesiaVoiceId,
           text,
@@ -1723,6 +1747,8 @@ export default function FlowDashboardPage() {
           ttsConfig.cartesiaSpeed || "auto",
           emotion
         );
+        cartesiaStreamCancelRef.current = playback.cancel;
+        await playback.promise;
       } else if (ttsConfig?.provider === "browser") {
         await new Promise<void>((resolve, reject) => {
           const utterance = new SpeechSynthesisUtterance(text);
@@ -1755,6 +1781,8 @@ export default function FlowDashboardPage() {
       setVoiceError(message);
       setVoiceStatus("Nao consegui falar a resposta.");
     } finally {
+      if (voicePlaybackSessionRef.current !== playbackSession) return;
+      activeAssistantSpeechRef.current = "";
       voiceSpeakingRef.current = false;
       setVoiceSpeaking(false);
       if (voiceEnabledRef.current) {
@@ -1883,6 +1911,7 @@ export default function FlowDashboardPage() {
 
     try {
       cancelAllVoicePlayback();
+      const playbackSession = voicePlaybackSessionRef.current;
       const voiceContext = getAgentVoiceContext(message, options.speakResponse === true);
       const ttsRes = await fetch("/api/tts/config").catch(() => null);
       const ttsConfig = ttsRes ? await ttsRes.json().catch(() => null) : null;
@@ -1904,6 +1933,7 @@ export default function FlowDashboardPage() {
           emotion
         );
 
+        voiceSpeakingRef.current = true;
         setVoiceSpeaking(true);
         setVoiceStatus("MrChicken esta falando...");
 
@@ -1918,6 +1948,7 @@ export default function FlowDashboardPage() {
           cartesiaStreamCancelRef.current = cartesiaStream.cancel;
           
           cartesiaStream.promise.then(() => {
+            if (voicePlaybackSessionRef.current !== playbackSession) return;
             voiceSpeakingRef.current = false;
             setVoiceSpeaking(false);
             if (voiceEnabledRef.current) {
@@ -1932,12 +1963,14 @@ export default function FlowDashboardPage() {
       }
 
       const speakTextChunk = (textToSpeak: string, isLast = false) => {
-        if (!options.speakResponse) return;
+        if (!options.speakResponse || voicePlaybackSessionRef.current !== playbackSession) return;
         const speechText = compileAgentSpeech(textToSpeak, voiceContext, ttsConfig?.provider || "omnivoice");
         if (!speechText) {
           if (cartesiaStream && isLast) cartesiaStream.sendChunk(" ", true);
           return;
         }
+
+        activeAssistantSpeechRef.current = `${activeAssistantSpeechRef.current} ${speechText}`.trim();
 
         if (cartesiaStream) {
           cartesiaStream.sendChunk(speechText, isLast);
@@ -1962,6 +1995,7 @@ export default function FlowDashboardPage() {
         
         speechQueueRef.current?.enqueue(() => {
           if (ttsConfig?.provider === "browser") {
+            voiceSpeakingRef.current = true;
             setVoiceSpeaking(true);
             setVoiceStatus("MrChicken esta falando...");
             
@@ -1980,6 +2014,7 @@ export default function FlowDashboardPage() {
             };
           } else {
             // Fallback to OmniVoice
+            voiceSpeakingRef.current = true;
             setVoiceSpeaking(true);
             setVoiceStatus("MrChicken esta falando...");
             let audio: HTMLAudioElement | null = null;
@@ -2185,12 +2220,10 @@ export default function FlowDashboardPage() {
   };
 
   const handleVoiceTranscript = (transcript: string) => {
-    cancelAllVoicePlayback();
-    if (voiceAudioRef.current) {
-      voiceAudioRef.current.pause();
-      voiceAudioRef.current.currentTime = 0;
-      voiceAudioRef.current.dispatchEvent(new Event('ended'));
+    if (voiceSpeakingRef.current && isLikelyAssistantEcho(transcript, activeAssistantSpeechRef.current)) {
+      return;
     }
+    cancelAllVoicePlayback();
 
     void handleVoiceCommand(transcript);
   };
@@ -2218,6 +2251,14 @@ export default function FlowDashboardPage() {
         } else if (transcript) {
           interim += transcript;
         }
+      }
+      if (
+        interim &&
+        voiceSpeakingRef.current &&
+        !isLikelyAssistantEcho(interim, activeAssistantSpeechRef.current)
+      ) {
+        cancelAllVoicePlayback();
+        setVoiceStatus("Entendi, pode continuar.");
       }
       setVoiceTranscript(interim);
     };
