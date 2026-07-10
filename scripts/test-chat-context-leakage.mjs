@@ -154,4 +154,5 @@ assert.equal(clarification.action, null);
 assert.match(clarification.message, /qual conteúdo/i);
 
 console.log("PASS: o prompt usa o pintor da história imediata e exclui matemática/memórias antigas.");
+console.log("PASS: a seção de grounding não vaza para a intenção de ferramentas nem força previous_track.");
 console.log("PASS: sem contexto imediato suficiente, o chatbot pede esclarecimento e não cria uma ação.");
