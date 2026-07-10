@@ -114,7 +114,7 @@ interface Avatar {
 }
 
 type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
-type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux';
+type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
 type PlannedFlow = AgentType | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
@@ -123,6 +123,7 @@ const AGENT_MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
   { value: "gemini", label: "Gemini" },
   { value: "cerebras", label: "Cerebras + MCP" },
   { value: "zenmux", label: "ZenMux + MCP" },
+  { value: "iamhc", label: "IAMHC (modelos chineses)" },
   { value: "chatgpt", label: "ChatGPT" },
   { value: "claude", label: "Claude" },
   { value: "deepseek", label: "DeepSeek" },

@@ -57,7 +57,7 @@ interface SpeechConfig {
   chunkMs: number;
 }
 
-type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok";
+type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok" | "iamhc";
 
 interface AgentLLMCommandStatus {
   command: string;
@@ -205,6 +205,13 @@ const AGENT_LLM_OPTIONS: Array<{
     description: "Integração via ZenMux AI usando Grok 4.5 Free.",
     category: "api",
     icon: Zap
+  },
+  {
+    id: "iamhc",
+    name: "IAMHC API",
+    description: "API OpenAI-compatível com catálogo de modelos chineses por chave.",
+    category: "api",
+    icon: Zap
   }
 ];
 
@@ -290,7 +297,7 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
 }
 
 function parseAgentLLMProvider(value: unknown): AgentLLMProvider {
-  return value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" || value === "cerebras" || value === "zenmux-grok"
+  return value === "codex-cli" || value === "grok-cli" || value === "antigravity-cli" || value === "browser" || value === "cerebras" || value === "zenmux-grok" || value === "iamhc"
     ? value
     : "browser";
 }
@@ -373,13 +380,13 @@ function getAgentLLMOptionName(provider: AgentLLMProvider): string {
 }
 
 function getProviderStatus(config: AgentLLMConfig | null, provider: AgentLLMProvider): AgentLLMCommandStatus | null {
-  if (!config?.status || provider === "browser" || provider === "cerebras" || provider === "zenmux-grok") return null;
+  if (!config?.status || provider === "browser" || provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") return null;
   if (provider === "antigravity-cli") return config.status.antigravity;
   return provider === "codex-cli" ? config.status.codex : config.status.grok;
 }
 
 function getAgentLLMStatusText(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
-  if (provider === "cerebras" || provider === "zenmux-grok") return "Conexão Direta (API)";
+  if (provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") return "Conexão Direta (API)";
   if (!status) return "Usando navegador";
   if (!status.available) return "Comando ausente";
   if (status.authenticated === true) return "Conectado";
@@ -388,7 +395,7 @@ function getAgentLLMStatusText(status: AgentLLMCommandStatus | null, provider?: 
 }
 
 function getAgentLLMStatusClass(status: AgentLLMCommandStatus | null, provider?: AgentLLMProvider): string {
-  if (provider === "cerebras" || provider === "zenmux-grok") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
+  if (provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
   if (!status) return "border-white/10 bg-white/5 text-zinc-400";
   if (!status.available || status.authenticated === false) return "border-rose-500/20 bg-rose-500/10 text-rose-400";
   if (status.authenticated === true) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
@@ -470,7 +477,7 @@ function AgentLLMCard({
   const status = getProviderStatus(config, provider);
   const Icon = option.icon;
   const hasBusyAction = Boolean(busyAction);
-  const isApiProvider = provider === "cerebras" || provider === "zenmux-grok";
+  const isApiProvider = provider === "cerebras" || provider === "zenmux-grok" || provider === "iamhc";
   
   return (
     <div className={`relative flex flex-col rounded-2xl border transition-all overflow-hidden ${

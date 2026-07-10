@@ -808,6 +808,7 @@ export function FlyModeWizard({
                             <option value="deepseek">DeepSeek R1</option>
                             <option value="cerebras">Cerebras (Inference Ultra-Rápida)</option>
                             <option value="zenmux">ZenMux Grok (Free)</option>
+                            <option value="iamhc">IAMHC (DeepSeek, Qwen, GLM, Kimi...)</option>
                           </select>
                           <span className="absolute left-12 top-2 text-[10px] font-medium text-[#A1A1AA] pointer-events-none">Modelo de IA</span>
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#A1A1AA]">
