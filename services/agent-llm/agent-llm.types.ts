@@ -8,6 +8,7 @@ export interface AgentLLMSettings {
   grokModel: string;
   antigravityCommand: string;
   antigravityModel: string;
+  iamhcModel: string;
   timeoutMs: number;
 }
 

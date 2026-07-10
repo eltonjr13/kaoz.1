@@ -28,6 +28,7 @@ function parseSettingsFromBody(body: Record<string, unknown> | null) {
     grokModel: stringOrUndefined(body?.grokModel),
     antigravityCommand: stringOrUndefined(body?.antigravityCommand),
     antigravityModel: stringOrUndefined(body?.antigravityModel),
+    iamhcModel: stringOrUndefined(body?.iamhcModel),
     timeoutMs: numberOrUndefined(body?.timeoutMs),
   });
 }

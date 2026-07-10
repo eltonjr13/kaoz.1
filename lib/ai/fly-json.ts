@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { OpenAI } from "openai";
+import { readAgentLLMSettings } from "@/services/agent-llm/agent-llm.settings";
 
 export type FlyAiModel = "gemini" | "chatgpt" | "claude" | "deepseek" | "cerebras" | "zenmux" | "iamhc";
 
@@ -112,12 +113,13 @@ async function generateWithZenmux(prompt: string): Promise<string> {
 }
 
 async function generateWithIamhc(prompt: string): Promise<string> {
+  const settings = await readAgentLLMSettings();
   const client = new OpenAI({
     apiKey: requireEnv("IAMHC_API_KEY"),
     baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1"
   });
   const response = await client.chat.completions.create({
-    model: process.env.IAMHC_MODEL || "deepseek-chat",
+    model: settings.iamhcModel || process.env.IAMHC_MODEL || "deepseek-chat",
     messages: [{ role: "user", content: prompt }],
     response_format: { type: "json_object" },
     temperature: 0.7

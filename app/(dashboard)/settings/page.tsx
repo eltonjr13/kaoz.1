@@ -78,6 +78,7 @@ interface AgentLLMConfig {
   grokModel: string;
   antigravityCommand: string;
   antigravityModel: string;
+  iamhcModel: string;
   timeoutMs: number;
   status: {
     codex: AgentLLMCommandStatus;
@@ -329,6 +330,7 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
     grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
     antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
     antigravityModel: stringOrEmpty(data.antigravityModel) || "gemini-3.5-pro",
+    iamhcModel: stringOrEmpty(data.iamhcModel) || "deepseek-chat",
     timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : 45000,
     status: status
       ? {
@@ -605,6 +607,10 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
   const [antigravityModel, setAntigravityModel] = useState("gemini-3.5-pro");
+  const [iamhcModel, setIamhcModel] = useState("deepseek-chat");
+  const [iamhcModels, setIamhcModels] = useState<Array<{ id: string; ownedBy: string }>>([]);
+  const [iamhcModelsError, setIamhcModelsError] = useState<string | null>(null);
+  const [isLoadingIamhcModels, setIsLoadingIamhcModels] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -633,6 +639,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     setGrokModel(nextConfig.grokModel);
     setAntigravityCommand(nextConfig.antigravityCommand);
     setAntigravityModel(nextConfig.antigravityModel);
+    setIamhcModel(nextConfig.iamhcModel);
   }, []);
 
   useEffect(() => {
@@ -657,6 +664,24 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     };
   }, [applyConfig]);
 
+  useEffect(() => {
+    if (provider !== "iamhc") return;
+    let isMounted = true;
+    setIsLoadingIamhcModels(true);
+    setIamhcModelsError(null);
+    void fetch("/api/agent-llm/models", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json() as { models?: Array<{ id?: unknown; ownedBy?: unknown }>; error?: unknown };
+        if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Falha ao listar modelos IAMHC.");
+        return (data.models || [])
+          .filter((item): item is { id: string; ownedBy: string } => typeof item.id === "string" && typeof item.ownedBy === "string");
+      })
+      .then((models) => { if (isMounted) setIamhcModels(models); })
+      .catch((error) => { if (isMounted) setIamhcModelsError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { if (isMounted) setIsLoadingIamhcModels(false); });
+    return () => { isMounted = false; };
+  }, [provider]);
+
   const buildPayload = (action: string) => ({
     action,
     provider,
@@ -666,6 +691,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
     grokModel,
     antigravityCommand,
     antigravityModel,
+    iamhcModel,
     timeoutMs: config?.timeoutMs || 45000
   });
 
@@ -769,6 +795,31 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {AGENT_LLM_OPTIONS.filter(o => o.category === "api").map(renderCard)}
           </div>
+          {provider === "iamhc" && (
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4 space-y-3">
+              <div>
+                <h3 className="text-xs font-bold text-emerald-100">Modelo LLM IAMHC</h3>
+                <p className="mt-1 text-[11px] text-zinc-400">Catálogo liberado pela sua chave. Qwen, GLM, Kimi e DeepSeek aparecem primeiro quando disponíveis.</p>
+              </div>
+              <select
+                value={iamhcModel}
+                onChange={(event) => setIamhcModel(event.target.value)}
+                disabled={isLoadingIamhcModels || iamhcModels.length === 0}
+                className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 disabled:opacity-50"
+              >
+                <option value={iamhcModel}>{iamhcModel}</option>
+                {iamhcModels.filter((model) => model.id !== iamhcModel).map((model) => (
+                  <option key={model.id} value={model.id} className="bg-zinc-900 text-zinc-200">{model.id}{model.ownedBy ? ` · ${model.ownedBy}` : ""}</option>
+                ))}
+              </select>
+              {iamhcModelsError ? <p className="text-[10px] text-rose-300">{iamhcModelsError}</p> : null}
+              <div className="flex items-center gap-2">
+                <AgentLLMActionButton label="Salvar modelo" action="save" busyAction={busyAction} disabled={hasBusyAction} icon={Save} onClick={() => runAction("save", "Modelo IAMHC salvo.")} />
+                <AgentLLMActionButton label="Testar" action="test" busyAction={busyAction} disabled={hasBusyAction} icon={CheckCircle} onClick={() => runAction("test", "Modelo IAMHC respondeu.")} />
+                {isLoadingIamhcModels ? <Loader2 size={13} className="animate-spin text-emerald-300" /> : null}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Ferramentas CLI */}

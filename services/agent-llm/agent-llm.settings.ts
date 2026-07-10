@@ -8,6 +8,7 @@ const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
 const DEFAULT_CODEX_MODEL = "gpt-5.4-mini";
 const DEFAULT_GROK_MODEL = "grok-composer-2.5-fast";
 const DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.5-pro";
+const DEFAULT_IAMHC_MODEL = "deepseek-chat";
 const DEFAULT_TIMEOUT_MS = 90000;
 const MIN_TIMEOUT_MS = 90000;
 const MAX_TIMEOUT_MS = 180000;
@@ -38,6 +39,7 @@ export function getEnvAgentLLMSettings(): AgentLLMSettings {
     grokModel: stringOrDefault(process.env.GROK_CLI_MODEL, DEFAULT_GROK_MODEL),
     antigravityCommand: stringOrDefault(process.env.ANTIGRAVITY_CLI_COMMAND, "agy"),
     antigravityModel: stringOrDefault(process.env.ANTIGRAVITY_CLI_MODEL, DEFAULT_ANTIGRAVITY_MODEL),
+    iamhcModel: stringOrDefault(process.env.IAMHC_MODEL, DEFAULT_IAMHC_MODEL),
     timeoutMs: normalizeTimeoutMs(process.env.AGENT_CLI_TIMEOUT_MS),
   };
 }
@@ -52,6 +54,7 @@ export function normalizeAgentLLMSettings(settings: Partial<AgentLLMSettings>): 
     grokModel: stringOrDefault(settings.grokModel, defaults.grokModel),
     antigravityCommand: stringOrDefault(settings.antigravityCommand, defaults.antigravityCommand),
     antigravityModel: stringOrDefault(settings.antigravityModel, defaults.antigravityModel),
+    iamhcModel: stringOrDefault(settings.iamhcModel, defaults.iamhcModel),
     timeoutMs: normalizeTimeoutMs(settings.timeoutMs ?? defaults.timeoutMs),
   };
 }

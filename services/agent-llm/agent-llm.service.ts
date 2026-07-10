@@ -1009,7 +1009,8 @@ export async function runFastInferenceApi(provider: "cerebras" | "zenmux-grok" |
     const baseURL = process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1";
     // The provider's /models response is key-specific. Use any returned Chinese
     // model ID here (DeepSeek, Qwen, GLM, Kimi, Hunyuan, etc.).
-    model = process.env.IAMHC_MODEL || "deepseek-chat";
+    const configured = await readAgentLLMSettings();
+    model = configured.iamhcModel || process.env.IAMHC_MODEL || "deepseek-chat";
     client = new OpenAI({ apiKey, baseURL });
   }
 
