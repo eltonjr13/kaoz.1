@@ -9,6 +9,7 @@ import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-f
 import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
 import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
+import { getAgentVoiceContext, getAgentVoiceInstruction } from "@/lib/ai/agent-voice";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ type FlowChatRequestBody = {
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   stream?: boolean;
+  voiceActive?: boolean;
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
@@ -350,6 +352,7 @@ export async function POST(request: Request) {
       useAvatarPersonality,
       useCortexMemory,
       stream,
+      voiceActive,
     } = body;
     const cortexMemoryEnabled = useCortexMemory !== false;
     const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
@@ -358,6 +361,7 @@ export async function POST(request: Request) {
     const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
+    const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
 
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
@@ -394,6 +398,7 @@ export async function POST(request: Request) {
         hasExternalTools,
         relevantMemories,
         activeMemories: activePersonalityMemories,
+        voiceInstruction: getAgentVoiceInstruction(voiceContext),
       }
     );
 

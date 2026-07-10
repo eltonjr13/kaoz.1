@@ -731,6 +731,7 @@ type ChatWithAgentOptions = {
   hasExternalTools?: boolean;
   relevantMemories?: string;
   activeMemories?: any[];
+  voiceInstruction?: string;
 };
 
 type ExecuteWebQuery = (
@@ -786,6 +787,7 @@ ${personalityContext}
 Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
 ${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
+${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstruction}\n` : ""}
 Responda em portugues, diretamente em texto normal. Nao retorne JSON, nao use bloco de codigo para a resposta inteira e nao inclua a chave "message".
 Seja mais util que uma execucao literal: identifique a intencao real do usuario, recomende o proximo passo mais forte e explique o criterio quando isso ajudar.
 Para pedidos abertos ou estrategicos, responda com diagnostico curto, plano pratico e tradeoffs relevantes. Para perguntas simples, seja curto.
@@ -852,6 +854,7 @@ ${personalityContext}
 Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
 ${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
+${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstruction}\n` : ""}
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
 2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.

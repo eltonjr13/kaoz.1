@@ -36,6 +36,7 @@ import { useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
+import { compileAgentSpeech, getAgentVoiceContext, resolveCartesiaVoiceControls } from "@/lib/ai/agent-voice";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -1880,6 +1881,7 @@ export default function FlowDashboardPage() {
 
     try {
       cancelAllVoicePlayback();
+      const voiceContext = getAgentVoiceContext(message, options.speakResponse === true);
       const ttsRes = await fetch("/api/tts/config").catch(() => null);
       const ttsConfig = ttsRes ? await ttsRes.json().catch(() => null) : null;
 
@@ -1894,6 +1896,11 @@ export default function FlowDashboardPage() {
         let model = ttsConfig.cartesiaModel || "sonic-3.5";
         if (model === "sonic") model = "sonic-3.5";
         if (model === "sonic-multilingual") model = "sonic-3";
+        const voiceControls = resolveCartesiaVoiceControls(
+          voiceContext,
+          ttsConfig.cartesiaSpeed || "auto",
+          emotion
+        );
 
         setVoiceSpeaking(true);
         setVoiceStatus("MrChicken esta falando...");
@@ -1903,8 +1910,8 @@ export default function FlowDashboardPage() {
             ttsConfig.cartesiaApiKey,
             ttsConfig.cartesiaVoiceId,
             model,
-            ttsConfig.cartesiaSpeed || "auto",
-            emotion
+            voiceControls.speed,
+            voiceControls.emotion
           );
           cartesiaStreamCancelRef.current = cartesiaStream.cancel;
           
@@ -1924,9 +1931,14 @@ export default function FlowDashboardPage() {
 
       const speakTextChunk = (textToSpeak: string, isLast = false) => {
         if (!options.speakResponse) return;
+        const speechText = compileAgentSpeech(textToSpeak, voiceContext, ttsConfig?.provider || "omnivoice");
+        if (!speechText) {
+          if (cartesiaStream && isLast) cartesiaStream.sendChunk(" ", true);
+          return;
+        }
 
         if (cartesiaStream) {
-          cartesiaStream.sendChunk(textToSpeak, isLast);
+          cartesiaStream.sendChunk(speechText, isLast);
           return;
         }
 
@@ -1935,7 +1947,7 @@ export default function FlowDashboardPage() {
           fishAudioPathPromise = fetch("/api/fish-audio/speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: textToSpeak })
+            body: JSON.stringify({ text: speechText })
           }).then(async (res) => {
             const data = await res.json() as { audioPath?: string; error?: string };
             if (!res.ok || !data.audioPath) {
@@ -1953,7 +1965,7 @@ export default function FlowDashboardPage() {
             
             let utterance: SpeechSynthesisUtterance | null = null;
             const promise = new Promise<void>((resolve, reject) => {
-              utterance = new SpeechSynthesisUtterance(textToSpeak);
+              utterance = new SpeechSynthesisUtterance(speechText);
               utterance.onend = () => resolve();
               utterance.onerror = () => reject(new Error("Falha na sintese de voz do navegador."));
               window.speechSynthesis.speak(utterance);
@@ -1977,7 +1989,7 @@ export default function FlowDashboardPage() {
                 const audioPath = fishAudioPathPromise || fetch("/api/omnivoice/speak", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: textToSpeak })
+                    body: JSON.stringify({ text: speechText })
                   }).then(async (res) => {
                     const data = await res.json() as { audioPath?: string; error?: string };
                     if (!res.ok || !data.audioPath) {
@@ -2024,7 +2036,8 @@ export default function FlowDashboardPage() {
           useAvatarPersonality,
           useCortexMemory,
           model: chatModel,
-          stream: true
+          stream: true,
+          voiceActive: options.speakResponse === true
         })
       });
       let streamedData: FlowChatResponse | null = null;
@@ -2036,7 +2049,7 @@ export default function FlowDashboardPage() {
 
         const processStreamTextChunk = async (text: string) => {
           if (shouldBatchFishAudio) {
-            sentenceBuffer = queueCompleteSpeechSentences(sentenceBuffer + text, speakTextChunk, 180);
+            sentenceBuffer = queueCompleteSpeechSentences(sentenceBuffer + text, speakTextChunk, 80);
           } else {
             sentenceBuffer = queueCompleteSpeechSentences(sentenceBuffer + text, speakTextChunk);
           }
