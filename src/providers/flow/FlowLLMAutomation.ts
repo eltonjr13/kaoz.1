@@ -328,6 +328,8 @@ export class FlowLLMAutomation {
       return this.cleanLLMResponse(await runSelectedChatModelCli(model, prompt, {
         referenceImagePath,
         onTextChunk: options.onTextChunk,
+        useExternalTools: options.useExternalTools,
+        toolIntentText: options.toolIntentText,
       }));
     }
 

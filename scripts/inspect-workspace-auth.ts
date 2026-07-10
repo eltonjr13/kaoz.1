@@ -1,45 +1,36 @@
 import { chromium } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
-
 async function main() {
   console.log('[INSPECT] Inicializando navegador com perfil persistente...');
   const profilePath = path.resolve('storage/browser-profile/');
   const savedUrlPath = path.resolve('storage/flow_project_url.txt');
-  
   let targetUrl = 'https://flow.google';
   if (fs.existsSync(savedUrlPath)) {
     targetUrl = fs.readFileSync(savedUrlPath, 'utf-8').trim();
   }
   console.log(`[INSPECT] URL de destino: ${targetUrl}`);
-
   const context = await chromium.launchPersistentContext(profilePath, {
     headless: true,
     viewport: { width: 1280, height: 720 },
     ignoreDefaultArgs: ['--enable-automation'],
     args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-web-security',
       '--disable-blink-features=AutomationControlled'
     ],
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   });
-
   const page = context.pages()[0] || await context.newPage();
-
   try {
     console.log('[INSPECT] Navegando para o workspace...');
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     console.log('[INSPECT] Aguardando 10 segundos para estabilizar...');
     await page.waitForTimeout(10000);
-
     // Save a screenshot
     const screenshotPath = path.resolve('storage/flow-workspace-auth-debug.png');
     await page.screenshot({ path: screenshotPath });
     console.log(`[INSPECT] Screenshot salvo em: ${screenshotPath}`);
-
     // Scan for all inputs, specifically file inputs
     const inputsInfo = await page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll('input'));
@@ -54,10 +45,8 @@ async function main() {
         outerHTML: input.outerHTML
       }));
     });
-
     console.log('[INSPECT] Inputs encontrados no workspace logado:');
     console.log(JSON.stringify(inputsInfo, null, 2));
-
     // Find the prompt container and search for elements inside/around it
     console.log('[INSPECT] Procurando botões na barra de prompt...');
     const buttons = await page.evaluate(() => {
@@ -73,10 +62,8 @@ async function main() {
         };
       });
     });
-
     console.log(`[INSPECT] Encontrados ${buttons.length} botões/elementos clicáveis:`);
     console.log(JSON.stringify(buttons.slice(0, 50), null, 2));
-
   } catch (err) {
     console.error('[INSPECT] Erro na inspeção:', err);
   } finally {
@@ -84,5 +71,4 @@ async function main() {
     console.log('[INSPECT] Navegador fechado.');
   }
 }
-
 main().catch(console.error);

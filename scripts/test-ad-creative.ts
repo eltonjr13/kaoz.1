@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import { classifyIntention } from "../lib/ai/gemini";
-
 // Simple helper to load .env.local variables manually
 function loadEnvLocal() {
   const envPath = path.resolve(".env.local");
@@ -23,24 +22,19 @@ function loadEnvLocal() {
     }
   }
 }
-
 async function test() {
   console.log("Loading .env.local variables...");
   loadEnvLocal();
-
   if (!process.env.GEMINI_API_KEY) {
     console.error("ERRO: GEMINI_API_KEY não encontrada no .env.local.");
     process.exit(1);
   }
-
   const prompt = "Gere 20 imagens criativas de anúncio para o produto Mr. Chicken, focado em alta conversão e inteligência artificial para o público de programadores.";
   console.log(`\nTestando classificação com o prompt: "${prompt}"\n`);
-
   try {
     const decision = await classifyIntention(prompt);
     console.log("Decisão do Agente:");
     console.log(JSON.stringify(decision, null, 2));
-
     if (decision.flow === "ad-creative") {
       console.log("\n[SUCESSO] O fluxo foi classificado corretamente como 'ad-creative'!");
       if (decision.adCreativePlan && decision.adCreativePlan.concepts.length > 0) {
@@ -60,5 +54,4 @@ async function test() {
     console.error("Erro durante o teste:", err);
   }
 }
-
 test();

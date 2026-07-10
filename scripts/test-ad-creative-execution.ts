@@ -3,7 +3,6 @@ import * as path from "path";
 import { flowAgent } from "../src/providers/flow/FlowAgent";
 import { flowProvider } from "../src/providers/flow/FlowProvider";
 import { createLocalJob, listLocalAvatars, findLocalJob } from "../lib/local-store";
-
 // Simple helper to load .env.local variables manually
 function loadEnvLocal() {
   const envPath = path.resolve(".env.local");
@@ -25,11 +24,9 @@ function loadEnvLocal() {
     }
   }
 }
-
 async function testExecution() {
   console.log("Loading .env.local variables...");
   loadEnvLocal();
-
   // Mock flowProvider.generateImage
   flowProvider.generateImage = async (prompt: string, options?: any) => {
     console.log(`\n[MOCK] generateImage chamado para o prompt:\n  "${prompt}"\n  Opções:`, options);
@@ -47,7 +44,6 @@ async function testExecution() {
       createdAt: new Date().toISOString()
     };
   };
-
   // Get or create a dummy avatar to satisfy lookups
   const avatars = await listLocalAvatars();
   let avatarId = avatars[0]?.id;
@@ -66,9 +62,7 @@ async function testExecution() {
     await fs.promises.mkdir(DATA_DIR, { recursive: true });
     await fs.promises.writeFile(path.join(DATA_DIR, "avatars.json"), JSON.stringify([dummyAvatar], null, 2), "utf8");
   }
-
   console.log(`Usando avatar ID: ${avatarId}`);
-
   // Create a new local job for testing
   const topic = "Criativos de imagem de café energético para programadores";
   const job = await createLocalJob({
@@ -77,9 +71,7 @@ async function testExecution() {
     renderLayout: "balanced_split",
     expertBackgroundMode: "original"
   });
-
   console.log(`Criado ReactionJob local com ID: ${job.id}`);
-
   // Mock an approvedPlan decision of type 'ad-creative'
   const approvedPlan = {
     flow: "ad-creative" as const,
@@ -102,9 +94,7 @@ async function testExecution() {
       ]
     }
   };
-
   console.log("Iniciando a execução do fluxo autonomo do agente...");
-  
   try {
     const result = await flowAgent.runAutonomousAgent({
       topic,
@@ -113,24 +103,19 @@ async function testExecution() {
       jobId: job.id,
       approvedPlan
     });
-
     console.log("\nExecução do agente finalizada.");
     console.log("Resultado retornado pelo agente:", result);
-
     // Verify job in database
     const updatedJob = await findLocalJob(job.id);
     if (!updatedJob) {
       console.error("[FALHA] Job não foi encontrado no banco de dados local.");
       process.exit(1);
     }
-
     console.log("\n[VERIFICAÇÃO] Dados do Job atualizados no local-store:");
     console.log(`Status do Job: ${updatedJob.status}`);
     console.log(`Descrição do Vídeo (Mídia): ${updatedJob.source_video_description}`);
-    
     const transcription = JSON.parse(updatedJob.source_video_transcription || "{}");
     console.log("Transcrição decodificada:", JSON.stringify(transcription, null, 2));
-
     if (
       updatedJob.status === "completed" &&
       transcription.mode === "ad-creative" &&
@@ -145,5 +130,4 @@ async function testExecution() {
     console.error("Erro na execução do agente:", err);
   }
 }
-
 testExecution();

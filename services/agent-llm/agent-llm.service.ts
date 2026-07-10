@@ -638,24 +638,28 @@ export async function runSelectedChatModelCli(
 ): Promise<string> {
   const settings = await readAgentLLMSettings();
 
-  if (model === "chatgpt") return runCodexCli(settings, prompt, options);
+  const executor = async (currentPrompt: string) => {
+    if (model === "chatgpt") return runCodexCli(settings, currentPrompt, options);
 
-  // The non-Codex CLIs do not share a universal image flag. Preserve the
-  // selection and provide the local path so a CLI with workspace/file access
-  // can inspect it, instead of falling back to browser automation.
-  const promptWithReference = options.referenceImagePath
-    ? `${prompt}\n\n[Imagem de referencia local disponivel em: ${options.referenceImagePath}]`
-    : prompt;
+    const promptWithReference = options.referenceImagePath
+      ? `${currentPrompt}\n\n[Imagem de referencia local disponivel em: ${options.referenceImagePath}]`
+      : currentPrompt;
 
-  if (model === "gemini") {
-    return runProviderPromptCli("Gemini CLI", envOrDefault("GEMINI_CLI_COMMAND", "gemini"), envOrDefault("GEMINI_CLI_MODEL", "gemini-2.5-pro"), envOrDefault("GEMINI_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+    if (model === "gemini") {
+      return runProviderPromptCli("Gemini CLI", envOrDefault("GEMINI_CLI_COMMAND", "gemini"), envOrDefault("GEMINI_CLI_MODEL", "gemini-2.5-pro"), envOrDefault("GEMINI_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+    }
+
+    if (model === "claude") {
+      return runProviderPromptCli("Claude CLI", envOrDefault("CLAUDE_CLI_COMMAND", "claude"), envOrDefault("CLAUDE_CLI_MODEL", "claude-sonnet-4-5"), envOrDefault("CLAUDE_CLI_ARGS", "-p {prompt} --model {model} --output-format text"), promptWithReference, options, settings.timeoutMs);
+    }
+
+    return runProviderPromptCli("DeepSeek CLI", envOrDefault("DEEPSEEK_CLI_COMMAND", "deepseek"), envOrDefault("DEEPSEEK_CLI_MODEL", "deepseek-chat"), envOrDefault("DEEPSEEK_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+  };
+
+  if (options.useExternalTools) {
+    return runCliWithToolsLoop(prompt, options, executor);
   }
-
-  if (model === "claude") {
-    return runProviderPromptCli("Claude CLI", envOrDefault("CLAUDE_CLI_COMMAND", "claude"), envOrDefault("CLAUDE_CLI_MODEL", "claude-sonnet-4-5"), envOrDefault("CLAUDE_CLI_ARGS", "-p {prompt} --model {model} --output-format text"), promptWithReference, options, settings.timeoutMs);
-  }
-
-  return runProviderPromptCli("DeepSeek CLI", envOrDefault("DEEPSEEK_CLI_COMMAND", "deepseek"), envOrDefault("DEEPSEEK_CLI_MODEL", "deepseek-chat"), envOrDefault("DEEPSEEK_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+  return executor(prompt);
 }
 
 export async function runAgentCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions = {}): Promise<string> {
@@ -684,6 +688,7 @@ export async function runAgentCli(settings: AgentLLMSettings, prompt: string, op
   if (settings.provider === "zenmux-grok") {
     return runFastInferenceApi("zenmux-grok", prompt, options);
   }
+
   if (settings.provider === "iamhc") {
     return runFastInferenceApi("iamhc", prompt, options);
   }
@@ -704,13 +709,13 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   }
 
   if (options.useExternalTools && settings.provider !== "cerebras" && settings.provider !== "zenmux-grok" && settings.provider !== "iamhc") {
-    return runCliWithToolsLoop(settings, prompt, options);
+    return runCliWithToolsLoop(prompt, options, (p) => runAgentCli(settings, p, options));
   }
 
   return runAgentCli(settings, prompt, options);
 }
 
-async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
+async function runCliWithToolsLoop(prompt: string, options: QueryOptions, executor: (currentPrompt: string) => Promise<string>): Promise<string> {
   const { McpManager } = await import("../mcp/mcp.manager");
   const mcpManager = await McpManager.getInstance();
   const allMcpTools = await mcpManager.getAllTools();
@@ -721,16 +726,16 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
     ? allMcpTools.filter((tool) => isSpotifyTool(tool.serverId, tool.tool.name))
     : allMcpTools;
 
-  if (relevantMcpTools.length === 0) return runAgentCli(settings, prompt, options);
+  if (relevantMcpTools.length === 0) return executor(prompt);
 
-  let toolsDescription = "\n\n[FERRAMENTAS MCP]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\\\"serverId\\\":\\\"...\\\",\\\"toolName\\\":\\\"...\\\",\\\"args\\\":{}}</TOOL_CALL>.\n";
+  let toolsDescription = "\n\n[FERRAMENTAS MCP]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\"serverId\":\"...\",\"toolName\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
   for (const tool of relevantMcpTools) {
     toolsDescription += `- serverId: "${tool.serverId}", toolName: "${tool.tool.name}", schema: ${JSON.stringify(tool.tool.inputSchema)}\n`;
   }
 
   let currentPrompt = prompt + toolsDescription;
   for (let loop = 0; loop < 10; loop++) {
-    const cliOutput = await runAgentCli(settings, currentPrompt, options);
+    const cliOutput = await executor(currentPrompt);
     const match = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
     if (!match) return cliOutput;
 
@@ -745,253 +750,6 @@ async function runCliWithToolsLoop(settings: AgentLLMSettings, prompt: string, o
   }
 
   return JSON.stringify({ message: "Limite de etapas das ferramentas atingido.", action: null });
-
-  /* Legacy, malformed duplicated implementation retained below while this
-   * source is repaired. It is unreachable and intentionally ignored. */
-  /*
-        type: "function" as const,
-        function: {
-          name: sanitizedName,
-          description: t.tool.description || `Ferramenta MCP`,
-          parameters: t.tool.inputSchema || { type: "object", properties: {} }
-        }
-      };
-    });
-    tools = [...builtInTools, ...mcpTools];
-    chatTools = tools.length > 0 ? tools : undefined;
-    forcedSpotifyTool = mcpTools.find(t => t.function.name === forcedSpotifyToolName);
-  }
-
-  const forcedSpotifyToolMapping = forcedSpotifyTool
-    ? mcpToolMap.get(forcedSpotifyTool.function.name)
-    : undefined;
-  if (spotifyIntent && mcpTools.length === 0) {
-    return formatMissingSpotifyToolsMessage();
-  }
-  if (forcedSpotifyToolName && !forcedSpotifyTool) {
-    return formatMissingSpotifyToolsMessage(forcedSpotifyToolName);
-  }
-
-  const requiresWebTool =
-    Boolean(chatTools) &&
-    WEB_INTENT_PATTERN.test(normalizedPrompt);
-
-  const messages: any[] = [];
-  if (chatTools) {
-    messages.push({
-      role: "system",
-      content: spotifyIntent
-        ? "Voce e o Agente MrChicken, um assistente autonomo. A ultima mensagem do usuario pede uma acao no Spotify. Use as ferramentas reais do Spotify para executar a acao antes de responder. Para pedidos compostos, raciocine em passos: procure faixas quando necessario, crie playlist quando solicitado, adicione faixas, controle playback/dispositivo/fila/volume conforme o pedido. NUNCA responda apenas com texto dizendo que tentou. NUNCA invente resultados. Se uma ferramenta retornar erro, informe a falha real ao usuario. Resuma resultados do Spotify em linguagem natural curta; nunca copie JSON bruto, IDs de dispositivo, URIs ou campos tecnicos na mensagem final. No fim, responda em JSON valido no formato esperado pelo chat."
-        : "Voce e o Agente MrChicken, um assistente autonomo. Use ferramentas externas quando a ultima mensagem do usuario exigir dados atuais, navegacao ou execucao real. Se a ferramenta retornar erro, informe a falha concreta; nunca invente resultados."
-    });
-  }
-
-  if (options.referenceImagePath) {
-    const fs = await import("node:fs");
-    const base64Image = fs.readFileSync(options.referenceImagePath).toString("base64");
-    const mimeType = options.referenceImagePath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
-    messages.push({
-      role: "user",
-      content: [
-        { type: "text", text: prompt },
-        {
-          type: "image_url",
-          image_url: {
-            url: `data:${mimeType};base64,${base64Image}`
-          }
-        }
-      ]
-    });
-  } else {
-    messages.push({ role: "user", content: prompt });
-  }
-
-  const extraBody: Record<string, any> = {};
-  if (model.includes("glm")) {
-    extraBody.clear_thinking = true;
-  }
-
-  const shouldStream = Boolean(options.onTextChunk) && !chatTools;
-
-  if (shouldStream) {
-    const responseStream: any = await client.chat.completions.create({
-      model,
-      messages,
-      temperature: 0.7,
-      stream: true,
-      extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
-    } as any);
-
-    let fullText = "";
-    for await (const chunk of responseStream) {
-      const text = chunk.choices[0]?.delta?.content || "";
-      if (text) {
-        fullText += text;
-        options.onTextChunk?.(text);
-      }
-    }
-    return fullText.trim();
-  } else {
-    let currentMessages = [...messages];
-    let finalResponse = "";
-    let hasUsedTool = false;
-
-    for (let step = 0; step < 5; step++) {
-      const toolChoice = !chatTools
-        ? undefined
-        : forcedSpotifyTool && !hasUsedTool
-        ? { type: "function", function: { name: forcedSpotifyTool.function.name } }
-        : builtInTools.length > 0 && !hasUsedTool
-        ? { type: "function", function: { name: USD_BRL_TOOL_NAME } }
-        : (spotifyIntent || requiresWebTool) && !hasUsedTool
-        ? "required"
-        : "auto";
-
-      let response: any;
-      let retryCount = 0;
-      while (retryCount < 3) {
-        try {
-          response = await client.chat.completions.create({
-            model,
-            messages: currentMessages,
-            temperature: 0.7,
-            tools: chatTools,
-            tool_choice: toolChoice,
-            extra_body: Object.keys(extraBody).length > 0 ? extraBody : undefined
-          } as any);
-          break; // Sucesso
-        } catch (error: any) {
-          if (error.status === 429 && retryCount < 2) {
-            retryCount++;
-            console.warn(`[Agente MrChicken] Rate limit (429) no ${provider}. Aguardando ${retryCount * 2}s para retentar...`);
-            await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
-          } else {
-            throw error;
-          }
-        }
-      }
-      
-      const choice = response.choices[0];
-      const message = choice?.message;
-      if (!message) break;
-      
-      currentMessages.push(message);
-      
-      if (message.tool_calls && message.tool_calls.length > 0) {
-        for (const call of message.tool_calls) {
-          if (!("function" in call)) {
-            currentMessages.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: `Error: Unsupported tool call type`
-            });
-            continue;
-          }
-
-          const functionCall = call.function;
-          if (functionCall.name === USD_BRL_TOOL_NAME) {
-            try {
-              const toolOutput = await getUsdBrlRateToolResult();
-              hasUsedTool = true;
-              currentMessages.push({
-                role: "tool",
-                tool_call_id: call.id,
-                content: toolOutput
-              });
-            } catch (e: any) {
-              const message = e instanceof Error ? e.message : String(e);
-              currentMessages.push({
-                role: "tool",
-                tool_call_id: call.id,
-                content: `Error: ${message}`
-              });
-            }
-            continue;
-          }
-
-          const mapping = mcpToolMap.get(functionCall.name);
-          if (mapping) {
-            const [serverId, originalName] = mapping.split("|||");
-            try {
-              if (!mcpManager) {
-                throw new Error("MCP manager nao inicializado para esta consulta.");
-              }
-              const args = functionCall.arguments ? JSON.parse(functionCall.arguments) : {};
-              const toolResult: any = await withTimeout(
-                mcpManager.callTool(serverId, originalName, args),
-                MCP_TOOL_TIMEOUT_MS,
-                `Ferramenta MCP ${originalName}`
-              );
-              hasUsedTool = true;
-              const toolOutput = toolResult?.content ? (typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content)) : "Success";
-              currentMessages.push({
-                role: "tool",
-                tool_call_id: call.id,
-                content: toolResult?.isError ? `Error: ${toolOutput}` : toolOutput
-              });
-            } catch (e: any) {
-               console.error("ERRO NA FERRAMENTA MCP:", originalName, e.message);
-               currentMessages.push({
-                role: "tool",
-                tool_call_id: call.id,
-                content: `Error: ${e.message}`
-              });
-            }
-          } else {
-            currentMessages.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: `Error: Tool not found`
-            });
-          }
-        }
-        continue;
-      }
-      
-      if (forcedSpotifyTool && !hasUsedTool) {
-        if (!mcpManager || !forcedSpotifyToolMapping) {
-          throw new Error(`Ferramenta obrigatoria ${forcedSpotifyTool.function.name} indisponivel no runtime MCP.`);
-        }
-
-        const [serverId, originalName] = forcedSpotifyToolMapping.split("|||");
-        const args = originalName === "create_playlist"
-          ? extractSpotifyPlaylistCreateArgs(toolIntentPrompt, normalizedPrompt)
-          : extractSpotifyPlaybackArgs(toolIntentPrompt, normalizedPrompt, originalName);
-        const toolResult: any = await withTimeout(
-          mcpManager.callTool(serverId, originalName, args),
-          MCP_TOOL_TIMEOUT_MS,
-          `Ferramenta MCP ${originalName}`
-        );
-        const toolOutput = toolResult?.content
-          ? (typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content))
-          : "Ferramenta executada.";
-        if (toolResult?.isError) {
-          return JSON.stringify({
-            message: isSpotifyTool(serverId, originalName)
-              ? formatSpotifyToolResponse(originalName, toolOutput, true)
-              : `Erro ao executar ${originalName}: ${toolOutput}`,
-            action: null
-          });
-        }
-
-        return JSON.stringify({
-          message: isSpotifyTool(serverId, originalName)
-            ? formatSpotifyToolResponse(originalName, toolOutput)
-            : toolOutput,
-          action: null
-        });
-      }
-
-      finalResponse = message.content || "";
-      if (options.onTextChunk) {
-        options.onTextChunk(finalResponse);
-      }
-      break;
-    }
-    return finalResponse.trim();
-  }
-}
-  */
 }
 
 export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {
@@ -1032,33 +790,40 @@ export async function runFastInferenceApi(
   prompt: string,
   options: QueryOptions = {},
 ): Promise<string> {
-  const config = provider === "cerebras"
-    ? {
-        apiKey: process.env.CEREBRAS_API_KEY,
-        baseURL: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1",
-        model: process.env.CEREBRAS_MODEL || "gemma-4-31b",
-      }
-    : provider === "zenmux-grok"
+  const executor = async (currentPrompt: string) => {
+    const config = provider === "cerebras"
       ? {
-          apiKey: process.env.ZENMUX_API_KEY,
-          baseURL: process.env.ZENMUX_BASE_URL || "https://api.zenmux.ai/v1",
-          model: process.env.ZENMUX_MODEL || "grok-4-fast",
+          apiKey: process.env.CEREBRAS_API_KEY,
+          baseURL: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1",
+          model: process.env.CEREBRAS_MODEL || "gemma-4-31b",
         }
-      : {
-          apiKey: process.env.IAMHC_API_KEY,
-          baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1",
-          model: process.env.IAMHC_MODEL || "DeepSeek-V4-Flash",
-        };
-  if (!config.apiKey) throw new Error(`Chave de API ausente para ${provider}.`);
+      : provider === "zenmux-grok"
+        ? {
+            apiKey: process.env.ZENMUX_API_KEY,
+            baseURL: process.env.ZENMUX_BASE_URL || "https://api.zenmux.ai/v1",
+            model: process.env.ZENMUX_MODEL || "grok-4-fast",
+          }
+        : {
+            apiKey: process.env.IAMHC_API_KEY,
+            baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1",
+            model: process.env.IAMHC_MODEL || "DeepSeek-V4-Flash",
+          };
+    if (!config.apiKey) throw new Error(`Chave de API ausente para ${provider}.`);
 
-  const { OpenAI } = await import("openai");
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-  });
-  const text = response.choices[0]?.message?.content || "";
-  options.onTextChunk?.(text);
-  return text;
+    const { OpenAI } = await import("openai");
+    const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages: [{ role: "user", content: currentPrompt }],
+      temperature: 0.7,
+    });
+    const text = response.choices[0]?.message?.content || "";
+    options.onTextChunk?.(text);
+    return text;
+  };
+
+  if (options.useExternalTools) {
+    return runCliWithToolsLoop(prompt, options, executor);
+  }
+  return executor(prompt);
 }

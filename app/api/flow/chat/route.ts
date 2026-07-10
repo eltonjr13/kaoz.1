@@ -34,6 +34,7 @@ type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' |
 type SpotifyDirectCommand = {
   toolName: string;
   args: Record<string, unknown>;
+  playlistTrackQuery?: string;
 };
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
@@ -83,11 +84,33 @@ function extractSpotifyQuery(text: string, normalized: string, verbs: string[]):
   return "";
 }
 
+function buildSpotifyPlaylistName(text: string): string {
+  const quoted = text.match(/["â€œâ€']([^"â€œâ€']+)["â€œâ€']/)?.[1]?.trim();
+  if (quoted) return quoted;
+
+  const theme = text.match(/\b(?:com|de)\s+(.+)$/i)?.[1]
+    ?.replace(/\b(?:no|na)\s+spotify\b/gi, "")
+    .trim();
+  return theme ? `Playlist ${theme}` : `Playlist Spotify ${new Date().toLocaleDateString("pt-BR")}`;
+}
+
 function detectSpotifyDirectCommand(messages: ChatMessage[]): SpotifyDirectCommand | null {
   const text = getLatestUserMessageText(messages);
   const normalized = normalizeCommandText(text);
   if (!normalized) return null;
   const hasSpotifyPlaybackContext = /\b(spotify|musica|som|reproducao|tocando|faixa|playlist|volume|fila)\b/.test(normalized);
+
+  const asksToCreatePlaylist = /\b(crie|criar|cria|monte|montar|faca|fazer)\b/.test(normalized) &&
+    /\b(playlist|lista de reproducao)\b/.test(normalized) &&
+    /\bspotify\b/.test(normalized);
+  if (asksToCreatePlaylist) {
+    const trackQuery = text.match(/\bcom\s+(.+)$/i)?.[1]?.trim();
+    return {
+      toolName: "create_playlist",
+      args: { name: buildSpotifyPlaylistName(text), public: true },
+      playlistTrackQuery: trackQuery || undefined,
+    };
+  }
 
   if (/\b(dispositivo|dispositivos|devices|aparelhos)\b/.test(normalized)) {
     return { toolName: "list_devices", args: {} };
@@ -146,6 +169,39 @@ function extractMcpText(toolResult: any): string {
   return content ? JSON.stringify(content) : "";
 }
 
+function extractSpotifyPlaylistId(text: string): string | null {
+  return text.match(/spotify:playlist:([A-Za-z0-9]+)/)?.[1]
+    || text.match(/\bPlaylist ID:\s*([A-Za-z0-9]+)/i)?.[1]
+    || text.match(/["'](?:id|playlist_id)["']\s*:\s*["']([A-Za-z0-9]+)["']/i)?.[1]
+    || null;
+}
+
+function extractSpotifyTrackUris(text: string): string[] {
+  return [...new Set(text.match(/spotify:track:[A-Za-z0-9]+/g) || [])];
+}
+
+function buildSpotifyTrackSearchQueries(query: string): string[] {
+  const normalized = normalizeCommandText(query)
+    .replace(/\b(musica|musicas|faixa|faixas|cancao|cancoes|songs?|tracks?)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const translated = normalized
+    .replace(/\b(frances|francesa|franceses|francesas)\b/g, "french")
+    .replace(/\b(eletronico|eletronica|eletronicos|eletronicas)\b/g, "electronic")
+    .replace(/\b(brasileiro|brasileira|brasileiros|brasileiras)\b/g, "brazilian")
+    .replace(/\b(alemao|alema|alemaes|alemas)\b/g, "german")
+    .replace(/\b(italiano|italiana|italianos|italianas)\b/g, "italian")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const alternatives = [query.trim(), normalized, translated];
+  if (/\belectronic\b/.test(translated)) {
+    alternatives.push(translated.replace(/\belectronic\b/g, "electro"));
+  }
+  return [...new Set(alternatives.filter(Boolean))];
+}
+
 async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<ChatAgentResponse> {
   const { McpManager } = await import("@/services/mcp/mcp.manager");
   const mcpManager = await McpManager.getInstance();
@@ -167,8 +223,60 @@ async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<C
 
   const result = await mcpManager.callTool(tool.serverId, tool.tool.name, command.args);
   const text = extractMcpText(result);
+  if (result?.isError === true || command.toolName !== "create_playlist" || !command.playlistTrackQuery) {
+    return {
+      message: formatSpotifyToolResponse(command.toolName, text, result?.isError === true),
+      action: null,
+    };
+  }
+
+  // A creation request containing a musical theme is a compound action: create
+  // the playlist, search Spotify for matching songs, then add the found URIs.
+  const playlistId = extractSpotifyPlaylistId(text);
+  const tools = await mcpManager.getAllTools();
+  const searchTool = tools.find((entry) => entry.serverId === tool!.serverId && entry.tool.name === "search_tracks");
+  const addTracksTool = tools.find((entry) => entry.serverId === tool!.serverId && entry.tool.name === "add_tracks_to_playlist");
+  if (!playlistId || !searchTool || !addTracksTool) {
+    return {
+      message: `${formatSpotifyToolResponse("create_playlist", text)} Nao consegui completar a selecao de faixas automaticamente.`,
+      action: null,
+    };
+  }
+
+  const trackUris: string[] = [];
+  for (const query of buildSpotifyTrackSearchQueries(command.playlistTrackQuery)) {
+    const searchResult = await mcpManager.callTool(searchTool.serverId, searchTool.tool.name, {
+      query,
+      limit: 20,
+    });
+    if (searchResult?.isError === true) continue;
+
+    for (const uri of extractSpotifyTrackUris(extractMcpText(searchResult))) {
+      if (!trackUris.includes(uri)) trackUris.push(uri);
+      if (trackUris.length >= 20) break;
+    }
+    if (trackUris.length >= 20) break;
+  }
+
+  if (trackUris.length === 0) {
+    return {
+      message: `${formatSpotifyToolResponse("create_playlist", text)} Nao encontrei faixas para adicionar com essa busca.`,
+      action: null,
+    };
+  }
+
+  const addResult = await mcpManager.callTool(addTracksTool.serverId, addTracksTool.tool.name, {
+    playlist_id: playlistId,
+    track_uris: trackUris,
+  });
+  if (addResult?.isError === true) {
+    return {
+      message: `${formatSpotifyToolResponse("create_playlist", text)} Nao consegui adicionar as faixas: ${extractMcpText(addResult)}`,
+      action: null,
+    };
+  }
   return {
-    message: formatSpotifyToolResponse(command.toolName, text, result?.isError === true),
+    message: `${formatSpotifyToolResponse("create_playlist", text)} Adicionei ${trackUris.length} faixas encontradas para “${command.playlistTrackQuery}”.`,
     action: null,
   };
 }
