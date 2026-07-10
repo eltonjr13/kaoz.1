@@ -753,15 +753,37 @@ function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
   return executeWebQuery;
 }
 
-export function isLikelyActionRequest(messages: ChatMessage[]): boolean {
-  const normalized = normalizeIntentText(getLatestUserText(messages))
+const ACTION_REQUEST_PATTERN =
+  /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|ilustracao|ilustracoes|desenho|desenhar|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/;
+
+function hasDirectActionIntent(value: string): boolean {
+  const normalized = normalizeIntentText(value)
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
   if (!normalized) return false;
+  return ACTION_REQUEST_PATTERN.test(normalized);
+}
 
-  return /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|ilustracao|ilustracoes|desenho|desenhar|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/.test(normalized);
+function getPreviousUserText(messages: ChatMessage[]): string {
+  let foundLatestUser = false;
+
+  for (let index = messages.length - 1; index >= Math.max(0, messages.length - 4); index--) {
+    if (messages[index].role !== "user") continue;
+    if (!foundLatestUser) {
+      foundLatestUser = true;
+      continue;
+    }
+
+    return messages[index].parts.map((part) => part.text).join("\n").trim();
+  }
+
+  return "";
+}
+
+export function isLikelyActionRequest(messages: ChatMessage[]): boolean {
+  return hasDirectActionIntent(getLatestUserText(messages)) || isActionContinuationRequest(messages);
 }
 
 const IMMEDIATE_CONTEXT_REFERENCE_PATTERN =
@@ -769,6 +791,9 @@ const IMMEDIATE_CONTEXT_REFERENCE_PATTERN =
 
 const EXPLICIT_OLDER_CONTEXT_PATTERN =
   /\b(no inicio|no comeco|la atras|primeira mensagem|primeiro assunto|assunto antigo|topico antigo|conversa antiga|historico antigo)\b/;
+
+const EXPLICIT_RECENT_SEARCH_PATTERN =
+  /\b(por ultimo|ultima|ultimo|mais recente|que voce (?:disse|falou|contou|escreveu|mencionou)|que foi (?:contada|contado|dita|dito|falada|falado|mencionada|mencionado))\b/;
 
 function normalizeActionReferenceText(messages: ChatMessage[]): string {
   return normalizeIntentText(getLatestUserText(messages))
@@ -786,6 +811,18 @@ export function isImmediateContextReference(messages: ChatMessage[]): boolean {
   if (!normalized || EXPLICIT_OLDER_CONTEXT_PATTERN.test(normalized)) return false;
 
   return IMMEDIATE_CONTEXT_REFERENCE_PATTERN.test(normalized);
+}
+
+export function isActionContinuationRequest(messages: ChatMessage[]): boolean {
+  const latestUserText = getLatestUserText(messages);
+  if (hasDirectActionIntent(latestUserText) || !isImmediateContextReference(messages)) return false;
+
+  return hasDirectActionIntent(getPreviousUserText(messages));
+}
+
+function requiresExplicitRecentSearch(messages: ChatMessage[]): boolean {
+  if (!isImmediateContextReference(messages)) return false;
+  return EXPLICIT_RECENT_SEARCH_PATTERN.test(normalizeActionReferenceText(messages));
 }
 
 function getImmediateContextMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -911,6 +948,8 @@ export async function chatWithAgent(
 
   const immediateContextReference = isImmediateContextReference(messages);
   const contextDependentActionRequest = isContextDependentActionRequest(messages);
+  const actionContinuationRequest = isActionContinuationRequest(messages);
+  const explicitRecentSearch = requiresExplicitRecentSearch(messages);
   if (requiresActionContextClarification(messages, referenceImagePath)) {
     return {
       message: "Sobre qual conteúdo você quer a ilustração? Dê um tema ou retome a história em uma frase para eu não assumir o assunto errado.",
@@ -966,15 +1005,22 @@ Hierarquia obrigatória para resolver o sujeito de uma ação:
 3. Histórico mais antigo só pode definir o sujeito quando o usuário o mencionar explicitamente (por exemplo, "o assunto do começo").
 4. Memórias do Cortex servem apenas como preferências ou restrições. Nunca use uma memória como tema, personagem ou sujeito do optimizedPrompt quando o pedido depender do contexto imediato.
 - Nesses pedidos referenciais, o optimizedPrompt deve representar os elementos concretos da resposta imediatamente anterior. Ignore completamente assuntos antigos ou memórias concorrentes.
-- Se as duas mensagens imediatas não identificarem um sujeito concreto com segurança, pergunte qual é o tema em "message" e retorne "action": null. Nunca complete a lacuna escolhendo um assunto antigo.
+- Se a mensagem atual estiver respondendo a uma pergunta de esclarecimento após um pedido de ação, herde a ação e o estilo do pedido anterior do usuário. Procure na janela recente a mensagem mais nova do MR CHICKEN que realmente contém a piada/história/texto citado; não trate a própria pergunta de esclarecimento como conteúdo-alvo.
+- Se o contexto permitido (imediato ou janela recente de recuperação) não identificar um sujeito concreto com segurança, pergunte qual é o tema em "message" e retorne "action": null. Nunca complete a lacuna escolhendo um assunto antigo.
 
 MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`json). Retorne apenas o JSON bruto validável e nada mais.
 `;
 
-  const structuredMessages = contextDependentActionRequest
+  const structuredMessages = actionContinuationRequest
+    ? messages.slice(-5)
+    : explicitRecentSearch
+    ? messages.slice(-7)
+    : contextDependentActionRequest
     ? getImmediateContextMessages(messages)
     : messages;
-  const conversationSection = contextDependentActionRequest
+  const conversationSection = actionContinuationRequest || explicitRecentSearch
+    ? "[CONTEXTO RECENTE DE RECUPERAÇÃO - AÇÃO PENDENTE E REFERENTE]"
+    : contextDependentActionRequest
     ? "[CONTEXTO IMEDIATO - ÚNICA FONTE PARA O SUJEITO DA AÇÃO]"
     : "[HISTÓRICO DA CONVERSA]";
 
@@ -984,7 +1030,13 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
   }
   if (contextDependentActionRequest) {
-    compiledPrompt += `[RESTRIÇÃO DE GROUNDING]:
+    compiledPrompt += actionContinuationRequest
+      ? `[RESTRIÇÃO DE GROUNDING PARA RECUPERAÇÃO]:
+Herde o pedido de geração e o estilo da penúltima mensagem do USUÁRIO. Resolva o sujeito buscando, da mensagem mais nova para a mais antiga, o conteúdo real citado pelo usuário. Ignore perguntas de esclarecimento como fonte do sujeito e não use memórias do Cortex.\n\n`
+      : explicitRecentSearch
+      ? `[RESTRIÇÃO DE GROUNDING PARA BUSCA RECENTE]:
+Use a ação e o estilo da última mensagem do USUÁRIO. Para localizar o sujeito mencionado como "último" ou "que foi contado", percorra apenas o CONTEXTO RECENTE da mensagem mais nova para a mais antiga e escolha a primeira mensagem do MR CHICKEN que realmente contém esse conteúdo. Ignore perguntas, recusas e memórias do Cortex como fonte do sujeito.\n\n`
+      : `[RESTRIÇÃO DE GROUNDING]:
 Formule action.optimizedPrompt somente a partir do CONTEXTO IMEDIATO acima. Nenhum tópico anterior ou memória do Cortex está autorizado a definir o sujeito da imagem/vídeo.\n\n`;
   }
   compiledPrompt += options?.hasExternalTools

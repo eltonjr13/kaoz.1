@@ -43,6 +43,7 @@ registerHooks({
 
 const {
   chatWithAgent,
+  isActionContinuationRequest,
   isContextDependentActionRequest,
   isImmediateContextReference,
   isLikelyActionRequest,
@@ -209,12 +210,21 @@ const recoveryMessages = [
 ];
 
 assert.equal(isImmediateContextReference(recoveryMessages), true);
+assert.equal(isActionContinuationRequest(recoveryMessages), true);
+assert.equal(isLikelyActionRequest(recoveryMessages), true);
 const recoveryResponse = await chatWithAgent(
   recoveryMessages,
   null,
   async (compiledPrompt) => {
     recoveryPrompt = compiledPrompt;
-    return "Você está falando da piada do jacaré que era réptil de ano.";
+    return JSON.stringify({
+      message: "Entendi: é a última piada, a do jacaré réptil de ano. Vou gerar a HQ.",
+      action: {
+        flow: "image",
+        optimizedPrompt: "Humorous comic-book illustration of an alligator parent removing a young alligator from school for repeating the grade, playful visual pun, bold ink outlines, colorful HQ panels",
+        explanation: "A ação e o estilo HQ foram herdados do pedido anterior; o sujeito é a última piada real do jacaré.",
+      },
+    });
   },
   undefined,
   {
@@ -224,9 +234,52 @@ const recoveryResponse = await chatWithAgent(
 );
 
 assert.match(recoveryPrompt, /jacaré tirou o jacarezinho/i);
-assert.match(recoveryPrompt, /REGRA DE REFERÊNCIA RECENTE/i);
+assert.match(recoveryPrompt, /CONTEXTO RECENTE DE RECUPERAÇÃO/i);
+assert.match(recoveryPrompt, /Herde o pedido de geração e o estilo/i);
 assert.doesNotMatch(recoveryPrompt, /álgebra avançada/i);
 assert.match(recoveryResponse.message, /jacaré/i);
+assert.equal(recoveryResponse.action?.flow, "image");
+assert.match(recoveryResponse.action?.optimizedPrompt ?? "", /alligator/i);
+
+let corruptedConversationPrompt = "";
+const corruptedConversationMessages = [
+  ...recoveryMessages,
+  {
+    role: "model",
+    parts: [{ text: "Não consigo gerar imagens, mas posso descrever a cena de Elias na praça." }],
+  },
+  {
+    role: "user",
+    parts: [{ text: "Não, gere para mim a imagem da piada do jacaré que foi contada." }],
+  },
+];
+
+const corruptedConversationResponse = await chatWithAgent(
+  corruptedConversationMessages,
+  null,
+  async (compiledPrompt) => {
+    corruptedConversationPrompt = compiledPrompt;
+    return JSON.stringify({
+      message: "Agora sim: vou gerar a HQ da piada do jacaré.",
+      action: {
+        flow: "image",
+        optimizedPrompt: "Comic-book illustration of an alligator parent and a young alligator leaving school after the youngster repeated the grade, visual reptile pun, colorful bold panels",
+        explanation: "A busca recente encontrou a piada real do jacaré e ignorou as recusas posteriores.",
+      },
+    });
+  },
+  undefined,
+  {
+    useCortexMemory: true,
+    relevantMemories: "- Preferência antiga por matemática.",
+  },
+);
+
+assert.match(corruptedConversationPrompt, /jacaré tirou o jacarezinho/i);
+assert.match(corruptedConversationPrompt, /BUSCA RECENTE/i);
+assert.doesNotMatch(corruptedConversationPrompt, /Preferência antiga por matemática/i);
+assert.equal(corruptedConversationResponse.action?.flow, "image");
+assert.match(corruptedConversationResponse.action?.optimizedPrompt ?? "", /alligator/i);
 
 let modelWasCalled = false;
 const clarification = await chatWithAgent(
@@ -245,5 +298,6 @@ assert.match(clarification.message, /qual conteúdo/i);
 console.log("PASS: o prompt usa o pintor da história imediata e exclui matemática/memórias antigas.");
 console.log("PASS: 'dessa piada' ancora a ação somente na piada mais recente do jacaré.");
 console.log("PASS: 'que você falou por último' usa a janela recente e ignora o Cortex.");
+console.log("PASS: uma conversa já contaminada recupera a piada real sem herdar recusas posteriores.");
 console.log("PASS: a seção de grounding não vaza para a intenção de ferramentas nem força previous_track.");
 console.log("PASS: sem contexto imediato suficiente, o chatbot pede esclarecimento e não cria uma ação.");
