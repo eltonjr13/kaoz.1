@@ -1,4 +1,4 @@
-import { ChatMemoryRecord } from '../types/memory';
+import type { ChatMemoryRecord } from '../types/memory';
 
 export interface PersonalityResolutionContext {
   avatarId?: string;

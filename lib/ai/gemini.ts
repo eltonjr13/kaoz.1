@@ -4,6 +4,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
 import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/AgentPersonalityResolver";
+import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -730,7 +731,7 @@ type ChatWithAgentOptions = {
   onMessageChunk?: (chunk: string) => void;
   hasExternalTools?: boolean;
   relevantMemories?: string;
-  activeMemories?: any[];
+  activeMemories?: ChatMemoryRecord[];
   voiceInstruction?: string;
 };
 
@@ -747,7 +748,7 @@ function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
   return executeWebQuery;
 }
 
-function isLikelyActionRequest(messages: ChatMessage[]): boolean {
+export function isLikelyActionRequest(messages: ChatMessage[]): boolean {
   const normalized = normalizeIntentText(getLatestUserText(messages))
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
@@ -755,7 +756,57 @@ function isLikelyActionRequest(messages: ChatMessage[]): boolean {
 
   if (!normalized) return false;
 
-  return /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/.test(normalized);
+  return /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|ilustracao|ilustracoes|desenho|desenhar|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/.test(normalized);
+}
+
+const IMMEDIATE_CONTEXT_REFERENCE_PATTERN =
+  /\b(sobre isso|sobre isto|a respeito disso|a respeito disto|disso|disto|daquilo|dessa historia|desta historia|da historia|essa historia|esta historia|do que voce acabou de (?:dizer|contar|escrever)|que voce acabou de (?:dizer|contar|escrever)|que voce contou|dele|dela)\b|\b(sobre|disso|disto|daquilo|dele|dela)$/;
+
+const EXPLICIT_OLDER_CONTEXT_PATTERN =
+  /\b(no inicio|no comeco|la atras|primeira mensagem|primeiro assunto|assunto antigo|topico antigo|conversa antiga|historico antigo)\b/;
+
+function normalizeActionReferenceText(messages: ChatMessage[]): string {
+  return normalizeIntentText(getLatestUserText(messages))
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isContextDependentActionRequest(messages: ChatMessage[]): boolean {
+  if (!isLikelyActionRequest(messages)) return false;
+
+  const normalized = normalizeActionReferenceText(messages);
+  if (!normalized || EXPLICIT_OLDER_CONTEXT_PATTERN.test(normalized)) return false;
+
+  return IMMEDIATE_CONTEXT_REFERENCE_PATTERN.test(normalized);
+}
+
+function getImmediateContextMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.slice(-2);
+}
+
+function getImmediateAssistantContext(messages: ChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index].role !== "user") continue;
+
+    const previousMessage = messages[index - 1];
+    if (!previousMessage || previousMessage.role !== "model") return "";
+    return previousMessage.parts.map((part) => part.text).join("\n").trim();
+  }
+
+  return "";
+}
+
+function requiresActionContextClarification(
+  messages: ChatMessage[],
+  referenceImagePath?: string
+): boolean {
+  if (!isContextDependentActionRequest(messages)) return false;
+  if (referenceImagePath) return false;
+
+  // A short acknowledgement (for example, "Certo") is not enough to ground an
+  // optimized media prompt safely.
+  return getImmediateAssistantContext(messages).length < 20;
 }
 
 function buildChatPrompt(messages: ChatMessage[], systemInstruction: string, finalInstruction: string): string {
@@ -843,17 +894,31 @@ export async function chatWithAgent(
     return immediateResponse;
   }
 
+  const contextDependentActionRequest = isContextDependentActionRequest(messages);
+  if (requiresActionContextClarification(messages, referenceImagePath)) {
+    return {
+      message: "Sobre qual conteúdo você quer a ilustração? Dê um tema ou retome a história em uma frase para eu não assumir o assunto errado.",
+      action: null
+    };
+  }
+
   const personalityContext = AgentPersonalityResolver.resolve({
     avatarPersonality,
-    activeMemories: options?.activeMemories
+    // A memory can define tone/preferences, but must never become the subject of
+    // an anaphoric action such as "gere uma ilustração sobre isso".
+    activeMemories: contextDependentActionRequest ? undefined : options?.activeMemories
   });
+
+  const relevantMemoryContext = !contextDependentActionRequest && options?.relevantMemories
+    ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n`
+    : "";
 
   const systemInstruction = `
 ${personalityContext}
 
 Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
-${options?.relevantMemories ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n` : ""}
+${relevantMemoryContext}
 ${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstruction}\n` : ""}
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
@@ -878,13 +943,32 @@ Regras de fidelidade do prompt:
 - Imagem anexada é referência visual, personagem ou estilo. Ela não autoriza transformar o pedido em UGC, selfie ou anúncio.
 - Só use "ad-creative" quando o usuário pedir claramente anúncio, criativo comercial, campanha, copy, oferta, conversão ou vendas.
 
+Hierarquia obrigatória para resolver o sujeito de uma ação:
+1. A última mensagem do usuário define a ação solicitada.
+2. As duas mensagens do CONTEXTO IMEDIATO, sobretudo a resposta imediatamente anterior do MR CHICKEN, definem exclusivamente o sujeito quando o pedido usar referência ambígua ou anafórica, como "isso", "sobre isso", "da história", "dela" ou terminar em "sobre".
+3. Histórico mais antigo só pode definir o sujeito quando o usuário o mencionar explicitamente (por exemplo, "o assunto do começo").
+4. Memórias do Cortex servem apenas como preferências ou restrições. Nunca use uma memória como tema, personagem ou sujeito do optimizedPrompt quando o pedido depender do contexto imediato.
+- Nesses pedidos referenciais, o optimizedPrompt deve representar os elementos concretos da resposta imediatamente anterior. Ignore completamente assuntos antigos ou memórias concorrentes.
+- Se as duas mensagens imediatas não identificarem um sujeito concreto com segurança, pergunte qual é o tema em "message" e retorne "action": null. Nunca complete a lacuna escolhendo um assunto antigo.
+
 MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`json). Retorne apenas o JSON bruto validável e nada mais.
 `;
 
-  let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n[HISTÓRICO DA CONVERSA]:\n`;
-  for (const m of messages) {
+  const structuredMessages = contextDependentActionRequest
+    ? getImmediateContextMessages(messages)
+    : messages;
+  const conversationSection = contextDependentActionRequest
+    ? "[CONTEXTO IMEDIATO - ÚNICA FONTE PARA O SUJEITO DA AÇÃO]"
+    : "[HISTÓRICO DA CONVERSA]";
+
+  let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n${conversationSection}:\n`;
+  for (const m of structuredMessages) {
     const roleName = m.role === 'user' ? 'USUÁRIO' : 'MR CHICKEN (VOCÊ)';
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
+  }
+  if (contextDependentActionRequest) {
+    compiledPrompt += `[RESTRIÇÃO DE GROUNDING]:
+Formule action.optimizedPrompt somente a partir do CONTEXTO IMEDIATO acima. Nenhum tópico anterior ou memória do Cortex está autorizado a definir o sujeito da imagem/vídeo.\n\n`;
   }
   compiledPrompt += options?.hasExternalTools
     ? `[INSTRUCAO FINAL E CRITICA PARA A IA]:

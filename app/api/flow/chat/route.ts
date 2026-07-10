@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { chatWithAgent, ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
+import {
+  chatWithAgent,
+  isContextDependentActionRequest,
+} from "@/lib/ai/gemini";
+import type { ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
 import { findLocalAvatar } from "@/lib/local-store";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import fs from "node:fs";
@@ -9,6 +13,7 @@ import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-f
 import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
 import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
+import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction } from "@/lib/ai/agent-voice";
 
 export const dynamic = "force-dynamic";
@@ -361,15 +366,20 @@ export async function POST(request: Request) {
     const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
+    const contextDependentActionRequest = isContextDependentActionRequest(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
 
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
 
     let relevantMemories: string | undefined = undefined;
-    let activePersonalityMemories: any[] | undefined = undefined;
+    let activePersonalityMemories: ChatMemoryRecord[] | undefined = undefined;
 
-    if (cortexMemoryEnabled && latestUserText) {
+    // Referential actions ("gere uma imagem sobre isso/da história") must be
+    // grounded only in the immediately preceding exchange. Do not even retrieve
+    // Cortex memories for this turn, so an old topic cannot compete in the
+    // system-level context assembled by chatWithAgent.
+    if (cortexMemoryEnabled && latestUserText && !contextDependentActionRequest) {
       try {
         const storage = new JsonStorageProvider();
         const service = new ChatMemoryService(storage);

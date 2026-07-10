@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs"
   },
   "dependencies": {
     "@cartesia/cartesia-js": "^3.2.0",
