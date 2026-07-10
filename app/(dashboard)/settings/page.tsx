@@ -330,7 +330,7 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
     grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
     antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
     antigravityModel: stringOrEmpty(data.antigravityModel) || "gemini-3.5-pro",
-    iamhcModel: stringOrEmpty(data.iamhcModel) || "deepseek-chat",
+    iamhcModel: stringOrEmpty(data.iamhcModel) || "DeepSeek-V4-Flash",
     timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : 45000,
     status: status
       ? {
@@ -607,7 +607,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
   const [antigravityModel, setAntigravityModel] = useState("gemini-3.5-pro");
-  const [iamhcModel, setIamhcModel] = useState("deepseek-chat");
+  const [iamhcModel, setIamhcModel] = useState("DeepSeek-V4-Flash");
   const [iamhcModels, setIamhcModels] = useState<Array<{ id: string; ownedBy: string }>>([]);
   const [iamhcModelsError, setIamhcModelsError] = useState<string | null>(null);
   const [isLoadingIamhcModels, setIsLoadingIamhcModels] = useState(false);

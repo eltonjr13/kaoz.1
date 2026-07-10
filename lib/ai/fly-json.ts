@@ -119,7 +119,7 @@ async function generateWithIamhc(prompt: string): Promise<string> {
     baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1"
   });
   const response = await client.chat.completions.create({
-    model: settings.iamhcModel || process.env.IAMHC_MODEL || "deepseek-chat",
+    model: settings.iamhcModel || process.env.IAMHC_MODEL || "DeepSeek-V4-Flash",
     messages: [{ role: "user", content: prompt }],
     response_format: { type: "json_object" },
     temperature: 0.7
