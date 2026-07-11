@@ -1,0 +1,5 @@
+import type { ExecutionRun, ExecutionStep } from "./orchestrator.types";
+export function applyAutomaticFailure(step:ExecutionStep,message:string){step.error=message;if(step.retryCount<step.maxRetries){step.retryCount++;step.status="pending";return "retry" as const;}step.status="failed";step.completedAt=new Date().toISOString();return "failed" as const;}
+export function applyCancellation(run:ExecutionRun){run.status="cancelled";for(const step of run.steps)if(["pending","running","awaiting_approval"].includes(step.status))step.status="cancelled";return run;}
+export function applyResume(run:ExecutionRun){run.status="running";run.error=undefined;for(const step of run.steps){if(step.status==="running")step.status="pending";if(step.status==="failed")Object.assign(step,{status:"pending",retryCount:0,error:undefined});}return run;}
+export function applyManualRetry(step:ExecutionStep){Object.assign(step,{status:"pending",retryCount:0,error:undefined,startedAt:undefined,completedAt:undefined});return step;}

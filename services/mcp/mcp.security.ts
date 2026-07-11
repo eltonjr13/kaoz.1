@@ -1,0 +1,2 @@
+const INHERITED_ENV_KEYS = ["PATH", "HOME", "USER", "USERPROFILE", "TEMP", "TMP", "SystemRoot"] as const;
+export function buildSafeMcpEnvironment(configEnv?: Record<string,string>,source:Record<string,string|undefined>=process.env){const env:Record<string,string>={};for(const key of INHERITED_ENV_KEYS){const value=source[key];if(typeof value==="string")env[key]=value;}for(const [key,value] of Object.entries(configEnv||{}))if(typeof value==="string")env[key]=value;return env;}

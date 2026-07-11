@@ -3,9 +3,11 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import type { McpServerConfig, McpServerStatus, McpSettings, McpToolSchema } from "./mcp.types";
+import type { McpServerConfig, McpServerStatus, McpSettings, McpToolCallResult, McpToolSchema } from "./mcp.types";
 import sharp from "sharp";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
+import { redactSecrets } from "@/services/orchestrator/orchestrator.policy";
+import { buildSafeMcpEnvironment } from "./mcp.security";
 
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
@@ -94,15 +96,15 @@ export class McpManager {
       const { client, transport } = this.createClientAndTransport(config);
       await client.connect(transport);
       const toolsResponse = await client.listTools();
-      const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t: any) => ({
+      const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema
       }));
       await client.close();
       return { id: config.id, connected: true, error: null, tools };
-    } catch (err: any) {
-      return { id: config.id, connected: false, error: err.message || String(err), tools: [] };
+    } catch (err: unknown) {
+      return { id: config.id, connected: false, error: redactSecrets(err instanceof Error ? err.message : String(err)), tools: [] };
     }
   }
 
@@ -114,16 +116,12 @@ export class McpManager {
       capabilities: {}
     });
 
-    let transport: any;
+    let transport: StdioClientTransport | SSEClientTransport;
     if (config.transport === "stdio") {
-      const env: Record<string, string> = {};
-      for (const [key, value] of Object.entries({ ...process.env, ...(config.env || {}) })) {
-        if (typeof value === "string") env[key] = value;
-      }
       transport = new StdioClientTransport({
         command: config.command || "npx",
         args: config.args || [],
-        env
+        env: buildSafeMcpEnvironment(config.env)
       });
     } else {
       transport = new SSEClientTransport(new URL(config.url || ""));
@@ -139,7 +137,7 @@ export class McpManager {
       this.clients.set(config.id, client);
 
       const toolsResponse = await client.listTools();
-      const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t: any) => ({
+      const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema
@@ -151,11 +149,11 @@ export class McpManager {
         error: null,
         tools
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.statuses.set(config.id, {
         id: config.id,
         connected: false,
-        error: err.message || String(err),
+        error: redactSecrets(err instanceof Error ? err.message : String(err)),
         tools: []
       });
     }
@@ -173,15 +171,16 @@ export class McpManager {
     return allTools;
   }
 
-  public async callTool(serverId: string, toolName: string, args: any): Promise<any> {
+  public async callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<McpToolCallResult> {
     const client = this.clients.get(serverId);
     if (!client) {
       throw new Error(`Servidor MCP ${serverId} não está conectado.`);
     }
     
-    const result = await client.callTool({ name: toolName, arguments: args });
+    const result = await client.callTool({ name: toolName, arguments: args }) as McpToolCallResult;
 
-    if (toolName === "create_playlist" && !result.isError) {
+    const resultIsError = Boolean(result && typeof result === "object" && "isError" in result && (result as { isError?: boolean }).isError);
+    if (toolName === "create_playlist" && !resultIsError) {
       // Fire and forget: generate and upload cover
       this.generateAndUploadCover(serverId, args, result).catch(err => {
         console.error("Erro no processo de gerar e upar capa da playlist:", err);
@@ -191,16 +190,17 @@ export class McpManager {
     return result;
   }
 
-  private async generateAndUploadCover(serverId: string, args: any, result: any) {
-    const textContent = Array.isArray(result.content) ? result.content[0]?.text : "";
+  private async generateAndUploadCover(serverId: string, args: Record<string, unknown>, result: unknown) {
+    const resultRecord = result && typeof result === "object" ? result as { content?: Array<{ text?: string }>; isError?: boolean } : {};
+    const textContent = Array.isArray(resultRecord.content) ? resultRecord.content[0]?.text : "";
     const playlistIdMatch = textContent?.match(/Playlist ID: ([a-zA-Z0-9]+)/);
     if (!playlistIdMatch) {
       console.warn("Não foi possível extrair o Playlist ID para upload de capa.");
       return;
     }
     const playlistId = playlistIdMatch[1];
-    const playlistName = args.name || "Nova Playlist";
-    const playlistDesc = args.description || "";
+    const playlistName = typeof args.name === "string" ? args.name : "Nova Playlist";
+    const playlistDesc = typeof args.description === "string" ? args.description : "";
 
     const prompt = `Uma capa de álbum criativa, vibrante e artística. Sem texto legível. Tema para uma playlist chamada "${playlistName}". ${playlistDesc}`;
     console.log(`[Spotify MCP] Gerando capa da playlist '${playlistName}' com Flow...`);

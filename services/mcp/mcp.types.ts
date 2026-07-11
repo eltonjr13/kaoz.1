@@ -17,7 +17,7 @@ export interface McpServerConfig {
 export interface McpToolSchema {
   name: string;
   description?: string;
-  inputSchema: any;
+  inputSchema: unknown;
 }
 
 export interface McpServerStatus {
@@ -30,3 +30,9 @@ export interface McpServerStatus {
 export interface McpSettings {
   servers: McpServerConfig[];
 }
+
+export type McpToolCallResult = {
+  isError?: boolean;
+  content?: unknown;
+  [key: string]: unknown;
+};

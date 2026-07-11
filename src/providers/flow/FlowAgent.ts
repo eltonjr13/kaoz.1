@@ -598,6 +598,19 @@ export class FlowAgent {
       promptUsed = optimizedPrimary;
     } else {
       await this.logAgentEvent(jobId, "researching", "Usando a imagem anexada como base do personagem para gerar os angulos.");
+      
+      if (referencePath.includes('temp_uploads') && require('node:fs').existsSync(referencePath)) {
+        const fs = require('node:fs');
+        const path = require('node:path');
+        const crypto = require('node:crypto');
+        const destDir = path.resolve('storage/generated/images');
+        fs.mkdirSync(destDir, { recursive: true });
+        const ext = path.extname(referencePath) || '.png';
+        const persistedPath = path.join(destDir, `persisted_ref_${crypto.randomUUID()}${ext}`);
+        fs.copyFileSync(referencePath, persistedPath);
+        referencePath = persistedPath;
+      }
+
       uploadedPaths.push(referencePath);
       imageRecords.push({ role: 'primary', path: referencePath });
     }

@@ -27,14 +27,26 @@ function isPathInside(root: string, candidate: string): boolean {
 }
 
 export function saveBase64ReferenceImage(base64Data: string, prefix = 'ref_image'): SavedReferenceImage {
-  const dataUrlMatch = base64Data.match(/^data:([^;]+);base64,([\s\S]+)$/);
-  const mimeType = dataUrlMatch?.[1]?.toLowerCase() || 'image/png';
+  let mimeType = 'image/png';
+  let encoded = base64Data;
+
+  if (base64Data.startsWith('data:')) {
+    const commaIdx = base64Data.indexOf(',');
+    if (commaIdx !== -1) {
+      const header = base64Data.substring(0, commaIdx);
+      const semiColonIdx = header.indexOf(';');
+      if (semiColonIdx !== -1) {
+        mimeType = header.substring(5, semiColonIdx).toLowerCase();
+      }
+      encoded = base64Data.substring(commaIdx + 1);
+    }
+  }
+
   const extension = MIME_EXTENSIONS[mimeType];
   if (!extension) {
     throw new Error(`Formato de imagem de referencia nao suportado: ${mimeType}`);
   }
 
-  const encoded = dataUrlMatch?.[2] || base64Data;
   const buffer = Buffer.from(encoded, 'base64');
   if (buffer.length === 0) throw new Error('A imagem de referencia esta vazia.');
   if (buffer.length > MAX_REFERENCE_BYTES) throw new Error('A imagem de referencia excede o limite de 10 MB.');
