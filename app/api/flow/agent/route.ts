@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import type { FlowDecision } from "@/lib/ai/gemini";
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
+import {
+  resolveGeneratedReferencePath,
+  saveBase64ReferenceImage,
+} from "@/lib/flow/reference-files";
+import type { ImageGenerationOperation, ImageReferenceSource } from "@/src/providers/flow/ImageGenerationContract";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,17 @@ type TurnaroundView = "front" | "left" | "right" | "back" | "top" | "bottom";
 const TURNAROUND_VIEWS = new Set<TurnaroundView>(["front", "left", "right", "back", "top", "bottom"]);
 const DEFAULT_3D_REFERENCE_PROMPT = "Generate a multi-image 3D character reference package from the attached image.";
 const MAX_SCALE_IMAGE_COUNT = 40;
+const IMAGE_OPERATIONS = new Set<ImageGenerationOperation>(["simple", "reference", "turnaround3d", "edit"]);
+const REFERENCE_SOURCES = new Set<ImageReferenceSource>(["none", "upload", "generated", "avatar", "selected-element"]);
+
+const globalForAgentRequests = globalThis as unknown as {
+  flowAgentRequestJobs?: Map<string, string>;
+  flowAgentRequestLocks?: Map<string, Promise<void>>;
+};
+const requestJobs = globalForAgentRequests.flowAgentRequestJobs ?? new Map<string, string>();
+const requestLocks = globalForAgentRequests.flowAgentRequestLocks ?? new Map<string, Promise<void>>();
+globalForAgentRequests.flowAgentRequestJobs = requestJobs;
+globalForAgentRequests.flowAgentRequestLocks = requestLocks;
 
 function parseQuantity(value: unknown): GenerationQuantity | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -43,50 +56,6 @@ function parseTurnaroundViews(value: unknown): TurnaroundView[] | undefined {
   );
 
   return views.length > 0 ? Array.from(new Set(views)) : undefined;
-}
-
-function saveBase64ReferenceImage(base64Data: string): string {
-  const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-  let buffer: Buffer;
-  let extension = ".png";
-
-  if (matches && matches.length === 3) {
-    const mimeType = matches[1];
-    const base64Str = matches[2];
-    buffer = Buffer.from(base64Str, "base64");
-
-    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-      extension = ".jpg";
-    } else if (mimeType.includes("webp")) {
-      extension = ".webp";
-    }
-  } else {
-    buffer = Buffer.from(base64Data, "base64");
-  }
-
-  const tempDir = path.resolve("storage/temp_uploads");
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const filePath = path.join(tempDir, `agent_ref_image_${crypto.randomUUID()}${extension}`);
-  fs.writeFileSync(filePath, buffer);
-  return filePath;
-}
-
-function resolveGeneratedReferencePath(referencePath: string): string | undefined {
-  const absolutePath = path.resolve(referencePath);
-  const allowedRoot = path.resolve("storage/generated/");
-  const isWindows = process.platform === "win32";
-  const normalizedPath = isWindows ? absolutePath.toLowerCase() : absolutePath;
-  const normalizedRoot = isWindows ? allowedRoot.toLowerCase() : allowedRoot;
-  const allowedPrefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
-
-  if (!normalizedPath.startsWith(allowedPrefix) || !fs.existsSync(absolutePath)) {
-    return undefined;
-  }
-
-  return absolutePath;
 }
 
 function parseApprovedPlan(value: unknown): FlowDecision | undefined {
@@ -128,6 +97,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as {
       action?: unknown;
+      requestId?: unknown;
       model?: unknown;
       prompt?: unknown;
       type?: unknown;
@@ -144,10 +114,15 @@ export async function POST(request: Request) {
       referenceImagePath?: unknown;
       approvedPlan?: unknown;
       useAvatarPersonality?: unknown;
+      useAvatarVisualReference?: unknown;
+      imageOperation?: unknown;
+      referenceSource?: unknown;
+      referenceXPath?: unknown;
       useCortexMemory?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
+    const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
     const model = typeof body?.model === "string" ? body.model.trim() : "";
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -164,6 +139,26 @@ export async function POST(request: Request) {
     const referenceImagePathRaw = typeof body?.referenceImagePath === "string" ? body.referenceImagePath.trim() : "";
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
     const useAvatarPersonality = body?.useAvatarPersonality !== false;
+    const useAvatarVisualReference = body?.useAvatarVisualReference === true;
+    const imageOperation = typeof body?.imageOperation === "string" && IMAGE_OPERATIONS.has(body.imageOperation as ImageGenerationOperation)
+      ? body.imageOperation as ImageGenerationOperation
+      : imagePackageMode === "turnaround3d"
+        ? "turnaround3d"
+        : referenceImageBase64 || referenceImagePathRaw || useAvatarVisualReference
+          ? "reference"
+          : "simple";
+    const referenceSource = typeof body?.referenceSource === "string" && REFERENCE_SOURCES.has(body.referenceSource as ImageReferenceSource)
+      ? body.referenceSource as ImageReferenceSource
+      : referenceImageBase64
+        ? "upload"
+        : referenceImagePathRaw
+          ? "generated"
+          : useAvatarVisualReference
+            ? "avatar"
+            : "none";
+    const referenceXPath = typeof body?.referenceXPath === "string" && body.referenceXPath.trim()
+      ? body.referenceXPath.trim()
+      : undefined;
     const useCortexMemory = body?.useCortexMemory !== false;
     const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
@@ -215,6 +210,30 @@ export async function POST(request: Request) {
         );
       }
 
+      let releaseRequestLock: (() => void) | undefined;
+      if (requestId) {
+        const existingJobId = requestJobs.get(requestId);
+        if (existingJobId) {
+          return NextResponse.json({ success: true, jobId: existingJobId, reused: true });
+        }
+
+        const pendingRequest = requestLocks.get(requestId);
+        if (pendingRequest) {
+          await pendingRequest;
+          const completedJobId = requestJobs.get(requestId);
+          if (completedJobId) {
+            return NextResponse.json({ success: true, jobId: completedJobId, reused: true });
+          }
+        }
+
+        const lock = new Promise<void>((resolve) => {
+          releaseRequestLock = resolve;
+        });
+        requestLocks.set(requestId, lock);
+      }
+
+      try {
+
       console.log(`[API AGENT] Iniciando criacao autonoma para: "${taskPrompt}" com o avatar: ${avatarId}...`);
 
       const requestUrl = new URL(request.url);
@@ -226,7 +245,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Avatar local nao encontrado." }, { status: 404 });
       }
 
-      const generatedReferencePath = referenceImagePathRaw ? resolveGeneratedReferencePath(referenceImagePathRaw) : undefined;
+      const generatedReferencePath = referenceImagePathRaw
+        ? resolveGeneratedReferencePath(referenceImagePathRaw) || undefined
+        : undefined;
       if (referenceImagePathRaw && !generatedReferencePath) {
         return NextResponse.json({ error: "Imagem base 3D invalida ou fora do diretorio permitido." }, { status: 400 });
       }
@@ -241,13 +262,24 @@ export async function POST(request: Request) {
       });
 
       const jobId = localJob.id;
+      if (requestId) {
+        requestJobs.set(requestId, jobId);
+        if (requestJobs.size > 500) {
+          const oldestKey = requestJobs.keys().next().value;
+          if (oldestKey) requestJobs.delete(oldestKey);
+        }
+      }
       await updateLocalJobStatus(jobId, "researching");
       await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autonomo inicializado no armazenamento local.");
-      const inputReferenceImage = referenceImageBase64 ? saveBase64ReferenceImage(referenceImageBase64) : undefined;
+      const inputReferenceImage = referenceImageBase64
+        ? saveBase64ReferenceImage(referenceImageBase64, "agent_ref_image").filePath
+        : undefined;
       const referenceImage = inputReferenceImage || generatedReferenceImage;
       if (referenceImage) {
         await createLocalJobEvent(jobId, "planning", "Imagem de referencia enviada pelo usuario anexada ao agente.", {
-          referenceImage
+          referenceImage,
+          referenceSource,
+          referenceXPath,
         });
       }
 
@@ -264,6 +296,11 @@ export async function POST(request: Request) {
         imagePackageMode,
         turnaroundViews,
         inputReferenceImage: referenceImage,
+        cleanupInputReferenceImage: Boolean(inputReferenceImage),
+        imageOperation,
+        referenceSource,
+        referenceXPath,
+        useAvatarVisualReference,
         useExistingFlowReference: Boolean(generatedReferenceImage && !inputReferenceImage),
         useAvatarPersonality,
         useCortexMemory,
@@ -279,6 +316,10 @@ export async function POST(request: Request) {
         jobId,
         message: "Agente iniciado em segundo plano com sucesso."
       });
+      } finally {
+        if (requestId) requestLocks.delete(requestId);
+        releaseRequestLock?.();
+      }
     }
 
     if (!prompt || !type) {

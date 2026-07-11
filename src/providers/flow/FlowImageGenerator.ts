@@ -6,6 +6,7 @@ import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './Flo
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
+import { imageOperationRequiresReference } from './ImageGenerationContract';
 
 const PROMPT_TEXTBOX_SELECTOR = 'div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea';
 
@@ -409,20 +410,37 @@ export class FlowImageGenerator {
   }
 
   private async preparePromptForFreshReference(
-    page: Page,
-    alreadyAttached: boolean,
-    forceReferenceSelection: boolean
+    page: Page
   ): Promise<void> {
-    if (alreadyAttached && forceReferenceSelection) {
-      await this.openCleanWorkspaceForReferenceUpload(page);
-      return;
-    }
     try {
       await this.clearPromptReferenceAttachments(page);
     } catch (clearErr) {
       logger.warn('Falha ao limpar anexos antigos no workspace atual.', clearErr);
       await this.openCleanWorkspaceForReferenceUpload(page);
     }
+  }
+
+  private async prepareWorkspaceForOperation(page: Page, options?: ImageGenerationOptions): Promise<void> {
+    const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
+    if (imageOperationRequiresReference(operation) && !options?.referenceImage) {
+      throw new Error(`O modo de imagem '${operation}' exige uma imagem de referencia.`);
+    }
+
+    if (operation !== 'simple') return;
+    const hasStaleReference = await this.isReferenceImageAttached(page);
+    if (!hasStaleReference) {
+      this.lastUploadedReferenceImage = null;
+      return;
+    }
+
+    logger.info('Geracao simples solicitada. Removendo referencias visuais deixadas por execucoes anteriores.');
+    try {
+      await this.clearPromptReferenceAttachments(page);
+    } catch (error) {
+      logger.warn('Nao foi possivel limpar a referencia antiga no workspace atual. Abrindo um workspace limpo.', error);
+      await this.openCleanWorkspaceForReferenceUpload(page);
+    }
+    this.lastUploadedReferenceImage = null;
   }
 
   /**
@@ -449,7 +467,7 @@ export class FlowImageGenerator {
     } else if (useExistingFlowReference) {
       logger.info('Referencia existente solicitada, mas nenhum anexo confiavel foi detectado. Reenviando o arquivo local para evitar midia antiga.');
     }
-    await this.preparePromptForFreshReference(page, alreadyAttached, forceReferenceSelection);
+    await this.preparePromptForFreshReference(page);
 
     const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
     const fileInput = page.locator('input[type="file"]').first();
@@ -510,6 +528,7 @@ export class FlowImageGenerator {
       }
     }
 
+    let generationSubmitted = false;
     try {
       // 1. Wait for page load state and settle
       await page.waitForLoadState('domcontentloaded');
@@ -588,6 +607,8 @@ export class FlowImageGenerator {
         this.lastUploadedReferenceImage = null;
         this.lastProjectUrl = activeProjectUrl;
       }
+
+      await this.prepareWorkspaceForOperation(page, options);
 
       // 3. Switch model mode to Image (Nano Banana) or configure popover options
       const modelBtn = page.locator('button').filter({ hasText: /Veo|Banana|Imagen/ }).first();
@@ -795,6 +816,7 @@ export class FlowImageGenerator {
       const submitBtn = page.locator('button').filter({ hasText: 'arrow_forward' }).first();
       await submitBtn.waitFor({ state: 'visible', timeout: 15000 });
       await submitBtn.click();
+      generationSubmitted = true;
 
       // 7. Monitor generation progress and wait for finish
       logger.info('Aguardando conclusão da geração...');
@@ -962,6 +984,7 @@ export class FlowImageGenerator {
 
       return {
         success: true,
+        submitted: true,
         path: primaryPath,
         filename: primaryFilename,
         paths: downloadedPaths,
@@ -990,6 +1013,7 @@ export class FlowImageGenerator {
       
       return {
         success: false,
+        submitted: generationSubmitted,
         path: '',
         filename: '',
         createdAt: new Date().toISOString(),

@@ -118,6 +118,12 @@ interface Avatar {
   image_path: string;
 }
 
+interface SelectedElementReference {
+  imageData: string;
+  xpath: string;
+  label?: string;
+}
+
 type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
 type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
 type PlannedFlow = AgentType | 'refine';
@@ -151,6 +157,7 @@ interface PendingPlan {
   editSourceImagePath?: string | null;
   imageOperation?: ImageGenerationOperation;
   referenceSource?: ImageReferenceSource;
+  referenceXPath?: string | null;
   useAvatarVisualReference?: boolean;
   targetJobId?: string | null;
   strategy?: string;
@@ -160,6 +167,7 @@ interface PendingPlan {
   requestedImageCount?: number;
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
+  requires3dBasePreparation?: boolean;
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   adCreativePlan?: {
@@ -307,6 +315,9 @@ const normalizeSearchText = (text: string) =>
 
 const shouldUseWebTools = (text: string) =>
   /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar)\b/.test(normalizeSearchText(text));
+
+const isImageEditIntent = (text: string) =>
+  /\b(editar|edite|edit|alterar|altere|ajustar|ajuste|corrigir|corrija|remover|remova|tirar|tire|trocar|troque|adicionar|adicione)\b/.test(normalizeSearchText(text));
 
 function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
@@ -928,6 +939,8 @@ export default function FlowDashboardPage() {
   const [draftMessage, setDraftMessage] = useState("");
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   const [editing3dBaseImagePath, setEditing3dBaseImagePath] = useState<string | null>(null);
+  const [preparing3dBaseMessageId, setPreparing3dBaseMessageId] = useState<string | null>(null);
+  const [selectedElementReference, setSelectedElementReference] = useState<SelectedElementReference | null>(null);
   const [regenerating3dImage, setRegenerating3dImage] = useState<{ messageId: string; imageIndex: number } | null>(null);
   
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
@@ -978,6 +991,7 @@ export default function FlowDashboardPage() {
   }, [searchParams]);
 
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+  const chatMessagesRef = useRef<ChatMessageState[]>([]);
   const shouldAutoScrollRef = useRef(true);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
@@ -1024,6 +1038,30 @@ export default function FlowDashboardPage() {
   const [voiceStatus, setVoiceStatus] = useState("Voz desligada.");
   const [voiceError, setVoiceError] = useState("");
   const [voiceTranscript, setVoiceTranscript] = useState("");
+
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages;
+  }, [chatMessages]);
+
+  useEffect(() => {
+    const handleSelectedReference = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<SelectedElementReference>>).detail;
+      if (!detail || typeof detail.imageData !== 'string' || !detail.imageData.startsWith('data:image/')) return;
+      if (typeof detail.xpath !== 'string' || !detail.xpath.trim()) return;
+      setSelectedElementReference({
+        imageData: detail.imageData,
+        xpath: detail.xpath.trim(),
+        label: typeof detail.label === 'string' ? detail.label : undefined,
+      });
+    };
+    window.addEventListener('mrchicken:flow-reference-selected', handleSelectedReference);
+    return () => window.removeEventListener('mrchicken:flow-reference-selected', handleSelectedReference);
+  }, []);
+
+  const activeJobPollingKey = chatMessages
+    .filter((message) => message.jobId && message.jobStatus !== 'completed')
+    .map((message) => `${message.id}:${message.jobId}:${message.jobStatus || 'pending'}`)
+    .join('|');
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = chatScrollContainerRef.current;
@@ -1637,18 +1675,23 @@ export default function FlowDashboardPage() {
       return (failed3dReconcileUntilRef.current[message.jobId] || 0) > Date.now();
     };
 
-    const activeJobs = chatMessages.filter((m) => {
+    const getActiveJobs = () => chatMessagesRef.current.filter((m) => {
       if (!m.jobId || m.jobStatus === "completed") return false;
       if (m.jobStatus === "failed") return isWithin3dFailureReconcileWindow(m);
       return m.jobStatus === "running" || needsModel3dReconcile(m);
     });
-    if (activeJobs.length === 0) return;
+    if (getActiveJobs().length === 0) return;
 
     let isMounted = true;
     const poll = async () => {
       if (!isMounted) return;
+      const activeJobs = getActiveJobs();
+      if (activeJobs.length === 0) return;
       let updated = false;
-      const nextMessages = [...chatMessages];
+      const nextMessages = chatMessagesRef.current.map((message) => ({
+        ...message,
+        jobLogs: message.jobLogs ? [...message.jobLogs] : message.jobLogs,
+      }));
 
       for (const msg of activeJobs) {
         try {
@@ -1733,7 +1776,11 @@ export default function FlowDashboardPage() {
         } catch (err) {}
       }
       if (updated && isMounted) {
-        setChatMessages(nextMessages);
+        const activeMessageIds = new Set(activeJobs.map((message) => message.id));
+        const updatesById = new Map(nextMessages
+          .filter((message) => activeMessageIds.has(message.id))
+          .map((message) => [message.id, message]));
+        setChatMessages((previous) => previous.map((message) => updatesById.get(message.id) || message));
       }
     };
 
@@ -1743,7 +1790,7 @@ export default function FlowDashboardPage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [chatMessages]);
+  }, [activeJobPollingKey]);
 
   const speakAssistantResponse = useCallback(async (content: string) => {
     const text = getAssistantSpeechText(content);
@@ -1840,7 +1887,9 @@ export default function FlowDashboardPage() {
       content += "\n\n" + pastedContent.map((p: any) => p.content).join("\n\n");
     }
     
-    let referenceImageBase64: string | null = null;
+    let referenceImageBase64: string | null = selectedElementReference?.imageData || null;
+    let referenceSource: ImageReferenceSource = selectedElementReference ? 'selected-element' : 'none';
+    let referenceXPath: string | null = selectedElementReference?.xpath || null;
     if (files.length > 0) {
       const file = files[0].file;
       referenceImageBase64 = await new Promise<string | null>((resolve) => {
@@ -1850,8 +1899,12 @@ export default function FlowDashboardPage() {
         reader.readAsDataURL(file);
       });
       if (referenceImageBase64) {
+        referenceSource = 'upload';
+        referenceXPath = null;
         content += `\n\n[Imagem de referência anexada]`;
       }
+    } else if (selectedElementReference) {
+      content += `\n\n[Elemento visual selecionado como referência: ${selectedElementReference.label || selectedElementReference.xpath}]`;
     }
 
     const chatModel: AgentModel = agentModel;
@@ -1865,10 +1918,11 @@ export default function FlowDashboardPage() {
 
     shouldAutoScrollRef.current = true;
     setChatMessages(prev => [...prev, userMsg]);
+    if (selectedElementReference) setSelectedElementReference(null);
     setIsLoading(true);
 
     const geminiMessages = chatMessages.concat(userMsg)
-      .filter(m => !m.plan && !m.jobId) 
+      .slice(-20)
       .map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -2112,6 +2166,10 @@ export default function FlowDashboardPage() {
           voiceActive: options.speakResponse === true
         })
       });
+      if (!res.ok) {
+        const errorPayload = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errorPayload.error || `Falha no chat (HTTP ${res.status}).`);
+      }
       let streamedData: FlowChatResponse | null = null;
       if (res.body && res.headers.get("content-type")?.includes("text/event-stream")) {
         const reader = res.body.getReader();
@@ -2202,12 +2260,15 @@ export default function FlowDashboardPage() {
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
           avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
-          imageOperation: resolveImageGenerationOperation({
-            imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
-            referenceImage: referenceImageBase64,
-            useAvatarVisualReference,
-          }),
-          referenceSource: referenceImageBase64 ? 'upload' : useAvatarVisualReference ? 'avatar' : 'none',
+          imageOperation: plannedKind === 'image' && referenceImageBase64 && !image3dMode && isImageEditIntent(message)
+            ? 'edit'
+            : resolveImageGenerationOperation({
+                imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
+                referenceImage: referenceImageBase64,
+                useAvatarVisualReference,
+              }),
+          referenceSource: referenceImageBase64 ? referenceSource : useAvatarVisualReference ? 'avatar' : 'none',
+          referenceXPath,
           useAvatarVisualReference,
           targetJobId: data.action.targetJobId,
           strategy: data.action.strategy,
@@ -2215,6 +2276,7 @@ export default function FlowDashboardPage() {
           creativeSteps: data.action.creativeSteps,
           requestedImageCount,
           imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
+          requires3dBasePreparation: plannedKind === 'image' && image3dMode && Boolean(referenceImageBase64) && !image3dReadyMode,
           quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
           useAvatarPersonality,
           useCortexMemory,
@@ -2225,28 +2287,21 @@ export default function FlowDashboardPage() {
           agentMsg.plan.explanation = "Imagem pronta recebida. Aprove para gerar apenas as variações de ângulo usando essa imagem como base.";
           agentMsg.content = "Vou usar a imagem anexada como base pronta e gerar somente os ângulos do pacote 3D.";
         } else if (plannedKind === 'image' && image3dMode && referenceImageBase64) {
-          const baseImageData = await generate3dBaseImage({
-            prompt: build3dBasePrompt(data.action.optimizedPrompt || message),
-            aspectRatio: imageRatio,
-            model: imageModel,
-            referenceImage: referenceImageBase64,
-            forceReferenceUpload: true,
-            operation: 'reference'
-          });
-
-          const baseImagePath = baseImageData.path || baseImageData.paths?.[0] || null;
-          agentMsg.imageResult = baseImageData;
-          agentMsg.plan.referenceImage = null;
-          agentMsg.plan.referenceImagePath = baseImagePath;
-          agentMsg.plan.referenceSource = 'generated';
-          agentMsg.plan.explanation = "Imagem base 3D gerada com o estilo solicitado. Aprove para gerar as variações de ângulo usando esta imagem como referência.";
-          agentMsg.content = "Gerei a primeira imagem no estilo pedido. Se aprovar, continuo o pacote 3D usando esta imagem como base para os ângulos.";
+          agentMsg.plan.explanation = "Imagem recebida. Gere primeiro a base 3D para revisão; os ângulos só serão produzidos depois da sua aprovação.";
+          agentMsg.content = "Preparei o plano da base 3D. Clique em Gerar base para revisão antes de continuar para os ângulos.";
         }
       }
 
       upsertAgentMessage(agentMsg);
     } catch (err) {
        console.error(err);
+       const errorMessage = err instanceof Error ? err.message : String(err);
+       upsertAgentMessage({
+         id: assistantMessageId,
+         role: 'assistant',
+         content: `Nao consegui processar esta solicitacao: ${errorMessage}`,
+         timestamp: new Date().toISOString(),
+       });
     } finally {
        setIsLoading(false);
      }
@@ -2367,18 +2422,73 @@ export default function FlowDashboardPage() {
     };
   }, [cancelAllVoicePlayback]);
 
-  const handleApplyPlan = async (msgId: string) => {
-    const msgIndex = chatMessages.findIndex(m => m.id === msgId);
-    if (msgIndex < 0) return;
-    const msg = chatMessages[msgIndex];
-    if (!msg.plan) return;
+  const handlePrepare3dBase = async (msgId: string) => {
+    if (preparing3dBaseMessageId || applyingPlanIdsRef.current.has(msgId)) return;
+    const targetMessage = chatMessages.find((message) => message.id === msgId);
+    const plan = targetMessage?.plan;
+    if (!plan?.requires3dBasePreparation || !plan.referenceImage) return;
 
-    const nextMessages = [...chatMessages];
-    nextMessages[msgIndex].jobStatus = 'running';
-    nextMessages[msgIndex].jobLogs = [`[${new Date().toLocaleTimeString()}] Iniciando a execução do plano...`];
-    nextMessages[msgIndex].jobType = msg.plan.kind;
+    applyingPlanIdsRef.current.add(msgId);
+    setPreparing3dBaseMessageId(msgId);
+    try {
+      const baseImageData = await generate3dBaseImage({
+        prompt: build3dBasePrompt(plan.prompt || plan.originalPrompt),
+        aspectRatio: plan.aspectRatio || imageRatio,
+        model: plan.mediaModel || imageModel,
+        referenceImage: plan.referenceImage,
+        forceReferenceUpload: true,
+        operation: 'reference',
+      });
+      const baseImagePath = baseImageData.path || baseImageData.paths?.[0] || null;
+      if (!baseImagePath) throw new Error('O Flow nao retornou o caminho da imagem base 3D.');
+
+      setChatMessages((previous) => previous.map((message) => message.id === msgId
+        ? {
+            ...message,
+            content: 'Gerei a imagem base para revisao. Aprove para continuar os angulos ou edite a base antes.',
+            imageResult: baseImageData,
+            plan: message.plan ? {
+              ...message.plan,
+              referenceImage: null,
+              referenceImagePath: baseImagePath,
+              referenceSource: 'generated',
+              requires3dBasePreparation: false,
+            } : message.plan,
+          }
+        : message
+      ));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setChatMessages((previous) => previous.map((message) => message.id === msgId
+        ? {
+            ...message,
+            content: `Nao consegui gerar a imagem base 3D: ${errorMessage}`,
+            jobLogs: [...(message.jobLogs || []), `[${new Date().toLocaleTimeString()}] Falha ao gerar base 3D: ${errorMessage}`],
+          }
+        : message
+      ));
+    } finally {
+      applyingPlanIdsRef.current.delete(msgId);
+      setPreparing3dBaseMessageId(null);
+    }
+  };
+
+  const handleApplyPlan = async (msgId: string) => {
+    if (applyingPlanIdsRef.current.has(msgId)) return;
+    const msg = chatMessages.find((message) => message.id === msgId);
+    if (!msg?.plan || msg.jobId || msg.jobStatus === 'running') return;
+
+    applyingPlanIdsRef.current.add(msgId);
     shouldAutoScrollRef.current = true;
-    setChatMessages(nextMessages);
+    setChatMessages((previous) => previous.map((message) => message.id === msgId
+      ? {
+          ...message,
+          jobStatus: 'running',
+          jobLogs: [`[${new Date().toLocaleTimeString()}] Iniciando a execução do plano...`],
+          jobType: msg.plan!.kind,
+        }
+      : message
+    ));
 
     try {
       const res = await fetch("/api/flow/agent", {
@@ -2386,9 +2496,14 @@ export default function FlowDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-project",
+          requestId: msg.id,
           prompt: msg.plan.originalPrompt,
           avatarId: msg.plan.avatarId || selectedAvatarId,
           useAvatarPersonality: msg.plan.useAvatarPersonality ?? useAvatarPersonality,
+          useAvatarVisualReference: msg.plan.useAvatarVisualReference === true,
+          imageOperation: msg.plan.imageOperation,
+          referenceSource: msg.plan.referenceSource,
+          referenceXPath: msg.plan.referenceXPath,
           useCortexMemory: msg.plan.useCortexMemory ?? useCortexMemory,
           model: msg.plan.model,
           aspectRatio: msg.plan.aspectRatio,
@@ -2419,19 +2534,34 @@ export default function FlowDashboardPage() {
         })
       });
       const data = await res.json();
-      
-      const newMessages = [...chatMessages];
-      const mIdx = newMessages.findIndex(m => m.id === msgId);
-      if (data.success && data.jobId) {
-        newMessages[mIdx].jobId = data.jobId;
-        newMessages[mIdx].jobLogs?.push(`[${new Date().toLocaleTimeString()}] Job criado: ${data.jobId}`);
-      } else {
-        newMessages[mIdx].jobStatus = 'failed';
-        newMessages[mIdx].jobLogs?.push(`[${new Date().toLocaleTimeString()}] Falha: ${data.error}`);
-      }
-      setChatMessages(newMessages);
+      setChatMessages((previous) => previous.map((message) => {
+        if (message.id !== msgId) return message;
+        if (res.ok && data.success && data.jobId) {
+          return {
+            ...message,
+            jobId: data.jobId,
+            jobLogs: [...(message.jobLogs || []), `[${new Date().toLocaleTimeString()}] Job criado: ${data.jobId}`],
+          };
+        }
+        return {
+          ...message,
+          jobStatus: 'failed',
+          jobLogs: [...(message.jobLogs || []), `[${new Date().toLocaleTimeString()}] Falha: ${data.error || 'Não foi possível criar o job.'}`],
+        };
+      }));
     } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setChatMessages((previous) => previous.map((message) => message.id === msgId
+        ? {
+            ...message,
+            jobStatus: 'failed',
+            jobLogs: [...(message.jobLogs || []), `[${new Date().toLocaleTimeString()}] Falha: ${errorMessage}`],
+          }
+        : message
+      ));
+    } finally {
+      applyingPlanIdsRef.current.delete(msgId);
     }
   };
 
@@ -2602,7 +2732,8 @@ export default function FlowDashboardPage() {
         model: targetMessage.plan.mediaModel || imageModel,
         referenceImagePath,
         forceReferenceUpload: true,
-        useExistingFlowReference: false
+        useExistingFlowReference: false,
+        operation: 'edit'
       });
       const editedImagePath = editedImage.path || editedImage.paths?.[0] || null;
       if (!editedImagePath) {
@@ -2612,7 +2743,11 @@ export default function FlowDashboardPage() {
         ...targetMessage.plan,
         referenceImage: null,
         referenceImagePath: editedImagePath,
-        editSourceImagePath: referenceImagePath
+        editSourceImagePath: referenceImagePath,
+        imageOperation: 'turnaround3d',
+        referenceSource: 'generated',
+        referenceXPath: null,
+        useAvatarVisualReference: false
       };
 
       setChatMessages((previous) =>
@@ -2641,9 +2776,13 @@ export default function FlowDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-project",
+          requestId: `${messageId}:edited:${editedImagePath}`,
           prompt: updatedPlan.originalPrompt,
           avatarId: updatedPlan.avatarId || selectedAvatarId,
           useAvatarPersonality: updatedPlan.useAvatarPersonality ?? useAvatarPersonality,
+          useAvatarVisualReference: false,
+          imageOperation: updatedPlan.imageOperation,
+          referenceSource: updatedPlan.referenceSource,
           useCortexMemory: updatedPlan.useCortexMemory ?? useCortexMemory,
           model: updatedPlan.model,
           aspectRatio: updatedPlan.aspectRatio,
@@ -3171,7 +3310,7 @@ export default function FlowDashboardPage() {
 
 
                     {/* Plan Card */}
-                    {msg.plan && !msg.jobId && (
+                    {msg.plan && !msg.jobId && msg.jobStatus !== 'running' && (
                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
                           <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
                             {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
@@ -3225,9 +3364,19 @@ export default function FlowDashboardPage() {
                             <button onClick={() => handleCancelPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] text-white/40 hover:text-white/80 hover:bg-white/5 border border-white/10 rounded-xl transition-all cursor-pointer">
                               Recusar
                             </button>
-                            <button onClick={() => handleApplyPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] rounded-xl transition-all cursor-pointer">
-                              Aplicar
-                            </button>
+                            {msg.plan.requires3dBasePreparation ? (
+                              <button
+                                onClick={() => void handlePrepare3dBase(msg.id)}
+                                disabled={preparing3dBaseMessageId === msg.id}
+                                className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] disabled:opacity-60 rounded-xl transition-all cursor-pointer"
+                              >
+                                {preparing3dBaseMessageId === msg.id ? 'Gerando base...' : 'Gerar base para revisao'}
+                              </button>
+                            ) : (
+                              <button onClick={() => void handleApplyPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] rounded-xl transition-all cursor-pointer">
+                                Aplicar
+                              </button>
+                            )}
                           </div>
                       </div>
                     )}
@@ -3552,6 +3701,14 @@ export default function FlowDashboardPage() {
       {!(agentType === "ad-creative" && flyModeActive) ? (
         <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
+            {selectedElementReference && (
+              <div className="mb-2 flex items-center justify-between rounded-xl border border-[#9D7CFF]/30 bg-[#9D7CFF]/10 px-3 py-2 text-[11px] text-white/75">
+                <span className="truncate">Referencia selecionada: {selectedElementReference.label || selectedElementReference.xpath}</span>
+                <button type="button" onClick={() => setSelectedElementReference(null)} className="ml-3 text-white/50 hover:text-white" aria-label="Remover referencia selecionada">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
             <PromptInputBox
               onStop={() => {
                 stop();

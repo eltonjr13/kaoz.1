@@ -11,6 +11,7 @@ export interface FlowConfig {
 
 export interface ImageGenerationResult {
   success: boolean;
+  submitted?: boolean;
   path: string;
   filename: string;
   paths?: string[];

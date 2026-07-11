@@ -16,8 +16,24 @@ export class FlowProvider {
   private imageGenerator: FlowImageGenerator;
   private videoGenerator: FlowVideoGenerator;
   private llmAutomation: FlowLLMAutomation;
+  private browserTaskTail: Promise<void> = Promise.resolve();
   
   private activeTasksCount = 0;
+
+  private async runBrowserTaskExclusive<T>(task: () => Promise<T>): Promise<T> {
+    const previousTask = this.browserTaskTail ?? Promise.resolve();
+    let releaseCurrentTask: (() => void) | undefined;
+    this.browserTaskTail = new Promise<void>((resolve) => {
+      releaseCurrentTask = resolve;
+    });
+
+    await previousTask.catch(() => undefined);
+    try {
+      return await task();
+    } finally {
+      releaseCurrentTask?.();
+    }
+  }
 
   constructor(customConfig?: Partial<FlowConfig>) {
     // 1. Load configuration from environment variables with defaults
@@ -47,14 +63,16 @@ export class FlowProvider {
   async initialize(): Promise<FlowStatus> {
     this.activeTasksCount++;
     try {
-      const page = await this.session.getPage();
-      const authenticated = await this.session.checkAuthenticated(page);
-      return {
-        initialized: true,
-        authenticated,
-        activeTasks: this.activeTasksCount,
-        profilePath: this.config.profilePath
-      };
+      return await this.runBrowserTaskExclusive(async () => {
+        const page = await this.session.getPage();
+        const authenticated = await this.session.checkAuthenticated(page);
+        return {
+          initialized: true,
+          authenticated,
+          activeTasks: this.activeTasksCount,
+          profilePath: this.config.profilePath
+        };
+      });
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -68,8 +86,10 @@ export class FlowProvider {
   async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
     this.activeTasksCount++;
     try {
-      const page = await this.session.getPage();
-      return await this.imageGenerator.generate(page, prompt, this.config.timeout, options);
+      return await this.runBrowserTaskExclusive(async () => {
+        const page = await this.session.getPage();
+        return await this.imageGenerator.generate(page, prompt, this.config.timeout, options);
+      });
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -83,8 +103,10 @@ export class FlowProvider {
   async generateVideo(prompt: string, options?: VideoGenerationOptions): Promise<VideoGenerationResult> {
     this.activeTasksCount++;
     try {
-      const page = await this.session.getPage();
-      return await this.videoGenerator.generate(page, prompt, this.config.timeout, options);
+      return await this.runBrowserTaskExclusive(async () => {
+        const page = await this.session.getPage();
+        return await this.videoGenerator.generate(page, prompt, this.config.timeout, options);
+      });
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -93,8 +115,10 @@ export class FlowProvider {
   async generate3DObjectFromImages(imagePaths: string[], jobId: string): Promise<{ modelPaths: string[] }> {
     this.activeTasksCount++;
     try {
-      const page = await this.session.getAutomationPage();
-      return await hunyuan3DBrowserGenerator.generate(page, imagePaths, jobId);
+      return await this.runBrowserTaskExclusive(async () => {
+        const page = await this.session.getAutomationPage();
+        return await hunyuan3DBrowserGenerator.generate(page, imagePaths, jobId);
+      });
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -136,7 +160,7 @@ export class FlowProvider {
   ): Promise<string> {
     this.activeTasksCount++;
     try {
-      return await this.llmAutomation.optimizePrompt(model, prompt, type);
+      return await this.runBrowserTaskExclusive(() => this.llmAutomation.optimizePrompt(model, prompt, type));
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -158,7 +182,7 @@ export class FlowProvider {
   ): Promise<string> {
     this.activeTasksCount++;
     try {
-      return await this.llmAutomation.queryWebLLM(model, prompt, referenceImagePath, options);
+      return await this.runBrowserTaskExclusive(() => this.llmAutomation.queryWebLLM(model, prompt, referenceImagePath, options));
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
@@ -181,14 +205,14 @@ export class FlowProvider {
    * Opens a visible, headful browser session for manual login to the specified portal.
    */
   async openLoginSession(portal: FlowPortal): Promise<PortalLoginResult> {
-    return await this.session.openLoginSession(portal);
+    return await this.runBrowserTaskExclusive(() => this.session.openLoginSession(portal));
   }
 
   /**
    * Checks the login status of all portals in background.
    */
   async checkPortalsStatus(): Promise<Record<string, boolean>> {
-    return await this.session.checkAllPortalsStatus();
+    return await this.runBrowserTaskExclusive(() => this.session.checkAllPortalsStatus());
   }
 
   /**

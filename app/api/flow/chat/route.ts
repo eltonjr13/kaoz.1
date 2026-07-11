@@ -6,9 +6,10 @@ import {
 import type { ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
 import { findLocalAvatar } from "@/lib/local-store";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
+import {
+  cleanupTemporaryReference,
+  saveBase64ReferenceImage,
+} from "@/lib/flow/reference-files";
 import { formatSpotifyToolResponse } from "@/services/spotify/spotify-response-format";
 import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
 import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
@@ -23,6 +24,7 @@ type FlowChatRequestBody = {
   avatarId?: string;
   model?: string;
   referenceImage?: string;
+  requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   stream?: boolean;
@@ -82,6 +84,24 @@ function extractSpotifyQuery(text: string, normalized: string, verbs: string[]):
   }
 
   return "";
+}
+
+function enforceRequestedFlow(
+  response: ChatAgentResponse,
+  requestedFlow?: FlowChatRequestBody['requestedFlow']
+): ChatAgentResponse {
+  if (!requestedFlow || !response.action) return response;
+  if (requestedFlow === 'project' && response.action.flow === 'refine') return response;
+  if (response.action.flow === requestedFlow) return response;
+
+  return {
+    ...response,
+    action: {
+      ...response.action,
+      flow: requestedFlow,
+      explanation: `${response.action.explanation} O modo ${requestedFlow} selecionado na interface foi preservado.`,
+    },
+  };
 }
 
 function buildSpotifyPlaylistName(text: string): string {
@@ -292,7 +312,7 @@ function saveReferenceImageIfPresent(referenceImage?: string): string | undefine
   if (!referenceImage) return undefined;
 
   try {
-    return saveBase64ReferenceImage(referenceImage);
+    return saveBase64ReferenceImage(referenceImage, "chat_ref_image").filePath;
   } catch (err) {
     console.error("Falha ao salvar imagem de referência do chat:", err);
     return undefined;
@@ -300,10 +320,8 @@ function saveReferenceImageIfPresent(referenceImage?: string): string | undefine
 }
 
 function cleanupReferenceImage(filePath?: string): void {
-  if (!filePath || !fs.existsSync(filePath)) return;
-
   try {
-    fs.unlinkSync(filePath);
+    cleanupTemporaryReference(filePath);
   } catch (err) {
     console.error("Erro ao deletar imagem temporÃ¡ria de referÃªncia do chat:", err);
   }
@@ -419,35 +437,6 @@ function createChatStreamResponse(
   });
 }
 
-function saveBase64ReferenceImage(base64Data: string): string {
-  const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-  let buffer: Buffer;
-  let extension = ".png";
-
-  if (matches && matches.length === 3) {
-    const mimeType = matches[1];
-    const base64Str = matches[2];
-    buffer = Buffer.from(base64Str, "base64");
-
-    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-      extension = ".jpg";
-    } else if (mimeType.includes("webp")) {
-      extension = ".webp";
-    }
-  } else {
-    buffer = Buffer.from(base64Data, "base64");
-  }
-
-  const tempDir = path.resolve("storage/temp_uploads");
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const filePath = path.join(tempDir, `chat_ref_image_${crypto.randomUUID()}${extension}`);
-  fs.writeFileSync(filePath, buffer);
-  return filePath;
-}
-
 export async function POST(request: Request) {
   let referenceImagePath: string | undefined = undefined;
   let cleanupInPost = true;
@@ -462,6 +451,7 @@ export async function POST(request: Request) {
       avatarId,
       model,
       referenceImage,
+      requestedFlow,
       useAvatarPersonality,
       useCortexMemory,
       stream,
@@ -503,26 +493,30 @@ export async function POST(request: Request) {
       }
     }
 
-    const runChat = (onMessageChunk?: (chunk: string) => void) => chatWithAgent(
-      messages,
-      personality,
-      async (compiledPrompt: string, imagePath?: string, queryOptions?: {
-        onTextChunk?: (chunk: string) => void;
-        browserFallbackPrompt?: string;
-        useExternalTools?: boolean;
-        toolIntentText?: string;
-      }) => {
-        return await flowProvider.queryWebLLM(modelName, compiledPrompt, imagePath, queryOptions);
-      },
-      referenceImagePath,
-      {
-        useCortexMemory: cortexMemoryEnabled,
-        onMessageChunk,
-        hasExternalTools,
-        relevantMemories,
-        activeMemories: activePersonalityMemories,
-        voiceInstruction: getAgentVoiceInstruction(voiceContext),
-      }
+    const runChat = async (onMessageChunk?: (chunk: string) => void) => enforceRequestedFlow(
+      await chatWithAgent(
+        messages,
+        personality,
+        async (compiledPrompt: string, imagePath?: string, queryOptions?: {
+          onTextChunk?: (chunk: string) => void;
+          browserFallbackPrompt?: string;
+          useExternalTools?: boolean;
+          toolIntentText?: string;
+        }) => {
+          return await flowProvider.queryWebLLM(modelName, compiledPrompt, imagePath, queryOptions);
+        },
+        referenceImagePath,
+        {
+          useCortexMemory: cortexMemoryEnabled,
+          onMessageChunk,
+          hasExternalTools,
+          relevantMemories,
+          activeMemories: activePersonalityMemories,
+          voiceInstruction: getAgentVoiceInstruction(voiceContext),
+          requestedFlow,
+        }
+      ),
+      requestedFlow
     );
 
     if (spotifyDirectCommand) {
@@ -572,9 +566,9 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   } finally {
-    if (cleanupInPost && referenceImagePath && fs.existsSync(referenceImagePath)) {
+    if (cleanupInPost && referenceImagePath) {
       try {
-        fs.unlinkSync(referenceImagePath);
+        cleanupTemporaryReference(referenceImagePath);
       } catch (err) {
         console.error("Erro ao deletar imagem temporária de referência do chat:", err);
       }

@@ -35,3 +35,16 @@ export function imageOperationRequiresReference(operation: ImageGenerationOperat
   return operation === 'reference' || operation === 'edit';
 }
 
+export interface ResolveVisualReferenceInput {
+  operation: ImageGenerationOperation;
+  inputReferenceImage?: string;
+  avatarReferenceImage?: string;
+  useAvatarVisualReference?: boolean;
+}
+
+export function resolveVisualReference(input: ResolveVisualReferenceInput): string | undefined {
+  if (input.operation === 'simple') return undefined;
+  if (input.inputReferenceImage) return input.inputReferenceImage;
+  if (input.useAvatarVisualReference) return input.avatarReferenceImage;
+  return undefined;
+}

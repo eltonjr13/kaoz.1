@@ -5,8 +5,13 @@ import { logger } from "./FlowUtils";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
 import { getFfmpegPath, runCommand } from "@/lib/videos/render";
 import path from "node:path";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
+import {
+  resolveVisualReference,
+  type ImageGenerationOperation,
+  type ImageReferenceSource,
+} from "./ImageGenerationContract";
 
 type GenerationQuantity = 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
 type ImagePackageMode = 'turnaround3d';
@@ -46,8 +51,13 @@ export interface AgentTaskOptions {
   jobId: string;
   baseUrl?: string;
   approvedPlan?: FlowDecision;
-  avatarReferenceImage?: string;
+  visualReferenceImage?: string;
   inputReferenceImage?: string;
+  cleanupInputReferenceImage?: boolean;
+  imageOperation?: ImageGenerationOperation;
+  referenceSource?: ImageReferenceSource;
+  referenceXPath?: string;
+  useAvatarVisualReference?: boolean;
   useExistingFlowReference?: boolean;
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
@@ -228,7 +238,7 @@ export class FlowAgent {
       aspectRatio: options.aspectRatio || '16:9',
       quantity: options.videoQuantity || '1x',
       model: options.videoModel || 'Veo 3.1',
-      referenceImage: options.avatarReferenceImage
+      referenceImage: options.visualReferenceImage
     });
 
     if (!videoResult.success || !videoResult.path) {
@@ -555,7 +565,7 @@ export class FlowAgent {
 
     const cleanFlowPrompt = initialPrompt;
 
-    let referencePath = options.inputReferenceImage || options.avatarReferenceImage || "";
+    let referencePath = options.inputReferenceImage || options.visualReferenceImage || "";
     let promptUsed = cleanFlowPrompt;
     const uploadedPaths: string[] = [];
     const imageRecords: Array<{ role: string; path: string }> = [];
@@ -569,10 +579,11 @@ export class FlowAgent {
 
       await this.logAgentEvent(jobId, "researching", "Nenhuma imagem anexada encontrada. Gerando imagem base para o pacote 3D.");
       const primaryResult = await flowProvider.generateImage(optimizedPrimary, {
+        operation: 'turnaround3d',
         aspectRatio: options.aspectRatio || '1:1',
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
-        referenceImage: options.avatarReferenceImage
+        referenceImage: options.visualReferenceImage
       });
 
       const primaryPaths = this.getImageResultPaths(primaryResult);
@@ -604,6 +615,7 @@ export class FlowAgent {
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
       const viewResult = await flowProvider.generateImage(viewPrompt, {
+        operation: 'turnaround3d',
         aspectRatio: options.aspectRatio || '1:1',
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
@@ -687,7 +699,7 @@ export class FlowAgent {
   }
 
   private isImageCollectionFailure(errorMessage: string): boolean {
-    return /download|baixad|coleta|preview|visualiza|locator\.waitFor[\s\S]*(download|baixar)/i.test(errorMessage);
+    return /\[FLOW_SUBMITTED\]|download|baixad|coleta|preview|visualiza|locator\.waitFor[\s\S]*(download|baixar)/i.test(errorMessage);
   }
 
   private async updateImageJobProgress(jobId: string, imagePaths: string[], topic: string) {
@@ -772,15 +784,17 @@ export class FlowAgent {
           await this.logAgentEvent(jobId, "researching", `Iniciando geracao de imagem via Playwright com prompt: "${finalPrompt}"`);
 
           const imageResult = await flowProvider.generateImage(finalPrompt, {
+            operation: options.imageOperation || (options.visualReferenceImage ? 'reference' : 'simple'),
             aspectRatio: options.aspectRatio || '1:1',
             quantity: batchQuantity,
             model: options.imageModel || 'Nano Banana Pro',
-            referenceImage: options.avatarReferenceImage
+            referenceImage: options.visualReferenceImage
           });
 
           const paths = this.getImageResultPaths(imageResult).slice(0, batchSize);
           if (!imageResult.success || paths.length === 0) {
-            throw new Error(`Falha no ImageFX na rodada ${batchIndex}/${totalBatches} (${batchSize} imagem(ns) esperada(s)): ${imageResult.error || "Sem imagem retornada"}`);
+            const submittedMarker = imageResult.submitted ? '[FLOW_SUBMITTED] ' : '';
+            throw new Error(`${submittedMarker}Falha no ImageFX na rodada ${batchIndex}/${totalBatches} (${batchSize} imagem(ns) esperada(s)): ${imageResult.error || "Sem imagem retornada"}`);
           }
 
           await this.assertJobNotCancelled(jobId);
@@ -881,7 +895,7 @@ export class FlowAgent {
           aspectRatio: options.aspectRatio || '16:9',
           quantity: options.videoQuantity || '1x',
           model: options.videoModel || 'Veo 3.1',
-          referenceImage: options.avatarReferenceImage
+          referenceImage: options.visualReferenceImage
         });
 
         if (!videoResult.success || !videoResult.path) {
@@ -1032,7 +1046,7 @@ Retorne estritamente um JSON no formato:
         aspectRatio: options.aspectRatio || '16:9',
         quantity: options.videoQuantity || '1x',
         model: options.videoModel || 'Veo 3.1',
-        referenceImage: options.avatarReferenceImage
+        referenceImage: options.visualReferenceImage
       });
       if (!videoResult.success || !videoResult.path) {
         throw new Error(`Geração do novo vídeo para refinamento falhou: ${videoResult.error}`);
@@ -1132,15 +1146,17 @@ Retorne estritamente um JSON no formato:
 
         try {
           const imageResult = await flowProvider.generateImage(this.prepareAdCreativePrompt(concept.visualPrompt), {
+            operation: options.visualReferenceImage ? 'reference' : 'simple',
             aspectRatio: options.aspectRatio || '1:1',
             quantity: batchQuantity,
             model: options.imageModel || 'Nano Banana Pro',
-            referenceImage: options.avatarReferenceImage
+            referenceImage: options.visualReferenceImage
           });
 
           const paths = this.getImageResultPaths(imageResult).slice(0, batchSize);
           if (!imageResult.success || paths.length === 0) {
-            throw new Error(`Falha ao gerar imagens para o conceito "${concept.conceptName}": ${imageResult.error || "Sem imagem retornada"}`);
+            const submittedMarker = imageResult.submitted ? '[FLOW_SUBMITTED] ' : '';
+            throw new Error(`${submittedMarker}Falha ao gerar imagens para o conceito "${concept.conceptName}": ${imageResult.error || "Sem imagem retornada"}`);
           }
 
           await this.assertJobNotCancelled(jobId);
@@ -1173,6 +1189,15 @@ Retorne estritamente um JSON no formato:
           attempt++;
           const errMsg = err instanceof Error ? err.message : String(err);
           logger.error(`[FlowAgent] [${jobId}] Erro na geracao do conceito ${concept.conceptName} (tentativa ${attempt}):`, err);
+
+          if (this.isImageCollectionFailure(errMsg)) {
+            await this.logAgentEvent(
+              jobId,
+              "researching",
+              `O conceito "${concept.conceptName}" foi enviado ao Flow, mas a coleta falhou. Nova tentativa bloqueada para evitar imagens duplicadas.`
+            );
+            break;
+          }
 
           if (attempt > maxRetries) {
             await this.logAgentEvent(
@@ -1248,11 +1273,10 @@ Retorne estritamente um JSON no formato:
 
     let personality: unknown = null;
     let avatarReferenceImage: string | undefined;
-    const usesInputOnlyTurnaround = options.imagePackageMode === 'turnaround3d' && Boolean(options.inputReferenceImage);
     try {
       const avatar = await this.findAvatar(options.avatarId);
       personality = options.useAvatarPersonality === false ? null : avatar.personality;
-      if (!usesInputOnlyTurnaround) {
+      if ((options.imageOperation || 'simple') !== 'simple' && options.useAvatarVisualReference === true && !options.inputReferenceImage) {
         avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
         if (avatarReferenceImage) {
           await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
@@ -1264,28 +1288,42 @@ Retorne estritamente um JSON no formato:
 
     const executionOptions = {
       ...options,
-      avatarReferenceImage: options.inputReferenceImage && !usesInputOnlyTurnaround
-        ? options.inputReferenceImage
-        : avatarReferenceImage
+      visualReferenceImage: resolveVisualReference({
+        operation: options.imageOperation || 'simple',
+        inputReferenceImage: options.inputReferenceImage,
+        avatarReferenceImage,
+        useAvatarVisualReference: options.useAvatarVisualReference,
+      })
     };
-    if (options.inputReferenceImage) {
+    if (options.inputReferenceImage && (options.imageOperation || 'simple') !== 'simple') {
       await this.logAgentEvent(jobId, "planning", "Usando a imagem anexada pelo usuario como referencia visual da geracao.");
     }
 
-    if (decision.flow === "image") {
-      return this.executeImageFlow(executionOptions, decision.optimizedPrompt);
-    } else if (decision.flow === "video") {
-      return this.executeVideoFlow(executionOptions, decision.optimizedPrompt);
-    } else if (decision.flow === "refine") {
-      return this.executeRefineFlow(executionOptions, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
-    } else if (decision.flow === "ad-creative") {
-      return this.executeAdCreativeFlow(executionOptions, decision);
-    } else {
-      const projectOptions = {
-        ...executionOptions,
-        topic: decision.optimizedPrompt || options.topic
-      };
-      return this.createCompleteProject(projectOptions);
+    const temporaryPaths = [
+      options.cleanupInputReferenceImage ? options.inputReferenceImage : undefined,
+      avatarReferenceImage && path.resolve(avatarReferenceImage).startsWith(path.resolve('storage/temp_uploads') + path.sep)
+        ? avatarReferenceImage
+        : undefined,
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    try {
+      if (decision.flow === "image") {
+        return await this.executeImageFlow(executionOptions, decision.optimizedPrompt);
+      } else if (decision.flow === "video") {
+        return await this.executeVideoFlow(executionOptions, decision.optimizedPrompt);
+      } else if (decision.flow === "refine") {
+        return await this.executeRefineFlow(executionOptions, decision.targetJobId || "latest", decision.optimizedPrompt, personality);
+      } else if (decision.flow === "ad-creative") {
+        return await this.executeAdCreativeFlow(executionOptions, decision);
+      } else {
+        const projectOptions = {
+          ...executionOptions,
+          topic: decision.optimizedPrompt || options.topic
+        };
+        return await this.createCompleteProject(projectOptions);
+      }
+    } finally {
+      await Promise.all(temporaryPaths.map((temporaryPath) => unlink(temporaryPath).catch(() => undefined)));
     }
   }
 

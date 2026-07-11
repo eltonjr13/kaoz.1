@@ -733,6 +733,7 @@ type ChatWithAgentOptions = {
   relevantMemories?: string;
   activeMemories?: ChatMemoryRecord[];
   voiceInstruction?: string;
+  requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
 };
 
 type ExecuteWebQuery = (
@@ -975,6 +976,7 @@ Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
 ${relevantMemoryContext}
 ${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstruction}\n` : ""}
+${options?.requestedFlow ? `\n[Modo escolhido na interface]: ${options.requestedFlow}. Se houver uma acao criativa neste turno, preserve esse fluxo; pedidos de edicao com imagem no modo image continuam sendo flow image.\n` : ""}
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
 2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.

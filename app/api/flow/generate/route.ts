@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
+import {
+  cleanupTemporaryReference,
+  copyGeneratedReferenceToTemp,
+  resolveGeneratedReferencePath,
+  saveBase64ReferenceImage,
+} from "@/lib/flow/reference-files";
+import {
+  imageOperationRequiresReference,
+  type ImageGenerationOperation,
+} from "@/src/providers/flow/ImageGenerationContract";
+
+const IMAGE_OPERATIONS = new Set<ImageGenerationOperation>(["simple", "reference", "turnaround3d", "edit"]);
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -11,64 +20,6 @@ function jsonError(message: string, status = 400) {
 function sanitizeFilenameOrFolder(input: string): string {
   // Allow only alphanumeric, underscores, hyphens, dots, and spaces.
   return input.replace(/[^a-zA-Z0-9_\-\.\s]/g, "").replace(/\.\.+/g, ".").trim();
-}
-
-function saveBase64Image(base64Data: string): { filePath: string; extension: string } {
-  const matches = base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-  let buffer: Buffer;
-  let extension = ".png";
-
-  if (matches && matches.length === 3) {
-    const mimeType = matches[1];
-    const base64Str = matches[2];
-    buffer = Buffer.from(base64Str, 'base64');
-    
-    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) {
-      extension = ".jpg";
-    } else if (mimeType.includes("webp")) {
-      extension = ".webp";
-    }
-  } else {
-    buffer = Buffer.from(base64Data, 'base64');
-  }
-
-  const tempDir = path.resolve("storage/temp_uploads");
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const filename = `ref_image_${crypto.randomUUID()}${extension}`;
-  const filePath = path.join(tempDir, filename);
-  fs.writeFileSync(filePath, buffer);
-
-  return { filePath, extension };
-}
-
-function resolveGeneratedReferencePath(referencePath: string): string | undefined {
-  const absolutePath = path.resolve(referencePath);
-  const allowedRoot = path.resolve("storage/generated/");
-  const isWindows = process.platform === "win32";
-  const normalizedPath = isWindows ? absolutePath.toLowerCase() : absolutePath;
-  const normalizedRoot = isWindows ? allowedRoot.toLowerCase() : allowedRoot;
-  const allowedPrefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : normalizedRoot + path.sep;
-
-  if (!normalizedPath.startsWith(allowedPrefix) || !fs.existsSync(absolutePath)) {
-    return undefined;
-  }
-
-  return absolutePath;
-}
-
-function copyGeneratedReferenceImage(referencePath: string): string {
-  const ext = path.extname(referencePath) || ".png";
-  const tempDir = path.resolve("storage/temp_uploads");
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const tempPath = path.join(tempDir, `ref_image_${crypto.randomUUID()}${ext}`);
-  fs.copyFileSync(referencePath, tempPath);
-  return tempPath;
 }
 
 // eslint-disable-next-line complexity
@@ -86,6 +37,7 @@ export async function POST(request: Request) {
       useExistingFlowReference?: unknown;
       folderName?: unknown;
       originalFilename?: unknown;
+      operation?: unknown;
     } | null;
 
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -125,12 +77,17 @@ export async function POST(request: Request) {
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const referenceImagePathRaw = typeof body?.referenceImagePath === "string" ? body.referenceImagePath.trim() : "";
     const useExistingFlowReference = body?.useExistingFlowReference === true;
+    const operation = typeof body?.operation === "string" && IMAGE_OPERATIONS.has(body.operation as ImageGenerationOperation)
+      ? body.operation as ImageGenerationOperation
+      : referenceImageBase64 || referenceImagePathRaw
+        ? "reference"
+        : "simple";
     let tempFilePath: string | undefined = undefined;
     let referenceImagePath: string | undefined = undefined;
 
     if (referenceImageBase64) {
       try {
-        const saved = saveBase64Image(referenceImageBase64);
+        const saved = saveBase64ReferenceImage(referenceImageBase64);
         referenceImagePath = saved.filePath;
         tempFilePath = saved.filePath;
         console.log(`[API FLOW] Imagem de referência salva temporariamente em: ${tempFilePath}`);
@@ -146,12 +103,17 @@ export async function POST(request: Request) {
       if (useExistingFlowReference) {
         referenceImagePath = generatedReferencePath;
       } else {
-        referenceImagePath = copyGeneratedReferenceImage(generatedReferencePath);
+        referenceImagePath = copyGeneratedReferenceToTemp(generatedReferencePath);
         tempFilePath = referenceImagePath;
       }
     }
 
+    if (type === "image" && imageOperationRequiresReference(operation) && !referenceImagePath) {
+      return jsonError(`O modo de imagem '${operation}' exige uma referencia valida.`);
+    }
+
     const options = {
+      operation,
       aspectRatio: validatedAspectRatio,
       quantity: validatedQuantity,
       model: model || undefined,
@@ -179,9 +141,9 @@ export async function POST(request: Request) {
         return NextResponse.json(result);
       }
     } finally {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
+      if (tempFilePath) {
         try {
-          fs.unlinkSync(tempFilePath);
+          cleanupTemporaryReference(tempFilePath);
           console.log(`[API FLOW] Arquivo de referência temporário removido: ${tempFilePath}`);
         } catch (unlinkErr) {
           console.error(`[API FLOW] Erro ao remover arquivo temporário ${tempFilePath}:`, unlinkErr);
