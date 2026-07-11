@@ -97,7 +97,12 @@ export class FlowSession {
     const launchOptions: Parameters<typeof chromium.launchPersistentContext>[1] = {
       headless: headless,
       viewport: { width: 1280, height: 720 },
-      acceptDownloads: true
+      acceptDownloads: true,
+      // Google blocks the Flow OAuth screen when Chrome is started with
+      // Playwright's default `--no-sandbox` flag.  Keep Chrome's sandbox on
+      // and omit the automation switch for the interactive login window.
+      chromiumSandbox: true,
+      ignoreDefaultArgs: ['--enable-automation']
     };
 
     if (this.config.browserChannel) {
