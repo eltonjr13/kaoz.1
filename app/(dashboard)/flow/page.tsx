@@ -3314,7 +3314,7 @@ export default function FlowDashboardPage() {
                         </ReactMarkdown>
                       )}
                       {msg.attachedImage && (
-                        <div className={`${msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '' ? 'mt-3' : ''} rounded-lg overflow-hidden border border-white/10 max-w-[240px]`}>
+                        <div className={`${msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '' ? 'mt-3' : ''} rounded-lg overflow-hidden border border-white/10 max-w-[120px]`}>
                           <img src={msg.attachedImage} alt="Referência" className="w-full h-auto object-contain rounded-lg bg-black/20" />
                         </div>
                       )}
