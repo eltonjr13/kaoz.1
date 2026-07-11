@@ -37,6 +37,11 @@ import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
 import { compileAgentSpeech, getAgentVoiceContext, resolveCartesiaVoiceControls } from "@/lib/ai/agent-voice";
+import {
+  resolveImageGenerationOperation,
+  type ImageGenerationOperation,
+  type ImageReferenceSource,
+} from "@/src/providers/flow/ImageGenerationContract";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -144,6 +149,9 @@ interface PendingPlan {
   referenceImage?: string | null;
   referenceImagePath?: string | null;
   editSourceImagePath?: string | null;
+  imageOperation?: ImageGenerationOperation;
+  referenceSource?: ImageReferenceSource;
+  useAvatarVisualReference?: boolean;
   targetJobId?: string | null;
   strategy?: string;
   scriptOutline?: string | null;
@@ -273,6 +281,7 @@ const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
 const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
+const USE_AVATAR_VISUAL_REFERENCE_KEY = "mrchicken:flow:use_avatar_visual_reference";
 const CHAT_AUTO_SCROLL_THRESHOLD = 96;
 const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
 const AGENT_MODEL_KEY = "mrchicken:flow:agent_model";
@@ -438,6 +447,7 @@ async function generate3dBaseImage(params: {
   referenceImagePath?: string;
   forceReferenceUpload?: boolean;
   useExistingFlowReference?: boolean;
+  operation?: ImageGenerationOperation;
 }): Promise<GenerationResult> {
   const response = await fetch("/api/flow/generate", {
     method: "POST",
@@ -451,7 +461,8 @@ async function generate3dBaseImage(params: {
       referenceImage: params.referenceImage,
       referenceImagePath: params.referenceImagePath,
       forceReferenceUpload: params.forceReferenceUpload,
-      useExistingFlowReference: params.useExistingFlowReference
+      useExistingFlowReference: params.useExistingFlowReference,
+      operation: params.operation
     })
   });
   const result = await response.json();
@@ -879,6 +890,7 @@ export default function FlowDashboardPage() {
 
   const hasAttempted3dRecoveryRef = useRef(false);
   const hasAppliedModeFromUrlRef = useRef(false);
+  const applyingPlanIdsRef = useRef<Set<string>>(new Set());
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
   const [agentModel, setAgentModel] = useState<AgentModel>(() => {
@@ -893,6 +905,9 @@ export default function FlowDashboardPage() {
   const [selectedAvatarId, setSelectedAvatarId] = useState("");
   const [useAvatarPersonality, setUseAvatarPersonality] = useState(() =>
     typeof window === "undefined" ? true : localStorage.getItem(USE_AVATAR_PERSONALITY_KEY) !== "false"
+  );
+  const [useAvatarVisualReference, setUseAvatarVisualReference] = useState(() =>
+    typeof window === "undefined" ? false : localStorage.getItem(USE_AVATAR_VISUAL_REFERENCE_KEY) === "true"
   );
   const [useCortexMemory, setUseCortexMemory] = useState(() =>
     typeof window === "undefined" ? true : localStorage.getItem(USE_CORTEX_MEMORY_KEY) !== "false"
@@ -1197,6 +1212,20 @@ export default function FlowDashboardPage() {
 
         <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
           <span className="flex flex-col gap-0.5">
+            <span className="text-[12px] font-semibold text-white/85">Avatar como referencia visual</span>
+            <span className="text-[10px] leading-snug text-white/45">Anexar a imagem do avatar somente quando esta opcao estiver ligada</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={useAvatarVisualReference}
+            onChange={(e) => setUseAvatarVisualReference(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+        </label>
+
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
+          <span className="flex flex-col gap-0.5">
             <span className="text-[12px] font-semibold text-white/85">Cortex</span>
             <span className="text-[10px] leading-snug text-white/45">Usar e gravar memoria cognitiva nas execucoes</span>
           </span>
@@ -1423,6 +1452,10 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     localStorage.setItem(USE_AVATAR_PERSONALITY_KEY, String(useAvatarPersonality));
   }, [useAvatarPersonality]);
+
+  useEffect(() => {
+    localStorage.setItem(USE_AVATAR_VISUAL_REFERENCE_KEY, String(useAvatarVisualReference));
+  }, [useAvatarVisualReference]);
 
   useEffect(() => {
     localStorage.setItem(USE_CORTEX_MEMORY_KEY, String(useCortexMemory));
@@ -2071,6 +2104,8 @@ export default function FlowDashboardPage() {
           messages: geminiMessages,
           avatarId: selectedAvatarId,
           useAvatarPersonality,
+          referenceImage: referenceImageBase64,
+          requestedFlow: agentType,
           useCortexMemory,
           model: chatModel,
           stream: true,
@@ -2167,6 +2202,13 @@ export default function FlowDashboardPage() {
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
           avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
+          imageOperation: resolveImageGenerationOperation({
+            imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
+            referenceImage: referenceImageBase64,
+            useAvatarVisualReference,
+          }),
+          referenceSource: referenceImageBase64 ? 'upload' : useAvatarVisualReference ? 'avatar' : 'none',
+          useAvatarVisualReference,
           targetJobId: data.action.targetJobId,
           strategy: data.action.strategy,
           scriptOutline: data.action.scriptOutline,
@@ -2188,13 +2230,15 @@ export default function FlowDashboardPage() {
             aspectRatio: imageRatio,
             model: imageModel,
             referenceImage: referenceImageBase64,
-            forceReferenceUpload: true
+            forceReferenceUpload: true,
+            operation: 'reference'
           });
 
           const baseImagePath = baseImageData.path || baseImageData.paths?.[0] || null;
           agentMsg.imageResult = baseImageData;
           agentMsg.plan.referenceImage = null;
           agentMsg.plan.referenceImagePath = baseImagePath;
+          agentMsg.plan.referenceSource = 'generated';
           agentMsg.plan.explanation = "Imagem base 3D gerada com o estilo solicitado. Aprove para gerar as variações de ângulo usando esta imagem como referência.";
           agentMsg.content = "Gerei a primeira imagem no estilo pedido. Se aprovar, continuo o pacote 3D usando esta imagem como base para os ângulos.";
         }

@@ -82,6 +82,7 @@ export interface AvatarGenerationResult {
 }
 
 export interface ImageGenerationOptions {
+  operation?: import('./ImageGenerationContract').ImageGenerationOperation;
   aspectRatio?: '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
   model?: string;

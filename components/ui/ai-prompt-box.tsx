@@ -562,6 +562,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const inputRef = React.useRef(value ?? internalInput);
   const filesRef = React.useRef<File[]>([]);
   const showCanvasRef = React.useRef(false);
+  const submitInFlightRef = React.useRef(false);
   
   React.useEffect(() => {
     inputRef.current = value ?? internalInput;
@@ -574,6 +575,10 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   React.useEffect(() => {
     showCanvasRef.current = showCanvas;
   }, [showCanvas]);
+
+  React.useEffect(() => {
+    if (!isLoading) submitInFlightRef.current = false;
+  }, [isLoading]);
 
   const input = value ?? internalInput;
   const setInput = React.useCallback((nextValue: string | ((current: string) => string)) => {
@@ -743,16 +748,23 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   }, [isLoading, isRecording, resetVoiceMeter, speech, startRecordingTimer, startVoiceMeter]);
 
   const submitMessage = React.useCallback(() => {
+    if (isLoading || submitInFlightRef.current) return;
     if (inputRef.current.trim() || filesRef.current.length > 0) {
+      submitInFlightRef.current = true;
       let messagePrefix = "";
       if (showCanvasRef.current) messagePrefix = "[Canvas: ";
       const formattedInput = messagePrefix ? `${messagePrefix}${inputRef.current}]` : inputRef.current;
-      onSend(formattedInput, filesRef.current);
+      try {
+        onSend(formattedInput, filesRef.current);
+      } catch (error) {
+        submitInFlightRef.current = false;
+        throw error;
+      }
       setInput("");
       setFiles([]);
       setFilePreviews({});
     }
-  }, [onSend, setInput, setFiles, setFilePreviews]);
+  }, [isLoading, onSend, setInput, setFiles, setFilePreviews]);
 
   const handleStopRecording = React.useCallback(async () => {
     await speech.stop();
