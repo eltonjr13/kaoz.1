@@ -212,6 +212,7 @@ export interface ChatMessageState {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  attachedImage?: string | null;
   plan?: PendingPlan | null;
   jobId?: string | null;
   jobType?: AgentType | null;
@@ -395,11 +396,15 @@ function queueCompleteSpeechSentences(
 
 const sanitizeChatMessages = (messages: ChatMessageState[]) =>
   messages.map((msg) => {
-    if (!msg.plan?.referenceImage) return msg;
+    const sanitizedMsg = { ...msg };
+    if (sanitizedMsg.attachedImage) {
+      sanitizedMsg.attachedImage = null;
+    }
+    if (!sanitizedMsg.plan?.referenceImage) return sanitizedMsg;
     return {
-      ...msg,
+      ...sanitizedMsg,
       plan: {
-        ...msg.plan,
+        ...sanitizedMsg.plan,
         referenceImage: null
       }
     };
@@ -1913,7 +1918,8 @@ export default function FlowDashboardPage() {
       id: Date.now().toString(),
       role: 'user',
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      attachedImage: referenceImageBase64
     };
 
     shouldAutoScrollRef.current = true;
@@ -3302,9 +3308,16 @@ export default function FlowDashboardPage() {
                     }}
                   >
                     <div className={`px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 rounded-tr-sm text-white/90' : 'bg-white/5 border border-white/10 rounded-tl-sm text-white/80'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
-                      <ReactMarkdown>
-                        {msg.content}
-                      </ReactMarkdown>
+                      {(!msg.attachedImage || msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '') && (
+                        <ReactMarkdown>
+                          {msg.attachedImage ? msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() : msg.content}
+                        </ReactMarkdown>
+                      )}
+                      {msg.attachedImage && (
+                        <div className={`${msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '' ? 'mt-3' : ''} rounded-lg overflow-hidden border border-white/10 max-w-[240px]`}>
+                          <img src={msg.attachedImage} alt="Referência" className="w-full h-auto object-contain rounded-lg bg-black/20" />
+                        </div>
+                      )}
                     </div>
 
 
