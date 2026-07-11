@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         started: true,
-        message: `Janela de login para ${portal} aberta. Conclua o login e depois use Verificar Status.`
+        message: portal === "google"
+          ? "Chrome aberto para o login do Google Flow. Conclua o login, feche a janela do Chrome e depois use Verificar Status."
+          : `Janela de login para ${portal} aberta. Conclua o login e depois use Verificar Status.`
       });
     }
 

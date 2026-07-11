@@ -1,4 +1,6 @@
 import * as path from 'path';
+import * as fs from 'fs';
+import { ChildProcess, spawn } from 'child_process';
 import { chromium, BrowserContext, Page } from 'playwright';
 import { FlowConfig, FlowPortal, PortalLoginResult } from './FlowTypes';
 import { logger, ensureDirExists } from './FlowUtils';
@@ -7,6 +9,7 @@ export class FlowSession {
   private context: BrowserContext | null = null;
   private activePage: Page | null = null;
   private loginInProgress = false;
+  private chromeLoginProcess: ChildProcess | null = null;
 
   constructor(private config: FlowConfig) {
     // Ensure profile path exists
@@ -112,6 +115,12 @@ export class FlowSession {
     try {
       this.context = await chromium.launchPersistentContext(absoluteProfilePath, launchOptions);
     } catch (err) {
+      if (this.isProfileInUseError(err)) {
+        throw new Error(
+          'O perfil do Flow ainda esta aberto no Chrome. Feche a janela do Chrome usada para o login e aguarde alguns segundos antes de gerar novamente.'
+        );
+      }
+
       if (!this.config.browserChannel) {
         throw err;
       }
@@ -135,6 +144,11 @@ export class FlowSession {
     const pages = this.context.pages();
     const page = pages.length > 0 ? pages[0] : await this.context.newPage();
     return page;
+  }
+
+  private isProfileInUseError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /sess[aã]o de navegador existente|existing browser session|user data directory is already in use/i.test(message);
   }
 
   /**
@@ -277,6 +291,14 @@ export class FlowSession {
       targetUrl = 'https://3d.hunyuan.tencent.com/';
     }
 
+    // Google rejects the sign-in flow when the browser is controlled by
+    // Playwright. Open the regular Chrome executable for this one-time login
+    // instead. It uses the same persistent profile, so the Flow session is
+    // available to Playwright after the user closes the browser window.
+    if (portal === 'google') {
+      return await this.openGoogleLoginInChrome(targetUrl);
+    }
+
     // 3. Launch headful browser context
     const page = await this.launchContext(false);
     logger.info(`Navegando para o portal de login: ${targetUrl}`);
@@ -408,6 +430,124 @@ export class FlowSession {
     } finally {
       this.loginInProgress = false;
     }
+  }
+
+  /**
+   * Opens Google Flow in a normal Chrome process, without a debugging port or
+   * browser-automation flags. This is required by Google's sign-in security
+   * checks, while still preserving the session in the configured Flow profile.
+   */
+  private async openGoogleLoginInChrome(targetUrl: string): Promise<PortalLoginResult> {
+    const chromeExecutable = this.findChromeExecutable();
+    if (!chromeExecutable) {
+      return {
+        portal: 'google',
+        authenticated: false,
+        reason: 'error',
+        message: 'Google Chrome nao foi localizado. Defina FLOW_CHROME_EXECUTABLE com o caminho do chrome.exe.'
+      };
+    }
+
+    const profilePath = path.resolve(this.config.profilePath);
+    try {
+      this.chromeLoginProcess = spawn(
+        chromeExecutable,
+        [
+          `--user-data-dir=${profilePath}`,
+          '--new-window',
+          '--disable-background-mode',
+          '--no-first-run',
+          '--no-default-browser-check',
+          targetUrl
+        ],
+        { stdio: 'ignore', windowsHide: false }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        portal: 'google',
+        authenticated: false,
+        reason: 'error',
+        message: `Nao foi possivel abrir o Chrome para o login: ${message}`
+      };
+    }
+
+    return await new Promise<PortalLoginResult>((resolve) => {
+      const process = this.chromeLoginProcess;
+      if (!process) {
+        resolve({
+          portal: 'google',
+          authenticated: false,
+          reason: 'error',
+          message: 'O processo do Chrome nao foi inicializado.'
+        });
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        this.chromeLoginProcess = null;
+        resolve({
+          portal: 'google',
+          authenticated: false,
+          reason: 'timeout',
+          message: 'Tempo limite aguardando o login. Conclua o login no Chrome e feche a janela antes de tentar novamente.'
+        });
+      }, this.config.timeout);
+
+      process.once('error', (error) => {
+        clearTimeout(timeout);
+        this.chromeLoginProcess = null;
+        resolve({
+          portal: 'google',
+          authenticated: false,
+          reason: 'error',
+          message: `O Chrome nao pode ser iniciado: ${error.message}`
+        });
+      });
+
+      process.once('exit', async () => {
+        clearTimeout(timeout);
+        this.chromeLoginProcess = null;
+
+        try {
+          const page = await this.launchContext(true);
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          const authenticated = await this.checkAuthenticated(page);
+          await this.close();
+          resolve({
+            portal: 'google',
+            authenticated,
+            reason: authenticated ? 'detected' : 'closed',
+            message: authenticated
+              ? 'Login no Google Flow concluido e salvo no perfil do navegador.'
+              : 'A janela foi fechada sem uma sessao do Google Flow detectada.'
+          });
+        } catch (error) {
+          await this.close().catch(() => {});
+          const message = error instanceof Error ? error.message : String(error);
+          resolve({
+            portal: 'google',
+            authenticated: false,
+            reason: 'error',
+            message: `Nao foi possivel validar a sessao salva: ${message}`
+          });
+        }
+      });
+    });
+  }
+
+  private findChromeExecutable(): string | null {
+    const candidates = [
+      process.env.FLOW_CHROME_EXECUTABLE,
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        : undefined
+    ];
+
+    const configuredPaths = candidates.filter((candidate): candidate is string => typeof candidate === 'string');
+    return configuredPaths.find((candidate) => fs.existsSync(candidate)) ?? null;
   }
 
   /**
