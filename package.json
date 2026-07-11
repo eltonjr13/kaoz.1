@@ -1,6 +1,6 @@
 {
   "name": "ai-ugc-reaction-studio",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs",
     "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs"
+    ,"test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts"
   },
   "dependencies": {
     "@cartesia/cartesia-js": "^3.2.0",
