@@ -18,6 +18,7 @@ import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction } from "@/lib/ai/agent-voice";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // Allow long-running agent tasks
 
 type FlowChatRequestBody = {
   messages: ChatMessage[];
@@ -267,15 +268,15 @@ async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<C
   for (const query of buildSpotifyTrackSearchQueries(command.playlistTrackQuery)) {
     const searchResult = await mcpManager.callTool(searchTool.serverId, searchTool.tool.name, {
       query,
-      limit: 20,
+      limit: 50,
     });
     if (searchResult?.isError === true) continue;
 
     for (const uri of extractSpotifyTrackUris(extractMcpText(searchResult))) {
       if (!trackUris.includes(uri)) trackUris.push(uri);
-      if (trackUris.length >= 20) break;
+      if (trackUris.length >= 50) break;
     }
-    if (trackUris.length >= 20) break;
+    if (trackUris.length >= 50) break;
   }
 
   if (trackUris.length === 0) {
