@@ -3,7 +3,6 @@ import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { findLocalAvatar } from "@/lib/local-store";
 import { downloadSourceVideo, trimVideo } from "@/lib/videos/render";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
 import { analyzeAndGenerateScript, analyzeVideoForStep1 } from "@/lib/ai/gemini";
 
 function jsonError(message: string, status = 400) {
@@ -33,26 +32,9 @@ export async function POST(request: Request) {
     // 1. Buscar a personalidade do avatar (apenas se houver assunto e avatar definidos)
     let avatarPersonality: Record<string, unknown> | null = null;
     if (topic && avatarId) {
-      if (hasSupabaseConfig()) {
-        try {
-          const supabase = await createClient();
-          const { data } = await supabase
-            .from("avatars")
-            .select("personality")
-            .eq("id", avatarId)
-            .single();
-          if (data) {
-            avatarPersonality = data.personality as Record<string, unknown> | null;
-          }
-        } catch (err) {
-          console.error("Erro ao buscar avatar no Supabase para analise:", err);
-        }
-      }
-      if (!avatarPersonality) {
-        const localAvatar = await findLocalAvatar(avatarId);
-        if (localAvatar) {
-          avatarPersonality = (localAvatar.personality as Record<string, unknown>) || null;
-        }
+      const localAvatar = await findLocalAvatar(avatarId);
+      if (localAvatar) {
+        avatarPersonality = (localAvatar.personality as Record<string, unknown>) || null;
       }
     }
 

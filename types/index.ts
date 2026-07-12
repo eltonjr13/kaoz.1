@@ -5,5 +5,8 @@ export type {
   ReactionJob,
   RenderLayout,
   ViralVideo,
-  VoiceSettings
+  VoiceSettings,
+  VoiceDirection,
+  VoiceDirectionCue,
+  VoiceEffect
 } from "./domain";

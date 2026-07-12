@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { parseCreatePlanInput } from "@/services/orchestrator/orchestrator.schemas"; import { orchestratorService } from "@/services/orchestrator/orchestrator.service"; import { orchestratorStore } from "@/services/orchestrator/orchestrator.store"; import { apiError } from "../_response";
+export async function GET(){ return NextResponse.json({plans:await orchestratorStore.listPlans()}); }
+export async function POST(request:Request){ try{ const input=parseCreatePlanInput(await request.json().catch(()=>null)); return NextResponse.json({plan:await orchestratorService.createPlan(input.objective,input.skillId)},{status:201}); }catch(error){ return apiError(error); } }

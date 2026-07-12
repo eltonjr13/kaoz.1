@@ -1,0 +1,5 @@
+import path from "node:path";
+import type { ApprovalMode, ToolEffect } from "./orchestrator.types";
+export function requiredApproval(effect: ToolEffect, declared: ApprovalMode): ApprovalMode { if (effect === "destructive" || effect === "external") return "step"; if (effect === "write") return declared === "never" ? "plan" : declared; return declared; }
+export function assertSafeWorkspacePath(candidate: string, root = process.cwd()): string { const resolved = path.resolve(root, candidate); const relative = path.relative(path.resolve(root), resolved); if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Caminho fora da raiz permitida."); return resolved; }
+export function redactSecrets(value: unknown): string { const text = typeof value === "string" ? value : JSON.stringify(value); return text.replace(/((?:api[_-]?key|token|secret|password|authorization)\s*[=:]\s*)[^\s,;"']+/gi, "$1[REDACTED]").replace(/\b(?:sk|ghp|xox[baprs])-[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"); }

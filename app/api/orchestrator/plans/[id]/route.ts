@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { orchestratorService } from "@/services/orchestrator/orchestrator.service"; import { apiError } from "../../_response";
+export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){ try{ const {id}=await params; const plan=await orchestratorService.getPlan(id); if(!plan) throw new Error("Plano não encontrado."); return NextResponse.json({plan}); }catch(error){ return apiError(error); } }

@@ -4,9 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { JobList } from "@/components/jobs/job-list";
 import { EmptyState } from "@/components/ui/empty-state";
-import { listLocalAvatars, listLocalJobs } from "@/lib/local-store";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { APP_WORKSPACE_ID } from "@/lib/workspace";
+import { listLocalAvatars, listLocalJobEvents, listLocalJobs } from "@/lib/local-store";
 import type { JobStatus } from "@/types";
 
 
@@ -16,36 +14,32 @@ export type JobListItem = {
   status: JobStatus;
   final_video_path: string | null;
   created_at: string;
+  updated_at: string;
   avatars: { name: string; image_path?: string }[] | { name: string; image_path?: string } | null;
   source_video_url?: string | null;
   viral_videos: { title: string; url: string; platform: string }[] | { title: string; url: string; platform: string } | null;
   audio_path?: string | null;
+  latest_event_message?: string | null;
+  latest_event_at?: string | null;
+  feedback?: 'good' | 'bad' | null;
 };
 
 export default async function JobsPage() {
   const localAvatars = await listLocalAvatars();
   const localJobs = await listLocalJobs();
-  let jobs: JobListItem[] = localJobs.map((job) => {
+  const jobs: JobListItem[] = await Promise.all(localJobs.map(async (job) => {
     const avatar = localAvatars.find((avatar) => avatar.id === job.avatar_id);
+    const latestEvent = (await listLocalJobEvents(job.id)).at(-1);
     return {
       ...job,
       avatars: avatar ? { name: avatar.name, image_path: avatar.image_path } : null,
       viral_videos: null,
       source_video_url: job.source_video_url ?? null,
-      audio_path: job.audio_path
+      audio_path: job.audio_path,
+      latest_event_message: latestEvent?.message ?? null,
+      latest_event_at: latestEvent?.created_at ?? null
     };
-  });
-
-  if (hasSupabaseConfig()) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("reaction_jobs")
-      .select("id, topic, status, final_video_path, created_at, avatars(name, image_path), audio_path, viral_videos(title, url, platform)")
-      .eq("user_id", APP_WORKSPACE_ID)
-      .order("created_at", { ascending: false });
-
-    jobs = [...jobs, ...((data ?? []) as unknown as JobListItem[])];
-  }
+  }));
   return (
     <>
       <div className="title-row">

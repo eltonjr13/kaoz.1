@@ -62,6 +62,39 @@ function getYtDlpCommand() {
   return { command: "python", argsPrefix: ["-m", "yt_dlp"] };
 }
 
+function getOptionalEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+function getYtDlpCookieArgs() {
+  const cookiesPath = getOptionalEnv("YTDLP_COOKIES_PATH");
+  if (cookiesPath) {
+    return ["--cookies", cookiesPath];
+  }
+
+  const cookiesFromBrowser = getOptionalEnv("YTDLP_COOKIES_FROM_BROWSER");
+  return cookiesFromBrowser ? ["--cookies-from-browser", cookiesFromBrowser] : [];
+}
+
+function hasYtDlpCookieConfig() {
+  return Boolean(getOptionalEnv("YTDLP_COOKIES_PATH") || getOptionalEnv("YTDLP_COOKIES_FROM_BROWSER"));
+}
+
+function isLikelyCookieRequiredError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /empty media response|cookies-from-browser|use --cookies|login required|not accessible/i.test(message);
+}
+
+function createYtDlpCookieError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const authHint = hasYtDlpCookieConfig()
+    ? "Confira se os cookies configurados ainda estao validos."
+    : "Configure YTDLP_COOKIES_PATH ou YTDLP_COOKIES_FROM_BROWSER no .env.local e reinicie o servidor.";
+
+  return new Error(`O Instagram bloqueou o download sem sessao autenticada. ${authHint}\n\nDetalhes do yt-dlp:\n${message}`);
+}
+
 function isRemoteUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
@@ -242,6 +275,7 @@ export async function downloadSourceVideo(rawUrl: string, workDir: string) {
     await runCommand(ytDlp.command, [
       ...ytDlp.argsPrefix,
       "--no-playlist",
+      ...getYtDlpCookieArgs(),
       "--format",
       "bv*+ba/b",
       "--merge-output-format",
@@ -253,6 +287,10 @@ export async function downloadSourceVideo(rawUrl: string, workDir: string) {
   } catch (error) {
     if (isMissingCommandError(error)) {
       throw new Error("yt-dlp nao encontrado. Configure YTDLP_PATH ou instale yt-dlp no worker.");
+    }
+
+    if (isLikelyCookieRequiredError(error)) {
+      throw createYtDlpCookieError(error);
     }
 
     throw error;
@@ -391,6 +429,55 @@ async function renderWithFfmpeg(args: string[]) {
   }
 }
 
+function getExpertBackgroundMode(bgMode: string | null | undefined, sourceVideoPath: string | null, layout: string): "remove" | "original" {
+  return bgMode === "remove" && sourceVideoPath && layout === "source_pip" ? "remove" : "original";
+}
+
+function getReactionInputArgs(sourceVideoPath: string | null, preparedReactionPath: string, isReactionImage: boolean): string[] {
+  const loopArg = isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"];
+  if (sourceVideoPath) {
+    return [
+      ...loopArg,
+      "-i",
+      preparedReactionPath,
+      "-stream_loop",
+      "-1",
+      "-i",
+      sourceVideoPath
+    ];
+  }
+  return [
+    ...loopArg,
+    "-i",
+    preparedReactionPath
+  ];
+}
+
+function getAudioMap(voiceAudioPath: string | null | undefined, sourceVideoPath: string | null): string {
+  if (voiceAudioPath) {
+    return sourceVideoPath ? "2:a" : "1:a";
+  }
+  if (sourceVideoPath) {
+    return "1:a?";
+  }
+  return "0:a?";
+}
+
+async function getDurationLimit(voiceAudioPath: string | null | undefined): Promise<number> {
+  if (!voiceAudioPath) {
+    return 30;
+  }
+  try {
+    const audioInfo = await probeMediaInfo(voiceAudioPath);
+    if (audioInfo.duration && audioInfo.duration > 0) {
+      return Math.min(audioInfo.duration, 60);
+    }
+  } catch (error) {
+    console.error("Erro ao obter duracao do audio de voz:", error);
+  }
+  return 30;
+}
+
 export async function renderVerticalVideo(input: RenderVerticalVideoInput): Promise<RenderVerticalVideoResult> {
   const workDir = input.workDir || path.join(process.cwd(), ".generated", "jobs", input.jobId);
   const outputPath = input.outputPath || path.join(workDir, "final-reaction.mp4");
@@ -400,50 +487,19 @@ export async function renderVerticalVideo(input: RenderVerticalVideoInput): Prom
 
   const sourceVideoPath = await prepareSourceVideo(input, workDir);
   const layout = input.layout ?? "source_pip";
-  const expertBackgroundMode =
-    input.expertBackgroundMode === "remove" && sourceVideoPath && layout === "source_pip" ? "remove" : "original";
+  const expertBackgroundMode = getExpertBackgroundMode(input.expertBackgroundMode, sourceVideoPath, layout);
   const preparedReactionPath = await prepareReactionVideo(input, workDir, expertBackgroundMode === "remove");
   const isReactionImage = input.reactionIsImage || /\.(png|jpe?g|webp)$/i.test(preparedReactionPath);
 
   const filter = sourceVideoPath ? buildReactionCollageFilter(layout, expertBackgroundMode) : buildExpertOnlyFilter();
-  const inputArgs = sourceVideoPath
-    ? [
-        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
-        "-i",
-        preparedReactionPath,
-        "-stream_loop",
-        "-1",
-        "-i",
-        sourceVideoPath
-      ]
-    : [
-        ...(isReactionImage ? ["-loop", "1"] : ["-stream_loop", "-1"]),
-        "-i",
-        preparedReactionPath
-      ];
+  const inputArgs = getReactionInputArgs(sourceVideoPath, preparedReactionPath, isReactionImage);
 
   if (input.voiceAudioPath) {
     inputArgs.push("-i", input.voiceAudioPath);
   }
 
-  let audioMap = "0:a?";
-  if (input.voiceAudioPath) {
-    audioMap = sourceVideoPath ? "2:a" : "1:a";
-  } else if (sourceVideoPath) {
-    audioMap = "1:a?";
-  }
-
-  let durationLimit = 30;
-  if (input.voiceAudioPath) {
-    try {
-      const audioInfo = await probeMediaInfo(input.voiceAudioPath);
-      if (audioInfo.duration && audioInfo.duration > 0) {
-        durationLimit = Math.min(audioInfo.duration, 60);
-      }
-    } catch (error) {
-      console.error("Erro ao obter duracao do audio de voz:", error);
-    }
-  }
+  const audioMap = getAudioMap(input.voiceAudioPath, sourceVideoPath);
+  const durationLimit = await getDurationLimit(input.voiceAudioPath);
 
   await renderWithFfmpeg([
     "-y",

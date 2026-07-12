@@ -1,6 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { getOmniVoiceRuntimeConfig } from "@/services/omnivoice/omnivoice.settings";
 import type { VoiceSettings } from "@/types";
 
 export type GenerateVoiceInput = {
@@ -18,80 +19,143 @@ export type GeneratedVoice = {
 
 type GradioAudioOutput = string | { url?: string };
 
-export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
-  const apiUrl = process.env.OMNIVOICE_API_URL;
+function extractVoiceSettings(settings: VoiceSettings | null | undefined) {
+  const s = settings || {};
+  return {
+    ns: s.inference_steps ?? 16,
+    gs: s.guidance_scale ?? 3.0,
+    dn: s.denoise_ratio ?? 0.8,
+    sp: s.speed ?? 1.1,
+    du: s.duration ?? 0,
+    pp: s.preprocess_prompt ?? true,
+    po: s.postprocess_output ?? true
+  };
+}
 
-  if (!apiUrl) {
-    throw new Error("OMNIVOICE_API_URL não configurada no .env.local.");
+async function predictVoice(app: Client, input: GenerateVoiceInput, voiceParams: ReturnType<typeof extractVoiceSettings>) {
+  const { ns, gs, dn, sp, du, pp, po } = voiceParams;
+  if (input.refAudioPath) {
+    // If it's a relative path starting with /uploads, resolve it to public dir
+    let audioDiskPath = input.refAudioPath;
+    if (audioDiskPath.startsWith("/uploads/")) {
+      audioDiskPath = path.join(process.cwd(), "public", audioDiskPath.replace(/^\//, ""));
+    }
+    console.log(`[OmniVoice] Iniciando Clonagem de Voz usando: ${audioDiskPath}`);
+    const ref_audio = handle_file(audioDiskPath);
+    console.log("[OmniVoice] Enviando requisição de clonagem para o Gradio (isso pode levar de 30 a 60 segundos)...");
+    const result = await app.predict(0, [
+      input.script,         // vc_text
+      "Portuguese (pt)",    // vc_lang
+      ref_audio,            // vc_ref_audio
+      "",                   // vc_ref_text
+      ns,                   // vc_ns
+      gs,                   // vc_gs
+      dn,                   // vc_dn
+      sp,                   // vc_sp
+      du,                   // vc_du
+      pp,                   // vc_pp
+      po                    // vc_po
+    ]);
+    console.log("[OmniVoice] Clonagem de voz concluída no Gradio!");
+    return result;
+  } else {
+    console.log("[OmniVoice] Iniciando Voice Design (fallback padrão)");
+    console.log("[OmniVoice] Enviando requisição de design de voz para o Gradio...");
+    const result = await app.predict(1, [
+      input.script,         // vd_text
+      "Portuguese (pt)",    // vd_lang
+      ns,                   // vd_ns
+      gs,                   // vd_gs
+      dn,                   // vd_dn
+      sp,                   // vd_sp
+      du,                   // vd_du
+      pp,                   // vd_pp
+      po,                   // vd_po
+      "female",             // Gender
+      "young adult",        // Age
+      "moderate pitch",     // Pitch
+      "Auto",               // Style
+      "Auto",               // English Accent
+      "Auto"                // Chinese Dialect
+    ]);
+    console.log("[OmniVoice] Design de voz concluído no Gradio!");
+    return result;
+  }
+}
+
+async function downloadVoiceAudio(audioUrl: string, jobId: string): Promise<string> {
+  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  await mkdir(outputDir, { recursive: true });
+  
+  const audioFileName = `${jobId}-voice.mp3`;
+  const diskPath = path.join(outputDir, audioFileName);
+  const publicPath = `/uploads/audio/${audioFileName}`;
+
+  const fileRes = await fetch(audioUrl);
+  if (!fileRes.ok) {
+    throw new Error(`Falha ao baixar áudio do Gradio: ${fileRes.statusText}`);
+  }
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  await writeFile(diskPath, buffer);
+  return publicPath;
+}
+
+const globalForGradio = globalThis as unknown as {
+  omniVoiceClient?: Client;
+  omniVoiceApiUrl?: string;
+};
+
+async function getGradioClient(apiUrl: string): Promise<Client> {
+  if (globalForGradio.omniVoiceClient && globalForGradio.omniVoiceApiUrl === apiUrl) {
+    console.log("[OmniVoice] Reutilizando conexão Gradio existente.");
+    return globalForGradio.omniVoiceClient;
   }
 
-  // Connect to Gradio client
+  if (globalForGradio.omniVoiceClient) {
+    try {
+      // @ts-ignore
+      globalForGradio.omniVoiceClient.close?.();
+    } catch (e) {
+      console.error("[OmniVoice] Erro ao fechar conexão antiga:", e);
+    }
+  }
+
   console.log(`[OmniVoice] Conectando à API Gradio: ${apiUrl}`);
-  const app = await Client.connect(apiUrl);
+  const client = await Client.connect(apiUrl);
+  globalForGradio.omniVoiceClient = client;
+  globalForGradio.omniVoiceApiUrl = apiUrl;
   console.log("[OmniVoice] Conectado com sucesso à API Gradio!");
+  return client;
+}
+
+export async function generateOmniVoice(input: GenerateVoiceInput): Promise<GeneratedVoice> {
+  const config = await getOmniVoiceRuntimeConfig();
+  const apiUrl = config.effectiveApiUrl;
+
+  if (!apiUrl) {
+    throw new Error("OMNIVOICE_API_URL nao configurada. Defina a URL nas configuracoes do OmniVoice ou no .env.local.");
+  }
+
+  // Connect to Gradio client (reusing connection if possible)
+  const app = await getGradioClient(apiUrl);
 
   // Extract advanced voice parameters with safe fallbacks
-  const settings = input.settings || {};
-  const ns = settings.inference_steps ?? 32;
-  const gs = settings.guidance_scale ?? 3.0;
-  const dn = settings.denoise_ratio ?? 0.8;
-  const sp = settings.speed ?? 1.0;
-  const du = settings.duration ?? 0;
-  const pp = settings.preprocess_prompt ?? true;
-  const po = settings.postprocess_output ?? true;
+  const voiceParams = extractVoiceSettings(input.settings);
 
-  console.log(`[OmniVoice] Parâmetros de Dublagem - Steps: ${ns}, Guidance: ${gs}, Denoise: ${dn}, Speed: ${sp}, Duration: ${du}, Preprocess: ${pp}, Postprocess: ${po}`);
+  console.log(`[OmniVoice] Parâmetros de Dublagem - Steps: ${voiceParams.ns}, Guidance: ${voiceParams.gs}, Denoise: ${voiceParams.dn}, Speed: ${voiceParams.sp}, Duration: ${voiceParams.du}, Preprocess: ${voiceParams.pp}, Postprocess: ${voiceParams.po}`);
+
+  // Use default reference audio if none was explicitly provided
+  const effectiveRefAudio = input.refAudioPath || config.defaultRefAudio;
+  const effectiveInput = { ...input, refAudioPath: effectiveRefAudio };
 
   let result;
   try {
-    if (input.refAudioPath) {
-      // Mode: Voice Clone (predict(0))
-      console.log(`[OmniVoice] Iniciando Clonagem de Voz usando: ${input.refAudioPath}`);
-      const ref_audio = handle_file(input.refAudioPath);
-      console.log("[OmniVoice] Enviando requisição de clonagem para o Gradio (isso pode levar de 30 a 60 segundos)...");
-      result = await app.predict(0, [
-        input.script,         // vc_text
-        "Portuguese (pt)",    // vc_lang
-        ref_audio,            // vc_ref_audio
-        null,                 // vc_ref_text
-        ns,                   // vc_ns
-        gs,                   // vc_gs
-        dn,                   // vc_dn
-        sp,                   // vc_sp
-        du,                   // vc_du
-        pp,                   // vc_pp
-        po                    // vc_po
-      ]);
-      console.log("[OmniVoice] Clonagem de voz concluída no Gradio!");
-    } else {
-      // Mode: Voice Design (predict(1))
-      console.log("[OmniVoice] Iniciando Voice Design (fallback padrão)");
-      console.log("[OmniVoice] Enviando requisição de design de voz para o Gradio...");
-      result = await app.predict(1, [
-        input.script,         // vd_text
-        "Portuguese (pt)",    // vd_lang
-        ns,                   // vd_ns
-        gs,                   // vd_gs
-        dn,                   // vd_dn
-        sp,                   // vd_sp
-        du,                   // vd_du
-        pp,                   // vd_pp
-        po,                   // vd_po
-        "female",             // Gender
-        "young adult",        // Age
-        "moderate pitch",     // Pitch
-        "Auto",               // Style
-        "Auto",               // English Accent
-        "Auto"                // Chinese Dialect
-      ]);
-      console.log("[OmniVoice] Design de voz concluído no Gradio!");
-    }
-  } finally {
-    try {
-      app.close();
-    } catch (closeErr) {
-      console.error("[OmniVoice] Erro ao fechar conexão Gradio:", closeErr);
-    }
+    result = await predictVoice(app, effectiveInput, voiceParams);
+  } catch (error: any) {
+    console.warn("[OmniVoice] Erro na primeira tentativa (sessão expirada/servidor reiniciado). Reconectando...", error?.message || "");
+    delete globalForGradio.omniVoiceClient;
+    const newApp = await getGradioClient(apiUrl);
+    result = await predictVoice(newApp, effectiveInput, voiceParams);
   }
 
   const data = result.data as GradioAudioOutput[];
@@ -102,24 +166,19 @@ export async function generateOmniVoice(input: GenerateVoiceInput): Promise<Gene
     throw new Error("Gradio não retornou uma URL válida para o áudio gerado.");
   }
 
-  // Destination folder in Next.js public uploads
-  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
-  await mkdir(outputDir, { recursive: true });
+  let finalAudioPath = audioUrl;
   
-  const audioFileName = `${input.jobId}-voice.mp3`;
-  const diskPath = path.join(outputDir, audioFileName);
-  const publicPath = `/uploads/audio/${audioFileName}`;
-
-  // Download the generated audio file
-  const fileRes = await fetch(audioUrl);
-  if (!fileRes.ok) {
-    throw new Error(`Falha ao baixar áudio do Gradio: ${fileRes.statusText}`);
+  if (audioUrl.startsWith("http")) {
+    console.log("[OmniVoice] Retornando URL direta para baixa latência. Iniciando cache em background...");
+    downloadVoiceAudio(audioUrl, input.jobId).catch(err => {
+      console.error("[OmniVoice] Falha no download em background:", err);
+    });
+  } else {
+    finalAudioPath = await downloadVoiceAudio(audioUrl, input.jobId);
   }
-  const buffer = Buffer.from(await fileRes.arrayBuffer());
-  await writeFile(diskPath, buffer);
 
   return {
-    audioPath: publicPath,
+    audioPath: finalAudioPath,
     durationSeconds: 15
   };
 }

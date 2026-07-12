@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { searchViralVideos, type ViralSearchPlatform } from "@/lib/videos/viral-search";
 
 const allowedPlatforms = new Set<ViralSearchPlatform>(["tiktok", "instagram", "youtube"]);
+const defaultPlatforms: ViralSearchPlatform[] = ["tiktok", "instagram", "youtube"];
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -9,14 +10,14 @@ function jsonError(message: string, status = 400) {
 
 function parsePlatforms(value: unknown): ViralSearchPlatform[] {
   if (!Array.isArray(value)) {
-    return ["instagram", "youtube"];
+    return defaultPlatforms;
   }
 
   const platforms = value.filter((platform): platform is ViralSearchPlatform => {
     return typeof platform === "string" && allowedPlatforms.has(platform as ViralSearchPlatform);
   });
 
-  return platforms.length ? platforms : ["instagram", "youtube"];
+  return platforms.length ? platforms : defaultPlatforms;
 }
 
 export async function POST(request: Request) {
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
     niche?: unknown;
     platforms?: unknown;
     limit?: unknown;
+    language?: unknown;
+    intent?: unknown;
   } | null;
 
   const niche = typeof body?.niche === "string" ? body.niche.trim() : "";
@@ -36,7 +39,9 @@ export async function POST(request: Request) {
   const results = await searchViralVideos({
     niche,
     platforms: parsePlatforms(body?.platforms),
-    limit
+    limit,
+    language: typeof body?.language === "string" ? body.language : undefined,
+    intent: body?.intent === "react" || body?.intent === "discover" || body?.intent === "analyze" ? body.intent : undefined
   });
 
   return NextResponse.json({

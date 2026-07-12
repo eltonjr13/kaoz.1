@@ -1,0 +1,54 @@
+import { chromium } from 'playwright';
+import * as path from 'path';
+import * as fs from 'fs';
+async function main() {
+  console.log('[INSPECT] Inicializando navegador...');
+  const profilePath = path.resolve('storage/browser-profile/');
+  const savedUrlPath = path.resolve('storage/flow_project_url.txt');
+  let targetUrl = 'https://flow.google';
+  if (fs.existsSync(savedUrlPath)) {
+    targetUrl = fs.readFileSync(savedUrlPath, 'utf-8').trim();
+  }
+  const context = await chromium.launchPersistentContext(profilePath, {
+    headless: true,
+    viewport: { width: 1280, height: 720 },
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: [
+      '--disable-dev-shm-usage',
+      '--disable-web-security',
+      '--disable-blink-features=AutomationControlled'
+    ],
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+  });
+  const page = context.pages()[0] || await context.newPage();
+  try {
+    console.log('[INSPECT] Navegando para o workspace...');
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(8000);
+    console.log('[INSPECT] Procurando botão "Adicionar mídia"...');
+    const plusBtn = page.locator('button:has-text("Adicionar mídia"), button:has-text("Add media"), button:has-text("add")').first();
+    if (await plusBtn.count() > 0 && await plusBtn.isVisible()) {
+      console.log('[INSPECT] Botão localizado. Clicando...');
+      await plusBtn.click();
+      await page.waitForTimeout(2000);
+      // Save screenshot of the open menu
+      const screenshotPath = path.resolve('storage/flow-plus-menu.png');
+      await page.screenshot({ path: screenshotPath });
+      console.log(`[INSPECT] Screenshot do menu salvo em: ${screenshotPath}`);
+      // List all visible text elements in the menu
+      const menuText = await page.evaluate(() => {
+        const dialogs = Array.from(document.querySelectorAll('[role="menu"], [role="dialog"], [role="listbox"], div[data-radix-menu-content]'));
+        return dialogs.map(d => (d as HTMLElement).innerText || d.textContent || '');
+      });
+      console.log('[INSPECT] Conteúdo de texto do menu aberto:', menuText);
+    } else {
+      console.error('[INSPECT] Botão "Adicionar mídia" não encontrado ou não visível.');
+    }
+  } catch (err) {
+    console.error('[INSPECT] Erro:', err);
+  } finally {
+    await context.close();
+    console.log('[INSPECT] Navegador fechado.');
+  }
+}
+main().catch(console.error);

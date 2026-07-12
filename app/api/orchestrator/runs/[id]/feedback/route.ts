@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { orchestratorStore } from "@/services/orchestrator/orchestrator.store";
+import { appendAgentMemory } from "@/lib/agent-memory";
+import { apiError } from "../../../_response";
+export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){try{const run=await orchestratorStore.getRun((await params).id);if(!run)throw new Error("Execução não encontrada.");const body=await request.json().catch(()=>null) as {feedback?:unknown}|null;const feedback=typeof body?.feedback==="string"?body.feedback.trim():"";if(!feedback||feedback.length>2000)throw new Error("Feedback deve ter entre 1 e 2000 caracteres.");await appendAgentMemory({avatarId:"orchestrator",type:/útil|bom|good|sucesso/i.test(feedback)?"success":"failure",promptUsed:`Feedback da execução ${run.id}`,modelUsed:"Kaoz Orchestrator",learnings:feedback,inputSummary:run.planId,outputSummary:feedback,taskType:"project",topic:run.planId});return NextResponse.json({run});}catch(error){return apiError(error);}}

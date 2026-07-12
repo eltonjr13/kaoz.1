@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { createLocalAvatar, listLocalAvatars } from "@/lib/local-store";
-import { createClient, hasSupabaseConfig } from "@/lib/supabase/server";
-import { APP_STORAGE_PREFIX, APP_WORKSPACE_ID } from "@/lib/workspace";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -26,32 +24,7 @@ function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function safeFileName(fileName: string) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 export async function GET() {
-  if (hasSupabaseConfig()) {
-    try {
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from("avatars")
-        .select("*")
-        .eq("user_id", APP_WORKSPACE_ID)
-        .order("created_at", { ascending: false });
-
-      if (!error) {
-        const localAvatars = await listLocalAvatars();
-        return NextResponse.json({ avatars: [...localAvatars, ...(data ?? [])] });
-      }
-    } catch (err) {
-      console.error("Erro ao ler avatares do Supabase:", err);
-    }
-  }
-
   const localAvatars = await listLocalAvatars();
   return NextResponse.json({ avatars: localAvatars });
 }
@@ -118,56 +91,6 @@ export async function POST(request: Request) {
         return badRequest("O áudio de referência não pode ser maior que 15MB.");
       }
       voiceRefFile = voiceReference;
-    }
-
-    if (hasSupabaseConfig()) {
-      try {
-        const supabase = await createClient();
-        // Upload image/video
-        const imagePath = `${APP_STORAGE_PREFIX}/${crypto.randomUUID()}-${safeFileName(image.name || "avatar.jpg")}`;
-        const { error: uploadError } = await supabase.storage.from("avatars").upload(imagePath, image, {
-          cacheControl: "3600",
-          contentType: image.type,
-          upsert: false
-        });
-
-        if (!uploadError) {
-          let voicePath: string | null = null;
-          if (voiceRefFile) {
-            const tempPath = `${APP_STORAGE_PREFIX}/${crypto.randomUUID()}-${safeFileName(voiceRefFile.name || "voice.wav")}`;
-            const { error: audioUploadError } = await supabase.storage.from("avatars").upload(tempPath, voiceRefFile, {
-              cacheControl: "3600",
-              contentType: voiceRefFile.type,
-              upsert: false
-            });
-            if (!audioUploadError) {
-              voicePath = tempPath;
-            }
-          }
-
-          const { data, error } = await supabase
-            .from("avatars")
-            .insert({
-              user_id: APP_WORKSPACE_ID,
-              name,
-              image_path: imagePath,
-              voice_reference_path: voicePath,
-              consent_accepted: true,
-              consent_accepted_at: new Date().toISOString(),
-              status: "ready",
-              personality: personalityJson,
-              parent_id: parentId
-            })
-            .select("*")
-            .single();
-
-          if (!error) {
-            return NextResponse.json({ avatar: data }, { status: 201 });
-          }
-        }
-      } catch (err) {
-        console.error("Falha ao criar avatar no Supabase, caindo para local:", err);
-      }
     }
 
     const avatar = await createLocalAvatar({ name, file: image, voiceFile: voiceRefFile, personality: personalityJson, parentId });

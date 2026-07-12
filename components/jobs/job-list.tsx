@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, ExternalLink, RefreshCw, X } from "lucide-react";
+import { Download, ExternalLink, RefreshCw, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 import type { JobListItem } from "@/app/(dashboard)/jobs/page";
 
@@ -26,6 +26,267 @@ function getPlatformLabel(platform: string) {
   return "Video";
 }
 
+function formatRelativeTime(iso?: string | null) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffSeconds = Math.max(1, Math.floor(diffMs / 1000));
+  if (diffSeconds < 60) {
+    return `há ${diffSeconds}s`;
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `há ${diffMinutes}m`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `há ${diffHours}h`;
+  }
+
+  return `há ${Math.floor(diffHours / 24)}d`;
+}
+
+function getStatusHint(status: JobListItem["status"]) {
+  switch (status) {
+    case "queued":
+      return "Na fila aguardando processamento.";
+    case "researching":
+      return "Baixando e preparando a fonte.";
+    case "scripting":
+      return "Gerando roteiro.";
+    case "voice_generating":
+      return "Gerando a voz.";
+    case "lip_syncing":
+      return "Sincronizando boca em tempo real.";
+    case "rendering":
+      return "Montando o vídeo final.";
+    case "review":
+      return "Pronto para revisão.";
+    case "completed":
+      return "Finalizado com sucesso.";
+    case "failed":
+      return "Falhou e precisa de atenção.";
+    default:
+      return "Job em andamento.";
+  }
+}
+
+function JobSourceCell({ sourceUrl, sourceLabel }: { sourceUrl: string | null; sourceLabel: string }) {
+  if (!sourceUrl) {
+    return <span className="muted">-</span>;
+  }
+  return (
+    <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
+      <ExternalLink size={15} />
+      {sourceLabel}
+    </a>
+  );
+}
+
+function JobStatusCell({ job }: { job: JobListItem }) {
+  const badgeMessage = job.latest_event_message || getStatusHint(job.status);
+  const pulseMessage = job.latest_event_at
+    ? `Último pulso ${formatRelativeTime(job.latest_event_at)}`
+    : `Atualizado ${formatRelativeTime(job.updated_at)}`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <JobStatusBadge status={job.status} />
+      <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.35 }}>
+        {badgeMessage}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--muted)" }}>
+        {pulseMessage}
+      </span>
+    </div>
+  );
+}
+
+function JobActionsCell({
+  job,
+  loadingJobId,
+  onRestart,
+  onColabSync,
+  onEvaluate
+}: {
+  job: JobListItem;
+  loadingJobId: string | null;
+  onRestart: (jobId: string, startFrom?: "lipsync") => void;
+  onColabSync: (job: JobListItem) => void;
+  onEvaluate: (jobId: string, feedback: 'good' | 'bad') => void;
+}) {
+  const isLipSyncing = job.status === "lip_syncing";
+  const showRestart = !job.final_video_path && !isLipSyncing;
+  const showRefakeLipSync = !!(
+    job.audio_path &&
+    job.status !== "researching" &&
+    job.status !== "scripting" &&
+    job.status !== "voice_generating" &&
+    job.status !== "queued"
+  );
+
+  return (
+    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+      {job.final_video_path && (
+        <a className="button secondary" href={job.final_video_path}>
+          <Download size={16} /> Baixar
+        </a>
+      )}
+
+      {isLipSyncing && (
+        <button
+          className="button"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto",
+            background: "var(--brand)",
+            color: "#fff"
+          }}
+          onClick={() => onColabSync(job)}
+        >
+          Sincronizar (Colab)
+        </button>
+      )}
+
+      {showRestart && (
+        <button
+          className="button secondary"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto"
+          }}
+          onClick={() => onRestart(job.id)}
+          disabled={loadingJobId !== null}
+        >
+          <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
+          {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
+        </button>
+      )}
+
+      {showRefakeLipSync && (
+        <button
+          className="button secondary"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            minHeight: "auto"
+          }}
+          onClick={() => onRestart(job.id, "lipsync")}
+          disabled={loadingJobId !== null}
+        >
+          <RefreshCw size={14} className={loadingJobId === `${job.id}-lipsync` ? "spin-icon" : ""} />
+          {loadingJobId === `${job.id}-lipsync` ? "Iniciando..." : "Refazer LipSync"}
+        </button>
+      )}
+
+      {job.status === "completed" && (
+        <div style={{ display: "flex", gap: "4px", borderLeft: "1px solid var(--line)", paddingLeft: "8px", marginLeft: "4px" }}>
+          <button
+            type="button"
+            title="Amei o resultado (👍)"
+            style={{
+              border: "none",
+              background: job.feedback === "good" ? "rgba(16, 185, 129, 0.15)" : "transparent",
+              color: job.feedback === "good" ? "#10b981" : "var(--muted)",
+              cursor: "pointer",
+              borderRadius: "6px",
+              padding: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "transform 0.15s ease, background 0.2s",
+            }}
+            onClick={() => onEvaluate(job.id, "good")}
+            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.15)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <ThumbsUp size={15} fill={job.feedback === "good" ? "#10b981" : "none"} />
+          </button>
+          <button
+            type="button"
+            title="Não gostei do resultado (👎)"
+            style={{
+              border: "none",
+              background: job.feedback === "bad" ? "rgba(239, 68, 68, 0.15)" : "transparent",
+              color: job.feedback === "bad" ? "#ef4444" : "var(--muted)",
+              cursor: "pointer",
+              borderRadius: "6px",
+              padding: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "transform 0.15s ease, background 0.2s",
+            }}
+            onClick={() => onEvaluate(job.id, "bad")}
+            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.15)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <ThumbsDown size={15} fill={job.feedback === "bad" ? "#ef4444" : "none"} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JobRow({
+  job,
+  loadingJobId,
+  onRestart,
+  onColabSync,
+  onEvaluate
+}: {
+  job: JobListItem;
+  loadingJobId: string | null;
+  onRestart: (jobId: string, startFrom?: "lipsync") => void;
+  onColabSync: (job: JobListItem) => void;
+  onEvaluate: (jobId: string, feedback: 'good' | 'bad') => void;
+}) {
+  const avatar = getRelatedOne(job.avatars);
+  const sourceVideo = getRelatedOne(job.viral_videos);
+  const sourceUrl = sourceVideo?.url ?? job.source_video_url ?? null;
+  const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
+
+  return (
+    <tr id={`job-${job.id}`}>
+      <td>{job.topic}</td>
+      <td>{avatar?.name ?? "Avatar removido"}</td>
+      <td>
+        <JobSourceCell sourceUrl={sourceUrl} sourceLabel={sourceLabel} />
+      </td>
+      <td>
+        <JobStatusCell job={job} />
+      </td>
+      <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
+      <td>
+        <JobActionsCell
+          job={job}
+          loadingJobId={loadingJobId}
+          onRestart={onRestart}
+          onColabSync={onColabSync}
+          onEvaluate={onEvaluate}
+        />
+      </td>
+    </tr>
+  );
+}
+
 export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const router = useRouter();
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null);
@@ -34,6 +295,30 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [colabMode, setColabMode] = useState<"auto" | "manual">("auto");
+  const [evaluations, setEvaluations] = useState<Record<string, 'good' | 'bad'>>({});
+  const hasActiveJobs = useMemo(
+    () => jobs.some((job) => ["queued", "researching", "scripting", "voice_generating", "lip_syncing", "rendering"].includes(job.status)),
+    [jobs]
+  );
+
+  const renderedJobs = useMemo(() => {
+    return jobs.map((job) => ({
+      ...job,
+      feedback: evaluations[job.id] !== undefined ? evaluations[job.id] : job.feedback
+    }));
+  }, [jobs, evaluations]);
+
+  useEffect(() => {
+    if (!hasActiveJobs) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      router.refresh();
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, [hasActiveJobs, router]);
 
   async function handleUploadLipsync() {
     if (!colabJob || !uploadFile) return;
@@ -67,13 +352,14 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
     }
   }
 
-  async function handleRestart(jobId: string) {
-    setLoadingJobId(jobId);
+  async function handleRestart(jobId: string, startFrom?: "lipsync") {
+    const loadingKey = startFrom ? `${jobId}-${startFrom}` : jobId;
+    setLoadingJobId(loadingKey);
     try {
       const response = await fetch("/api/pipeline/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId })
+        body: JSON.stringify({ jobId, startFrom })
       });
       if (response.ok) {
         router.refresh();
@@ -89,9 +375,39 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
     }
   }
 
+  async function handleEvaluate(jobId: string, feedback: 'good' | 'bad') {
+    setEvaluations((prev) => ({ ...prev, [jobId]: feedback }));
+    try {
+      const response = await fetch("/api/jobs/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, feedback })
+      });
+      if (!response.ok) {
+        console.error("Falha ao enviar avaliação para o servidor.");
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("Erro ao enviar avaliação:", err);
+    }
+  }
+
   return (
     <>
       <div className="table-wrap">
+        {hasActiveJobs && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+            fontSize: 12,
+            color: "var(--muted)"
+          }}>
+            <RefreshCw size={14} className="spin-icon" />
+            Atualização automática ativa enquanto houver jobs em processamento.
+          </div>
+        )}
       <table className="data-table">
         <thead>
           <tr>
@@ -104,74 +420,16 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
           </tr>
         </thead>
         <tbody>
-          {jobs.map((job) => {
-            const avatar = getRelatedOne(job.avatars);
-            const sourceVideo = getRelatedOne(job.viral_videos);
-            const sourceUrl = sourceVideo?.url ?? job.source_video_url ?? null;
-            const sourceLabel = sourceVideo?.platform ? getPlatformLabel(sourceVideo.platform) : "Video local";
-
-            return (
-              <tr key={job.id}>
-                <td>{job.topic}</td>
-                <td>{avatar?.name ?? "Avatar removido"}</td>
-                <td>
-                  {sourceUrl ? (
-                    <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink size={15} />
-                      {sourceLabel}
-                    </a>
-                  ) : (
-                    <span className="muted">-</span>
-                  )}
-                </td>
-                <td>
-                  <JobStatusBadge status={job.status} />
-                </td>
-                <td>{new Date(job.created_at).toLocaleDateString("pt-BR")}</td>
-                <td>
-                  {job.final_video_path ? (
-                    <a className="button secondary" href={job.final_video_path}>
-                      <Download size={16} /> Baixar
-                    </a>
-                  ) : job.status === "lip_syncing" ? (
-                    <button
-                      className="button"
-                      style={{ 
-                        display: "inline-flex", 
-                        alignItems: "center", 
-                        gap: "6px",
-                        padding: "6px 12px",
-                        fontSize: "13px",
-                        minHeight: "auto",
-                        background: "var(--brand)",
-                        color: "#fff"
-                      }}
-                      onClick={() => setColabJob(job)}
-                    >
-                      Sincronizar (Colab)
-                    </button>
-                  ) : (
-                    <button
-                      className="button secondary"
-                      style={{ 
-                        display: "inline-flex", 
-                        alignItems: "center", 
-                        gap: "6px",
-                        padding: "6px 12px",
-                        fontSize: "13px",
-                        minHeight: "auto"
-                      }}
-                      onClick={() => handleRestart(job.id)}
-                      disabled={loadingJobId !== null}
-                    >
-                      <RefreshCw size={14} className={loadingJobId === job.id ? "spin-icon" : ""} />
-                      {loadingJobId === job.id ? "Iniciando..." : "Reiniciar"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+          {renderedJobs.map((job) => (
+            <JobRow
+              key={job.id}
+              job={job}
+              loadingJobId={loadingJobId}
+              onRestart={handleRestart}
+              onColabSync={setColabJob}
+              onEvaluate={handleEvaluate}
+            />
+          ))}
         </tbody>
       </table>
     </div>
@@ -285,19 +543,19 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                 
                 <div style={{ display: "grid", gap: "8px", background: "var(--panel-strong)", padding: "12px", borderRadius: "8px", border: "1px solid var(--line)" }}>
                   <div>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_URL</label>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>ARMAZENAMENTO</label>
                     <input 
                       readOnly 
-                      value={process.env.NEXT_PUBLIC_SUPABASE_URL || ""} 
+                      value="local" 
                       style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>SUPABASE_KEY (Anon Key)</label>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 800, color: "var(--muted)", display: "block", marginBottom: "2px" }}>PASTA DE DADOS</label>
                     <input 
                       readOnly 
-                      value={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""} 
+                      value=".generated/local-data" 
                       style={{ fontSize: "0.8rem", padding: "6px", width: "100%", borderRadius: "4px", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)" }}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
