@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { KaozSkill } from "./skill.types";
 import { parseSkillMarkdown } from "./skill.parser";
+import { isBuildSkillsIntent } from "./skill.intent";
 
 let cachedSkills: KaozSkill[] | null = null;
 
@@ -14,12 +15,8 @@ function validateSkill(skill: KaozSkill): void {
   if (!skill.instructions.trim()) throw new Error("As instruções da skill são obrigatórias.");
 }
 
-function isSkillBuildingObjective(objective: string): boolean {
-  return /criar|montar|gerar|projetar|revisar|atualizar/i.test(objective) && /skill/i.test(objective);
-}
-
 function autoSkillId(objective: string): string | null {
-  if (isSkillBuildingObjective(objective)) return "build-skills";
+  if (isBuildSkillsIntent(objective)) return "build-skills";
   if (/vídeo|video|reels|short|tiktok/i.test(objective)) return "content.create-short-video";
   if (/pesquis|notícia|fontes|relatório/i.test(objective)) return "research.web-research";
   return null;

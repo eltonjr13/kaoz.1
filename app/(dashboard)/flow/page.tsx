@@ -42,6 +42,7 @@ import {
   type ImageGenerationOperation,
   type ImageReferenceSource,
 } from "@/src/providers/flow/ImageGenerationContract";
+import { isBuildSkillsIntent } from "@/services/skills/skill.intent";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -232,13 +233,6 @@ export interface ChatMessageState {
     saveStatus?: 'saving' | 'saved' | 'error';
     saveError?: string;
   } | null;
-}
-
-function isBuildSkillsIntent(value: string): boolean {
-  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (/^\s*\/build-skills(?:\s|$)/.test(normalized)) return true;
-  return /\b(criar|crie|montar|monte|gerar|gere|projetar|projete|revisar|revise|atualizar|atualize)\b/.test(normalized)
-    && /\bskills?\b/.test(normalized);
 }
 
 interface ChatConversation {
