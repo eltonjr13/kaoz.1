@@ -24,6 +24,32 @@ import {
   ChevronDown,
   ChevronUp,
   Compass,
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  Settings,
+  Cpu,
+  Bot,
+  Key,
+  Globe,
+  Sparkles,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Play,
+  XCircle,
+  RefreshCw,
+  Box,
+  Mic,
+  Volume2,
+  Save,
+  Terminal,
+  Zap,
+  MoreVertical,
+  ChevronDown,
+  ChevronUp,
+  Compass,
   Rocket,
   Activity,
   Server
@@ -32,6 +58,7 @@ import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProvid
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
 import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia";
 import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
+import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1545,7 +1572,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1745,61 +1772,6 @@ export default function SettingsPage() {
 
       {/* Tabs Navigation */}
       <div className="sticky top-0 z-20 -mx-4 mb-6 flex items-center gap-1 overflow-x-auto border-y border-white/[0.06] bg-[#0a0a0a]/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <button
-          onClick={() => setActiveTab("geral")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "geral"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Contas de IA
-        </button>
-        <button
-          onClick={() => setActiveTab("agente")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "agente"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Agente LLM
-        </button>
-        <button
-          onClick={() => setActiveTab("voz")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "voz"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Voz & Transcrição
-        </button>
-        <button
-          onClick={() => setActiveTab("omnivoice")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "omnivoice"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          OmniVoice
-        </button>
-        <button
-          onClick={() => setActiveTab("mcp")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-            activeTab === "mcp"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          <Server size={14} className={activeTab === "mcp" ? "text-emerald-400" : "text-zinc-500"} />
-          MCP
-        </button>
-      </div>
-
-      {/* Info Status Board */}
-      {statusMessage && (
         <div
           className={`p-4 rounded-[12px] border flex items-start gap-3 text-[11px] leading-relaxed transition-all mb-6 ${
             statusMessage.type === "success"

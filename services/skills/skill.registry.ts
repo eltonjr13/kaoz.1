@@ -49,6 +49,10 @@ export class SkillRegistry {
       return loadSkillsSync().filter((s) => s.enabled); 
   } 
   
+  getAll(): KaozSkill[] {
+      return loadSkillsSync();
+  }
+
   get(id: string): KaozSkill | undefined { 
       return this.list().find((s) => s.id === id); 
   } 
@@ -63,6 +67,36 @@ export class SkillRegistry {
       
       return defaultSkill; 
   } 
+
+  save(skill: KaozSkill): void {
+      const skillsDir = path.join(process.cwd(), "skills");
+      if (!fs.existsSync(skillsDir)) {
+          fs.mkdirSync(skillsDir, { recursive: true });
+      }
+      const skillDir = path.join(skillsDir, skill.id);
+      if (!fs.existsSync(skillDir)) {
+          fs.mkdirSync(skillDir, { recursive: true });
+      }
+      
+      const content = `---
+name: ${JSON.stringify(skill.name)}
+description: ${JSON.stringify(skill.description)}
+version: ${JSON.stringify(skill.version)}
+preferredTools: ${JSON.stringify(skill.preferredTools || [])}
+requiredCapabilities: ${JSON.stringify(skill.requiredCapabilities || [])}
+approvalMode: ${skill.approvalMode}
+enabled: ${skill.enabled}
+---
+${skill.instructions}
+`;
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), content, "utf-8");
+      
+      // Update cache
+      if (!cachedSkills) loadSkillsSync();
+      const idx = cachedSkills!.findIndex(s => s.id === skill.id);
+      if (idx > -1) cachedSkills![idx] = skill;
+      else cachedSkills!.push(skill);
+  }
 }
 
 export const skillRegistry = new SkillRegistry();
