@@ -24,32 +24,6 @@ import {
   ChevronDown,
   ChevronUp,
   Compass,
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-import {
-  Settings,
-  Cpu,
-  Bot,
-  Key,
-  Globe,
-  Sparkles,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Play,
-  XCircle,
-  RefreshCw,
-  Box,
-  Mic,
-  Volume2,
-  Save,
-  Terminal,
-  Zap,
-  MoreVertical,
-  ChevronDown,
-  ChevronUp,
-  Compass,
   Rocket,
   Activity,
   Server
@@ -1772,6 +1746,72 @@ export default function SettingsPage() {
 
       {/* Tabs Navigation */}
       <div className="sticky top-0 z-20 -mx-4 mb-6 flex items-center gap-1 overflow-x-auto border-y border-white/[0.06] bg-[#0a0a0a]/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <button
+          onClick={() => setActiveTab("geral")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+            activeTab === "geral"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          Contas de IA
+        </button>
+        <button
+          onClick={() => setActiveTab("agente")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+            activeTab === "agente"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          Agente LLM
+        </button>
+        <button
+          onClick={() => setActiveTab("voz")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+            activeTab === "voz"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          Voz & Transcrição
+        </button>
+        <button
+          onClick={() => setActiveTab("omnivoice")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+            activeTab === "omnivoice"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          OmniVoice
+        </button>
+        <button
+          onClick={() => setActiveTab("mcp")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+            activeTab === "mcp"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          <Server size={14} className={activeTab === "mcp" ? "text-emerald-400" : "text-zinc-500"} />
+          MCP
+        </button>
+        <button
+          onClick={() => setActiveTab("skills")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+            activeTab === "skills"
+              ? "border-[#9D7CFF] text-[#9D7CFF]"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          <Sparkles size={14} className={activeTab === "skills" ? "text-[#9D7CFF]" : "text-zinc-500"} />
+          Skills
+        </button>
+      </div>
+
+      {/* Info Status Board */}
+      {statusMessage && (
         <div
           className={`p-4 rounded-[12px] border flex items-start gap-3 text-[11px] leading-relaxed transition-all mb-6 ${
             statusMessage.type === "success"
@@ -1799,6 +1839,13 @@ export default function SettingsPage() {
       {/* Tab Content Areas */}
       <div className="space-y-6">
         
+        {/* TAB: Skills */}
+        {activeTab === "skills" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <SkillsSettingsPanel />
+          </div>
+        )}
+
         {/* TAB: Agente LLM */}
         {activeTab === "agente" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">

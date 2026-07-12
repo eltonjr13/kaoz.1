@@ -5,6 +5,15 @@ import { parseSkillMarkdown } from "./skill.parser";
 
 let cachedSkills: KaozSkill[] | null = null;
 
+function validateSkill(skill: KaozSkill): void {
+  if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(skill.id) || skill.id.length > 64) {
+    throw new Error("ID inválido. Use até 64 caracteres: letras minúsculas, números, ponto ou hífen.");
+  }
+  if (!skill.name.trim()) throw new Error("O nome da skill é obrigatório.");
+  if (!skill.description.trim()) throw new Error("A descrição da skill é obrigatória.");
+  if (!skill.instructions.trim()) throw new Error("As instruções da skill são obrigatórias.");
+}
+
 // Skills padrão de fallback caso a pasta /skills ainda não esteja populada
 const fallbackSkills: KaozSkill[] = [
  { id:"general.execute-goal", name:"Objetivo geral", description:"Planeja e executa objetivos gerais com ferramentas disponíveis.", version:"1.0.0", instructions:"Decomponha o objetivo em etapas verificáveis, sem inventar resultados.", preferredTools:["system.summarize"], requiredCapabilities:[], approvalMode:"plan", enabled:true },
@@ -69,6 +78,7 @@ export class SkillRegistry {
   } 
 
   save(skill: KaozSkill): void {
+      validateSkill(skill);
       const skillsDir = path.join(process.cwd(), "skills");
       if (!fs.existsSync(skillsDir)) {
           fs.mkdirSync(skillsDir, { recursive: true });

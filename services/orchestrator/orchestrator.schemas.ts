@@ -9,7 +9,7 @@ export function parseCreatePlanInput(value: unknown): { objective: string; skill
   const objective = typeof value.objective === "string" ? value.objective.trim() : "";
   if (objective.length < 3 || objective.length > 8_000) throw new ValidationError("O objetivo deve ter entre 3 e 8000 caracteres.");
   const skillId = typeof value.skillId === "string" ? value.skillId.trim() : "auto";
-  if (!/^(auto|general\.execute-goal|research\.web-research|content\.create-short-video)$/.test(skillId)) throw new ValidationError("Skill inválida.");
+  if (skillId !== "auto" && (!/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(skillId) || skillId.length > 64)) throw new ValidationError("Skill inválida.");
   return { objective, skillId };
 }
 export function assertValidPlan(plan: ExecutionPlan, knownToolIds: Set<string>): void {
