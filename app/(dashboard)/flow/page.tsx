@@ -945,13 +945,30 @@ export default function FlowDashboardPage() {
   const [availableSkills, setAvailableSkills] = useState<{id:string,name:string,description?:string}[]>([]);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashSearch, setSlashSearch] = useState("");
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [skillsError, setSkillsError] = useState("");
 
   useEffect(() => {
-    fetch("/api/skills").then(r => r.json()).then(d => setAvailableSkills(d.skills || [])).catch(console.error);
+    setSkillsLoading(true);
+    fetch("/api/skills")
+      .then(r => {
+        if (!r.ok) throw new Error("Falha na rede");
+        return r.json();
+      })
+      .then(d => {
+        setAvailableSkills(d.skills || []);
+        setSkillsError("");
+      })
+      .catch(e => {
+        console.error(e);
+        setSkillsError("Erro ao carregar skills.");
+      })
+      .finally(() => setSkillsLoading(false));
   }, []);
 
   useEffect(() => {
-    const match = draftMessage.match(/^\/([\w.-]*)$/);
+    // Permite espaços no final da string pra não sumir se o user digitar "/skill "
+    const match = draftMessage.match(/^\/([\w.-]*)/);
     if (match) {
       setSlashSearch(match[1].toLowerCase());
       setShowSlashMenu(true);
@@ -3743,7 +3760,7 @@ export default function FlowDashboardPage() {
             )}
             
             <AnimatePresence>
-              {showSlashMenu && filteredSkills.length > 0 && (
+              {showSlashMenu && (
                 <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -3751,22 +3768,37 @@ export default function FlowDashboardPage() {
                   className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#9D7CFF]/20"
                 >
                   <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#9D7CFF] uppercase tracking-wider">Skills de Automação</p>
-                  <div className="flex flex-col gap-1 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 pr-1">
-                    {filteredSkills.map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setDraftMessage(`/${s.id} `);
-                          setShowSlashMenu(false);
-                        }}
-                        className="flex flex-col items-start rounded-lg px-3 py-2 hover:bg-white/10 text-left transition-colors"
-                      >
-                        <span className="text-sm font-medium text-white">{s.name}</span>
-                        <span className="text-xs text-white/40 truncate w-full mt-0.5">{s.description || s.id}</span>
-                      </button>
-                    ))}
-                  </div>
+                  
+                  {skillsLoading ? (
+                    <div className="px-3 py-4 text-xs text-white/50 text-center flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" size={14} /> Carregando...
+                    </div>
+                  ) : skillsError ? (
+                    <div className="px-3 py-3 text-xs text-red-400 text-center">
+                      {skillsError}
+                    </div>
+                  ) : filteredSkills.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-white/50 text-center">
+                      Nenhuma skill encontrada.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 pr-1">
+                      {filteredSkills.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setDraftMessage(`/${s.id} `);
+                            setShowSlashMenu(false);
+                          }}
+                          className="flex flex-col items-start rounded-lg px-3 py-2 hover:bg-white/10 text-left transition-colors"
+                        >
+                          <span className="text-sm font-medium text-white">{s.name}</span>
+                          <span className="text-xs text-white/40 truncate w-full mt-0.5">{s.description || s.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
