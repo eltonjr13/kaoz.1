@@ -202,7 +202,7 @@ export class McpManager {
     const playlistName = typeof args.name === "string" ? args.name : "Nova Playlist";
     const playlistDesc = typeof args.description === "string" ? args.description : "";
 
-    const prompt = `Uma capa de álbum criativa, vibrante e artística. Sem texto legível. Tema para uma playlist chamada "${playlistName}". ${playlistDesc}`;
+    const prompt = `A professional, highly aesthetic album cover art for a music playlist. Theme/Name: "${playlistName}". ${playlistDesc ? `Context: ${playlistDesc}. ` : ''}Style: vibrant, creative, artistic, highly detailed, visually striking. NO TEXT, NO LETTERS, no typography, no words, no watermarks. Abstract, atmospheric, or symbolic visual representation matching the playlist vibe.`;
     console.log(`[Spotify MCP] Gerando capa da playlist '${playlistName}' com Flow...`);
     
     // Configurado para quadrado 1:1 conforme instrução

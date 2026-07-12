@@ -357,16 +357,24 @@ export class FlowVideoGenerator {
       const tagName = await promptInput.evaluate(el => el.tagName.toLowerCase());
       const className = await promptInput.evaluate(el => el.className);
       logger.info(`Textbox de prompt localizado: tag=${tagName}, class=${className}`);
-      await promptInput.focus();
+      try {
+        const dismissBtns = page.locator('button:has-text("Got it"), button:has-text("Dismiss"), button:has-text("Entendi"), button:has-text("Pular"), button:has-text("Skip")');
+        if (await dismissBtns.count() > 0 && await dismissBtns.first().isVisible()) {
+          logger.info('Dismissing modal or tooltip before focusing...');
+          await dismissBtns.first().click({ timeout: 3000 }).catch(() => {});
+        }
+      } catch (e) {}
+
+      await promptInput.focus({ timeout: 5000 }).catch((e: Error) => logger.warn('Aviso: Timeout ao focar no prompt', e.message));
       
       // Clear current content and type prompt
       try {
         logger.info('Preenchendo prompt via locator.fill...');
-        await promptInput.fill('');
-        await promptInput.fill(prompt);
+        await promptInput.fill('', { timeout: 5000, force: true });
+        await promptInput.fill(prompt, { timeout: 5000, force: true });
       } catch (err) {
-        logger.warn('Falha ao usar fill. Usando click e teclado virtual...', err);
-        await promptInput.click();
+        logger.warn('Falha ao usar fill. Usando click e teclado virtual...');
+        await promptInput.click({ timeout: 5000, force: true }).catch(() => {});
         await page.keyboard.press('Control+A');
         await page.keyboard.press('Backspace');
         await page.keyboard.type(prompt, { delay: 10 });
