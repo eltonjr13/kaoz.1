@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
+import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
 
 type ProcessResult = {
@@ -805,27 +806,11 @@ export async function runFastInferenceApi(
   options: QueryOptions = {},
 ): Promise<string> {
   const executor = async (currentPrompt: string) => {
-    const config = provider === "cerebras"
-      ? {
-          apiKey: process.env.CEREBRAS_API_KEY,
-          baseURL: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1",
-          model: process.env.CEREBRAS_MODEL || "gemma-4-31b",
-        }
-      : provider === "zenmux-grok"
-        ? {
-            apiKey: process.env.ZENMUX_API_KEY,
-            baseURL: process.env.ZENMUX_BASE_URL || "https://api.zenmux.ai/v1",
-            model: process.env.ZENMUX_MODEL || "grok-4-fast",
-          }
-        : {
-            apiKey: process.env.IAMHC_API_KEY,
-            baseURL: process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1",
-            model: process.env.IAMHC_MODEL || "DeepSeek-V4-Flash",
-          };
+    const config = await getApiProviderConfig(provider === "zenmux-grok" ? "zenmux" : provider);
     if (!config.apiKey) throw new Error(`Chave de API ausente para ${provider}.`);
 
     const { OpenAI } = await import("openai");
-    const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
     const response = await client.chat.completions.create({
       model: config.model,
       messages: [{ role: "user", content: currentPrompt }],

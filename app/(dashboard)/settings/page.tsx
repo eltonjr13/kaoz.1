@@ -103,6 +103,19 @@ interface OmniVoiceConfig {
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
 
+type ApiProviderId = "gemini" | "openai" | "deepseek" | "anthropic" | "cerebras" | "zenmux" | "iamhc";
+type ApiProviderConfig = { id: ApiProviderId; configured: boolean; source: "settings" | "env" | "none"; baseUrl: string; model: string };
+
+const API_PROVIDER_LABELS: Record<ApiProviderId, string> = {
+  gemini: "Google Gemini",
+  openai: "OpenAI",
+  deepseek: "DeepSeek",
+  anthropic: "Anthropic Claude",
+  cerebras: "Cerebras",
+  zenmux: "ZenMux",
+  iamhc: "IAMHC",
+};
+
 const TTS_OPTIONS: TTSOption[] = [
   {
     id: "cartesia",
@@ -594,7 +607,94 @@ function AgentLLMCard({
           </div>
         </div>
       )}
+
+      {isSelected && isApiProvider && (
+        <div className="border-t border-white/5 bg-black/20 p-4 flex items-center gap-2">
+          <AgentLLMActionButton label="Testar conexão" action="test" busyAction={busyAction} disabled={hasBusyAction} icon={CheckCircle} onClick={() => onAction("test", "API respondeu com sucesso.")} />
+          <span className="text-[10px] text-zinc-500">Configure o token e o modelo em “Tokens das APIs”.</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ApiProviderSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
+  const [providers, setProviders] = useState<ApiProviderConfig[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, { apiKey: string; baseUrl: string; model: string }>>({});
+  const [saving, setSaving] = useState<ApiProviderId | null>(null);
+  const [expandedProvider, setExpandedProvider] = useState<ApiProviderId | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/api-providers/config", { cache: "no-store" });
+      const data = await response.json() as { providers?: ApiProviderConfig[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar as APIs.");
+      const next = data.providers || [];
+      setProviders(next);
+      setDrafts(Object.fromEntries(next.map((provider) => [provider.id, { apiKey: "", baseUrl: provider.baseUrl, model: provider.model }])));
+    } catch (error) {
+      onStatusMessage({ text: error instanceof Error ? error.message : String(error), type: "error" });
+    }
+  }, [onStatusMessage]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const updateDraft = (id: ApiProviderId, field: "apiKey" | "baseUrl" | "model", value: string) => {
+    setDrafts((current) => ({ ...current, [id]: { ...current[id], [field]: value } }));
+  };
+
+  const save = async (provider: ApiProviderConfig) => {
+    const draft = drafts[provider.id];
+    setSaving(provider.id);
+    try {
+      const response = await fetch("/api/api-providers/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: provider.id, ...(draft.apiKey ? { apiKey: draft.apiKey } : {}), baseUrl: draft.baseUrl, model: draft.model }),
+      });
+      const data = await response.json() as { provider?: ApiProviderConfig; error?: string };
+      if (!response.ok || !data.provider) throw new Error(data.error || "Não foi possível salvar a API.");
+      setProviders((current) => current.map((item) => item.id === provider.id ? data.provider! : item));
+      setDrafts((current) => ({ ...current, [provider.id]: { apiKey: "", baseUrl: data.provider!.baseUrl, model: data.provider!.model } }));
+      onStatusMessage({ text: `${API_PROVIDER_LABELS[provider.id]} salva. O token não será exibido novamente.`, type: "success" });
+    } catch (error) {
+      onStatusMessage({ text: error instanceof Error ? error.message : String(error), type: "error" });
+    } finally { setSaving(null); }
+  };
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d0d0f]">
+      <div className="flex flex-col gap-4 border-b border-white/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-violet-500/20 bg-violet-500/10 text-violet-300"><Key size={15} /></div>
+          <div><h3 className="text-sm font-bold text-zinc-100">Credenciais de API</h3><p className="mt-0.5 text-[10px] text-zinc-500">Tokens privados, modelos e endpoints</p></div>
+        </div>
+        <div className="flex items-center gap-2 text-[10px]"><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-300">{providers.filter((item) => item.configured).length} prontas</span><span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-zinc-500">{providers.length} provedores</span></div>
+      </div>
+      <div className="grid grid-cols-1 gap-px bg-white/[0.06] md:grid-cols-2">
+        {providers.map((provider) => {
+          const draft = drafts[provider.id] || { apiKey: "", baseUrl: provider.baseUrl, model: provider.model };
+          const isExpanded = expandedProvider === provider.id;
+          return <div key={provider.id} className={`bg-[#101012] transition-colors ${isExpanded ? "md:col-span-2" : "hover:bg-[#131316]"}`}>
+            <button type="button" onClick={() => setExpandedProvider(isExpanded ? null : provider.id)} className="flex w-full items-center gap-3 p-4 text-left">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${provider.configured ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.5)]" : "bg-zinc-700"}`} />
+              <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-zinc-200">{API_PROVIDER_LABELS[provider.id]}</span><span className="mt-0.5 block truncate text-[10px] font-mono text-zinc-600">{provider.model}</span></span>
+              <span className={`hidden rounded-full border px-2 py-0.5 text-[9px] font-bold sm:inline-flex ${provider.configured ? "border-emerald-500/15 bg-emerald-500/[0.07] text-emerald-400" : "border-white/10 bg-white/[0.03] text-zinc-500"}`}>{provider.configured ? "Configurada" : "Configurar"}</span>
+              {isExpanded ? <ChevronUp size={14} className="text-zinc-400" /> : <ChevronDown size={14} className="text-zinc-600" />}
+            </button>
+            {isExpanded && <div className="border-t border-white/[0.06] bg-black/20 p-4 sm:p-5">
+              <div className="mb-4 flex items-start justify-between gap-4"><p className="max-w-xl text-[10px] leading-relaxed text-zinc-500">O token fica salvo apenas no servidor local e nunca é exibido novamente. Deixe o campo vazio para manter o token atual.</p>{provider.configured && <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-emerald-400">Origem: {provider.source === "settings" ? "Configurações" : ".env"}</span>}</div>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <label className="space-y-1.5 lg:col-span-2"><span className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">Token da API</span><input type="password" value={draft.apiKey} onChange={(event) => updateDraft(provider.id, "apiKey", event.target.value)} placeholder={provider.configured ? "••••••••••••  Token já salvo" : "Cole o token da API"} className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-[11px] font-mono text-zinc-200 outline-none transition focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10" /></label>
+                <label className="space-y-1.5"><span className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">Modelo</span><input value={draft.model} onChange={(event) => updateDraft(provider.id, "model", event.target.value)} placeholder="Modelo" className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-[11px] font-mono text-zinc-200 outline-none transition focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10" /></label>
+                <label className="space-y-1.5"><span className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">Endpoint</span><input value={draft.baseUrl} onChange={(event) => updateDraft(provider.id, "baseUrl", event.target.value)} placeholder="URL base padrão" className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-[11px] font-mono text-zinc-200 outline-none transition focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10" /></label>
+              </div>
+              <div className="mt-4 flex items-center justify-end gap-2"><button type="button" onClick={() => setExpandedProvider(null)} className="rounded-full px-3 py-2 text-[10px] font-bold text-zinc-500 hover:text-zinc-300">Cancelar</button><button type="button" onClick={() => void save(provider)} disabled={saving !== null} className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[10px] font-bold text-black transition hover:bg-zinc-200 disabled:opacity-50">{saving === provider.id ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Salvar configuração</button></div>
+            </div>}
+          </div>;
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -789,6 +889,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
       </h2>
       
       <div className="space-y-6">
+        <ApiProviderSettingsPanel onStatusMessage={onStatusMessage} />
         {/* API Diretas */}
         <section className="space-y-3">
           <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">API Diretas</h3>
@@ -1605,7 +1706,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-8 py-10 pb-20 select-none overflow-y-auto" style={{ backgroundColor: '#0a0a0a', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-4 py-6 pb-20 sm:px-6 lg:px-8 lg:py-8 select-none overflow-y-auto" style={{ backgroundColor: '#0a0a0a', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.07] pb-6 mb-6 gap-4">
@@ -1614,12 +1715,10 @@ export default function SettingsPage() {
             <Settings size={20} className="text-zinc-400" />
             <span className="uppercase tracking-widest text-[13px]">Configurações do Sistema</span>
           </h1>
-          <p className="text-[11px] text-zinc-500 leading-relaxed max-w-xl">
-            Gerencie perfis de cookies, logins persistentes das IAs no Playwright e sessões ativas dos agentes de automação.
-          </p>
+          <p className="text-[11px] text-zinc-500 leading-relaxed max-w-xl">Centralize contas, APIs, modelos, voz e integrações usadas pelo agente.</p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        {activeTab === "geral" && <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             onClick={checkAllStatuses}
             disabled={isCheckingAll || !!loadingPortal}
@@ -1641,11 +1740,11 @@ export default function SettingsPage() {
             <XCircle size={12} />
             <span>Encerrar Navegadores</span>
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 mb-6 border-b border-white/[0.04] pb-px">
+      <div className="sticky top-0 z-20 -mx-4 mb-6 flex items-center gap-1 overflow-x-auto border-y border-white/[0.06] bg-[#0a0a0a]/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <button
           onClick={() => setActiveTab("geral")}
           className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${

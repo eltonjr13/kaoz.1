@@ -10,6 +10,7 @@ export type GenerateReactionScriptInput = {
 };
 
 import { OpenAI } from "openai";
+import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 
 function generateFallbackScript(input: GenerateReactionScriptInput): string {
   let fallback = `Olá pessoal! Hoje vamos fazer um react sobre: ${input.topic}.`;
@@ -38,16 +39,17 @@ function buildOpenAIPrompts(input: GenerateReactionScriptInput) {
 }
 
 export async function generateReactionScript(input: GenerateReactionScriptInput): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  const config = await getApiProviderConfig("openai");
+  if (!config.apiKey) {
     return generateFallbackScript(input);
   }
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: config.apiKey });
     const { prompt, systemInstruction } = buildOpenAIPrompts(input);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: config.model,
       messages: [
         {
           role: "system",
