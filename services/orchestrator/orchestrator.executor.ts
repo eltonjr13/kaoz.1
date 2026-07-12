@@ -6,6 +6,7 @@ import { requiredApproval, redactSecrets } from "./orchestrator.policy";
 import { orchestratorStore } from "./orchestrator.store";
 import type { ExecutionPlan, ExecutionRun, ExecutionStep } from "./orchestrator.types";
 import { applyAutomaticFailure, applyCancellation, applyManualRetry, applyResume } from "./orchestrator.transitions";
+import { appendAgentMemory } from "../../lib/agent-memory";
 
 const controllers = new Map<string, AbortController>();
 const active = new Set<string>();
@@ -83,6 +84,7 @@ export class OrchestratorExecutor {
     run.completedAt = new Date().toISOString();
     await orchestratorStore.saveRun(run);
     await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: hardFailure ? "run_failed" : "run_completed", message: hardFailure ? "Execução falhou." : "Execução concluída." });
+    await this.recordMemory(run);
     return true;
   }
 
@@ -110,39 +112,38 @@ export class OrchestratorExecutor {
 
   private async waitForStepApproval(run: ExecutionRun, step: ExecutionStep) {
     step.status = "awaiting_approval";
-    await orchestratorStore.saveRun(run);
+    await orchestratorStore.updateRun(run.id, (latest) => { const current = latest.steps.find((item) => item.id === step.id); if (current?.status === "pending") current.status = "awaiting_approval"; });
     await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "step_waiting_approval", message: `${step.title} aguarda aprovação.`, data: { stepId: step.id } });
   }
 
   private async markStepRunning(run: ExecutionRun, step: ExecutionStep) {
     step.status = "running";
     step.startedAt ||= new Date().toISOString();
-    run.callCount++;
-    await orchestratorStore.saveRun(run);
+    await orchestratorStore.updateRun(run.id, (latest) => { const current = latest.steps.find((item) => item.id === step.id); if (current) { current.status = "running"; current.startedAt = step.startedAt; latest.callCount++; } });
     await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "step_started", message: step.title, data: { stepId: step.id } });
   }
 
   private async completeStep(runId: string, stepId: string, output: unknown, artifacts?: ExecutionStep["artifacts"]) {
-    const run = await orchestratorStore.getRun(runId);
+    const run = await orchestratorStore.updateRun(runId, (latest) => { const step = latest.steps.find((item) => item.id === stepId); if (!step || latest.status === "cancelled" || step.status === "cancelled") return; step.output = truncateToolResult(output); step.artifacts = artifacts; step.status = "completed"; step.completedAt = new Date().toISOString(); });
     const step = run?.steps.find((item) => item.id === stepId);
-    if (!run || !step || run.status === "cancelled" || step.status === "cancelled") return;
-    step.output = truncateToolResult(output);
-    step.artifacts = artifacts;
-    step.status = "completed";
-    step.completedAt = new Date().toISOString();
-    await orchestratorStore.saveRun(run);
+    if (!run || !step || step.status !== "completed") return;
     await emitOrchestratorEvent({ planId: run.planId, runId, type: "step_completed", message: `${step.title} concluída.`, data: { stepId } });
+    for (const artifact of artifacts || []) await emitOrchestratorEvent({ planId: run.planId, runId, type: "artifact_created", message: `Artefato criado: ${artifact.name}.`, data: { stepId, artifactId: artifact.id, type: artifact.type } });
   }
 
   private async failStep(run: ExecutionRun, step: ExecutionStep, message: string) {
-    const transition = applyAutomaticFailure(step, redactSecrets(message));
-    if (transition === "retry") {
-      await orchestratorStore.saveRun(run);
-      await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "step_retrying", message: `Nova tentativa de ${step.title}.`, data: { stepId: step.id, retryCount: step.retryCount } });
+    const outcome: { value: "retry" | "failed" } = { value: "failed" };
+    const latest = await orchestratorStore.updateRun(run.id, (currentRun) => {
+      const currentStep = currentRun.steps.find((item) => item.id === step.id);
+      if (currentStep) outcome.value = applyAutomaticFailure(currentStep, redactSecrets(message));
+    });
+    const currentStep = latest?.steps.find((item) => item.id === step.id);
+    if (!latest || !currentStep) return;
+    if (outcome.value === "retry") {
+      await emitOrchestratorEvent({ planId: latest.planId, runId: latest.id, type: "step_retrying", message: `Nova tentativa de ${currentStep.title}.`, data: { stepId: currentStep.id, retryCount: currentStep.retryCount } });
       return;
     }
-    await orchestratorStore.saveRun(run);
-    await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "step_failed", message: step.error, data: { stepId: step.id } });
+    await emitOrchestratorEvent({ planId: latest.planId, runId: latest.id, type: "step_failed", message: currentStep.error || "A etapa falhou.", data: { stepId: currentStep.id } });
   }
 
   private async failRun(run: ExecutionRun, message: string) {
@@ -150,49 +151,47 @@ export class OrchestratorExecutor {
     run.error = redactSecrets(message);
     await orchestratorStore.saveRun(run);
     await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "run_failed", message: run.error });
+    await this.recordMemory(run);
+  }
+
+  private async recordMemory(run: ExecutionRun) {
+    const completed = run.steps.filter((step) => step.status === "completed").map((step) => step.title);
+    const failures = run.steps.filter((step) => step.status === "failed").map((step) => ({ title: step.title, error: step.error }));
+    const artifacts = run.steps.flatMap((step) => step.artifacts || []).map((artifact) => ({ name: artifact.name, type: artifact.type, path: artifact.path, url: artifact.url }));
+    await appendAgentMemory({ avatarId: "orchestrator", type: run.status === "completed" ? "success" : "failure", promptUsed: `Plano ${run.planId}`, modelUsed: "Kaoz Orchestrator", errorMessage: run.error || failures[0]?.error, learnings: JSON.stringify({ completed, failures, artifacts }).slice(0, 12_000), inputSummary: run.planId, outputSummary: `${completed.length} etapas concluídas; ${failures.length} falhas; ${artifacts.length} artefatos.`, taskType: "project", topic: run.planId }).catch((error) => console.warn("[OrchestratorMemory] Falha ao registrar execução:", error));
   }
 
   async cancel(id: string) {
-    const run = await orchestratorStore.getRun(id);
-    if (!run) throw new Error("Execução não encontrada.");
     controllers.get(id)?.abort();
-    applyCancellation(run);
-    await orchestratorStore.saveRun(run);
+    const run = await orchestratorStore.updateRun(id, (current) => { applyCancellation(current); });
+    if (!run) throw new Error("Execução não encontrada.");
     await emitOrchestratorEvent({ planId: run.planId, runId: id, type: "run_cancelled", message: "Execução cancelada." });
     return run;
   }
 
   async resume(id: string) {
-    const run = await orchestratorStore.getRun(id);
-    if (!run || !["paused", "failed"].includes(run.status)) throw new Error("Execução não pode ser retomada.");
-    applyResume(run);
-    await orchestratorStore.saveRun(run);
+    const existing = await orchestratorStore.getRun(id);
+    if (!existing || !["paused", "failed"].includes(existing.status)) throw new Error("Execução não pode ser retomada.");
+    const run = await orchestratorStore.updateRun(id, (current) => { applyResume(current); });
+    if (!run) throw new Error("Execução não encontrada.");
     await emitOrchestratorEvent({ planId: run.planId, runId: id, type: "run_resumed", message: "Execução retomada." });
     void this.drive(id);
     return run;
   }
 
   async approveStep(id: string, stepId: string) {
-    const run = await orchestratorStore.getRun(id);
-    const step = run?.steps.find((item) => item.id === stepId);
-    if (!run || !step || step.status !== "awaiting_approval") throw new Error("Etapa não aguarda aprovação.");
-    step.status = "pending";
-    step.startedAt = new Date().toISOString();
-    run.status = "running";
-    await orchestratorStore.saveRun(run);
+    const run = await orchestratorStore.updateRun(id, (current) => { const step = current.steps.find((item) => item.id === stepId); if (!step || step.status !== "awaiting_approval") throw new Error("Etapa não aguarda aprovação."); step.status = "pending"; step.startedAt = new Date().toISOString(); current.status = "running"; });
+    if (!run) throw new Error("Execução não encontrada.");
+    const step = run.steps.find((item) => item.id === stepId)!;
     await emitOrchestratorEvent({ planId: run.planId, runId: id, type: "step_approved", message: `${step.title} aprovada.`, data: { stepId } });
     void this.drive(id);
     return run;
   }
 
   async retryStep(id: string, stepId: string) {
-    const run = await orchestratorStore.getRun(id);
-    const step = run?.steps.find((item) => item.id === stepId);
-    if (!run || !step || step.status !== "failed") throw new Error("Apenas etapas com erro podem ser repetidas.");
-    applyManualRetry(step);
-    run.status = "running";
-    run.error = undefined;
-    await orchestratorStore.saveRun(run);
+    const run = await orchestratorStore.updateRun(id, (current) => { const step = current.steps.find((item) => item.id === stepId); if (!step || step.status !== "failed") throw new Error("Apenas etapas com erro podem ser repetidas."); applyManualRetry(step); current.status = "running"; current.error = undefined; });
+    if (!run) throw new Error("Execução não encontrada.");
+    const step = run.steps.find((item) => item.id === stepId)!;
     await emitOrchestratorEvent({ planId: run.planId, runId: id, type: "step_retrying", message: `Repetição manual de ${step.title}.`, data: { stepId } });
     void this.drive(id);
     return run;
