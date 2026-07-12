@@ -8,10 +8,24 @@ import { ArtifactGallery } from "./artifact-gallery";
 const labels:Record<ExecutionStep["status"],string>={pending:"Pendente",awaiting_approval:"Aguardando aprovação",running:"Executando",completed:"Concluído",failed:"Falhou",skipped:"Ignorado",cancelled:"Cancelado"};
 const icons={pending:Circle,awaiting_approval:PauseCircle,running:Loader2,completed:CheckCircle2,failed:AlertCircle,skipped:Circle,cancelled:Square};
 async function api<T>(url:string,options?:RequestInit):Promise<T>{const response=await fetch(url,options);const body=await response.json() as T&{error?:string};if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);return body;}
-export function SupercomputerChat(){ const [objective,setObjective]=useState(""); const [skillId,setSkillId]=useState("auto"); const [plan,setPlan]=useState<ExecutionPlan|null>(null); const [run,setRun]=useState<ExecutionRun|null>(null); const [events,setEvents]=useState<OrchestratorEvent[]>([]); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const source=useRef<EventSource|null>(null); const [availableSkills,setAvailableSkills]=useState<{id:string,name:string}[]>([]);
+export function SupercomputerChat(){ const [objective,setObjective]=useState(""); const [skillId,setSkillId]=useState("auto"); const [plan,setPlan]=useState<ExecutionPlan|null>(null); const [run,setRun]=useState<ExecutionRun|null>(null); const [events,setEvents]=useState<OrchestratorEvent[]>([]); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const source=useRef<EventSource|null>(null); const [availableSkills,setAvailableSkills]=useState<{id:string,name:string,description?:string}[]>([]);
+ const [showSlashMenu, setShowSlashMenu] = useState(false);
+ const [slashSearch, setSlashSearch] = useState("");
  const refresh=async(id:string)=>{const data=await api<{run:ExecutionRun}>(`/api/orchestrator/runs/${id}`);setRun(data.run);};
- useEffect(()=>{ api<{skills:{id:string,name:string}[]}>("/api/skills").then(d=>setAvailableSkills(d.skills)).catch(console.error); return ()=>source.current?.close(); },[]);
+ useEffect(()=>{ api<{skills:{id:string,name:string,description?:string}[]}>("/api/skills").then(d=>setAvailableSkills(d.skills)).catch(console.error); return ()=>source.current?.close(); },[]);
  const connect=(id:string)=>{source.current?.close();const s=new EventSource(`/api/orchestrator/runs/${id}/events`);source.current=s;s.onmessage=(e)=>{const event=JSON.parse(e.data) as OrchestratorEvent;setEvents((old)=>old.some((x)=>x.id===event.id)?old:[...old,event]);void refresh(id);};s.onerror=()=>setError("Conexão da timeline interrompida; tentando reconectar automaticamente.");};
+ const handleObjectiveChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setObjective(val);
+    const match = val.match(/^\/([\w.-]*)$/);
+    if (match) {
+      setSlashSearch(match[1].toLowerCase());
+      setShowSlashMenu(true);
+    } else {
+      setShowSlashMenu(false);
+    }
+ };
+ const filteredSkills = availableSkills.filter(s => s.id.toLowerCase().includes(slashSearch) || s.name.toLowerCase().includes(slashSearch));
  const create=async()=>{
   setBusy(true);setError("");
   let finalObjective = objective;
@@ -32,7 +46,33 @@ export function SupercomputerChat(){ const [objective,setObjective]=useState("")
  const sendFeedback=async(message:string)=>{if(!run)return;try{await api(`/api/orchestrator/runs/${run.id}/feedback`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({feedback:message})});setError("Feedback registrado na memória cognitiva.");}catch(e){setError(e instanceof Error?e.message:String(e));}};
  return <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-10">
   <header><p className="text-xs font-semibold uppercase tracking-[.2em] text-[#9D7CFF]">Kaoz Supercomputer</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Transforme um objetivo em execução controlada</h1><p className="mt-2 max-w-2xl text-sm text-white/55">O Kaoz descobre capacidades, propõe um plano e só executa depois da sua aprovação.</p></header>
-  <section className="rounded-3xl border border-white/10 bg-white/[.025] p-5"><label htmlFor="objective" className="mb-2 block text-sm font-medium">O que você quer que o Kaoz faça?</label><textarea id="objective" value={objective} onChange={(e)=>setObjective(e.target.value)} rows={4} className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 p-4 text-sm outline-none focus:border-[#9D7CFF]" placeholder="Ex.: /trend-hunter Pesquise novidades sobre IA ou digite um objetivo livre."/><div className="mt-4 flex flex-wrap items-end gap-3"><label className="flex flex-col gap-1 text-xs text-white/60">Skill opcional<select value={skillId} onChange={(e)=>setSkillId(e.target.value)} className="rounded-xl border border-white/10 bg-[#111] px-3 py-2 text-sm text-white"><option value="auto">Automático</option>{availableSkills.map(s=><option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}</select></label><button onClick={create} disabled={busy||objective.trim().length<3} className="rounded-xl bg-[#9D7CFF] px-5 py-2.5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">{busy?<Loader2 className="animate-spin" size={17}/>:"Criar plano"}</button></div></section>
+  <section className="rounded-3xl border border-white/10 bg-white/[.025] p-5"><label htmlFor="objective" className="mb-2 block text-sm font-medium">O que você quer que o Kaoz faça?</label>
+    <div className="relative w-full">
+      {showSlashMenu && filteredSkills.length > 0 && (
+        <div className="absolute top-full mt-2 left-0 w-80 rounded-xl border border-white/10 bg-[#1a1a1a] p-2 shadow-xl z-20">
+          <p className="px-2 mb-1 text-[10px] font-semibold text-white/40 uppercase tracking-wider">Skills Disponíveis</p>
+          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+            {filteredSkills.map(s => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  setObjective(`/${s.id} `);
+                  setSkillId(s.id);
+                  setShowSlashMenu(false);
+                  document.getElementById("objective")?.focus();
+                }}
+                className="flex flex-col items-start rounded-lg px-2 py-1.5 hover:bg-[#9D7CFF]/20 text-left"
+              >
+                <span className="text-sm font-medium text-white">{s.name}</span>
+                <span className="text-xs text-white/50 truncate w-full">{s.description || s.id}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <textarea id="objective" value={objective} onChange={handleObjectiveChange} rows={4} className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 p-4 text-sm outline-none focus:border-[#9D7CFF]" placeholder="Ex.: /trend-hunter Pesquise novidades sobre IA ou digite um objetivo livre."/>
+    </div>
+    <div className="mt-4 flex flex-wrap items-end gap-3"><label className="flex flex-col gap-1 text-xs text-white/60">Skill opcional<select value={skillId} onChange={(e)=>setSkillId(e.target.value)} className="rounded-xl border border-white/10 bg-[#111] px-3 py-2 text-sm text-white"><option value="auto">Automático</option>{availableSkills.map(s=><option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}</select></label><button onClick={create} disabled={busy||objective.trim().length<3} className="rounded-xl bg-[#9D7CFF] px-5 py-2.5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">{busy?<Loader2 className="animate-spin" size={17}/>:"Criar plano"}</button></div></section>
   {error&&<div role="alert" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
   {plan&&<section className="rounded-3xl border border-white/10 bg-white/[.025] p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-xl font-semibold">Revisão do plano</h2><p className="mt-1 text-sm text-white/60">{plan.summary}</p><p className="mt-2 text-xs text-[#9D7CFF]">Skills: {plan.skillIds.join(", ")} · ~{plan.estimatedDurationSeconds||"?"}s</p></div>{plan.status==="awaiting_approval"&&<div className="flex gap-2"><button onClick={()=>setPlan(null)} className="rounded-xl border border-white/10 px-4 py-2 text-sm">Editar objetivo</button><button onClick={approve} disabled={busy} className="flex items-center gap-2 rounded-xl bg-[#9D7CFF] px-4 py-2 text-sm font-semibold text-black"><Play size={15}/>Aprovar e executar</button></div>}</div><div className="mt-5 grid gap-3">{(run?.steps||plan.steps).map((step)=><StepCard key={step.id} step={step} onAction={action}/>)}</div></section>}
   {run&&<><section className="flex flex-wrap gap-2"><button onClick={()=>action("cancel")} disabled={["completed","cancelled"].includes(run.status)} className="rounded-xl border border-white/10 px-4 py-2 text-sm disabled:opacity-40">Cancelar</button><button onClick={()=>action("resume")} disabled={!['paused','failed'].includes(run.status)} className="rounded-xl border border-white/10 px-4 py-2 text-sm disabled:opacity-40">Retomar</button>{run.status==="completed"&&<><button onClick={()=>sendFeedback("Resultado útil e aprovado pelo usuário.")} className="rounded-xl border border-green-500/30 px-4 py-2 text-sm text-green-300">Resultado útil</button><button onClick={()=>sendFeedback("Resultado precisa de correção segundo o usuário.")} className="rounded-xl border border-amber-500/30 px-4 py-2 text-sm text-amber-300">Precisa corrigir</button></>}<span className="self-center text-sm text-white/50">Estado: {run.status}</span></section><section className="rounded-3xl border border-white/10 bg-black/30 p-5"><h2 className="font-semibold">Timeline em tempo real</h2><div className="mt-4 space-y-3">{events.length===0?<p className="text-sm text-white/40">Aguardando eventos…</p>:events.map((event)=><div key={event.id} className="border-l-2 border-[#9D7CFF]/50 pl-3 text-sm"><span className="text-white/80">{event.message}</span><span className="ml-2 text-xs text-white/35">{new Date(event.createdAt).toLocaleTimeString("pt-BR")}</span></div>)}</div></section></>}

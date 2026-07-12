@@ -716,21 +716,28 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
 }
 
 async function runCliWithToolsLoop(prompt: string, options: QueryOptions, executor: (currentPrompt: string) => Promise<string>): Promise<string> {
-  const { McpManager } = await import("../mcp/mcp.manager");
-  const mcpManager = await McpManager.getInstance();
-  const allMcpTools = await mcpManager.getAllTools();
+  const { toolRegistry } = await import("../tools/tool.registry");
+  const allTools = await toolRegistry.list();
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
-  const relevantMcpTools = spotifyIntent
-    ? allMcpTools.filter((tool) => isSpotifyTool(tool.serverId, tool.tool.name))
-    : allMcpTools;
+  
+  const relevantTools = spotifyIntent
+    ? allTools.filter((tool) => {
+        if (tool.id.startsWith("mcp:")) {
+          const { parseMcpToolId } = require("../mcp/mcp-tool-id");
+          const { serverId, toolName } = parseMcpToolId(tool.id);
+          return isSpotifyTool(serverId, toolName);
+        }
+        return tool.id.includes("spotify");
+      })
+    : allTools;
 
-  if (relevantMcpTools.length === 0) return executor(prompt);
+  if (relevantTools.length === 0) return executor(prompt);
 
-  let toolsDescription = "\n\n[FERRAMENTAS MCP]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\"serverId\":\"...\",\"toolName\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
-  for (const tool of relevantMcpTools) {
-    toolsDescription += `- serverId: "${tool.serverId}", toolName: "${tool.tool.name}", schema: ${JSON.stringify(tool.tool.inputSchema)}\n`;
+  let toolsDescription = "\n\n[FERRAMENTAS DISPONIVEIS]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\"toolId\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
+  for (const tool of relevantTools) {
+    toolsDescription += `- toolId: "${tool.id}", description: "${tool.description}", schema: ${JSON.stringify(tool.inputSchema)}\n`;
   }
 
   let currentPrompt = prompt + toolsDescription;
@@ -740,8 +747,15 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     if (!match) return cliOutput;
 
     try {
-      const call = JSON.parse(match[1]) as { serverId: string; toolName: string; args?: Record<string, unknown> };
-      const result = await mcpManager.callTool(call.serverId, call.toolName, call.args || {});
+      const call = JSON.parse(match[1]) as { toolId?: string; serverId?: string; toolName?: string; args?: Record<string, unknown> };
+      const toolId = call.toolId || (call.serverId && call.toolName ? require("../mcp/mcp-tool-id").mcpToolId(call.serverId, call.toolName) : null);
+      if (!toolId) throw new Error("Formato de chamada invalido. Use toolId.");
+      
+      const handler = toolRegistry.handler(toolId);
+      if (!handler) throw new Error(`Ferramenta '${toolId}' nao encontrada.`);
+      
+      const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
+      const result = await handler(call.args || {}, context);
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
