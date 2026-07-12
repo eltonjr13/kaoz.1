@@ -237,10 +237,13 @@ function uniquePathEntries(entries: string[]): string[] {
 
 function getWindowsProcessPathEntries(): string[] {
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
   return [
     path.join(os.homedir(), ".grok", "bin"),
     path.join(localAppData, "Microsoft", "WindowsApps"),
     path.join(localAppData, WINDOWS_CODEX_BIN_ROOT),
+    path.join(localAppData, "agy", "bin"),
+    path.join(appData, "Antigravity", "bin"),
   ];
 }
 
