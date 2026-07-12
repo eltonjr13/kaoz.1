@@ -224,6 +224,21 @@ export interface ChatMessageState {
   projectResult?: { success: boolean; jobId?: string; videoPath?: string; error?: string } | null;
   showLogs?: boolean;
   feedback?: 'good' | 'bad' | null;
+  skillDraft?: {
+    id: string;
+    name: string;
+    description: string;
+    instructions: string;
+    saveStatus?: 'saving' | 'saved' | 'error';
+    saveError?: string;
+  } | null;
+}
+
+function isBuildSkillsIntent(value: string): boolean {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/^\s*\/build-skills(?:\s|$)/.test(normalized)) return true;
+  return /\b(criar|crie|montar|monte|gerar|gere|projetar|projete|revisar|revise|atualizar|atualize)\b/.test(normalized)
+    && /\bskills?\b/.test(normalized);
 }
 
 interface ChatConversation {
@@ -947,6 +962,7 @@ export default function FlowDashboardPage() {
   const [slashSearch, setSlashSearch] = useState("");
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsError, setSkillsError] = useState("");
+  const [skillBuilderActive, setSkillBuilderActive] = useState(false);
 
   useEffect(() => {
     setSkillsLoading(true);
@@ -1963,6 +1979,48 @@ export default function FlowDashboardPage() {
     if (selectedElementReference) setSelectedElementReference(null);
     setIsLoading(true);
 
+    const shouldUseSkillBuilder = skillBuilderActive || isBuildSkillsIntent(message);
+    if (shouldUseSkillBuilder) {
+      const assistantId = createChatId("assistant");
+      try {
+        const builderMessages = chatMessages.concat(userMsg).slice(-12).map((item) => ({
+          role: item.role,
+          content: item === userMsg ? item.content.replace(/^\s*\/build-skills\s*/i, "") : item.content,
+        }));
+        const response = await fetch("/api/skills/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: builderMessages }),
+        });
+        const data = await response.json() as {
+          message?: string;
+          ready?: boolean;
+          skill?: ChatMessageState["skillDraft"];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error || "O criador de skills não conseguiu responder.");
+        setSkillBuilderActive(!data.ready);
+        setChatMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant',
+          content: data.message || "Preparei o rascunho da skill para sua revisão.",
+          timestamp: new Date().toISOString(),
+          skillDraft: data.ready ? data.skill : null,
+        }]);
+      } catch (error) {
+        setSkillBuilderActive(false);
+        setChatMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant',
+          content: `Não consegui criar a skill: ${error instanceof Error ? error.message : String(error)}`,
+          timestamp: new Date().toISOString(),
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     const geminiMessages = chatMessages.concat(userMsg)
       .slice(-20)
       .map(m => ({
@@ -2358,6 +2416,40 @@ export default function FlowDashboardPage() {
     setDraftMessage("");
 
     await handleSendMessage(cleanCommand, [], [], { speakResponse: true });
+  };
+
+  const handleSaveSkillDraft = async (messageId: string) => {
+    const target = chatMessages.find((item) => item.id === messageId);
+    if (!target?.skillDraft || target.skillDraft.saveStatus === 'saving') return;
+    const updateDraft = (patch: Partial<NonNullable<ChatMessageState["skillDraft"]>>) => {
+      setChatMessages(prev => prev.map((item) => item.id === messageId && item.skillDraft
+        ? { ...item, skillDraft: { ...item.skillDraft, ...patch } }
+        : item));
+    };
+    updateDraft({ saveStatus: 'saving', saveError: undefined });
+    try {
+      const response = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...target.skillDraft,
+          version: "1.0.0",
+          enabled: true,
+          approvalMode: "plan",
+          preferredTools: [],
+          requiredCapabilities: [],
+          tools: [],
+        }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Falha ao salvar a skill.");
+      updateDraft({ saveStatus: 'saved' });
+      setAvailableSkills(prev => prev.some((skill) => skill.id === target.skillDraft!.id)
+        ? prev
+        : [...prev, { id: target.skillDraft!.id, name: target.skillDraft!.name, description: target.skillDraft!.description }]);
+    } catch (error) {
+      updateDraft({ saveStatus: 'error', saveError: error instanceof Error ? error.message : String(error) });
+    }
   };
 
   const handleVoiceTranscript = (transcript: string) => {
@@ -3355,6 +3447,30 @@ export default function FlowDashboardPage() {
                         </div>
                       )}
                     </div>
+
+                    {msg.skillDraft && (
+                      <div className="mt-2 w-full max-w-lg rounded-[20px] border border-[#9D7CFF]/30 bg-[#0a0a0e] p-4 shadow-lg">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div><div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF]">Skill pronta para revisão</div><h3 className="mt-1 text-sm font-semibold text-white">{msg.skillDraft.name}</h3></div>
+                          <code className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/50">/{msg.skillDraft.id}</code>
+                        </div>
+                        <p className="mb-3 text-[11px] leading-relaxed text-white/60">{msg.skillDraft.description}</p>
+                        <details className="mb-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                          <summary className="cursor-pointer text-[11px] font-medium text-white/70">Ver instruções geradas</summary>
+                          <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed text-white/50">{msg.skillDraft.instructions}</pre>
+                        </details>
+                        {msg.skillDraft.saveError && <p className="mb-2 text-[10px] text-red-400">{msg.skillDraft.saveError}</p>}
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveSkillDraft(msg.id)}
+                          disabled={msg.skillDraft.saveStatus === 'saving' || msg.skillDraft.saveStatus === 'saved'}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#9D7CFF] px-3 py-2 text-[11px] font-semibold text-black disabled:opacity-60"
+                        >
+                          {msg.skillDraft.saveStatus === 'saving' && <Loader2 size={12} className="animate-spin"/>}
+                          {msg.skillDraft.saveStatus === 'saved' ? 'Skill instalada' : msg.skillDraft.saveStatus === 'saving' ? 'Instalando...' : 'Revisado — instalar skill'}
+                        </button>
+                      </div>
+                    )}
 
 
 

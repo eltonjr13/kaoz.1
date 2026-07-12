@@ -5,7 +5,7 @@ import type { AgentLLMProvider, AgentLLMSettings } from "./agent-llm.types";
 const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
 const SETTINGS_FILE = path.join(DATA_DIR, "agent-llm-settings.json");
 const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
-const DEFAULT_CODEX_MODEL = "gpt-5.4-mini";
+const DEFAULT_CODEX_MODEL = "gpt-5.6";
 const DEFAULT_GROK_MODEL = "grok-composer-2.5-fast";
 const DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.5-pro";
 const DEFAULT_IAMHC_MODEL = "DeepSeek-V4-Flash";

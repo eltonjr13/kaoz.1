@@ -14,6 +14,17 @@ function validateSkill(skill: KaozSkill): void {
   if (!skill.instructions.trim()) throw new Error("As instruções da skill são obrigatórias.");
 }
 
+function isSkillBuildingObjective(objective: string): boolean {
+  return /criar|montar|gerar|projetar|revisar|atualizar/i.test(objective) && /skill/i.test(objective);
+}
+
+function autoSkillId(objective: string): string | null {
+  if (isSkillBuildingObjective(objective)) return "build-skills";
+  if (/vídeo|video|reels|short|tiktok/i.test(objective)) return "content.create-short-video";
+  if (/pesquis|notícia|fontes|relatório/i.test(objective)) return "research.web-research";
+  return null;
+}
+
 // Skills padrão de fallback caso a pasta /skills ainda não esteja populada
 const fallbackSkills: KaozSkill[] = [
  { id:"general.execute-goal", name:"Objetivo geral", description:"Planeja e executa objetivos gerais com ferramentas disponíveis.", version:"1.0.0", instructions:"Decomponha o objetivo em etapas verificáveis, sem inventar resultados.", preferredTools:["system.summarize"], requiredCapabilities:[], approvalMode:"plan", enabled:true },
@@ -70,11 +81,8 @@ export class SkillRegistry {
       const defaultSkill = this.get("general.execute-goal") || fallbackSkills[0];
       if (requested !== "auto") return this.get(requested) || defaultSkill; 
       
-      // Heurística básica de seleção baseada em regex
-      if (/vídeo|video|reels|short|tiktok/i.test(objective)) return this.get("content.create-short-video") || defaultSkill; 
-      if (/pesquis|notícia|fontes|relatório/i.test(objective)) return this.get("research.web-research") || defaultSkill; 
-      
-      return defaultSkill; 
+      const automaticId = autoSkillId(objective);
+      return automaticId ? this.get(automaticId) || defaultSkill : defaultSkill;
   } 
 
   save(skill: KaozSkill): void {

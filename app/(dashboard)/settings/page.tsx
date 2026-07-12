@@ -240,15 +240,14 @@ const ANTIGRAVITY_FALLBACK_MODELS = [
 ];
 
 const CODEX_FALLBACK_MODELS = [
+  "gpt-5.6",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
   "gpt-5.5",
-  "gpt-5.5-pro",
+  "gpt-5.3-codex-spark",
   "gpt-5.4",
-  "gpt-5.4-mini",
-  "gpt-5.4-nano",
-  "gpt-5.3-codex",
-  "gpt-5.2",
-  "gpt-5.2-codex",
-  "gpt-oss-120b"
+  "gpt-5.4-mini"
 ];
 
 const PORTALS: PortalConfig[] = [
@@ -339,7 +338,7 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
   return {
     provider: parseAgentLLMProvider(data.provider),
     codexCommand: stringOrEmpty(data.codexCommand) || "codex",
-    codexModel: stringOrEmpty(data.codexModel) || "gpt-5.4-mini",
+    codexModel: stringOrEmpty(data.codexModel) || "gpt-5.6",
     grokCommand: stringOrEmpty(data.grokCommand) || "grok",
     grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
     antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
@@ -703,7 +702,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [config, setConfig] = useState<AgentLLMConfig | null>(null);
   const [provider, setProvider] = useState<AgentLLMProvider>("browser");
   const [codexCommand, setCodexCommand] = useState("codex");
-  const [codexModel, setCodexModel] = useState("gpt-5.4-mini");
+  const [codexModel, setCodexModel] = useState("gpt-5.6");
   const [grokCommand, setGrokCommand] = useState("grok");
   const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
