@@ -1,0 +1,172 @@
+const { app, BrowserWindow, dialog, shell } = require("electron");
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const net = require("node:net");
+const path = require("node:path");
+
+let mainWindow;
+let nextServer;
+
+const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
+
+function findFreePort(start = 3210) {
+  return new Promise((resolve, reject) => {
+    const tryPort = (port) => {
+      const server = net.createServer();
+      server.unref();
+      server.once("error", (error) => {
+        if (error.code === "EADDRINUSE") return tryPort(port + 1);
+        reject(error);
+      });
+      server.listen(port, "127.0.0.1", () => {
+        server.close(() => resolve(port));
+      });
+    };
+    tryPort(start);
+  });
+}
+
+function waitForServer(url, attempts = 120) {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const request = net.connect(Number(new URL(url).port), "127.0.0.1");
+      request.once("connect", () => {
+        request.destroy();
+        resolve();
+      });
+      request.once("error", () => {
+        request.destroy();
+        if (--attempts <= 0) reject(new Error("O servidor local não iniciou a tempo."));
+        else setTimeout(check, 250);
+      });
+    };
+    check();
+  });
+}
+
+function ensureUserDirectories() {
+  const dataRoot = app.getPath("userData");
+  for (const folder of ["storage", "generated", "uploads", "logs"]) {
+    fs.mkdirSync(path.join(dataRoot, folder), { recursive: true });
+  }
+  const envPath = path.join(dataRoot, ".env.local");
+  const examplePath = app.isPackaged
+    ? path.join(process.resourcesPath, "config", ".env.example")
+    : path.join(__dirname, "..", ".env.example");
+  if (!fs.existsSync(envPath) && fs.existsSync(examplePath)) {
+    fs.copyFileSync(examplePath, envPath);
+  }
+  return dataRoot;
+}
+
+function readUserEnvironment(file) {
+  if (!fs.existsSync(file)) return {};
+  const values = {};
+  for (const rawLine of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator < 1) continue;
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+async function startProductionServer() {
+  const port = await findFreePort();
+  const serverRoot = path.join(process.resourcesPath, "server");
+  const serverEntry = path.join(serverRoot, "server.js");
+  const dataRoot = ensureUserDirectories();
+  const userEnvironment = readUserEnvironment(path.join(dataRoot, ".env.local"));
+
+  if (!fs.existsSync(serverEntry)) {
+    throw new Error(`Servidor empacotado não encontrado: ${serverEntry}`);
+  }
+
+  const env = {
+    ...process.env,
+    ...userEnvironment,
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_ENV: "production",
+    HOSTNAME: "127.0.0.1",
+    PORT: String(port),
+    APP_BASE_URL: `http://127.0.0.1:${port}`,
+    MRCHICKEN_DESKTOP: "1",
+    MRCHICKEN_DATA_DIR: dataRoot,
+    FLOW_DOWNLOAD_PATH: path.join(dataRoot, "storage", "generated"),
+    FLOW_PROFILE_PATH: path.join(dataRoot, "storage", "browser-profile"),
+    // Use the user's installed Chrome so a separate `npx playwright install` is unnecessary.
+    FLOW_BROWSER_CHANNEL: userEnvironment.FLOW_BROWSER_CHANNEL || "chrome"
+  };
+
+  nextServer = spawn(process.execPath, [serverEntry], {
+    cwd: serverRoot,
+    env,
+    windowsHide: true,
+    stdio: "pipe"
+  });
+
+  const logPath = path.join(dataRoot, "logs", "server.log");
+  const log = fs.createWriteStream(logPath, { flags: "a" });
+  nextServer.stdout.pipe(log);
+  nextServer.stderr.pipe(log);
+  nextServer.once("exit", (code) => {
+    if (code && !app.isQuitting) dialog.showErrorBox("MrChicken", `O servidor local encerrou com código ${code}. Consulte ${logPath}.`);
+  });
+
+  const url = `http://127.0.0.1:${port}`;
+  await waitForServer(url);
+  return url;
+}
+
+function createWindow(url) {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 920,
+    minWidth: 1024,
+    minHeight: 700,
+    show: false,
+    backgroundColor: "#09090b",
+    icon: path.join(__dirname, "..", "build", "icon.png"),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  mainWindow.removeMenu();
+  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
+    shell.openExternal(target);
+    return { action: "deny" };
+  });
+  mainWindow.loadURL(url);
+}
+
+app.whenReady().then(async () => {
+  try {
+    createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
+  } catch (error) {
+    dialog.showErrorBox("Falha ao iniciar o MrChicken", error instanceof Error ? error.message : String(error));
+    app.quit();
+  }
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0 && isDevelopment) createWindow(process.env.ELECTRON_START_URL);
+});
+
+app.on("before-quit", () => {
+  app.isQuitting = true;
+  if (nextServer && !nextServer.killed) nextServer.kill();
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
