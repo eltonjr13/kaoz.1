@@ -11,6 +11,7 @@ export function normalizeSpeechProvider(value: unknown): SpeechProviderName {
   if (value === "webspeech") return value;
   if (value === "whisper") return value;
   if (value === "whisper-speed") return value;
+  if (value === "parakeet") return value;
   return DEFAULT_PROVIDER;
 }
 

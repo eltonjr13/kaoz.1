@@ -1,4 +1,4 @@
-export type SpeechProviderName = "whisper" | "whisper-speed" | "webspeech";
+export type SpeechProviderName = "whisper" | "whisper-speed" | "webspeech" | "parakeet";
 
 export interface SpeechRuntimeConfig {
   provider: SpeechProviderName;
@@ -16,4 +16,11 @@ export interface PythonSpeechResponse {
 
 export interface SpeechSettings {
   provider: SpeechProviderName;
+}
+
+export type ParakeetRuntimeState = "inactive" | "downloading" | "ready" | "error";
+
+export interface ParakeetRuntimeStatus {
+  state: ParakeetRuntimeState;
+  message: string;
 }

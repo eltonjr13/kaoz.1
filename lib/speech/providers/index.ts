@@ -6,7 +6,7 @@ export type { SpeechProvider, SpeechProviderStatus } from "./speech-provider";
 export { WebSpeechProvider } from "./webspeech-provider";
 export { WhisperProvider } from "./whisper-provider";
 
-type SpeechProviderName = "whisper" | "whisper-speed" | "webspeech";
+type SpeechProviderName = "whisper" | "whisper-speed" | "webspeech" | "parakeet";
 
 interface SpeechConfigResponse {
   provider?: unknown;
@@ -16,6 +16,7 @@ interface SpeechConfigResponse {
 function normalizeProvider(value: unknown): SpeechProviderName {
   if (value === "whisper") return value;
   if (value === "whisper-speed") return value;
+  if (value === "parakeet") return value;
   return value === "webspeech" ? "webspeech" : "whisper";
 }
 
@@ -25,6 +26,7 @@ function normalizeChunkMs(value: unknown, provider: SpeechProviderName): number 
   }
   if (provider === "whisper-speed") return 1200;
   if (provider === "whisper") return 2600;
+  if (provider === "parakeet") return 30_000;
   return undefined;
 }
 
@@ -48,8 +50,53 @@ function isElectronRuntime(): boolean {
 
 class ConfiguredSpeechProvider extends SpeechProviderBase {
   private provider: SpeechProvider | null = null;
+  private stopped = false;
+  private fallbackStarted = false;
+
+  private attach(provider: SpeechProvider, canFallbackFromNetworkError: boolean, timesliceMs?: number): void {
+    provider.onTranscript((text) => {
+      if (this.provider === provider) this.emitTranscript(text);
+    });
+    provider.onError((error) => {
+      if (this.provider !== provider) return;
+      if (canFallbackFromNetworkError && /network/i.test(error.message)) {
+        void this.startRecorderFallback(timesliceMs);
+        return;
+      }
+      this.emitError(error);
+    });
+    provider.onStatus((status) => {
+      // Web Speech emits idle immediately after its network failure. Keep the
+      // UI recording while the recorder fallback is being started.
+      if (this.provider === provider && !this.fallbackStarted) this.emitStatus(status);
+    });
+  }
+
+  private async startRecorderFallback(timesliceMs?: number): Promise<void> {
+    if (this.stopped || this.fallbackStarted) return;
+    this.fallbackStarted = true;
+
+    const failedProvider = this.provider;
+    try {
+      await failedProvider?.stop();
+      if (this.stopped) return;
+
+      const fallback = new WhisperProvider({ timesliceMs });
+      this.provider = fallback;
+      this.attach(fallback, false, timesliceMs);
+      await fallback.start();
+      this.fallbackStarted = false;
+    } catch (error) {
+      this.fallbackStarted = false;
+      this.emitError(new Error(
+        `O reconhecimento Web nao conseguiu acessar a rede e a transcricao alternativa falhou: ${error instanceof Error ? error.message : String(error)}`
+      ));
+    }
+  }
 
   async start(): Promise<void> {
+    this.stopped = false;
+    this.fallbackStarted = false;
     const config = await loadSpeechConfig();
     const electronRuntime = isElectronRuntime();
     // Electron's Chromium exposes parts of the Web Speech surface, but does not
@@ -59,17 +106,15 @@ class ConfiguredSpeechProvider extends SpeechProviderBase {
     // avoiding repeated cloud calls when Python is not installed.
     const provider = config.provider === "webspeech" && !electronRuntime
       ? new WebSpeechProvider()
-      : new WhisperProvider({ timesliceMs: electronRuntime ? 30_000 : config.chunkMs });
-
-    provider.onTranscript((text) => this.emitTranscript(text));
-    provider.onError((error) => this.emitError(error));
-    provider.onStatus((status) => this.emitStatus(status));
+      : new WhisperProvider({ timesliceMs: config.provider === "parakeet" ? 30_000 : (electronRuntime ? 30_000 : config.chunkMs) });
 
     this.provider = provider;
+    this.attach(provider, config.provider === "webspeech" && !electronRuntime, config.chunkMs);
     await provider.start();
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
     await this.provider?.stop();
     this.provider = null;
     this.emitStatus("idle");
