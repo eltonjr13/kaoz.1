@@ -38,6 +38,8 @@
   ],
   "exclude": [
     "node_modules",
+    "dist/**",
+    "release/**",
     "storage/browser-profile/**"
   ]
 }
