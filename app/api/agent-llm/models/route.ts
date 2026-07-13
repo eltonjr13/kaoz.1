@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 const FOCUSED_FAMILIES = /(?:^|[-_/])(qwen|glm|kimi|moonshot|deepseek)(?:[-_/]|$)/i;
 
 export async function GET() {
-  const apiKey = process.env.IAMHC_API_KEY?.trim();
+  const apiKey = (await getApiProviderConfig("iamhc")).apiKey.trim();
   if (!apiKey) {
     return NextResponse.json({ error: "IAMHC_API_KEY não configurada no servidor." }, { status: 400 });
   }

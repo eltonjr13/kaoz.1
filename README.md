@@ -166,6 +166,30 @@ services/
 
 ---
 
+## Aplicativo para Windows (Electron)
+
+Para abrir a versão desktop durante o desenvolvimento:
+
+```powershell
+npm run desktop:dev
+```
+
+Para gerar o instalador do Windows:
+
+```powershell
+npm run desktop:build
+```
+
+O instalador será criado em `release/MrChicken-Setup-<versão>.exe`. A versão
+desktop incorpora o servidor Next.js e, portanto, o computador de destino não
+precisa ter Node.js nem executar `npm install` ou `npx playwright install`.
+As automações usam o Google Chrome instalado no Windows.
+
+Configurações, sessões e arquivos gerados são mantidos em
+`%APPDATA%/MrChicken`. Na primeira execução, o aplicativo cria ali um
+`.env.local` baseado no `.env.example`; as credenciais também podem ser
+configuradas pela tela de Configurações do próprio aplicativo.
+
 ## 📝 Notas de Desenvolvimento e Automação
 
 1.  **Sessões do Playwright (Navegador):** A agente usa um Chromium persistente para simular o navegador. Para realizar login em plataformas de chat gratuitas (Gemini, ChatGPT, Claude e DeepSeek) e contornar os desafios do Cloudflare, acesse a página de **Configurações** na aplicação e use a seção de gerenciamento de sessões para fazer o login manual inicial. Os cookies serão gravados localmente em `storage/browser-profile/`.

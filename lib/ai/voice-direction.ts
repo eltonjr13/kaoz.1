@@ -1,5 +1,6 @@
 import { OpenAI } from "openai";
 import type { VoiceDirection, VoiceDirectionCue, VoiceEffect } from "@/types";
+import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 
 const EFFECTS = new Set<VoiceEffect>([
   "pause", "long-pause", "whisper", "soft", "loud", "emphasis", "laugh",
@@ -67,12 +68,13 @@ export function inferVoiceDirection(text: string): VoiceDirection {
 export async function planVoiceDirection(text: string): Promise<VoiceDirection> {
   const sentences = splitSentences(text);
   if (!sentences.length) return { version: 1, cues: [] };
-  if (!process.env.OPENAI_API_KEY) return inferVoiceDirection(text);
+  const config = await getApiProviderConfig("openai");
+  if (!config.apiKey) return inferVoiceDirection(text);
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: config.apiKey });
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: config.model,
       temperature: 0.35,
       max_tokens: 350,
       messages: [

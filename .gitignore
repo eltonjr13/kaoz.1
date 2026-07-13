@@ -8,7 +8,8 @@ out
 .generated
 
 # production
-build
+dist
+release
 
 # python
 __pycache__
@@ -19,7 +20,7 @@ venv
 # env
 .env
 .env*.local
-.env.example
+# `.env.example` is intentionally versioned as the safe configuration template.
 
 # logs
 npm-debug.log*

@@ -1,16 +1,23 @@
 {
   "name": "ai-ugc-reaction-studio",
   "version": "0.2.0",
+  "description": "MrChicken AI content creation studio for Windows",
+  "author": "MrChicken",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build",
+    "desktop:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
+    "build": "node scripts/build-next.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop-build.mjs",
+    "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis",
+    "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs",
-    "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs"
-    ,"test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts"
+    "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs",
+    "test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts"
   },
   "dependencies": {
     "@cartesia/cartesia-js": "^3.2.0",
@@ -41,11 +48,59 @@
     "@types/node": "25.9.1",
     "@types/react": "19.2.15",
     "@types/react-dom": "19.2.3",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "puppeteer": "^25.1.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.mrchicken.desktop",
+    "productName": "MrChicken",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/standalone",
+        "to": "server",
+        "filter": ["**/*", "!node_modules/**/*"]
+      },
+      {
+        "from": "dist/standalone/node_modules",
+        "to": "server/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".env.example",
+        "to": "config/.env.example"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "artifactName": "MrChicken-Setup-${version}.${ext}",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MrChicken"
+    }
   },
   "overrides": {
     "postcss": "8.5.10"
