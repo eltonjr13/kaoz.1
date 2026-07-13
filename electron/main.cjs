@@ -9,6 +9,8 @@ let nextServer;
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
 
+app.setName("MrChicken");
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {
