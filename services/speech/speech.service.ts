@@ -86,7 +86,12 @@ export class SpeechService {
       const payload = await response.json().catch(() => ({})) as Partial<ParakeetRuntimeStatus>;
       if (!response.ok) throw new Error("O runtime Parakeet nao respondeu.");
       if (payload.state === "ready" || payload.state === "downloading" || payload.state === "error") {
-        return { state: payload.state, message: typeof payload.message === "string" ? payload.message : "Atualizando o Parakeet..." };
+        return {
+          state: payload.state,
+          message: typeof payload.message === "string" ? payload.message : "Atualizando o Parakeet...",
+          downloadedBytes: typeof payload.downloadedBytes === "number" ? payload.downloadedBytes : undefined,
+          totalBytes: typeof payload.totalBytes === "number" ? payload.totalBytes : undefined,
+        };
       }
       return { state: "downloading", message: "Preparando o Parakeet local..." };
     } catch (error) {

@@ -199,3 +199,6 @@ MrChicken remove automaticamente a parte final para evitar rotas duplicadas.
 1.  **Sessões do Playwright (Navegador):** A agente usa um Chromium persistente para simular o navegador. Para realizar login em plataformas de chat gratuitas (Gemini, ChatGPT, Claude e DeepSeek) e contornar os desafios do Cloudflare, acesse a página de **Configurações** na aplicação e use a seção de gerenciamento de sessões para fazer o login manual inicial. Os cookies serão gravados localmente em `storage/browser-profile/`.
 2.  **OneDrive e Lock de Arquivos (Windows):** O pipeline de vídeo UGC implementa rotinas resilientes com até 5 retentativas no acesso a arquivos locais para contornar problemas de lock temporário causados pela sincronização ativa do OneDrive ou Dropbox.
 3.  **Desconexões SSE:** Para garantir o bom uso de memória, as chamadas via SSE Client abertas com os microsserviços são explicitamente terminadas ao fim de cada requisição.
+# Transcricao local Parakeet
+
+No aplicativo Windows, escolha **Parakeet Local** em **Configuracoes > Transcricao de voz** para usar transcricao PT-BR offline e sem chave de API. Na primeira ativacao, o app baixa o modelo local (cerca de 670 MB), mostra o andamento e o armazena no perfil do usuario. Depois disso, a transcricao funciona sem internet.

@@ -9,7 +9,7 @@
     "dev": "next dev --webpack",
     "desktop:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
     "build": "node scripts/build-next.mjs",
-    "desktop:prepare": "node scripts/prepare-desktop-build.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis",
     "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
     "start": "next start",
@@ -91,6 +91,10 @@
       {
         "from": ".env.example",
         "to": "config/.env.example"
+      },
+      {
+        "from": "build/runtime/parakeet",
+        "to": "parakeet-runtime"
       }
     ],
     "win": {

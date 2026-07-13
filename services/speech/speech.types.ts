@@ -23,4 +23,6 @@ export type ParakeetRuntimeState = "inactive" | "downloading" | "ready" | "error
 export interface ParakeetRuntimeStatus {
   state: ParakeetRuntimeState;
   message: string;
+  downloadedBytes?: number;
+  totalBytes?: number;
 }

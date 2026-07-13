@@ -51,11 +51,18 @@ interface ExtensionStatus {
   pendingTasks: number;
 }
 
-type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed";
+type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed" | "parakeet";
 
 interface SpeechConfig {
   provider: SpeechProviderName;
   chunkMs: number;
+}
+
+interface ParakeetStatus {
+  state: "inactive" | "downloading" | "ready" | "error";
+  message: string;
+  downloadedBytes?: number;
+  totalBytes?: number;
 }
 
 type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok" | "iamhc";
@@ -169,6 +176,11 @@ const SPEECH_OPTIONS: Array<{
     id: "whisper-speed",
     name: "Whisper Speed",
     description: "Faster-Whisper local rapido, com fallback para uma API de transcricao configurada."
+  },
+  {
+    id: "parakeet",
+    name: "Parakeet Local",
+    description: "Transcricao PT-BR offline e rapida. Baixa o modelo uma vez (aprox. 670 MB), sem API."
   }
 ];
 
@@ -303,7 +315,7 @@ const PORTALS: PortalConfig[] = [
 
 function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
   return {
-    provider: data.provider === "webspeech" || data.provider === "whisper" || data.provider === "whisper-speed"
+    provider: data.provider === "webspeech" || data.provider === "whisper" || data.provider === "whisper-speed" || data.provider === "parakeet"
       ? data.provider
       : "whisper-speed",
     chunkMs: typeof data.chunkMs === "number" ? data.chunkMs : 0,
@@ -946,6 +958,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
 function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
   const [speechConfig, setSpeechConfig] = useState<SpeechConfig | null>(null);
   const [savingSpeechProvider, setSavingSpeechProvider] = useState<SpeechProviderName | null>(null);
+  const [parakeetStatus, setParakeetStatus] = useState<ParakeetStatus | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -967,6 +980,33 @@ function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessag
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (speechConfig?.provider !== "parakeet") {
+      setParakeetStatus(null);
+      return;
+    }
+    let active = true;
+    const loadStatus = async () => {
+      try {
+        const response = await fetch("/api/speech/parakeet", { cache: "no-store" });
+        const data = await response.json() as Partial<ParakeetStatus>;
+        if (active && (data.state === "downloading" || data.state === "ready" || data.state === "error")) {
+          setParakeetStatus({
+            state: data.state,
+            message: typeof data.message === "string" ? data.message : "Atualizando Parakeet...",
+            downloadedBytes: typeof data.downloadedBytes === "number" ? data.downloadedBytes : undefined,
+            totalBytes: typeof data.totalBytes === "number" ? data.totalBytes : undefined,
+          });
+        }
+      } catch {
+        if (active) setParakeetStatus({ state: "error", message: "Nao foi possivel consultar o runtime Parakeet." });
+      }
+    };
+    void loadStatus();
+    const timer = window.setInterval(loadStatus, 2000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [speechConfig?.provider]);
 
   const updateSpeechProvider = async (provider: SpeechProviderName) => {
     setSavingSpeechProvider(provider);
@@ -1004,7 +1044,7 @@ function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessag
         <span>Transcricao de voz</span>
       </h2>
       <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SPEECH_OPTIONS.map((option) => {
             const selected = speechConfig?.provider === option.id;
             const saving = savingSpeechProvider === option.id;
@@ -1036,8 +1076,27 @@ function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessag
             );
           })}
         </div>
+        {speechConfig?.provider === "parakeet" && parakeetStatus && (
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-[11px] ${
+            parakeetStatus.state === "ready" ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300" :
+            parakeetStatus.state === "error" ? "border-red-500/20 bg-red-500/5 text-red-300" : "border-amber-500/20 bg-amber-500/5 text-amber-200"
+          }`}>
+            <div className="flex items-center gap-2">
+              {parakeetStatus.state === "downloading" ? <Loader2 size={13} className="animate-spin" /> : parakeetStatus.state === "ready" ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
+              <span>{parakeetStatus.message}</span>
+            </div>
+            {parakeetStatus.state === "downloading" && parakeetStatus.totalBytes && (
+              <div className="mt-2">
+                <div className="h-1.5 overflow-hidden rounded-full bg-black/20">
+                  <div className="h-full rounded-full bg-amber-300 transition-all" style={{ width: `${Math.min(100, ((parakeetStatus.downloadedBytes || 0) / parakeetStatus.totalBytes) * 100)}%` }} />
+                </div>
+                <p className="mt-1 text-[10px] opacity-80">{Math.round((parakeetStatus.downloadedBytes || 0) / 1024 / 1024)} MB de aproximadamente {Math.round(parakeetStatus.totalBytes / 1024 / 1024)} MB</p>
+              </div>
+            )}
+          </div>
+        )}
         <p className="mt-3 text-[10px] text-zinc-600">
-          O servidor Faster-Whisper local e iniciado automaticamente quando Whisper ou Whisper Speed estiver ativo.
+          O runtime local e iniciado automaticamente. O Parakeet funciona offline depois do primeiro download do modelo.
         </p>
       </div>
     </div>

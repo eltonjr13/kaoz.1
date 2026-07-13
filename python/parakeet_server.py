@@ -17,6 +17,7 @@ MODEL_DIR = Path(os.getenv("PARAKEET_MODEL_DIR", Path.home() / ".cache" / "mrchi
 FFMPEG_PATH = os.getenv("FFMPEG_PATH", "ffmpeg")
 MODEL = None
 STATE = {"state": "downloading", "message": "Preparando o modelo local Parakeet..."}
+MODEL_DOWNLOAD_BYTES = 670 * 1024 * 1024
 LOCK = threading.Lock()
 
 
@@ -48,10 +49,15 @@ def load_model():
             STATE.update(state="error", message=f"Nao foi possivel preparar o Parakeet: {error}")
 
 
+def status_payload():
+    downloaded_bytes = sum(file.stat().st_size for file in MODEL_DIR.rglob("*") if file.is_file()) if MODEL_DIR.exists() else 0
+    return {**STATE, "downloadedBytes": downloaded_bytes, "totalBytes": MODEL_DOWNLOAD_BYTES}
+
+
 def transcribe_audio(audio_path):
     if MODEL is None:
         raise RuntimeError(STATE["message"])
-    wav_path = audio_path.with_suffix(".wav")
+    wav_path = audio_path.with_name(f"{audio_path.stem}-parakeet.wav")
     result = subprocess.run(
         [FFMPEG_PATH, "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", str(wav_path)],
         capture_output=True,
@@ -81,9 +87,9 @@ class SpeechHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_json(200, {"ok": True, **STATE})
+            self.send_json(200, {"ok": True, **status_payload()})
         elif self.path == "/status":
-            self.send_json(200, dict(STATE))
+            self.send_json(200, status_payload())
         else:
             self.send_json(404, {"error": "Not found"})
 
