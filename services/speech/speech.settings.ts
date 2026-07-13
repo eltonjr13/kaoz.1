@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { SpeechProviderName, SpeechSettings } from "./speech.types";
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "speech-settings.json");
 const DEFAULT_PROVIDER: SpeechProviderName = "whisper-speed";
 

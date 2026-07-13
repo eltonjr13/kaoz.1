@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { TTSProviderName, TTSConfig } from "./tts.types";
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "tts-settings.json");
 const DEFAULT_PROVIDER: TTSProviderName = "omnivoice";
 const DEFAULT_FISH_AUDIO_MODEL = "s2.1-pro-free";

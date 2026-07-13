@@ -59,7 +59,9 @@ async function generateWithDeepSeek(prompt: string): Promise<string> {
 
 async function generateWithClaude(prompt: string): Promise<string> {
   const config = await getApiProviderConfig("anthropic");
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const baseUrl = (config.baseUrl || "https://api.anthropic.com").replace(/\/$/, "");
+  const messagesUrl = `${baseUrl}${baseUrl.endsWith("/v1") ? "" : "/v1"}/messages`;
+  const response = await fetch(messagesUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",

@@ -190,6 +190,10 @@ Configurações, sessões e arquivos gerados são mantidos em
 `.env.local` baseado no `.env.example`; as credenciais também podem ser
 configuradas pela tela de Configurações do próprio aplicativo.
 
+Nos campos **Endpoint**, informe preferencialmente a URL base do provedor. Se
+for colada uma rota completa como `/v1/chat/completions` ou `/v1/models`, o
+MrChicken remove automaticamente a parte final para evitar rotas duplicadas.
+
 ## 📝 Notas de Desenvolvimento e Automação
 
 1.  **Sessões do Playwright (Navegador):** A agente usa um Chromium persistente para simular o navegador. Para realizar login em plataformas de chat gratuitas (Gemini, ChatGPT, Claude e DeepSeek) e contornar os desafios do Cloudflare, acesse a página de **Configurações** na aplicação e use a seção de gerenciamento de sessões para fazer o login manual inicial. Os cookies serão gravados localmente em `storage/browser-profile/`.

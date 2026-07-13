@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 
 export const API_PROVIDER_IDS = ["gemini", "openai", "deepseek", "anthropic", "cerebras", "zenmux", "iamhc"] as const;
 export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];
@@ -7,7 +8,7 @@ export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];
 type ApiProviderSecretConfig = { apiKey?: string; baseUrl?: string; model?: string };
 export type ApiProviderPublicConfig = { id: ApiProviderId; configured: boolean; source: "settings" | "env" | "none"; baseUrl: string; model: string };
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "api-provider-settings.json");
 
 const defaults: Record<ApiProviderId, { keyEnv: string; baseUrlEnv?: string; modelEnv: string; baseUrl: string; model: string }> = {
@@ -25,13 +26,21 @@ async function readStored(): Promise<Partial<Record<ApiProviderId, ApiProviderSe
   catch { return {}; }
 }
 
+export function normalizeApiBaseUrl(value: string): string {
+  return value
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/(?:chat\/completions|responses|models|messages)$/i, "")
+    .replace(/\/+$/, "");
+}
+
 export async function getApiProviderConfig(id: ApiProviderId): Promise<{ apiKey: string; baseUrl: string; model: string; source: ApiProviderPublicConfig["source"] }> {
   const stored = (await readStored())[id] || {};
   const fallback = defaults[id];
   const apiKey = stored.apiKey || process.env[fallback.keyEnv] || "";
   return {
     apiKey,
-    baseUrl: stored.baseUrl || (fallback.baseUrlEnv ? process.env[fallback.baseUrlEnv] : "") || fallback.baseUrl,
+    baseUrl: normalizeApiBaseUrl(stored.baseUrl || (fallback.baseUrlEnv ? process.env[fallback.baseUrlEnv] : "") || fallback.baseUrl),
     model: stored.model || process.env[fallback.modelEnv] || fallback.model,
     source: stored.apiKey ? "settings" : process.env[fallback.keyEnv] ? "env" : "none",
   };
@@ -49,7 +58,7 @@ export async function updateApiProviderConfig(id: ApiProviderId, update: ApiProv
   const previous = stored[id] || {};
   stored[id] = {
     apiKey: update.apiKey !== undefined ? update.apiKey.trim() : previous.apiKey,
-    baseUrl: update.baseUrl !== undefined ? update.baseUrl.trim() : previous.baseUrl,
+    baseUrl: update.baseUrl !== undefined ? normalizeApiBaseUrl(update.baseUrl) : previous.baseUrl,
     model: update.model !== undefined ? update.model.trim() : previous.model,
   };
   await mkdir(DATA_DIR, { recursive: true });

@@ -99,7 +99,7 @@ async function startProductionServer() {
     PORT: String(port),
     APP_BASE_URL: `http://127.0.0.1:${port}`,
     MRCHICKEN_DESKTOP: "1",
-    MRCHICKEN_DATA_DIR: dataRoot,
+    MRCHICKEN_DATA_DIR: path.join(dataRoot, "generated"),
     FLOW_DOWNLOAD_PATH: path.join(dataRoot, "storage", "generated"),
     FLOW_PROFILE_PATH: path.join(dataRoot, "storage", "browser-profile"),
     // Use the user's installed Chrome so a separate `npx playwright install` is unnecessary.

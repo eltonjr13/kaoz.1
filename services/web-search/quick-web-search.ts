@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { ChatAgentResponse } from "@/lib/ai/gemini";
 
 type SearchResult = {
@@ -20,7 +21,7 @@ type CacheEntry = {
   error?: string;
 };
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const CACHE_FILE = path.join(DATA_DIR, "quick-web-search-cache.json");
 const CACHE_VERSION = "v3";
 const CACHE_TTL_MS = 10 * 60 * 1000;

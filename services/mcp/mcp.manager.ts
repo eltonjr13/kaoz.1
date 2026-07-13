@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -9,7 +10,7 @@ import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { redactSecrets } from "@/services/orchestrator/orchestrator.policy";
 import { buildSafeMcpEnvironment } from "./mcp.security";
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
 
 export class McpManager {

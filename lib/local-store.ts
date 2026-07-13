@@ -1,9 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { Avatar, ExpertBackgroundMode, JobStatus, ReactionJob, RenderLayout, VoiceDirection, VoiceSettings } from "@/types";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const AVATARS_FILE = path.join(DATA_DIR, "avatars.json");
 const JOBS_FILE = path.join(DATA_DIR, "jobs.json");
 const FLY_CAMPAIGNS_FILE = path.join(DATA_DIR, "fly-campaigns.json");

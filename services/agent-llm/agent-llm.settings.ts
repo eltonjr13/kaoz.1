@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { AgentLLMProvider, AgentLLMSettings } from "./agent-llm.types";
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "agent-llm-settings.json");
 const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
 const DEFAULT_CODEX_MODEL = "gpt-5.6";

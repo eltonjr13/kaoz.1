@@ -1,6 +1,6 @@
 {
   "name": "ai-ugc-reaction-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MrChicken AI content creation studio for Windows",
   "author": "MrChicken",
   "private": true,
@@ -75,12 +75,17 @@
       {
         "from": "dist/standalone",
         "to": "server",
-        "filter": ["**/*", "!node_modules/**/*"]
+        "filter": [
+          "**/*",
+          "!node_modules/**/*"
+        ]
       },
       {
         "from": "dist/standalone/node_modules",
         "to": "server/node_modules",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": ".env.example",

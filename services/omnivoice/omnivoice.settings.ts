@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalDataDir } from "@/lib/runtime-paths";
 
 export type OmniVoiceServerStatus = "idle" | "starting" | "waiting_for_login" | "running" | "captured" | "error";
 
@@ -18,7 +19,7 @@ export interface OmniVoiceRuntimeConfig extends OmniVoiceSettings {
   source: "settings" | "env" | "none";
 }
 
-const DATA_DIR = path.join(process.cwd(), ".generated", "local-data");
+const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "omnivoice-settings.json");
 export const DEFAULT_OMNIVOICE_NOTEBOOK_URL = "https://www.kaggle.com/code/eltonjunior/notebookfe6bd90d08/edit";
 

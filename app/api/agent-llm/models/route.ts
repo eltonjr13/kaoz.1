@@ -7,13 +7,14 @@ export const dynamic = "force-dynamic";
 const FOCUSED_FAMILIES = /(?:^|[-_/])(qwen|glm|kimi|moonshot|deepseek)(?:[-_/]|$)/i;
 
 export async function GET() {
-  const apiKey = (await getApiProviderConfig("iamhc")).apiKey.trim();
+  const config = await getApiProviderConfig("iamhc");
+  const apiKey = config.apiKey.trim();
   if (!apiKey) {
     return NextResponse.json({ error: "IAMHC_API_KEY não configurada no servidor." }, { status: 400 });
   }
 
   try {
-    const baseUrl = (process.env.IAMHC_BASE_URL || "https://api.iamhc.cn/v1").replace(/\/$/, "");
+    const baseUrl = config.baseUrl.replace(/\/$/, "");
     const response = await fetch(`${baseUrl}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       cache: "no-store",
