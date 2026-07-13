@@ -103,7 +103,7 @@ function main() {
     const selectedAmplas = amplas.slice(0, targetAmplas);
     const selectedPlatform = platformTags.slice(0, targetPlatform);
 
-    const todasHashtags = Array.from(new Set([...selectedNichos, ...selectedAmplas, ...selectedPlatform]));
+    const todasHashtags = Array.from(new Set([...selectedNichos, ...selectedAmplas, ...selectedPlatform])).slice(0, limite);
 
     const resultado = {
       sucesso: true,

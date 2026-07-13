@@ -56,7 +56,7 @@ function loadSkillsSync(): KaozSkill[] {
   }
   
   if (cachedSkills.length === 0) {
-      cachedSkills = fallbackSkills;
+      cachedSkills = [...fallbackSkills];
   }
   return cachedSkills;
 }

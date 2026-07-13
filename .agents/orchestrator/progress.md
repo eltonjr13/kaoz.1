@@ -1,7 +1,8 @@
 ## Current Status
-Last visited: 2026-07-13T16:23:45-03:00
-- Worker (Conv ID: 99c63e06) has successfully completed the implementation of the skills, parser fixes, and UI.
-- 2 Reviewers (Conv IDs: c523b0f0, ddfb639d) and 2 Challengers (Conv IDs: 859d6144, 1bf2313a) are verifying the correctness, build compliance, and script executions.
+Last visited: 2026-07-13T16:30:30-03:00
+- Worker (Conv ID: 99c63e06) completed implementation.
+- Reviewer 2, Challenger 1, and Challenger 2 completed reviews. Reviewer 2 reported a typecheck error in tests.
+- Worker Fixes (Conv ID: 8d0df2ce) is currently fixing the test typecheck error, registry fallback cache, and hashtag count-limit issues.
 
 ## Iteration Status
 Current iteration: 1 / 32

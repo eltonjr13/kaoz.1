@@ -18,7 +18,7 @@ Review the implementation of skill parsers, registries, settings UI, and two spe
 
 ## Current Parent
 - Conversation ID: be4df9e1-3f97-42eb-b7e0-c6dc50a04bb0
-- Updated: not yet
+- Updated: 2026-07-13T19:27:45Z
 
 ## Review Scope
 - **Files to review**:
@@ -26,14 +26,16 @@ Review the implementation of skill parsers, registries, settings UI, and two spe
   - `services/skills/skill.registry.ts`
   - `components/settings/SkillsSettingsPanel.tsx`
   - `skills/analisador-de-metricas/SKILL.md`
-  - `skills/analisador-de-metricas/analyze-metrics.ts`
+  - `skills/analisador-de-metricas/scripts/analyze-metrics.ts`
   - `skills/gerador-de-hashtags/SKILL.md`
-  - `skills/gerador-de-hashtags/generate-hashtags.ts`
+  - `skills/gerador-de-hashtags/scripts/generate-hashtags.ts`
 - **Interface contracts**: Correct parse logic, modern premium layout, correct imports, compiles and passes orchestrator tests.
 - **Review criteria**: Integrity, correctness, style, usability, build compiling, test execution, stress testing.
 
 ## Key Decisions Made
-- [TBD]
+- Issued a verdict of **REQUEST_CHANGES** due to typescript build/typecheck compilation errors in `tests/orchestrator-core.test.ts`.
+- Identified mutation issue in `skill.registry.ts` where memory fallbacks were mutated on save.
+- Identified boundary issue in `generate-hashtags.ts` when a limit less than 3 is provided.
 
 ## Artifact Index
 - `d:\apps\mrchicken\.agents\reviewer_skills_2\review.md` — Quality review and adversarial stress-testing findings.

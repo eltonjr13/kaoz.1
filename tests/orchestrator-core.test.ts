@@ -58,8 +58,8 @@ tools:
 Você é um especialista em calcular contas.`;
   const skill = parseSkillMarkdown("calculadora", markdown);
   assert.equal(skill.enabled, true);
-  assert.equal(skill.tools.length, 1);
-  assert.equal(skill.tools[0].id, "skill:calculadora:calcular");
-  assert.equal(skill.tools[0].inputSchema.type, "object");
-  assert.deepEqual(skill.tools[0].inputSchema.required, ["valorConta"]);
+  assert.equal(skill.tools!.length, 1);
+  assert.equal(skill.tools![0].id, "skill:calculadora:calcular");
+  assert.equal(skill.tools![0].inputSchema.type, "object");
+  assert.deepEqual(skill.tools![0].inputSchema.required, ["valorConta"]);
 });

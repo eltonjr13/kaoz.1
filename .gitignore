@@ -43,3 +43,14 @@ storage_v11
 v11
 
 output
+
+# local development artifacts
+*.log
+/.agents/
+/.codex/
+/.hermes/
+/cache/
+
+# local binaries/backups
+/yt-dlp.exe
+/yt-dlp.exe.old
