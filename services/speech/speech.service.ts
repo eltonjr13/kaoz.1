@@ -1,8 +1,8 @@
-import type { PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechTranscriptionResult } from "./speech.types";
+import type { ParakeetRuntimeStatus, PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechTranscriptionResult } from "./speech.types";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
-import { ensurePythonSpeechServer, getPythonTranscribeUrl } from "./speech.python-runtime";
+import { ensurePythonSpeechServer, getParakeetStatusUrl, getPythonTranscribeUrl } from "./speech.python-runtime";
 import { readSpeechSettings, writeSpeechSettings } from "./speech.settings";
 
 const WHISPER_CHUNK_MS = 2600;
@@ -64,10 +64,34 @@ export class SpeechService {
 
   async updateRuntimeConfig(provider: SpeechProviderName): Promise<SpeechRuntimeConfig> {
     const settings = await writeSpeechSettings({ provider });
+    if (settings.provider === "parakeet") {
+      // The Python server responds to health checks immediately and downloads the
+      // model in the background, so choosing this option never freezes Settings.
+      void ensurePythonSpeechServer("parakeet").catch((error) => console.error("[Parakeet] Falha ao iniciar:", error));
+    }
     return {
       provider: settings.provider,
       chunkMs: getChunkMs(settings.provider),
     };
+  }
+
+  async getParakeetStatus(): Promise<ParakeetRuntimeStatus> {
+    const settings = await readSpeechSettings();
+    if (settings.provider !== "parakeet") {
+      return { state: "inactive", message: "Selecione Parakeet Local para preparar a transcricao offline." };
+    }
+    try {
+      await ensurePythonSpeechServer("parakeet");
+      const response = await fetch(getParakeetStatusUrl(), { cache: "no-store" });
+      const payload = await response.json().catch(() => ({})) as Partial<ParakeetRuntimeStatus>;
+      if (!response.ok) throw new Error("O runtime Parakeet nao respondeu.");
+      if (payload.state === "ready" || payload.state === "downloading" || payload.state === "error") {
+        return { state: payload.state, message: typeof payload.message === "string" ? payload.message : "Atualizando o Parakeet..." };
+      }
+      return { state: "downloading", message: "Preparando o Parakeet local..." };
+    } catch (error) {
+      return { state: "error", message: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   async transcribe(audio: File): Promise<SpeechTranscriptionResult> {
@@ -87,6 +111,10 @@ export class SpeechService {
     try {
       await ensurePythonSpeechServer(runtimeProvider);
     } catch (localError) {
+      if (runtimeProvider === "parakeet") {
+        const localMessage = localError instanceof Error ? localError.message : String(localError);
+        throw new Error(`Parakeet local indisponivel (${localMessage}).`);
+      }
       const cloudResult = await transcribeWithConfiguredCloud(audio);
       if (cloudResult) return cloudResult;
       const localMessage = localError instanceof Error ? localError.message : String(localError);

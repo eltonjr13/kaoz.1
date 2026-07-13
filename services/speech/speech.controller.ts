@@ -20,6 +20,10 @@ export async function getSpeechConfig() {
   return NextResponse.json(await getSpeechService().getRuntimeConfig());
 }
 
+export async function getParakeetStatus() {
+  return NextResponse.json(await getSpeechService().getParakeetStatus());
+}
+
 export async function updateSpeechConfig(request: Request) {
   try {
     const body = await request.json().catch(() => null) as { provider?: unknown } | null;
