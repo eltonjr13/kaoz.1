@@ -21,7 +21,7 @@ export function createSkillScriptHandler(scriptPath: string): ToolHandler {
         bin = "node";
         // Para TS no Next, tsx ou node --experimental-strip-types
         if (ext === ".ts") {
-            bin = "npx";
+            bin = process.platform === "win32" ? "npx.cmd" : "npx";
         }
     } else if (ext === ".py") {
         bin = "python"; // Ou python3 dependendo do ambiente

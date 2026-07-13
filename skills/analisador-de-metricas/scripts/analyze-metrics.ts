@@ -43,6 +43,10 @@ function main() {
       throw new Error("A duração do vídeo não pode ser zero.");
     }
 
+    if (tempoRetencaoMedio > duracaoSegundos) {
+      throw new Error("O tempo de retenção médio não pode ser maior que a duração do vídeo.");
+    }
+
     // Calculations
     const interacoesTotais = curtidas + comentarios + compartilhamentos + salvamentos;
     const taxaEngajamento = (interacoesTotais / visualizacoes) * 100;
@@ -106,10 +110,9 @@ function main() {
     };
 
     console.log(JSON.stringify(resultado));
-    process.exit(0);
   } catch (e: any) {
     console.error(e.message);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

@@ -25,10 +25,9 @@ function main() {
         };
         
         console.log(JSON.stringify(resultado));
-        process.exit(0);
     } catch (e) {
         console.error(e.message);
-        process.exit(1);
+        process.exitCode = 1;
     }
 }
 

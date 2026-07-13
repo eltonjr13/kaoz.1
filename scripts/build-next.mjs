@@ -7,6 +7,9 @@ const buildHome = path.join(root, ".generated", "build-home");
 const localAppData = path.join(buildHome, "AppData", "Local");
 fs.mkdirSync(localAppData, { recursive: true });
 
+const tmpDir = path.join(root, "tmp");
+fs.mkdirSync(tmpDir, { recursive: true });
+
 // Next's standalone file tracer evaluates home-directory paths used by the
 // optional local CLI integrations. Keep tracing inside the project so Windows
 // compatibility junctions in AppData are never traversed during a build.
@@ -19,7 +22,10 @@ const result = spawnSync(
       ...process.env,
       HOME: buildHome,
       USERPROFILE: buildHome,
-      LOCALAPPDATA: localAppData
+      LOCALAPPDATA: localAppData,
+      TMPDIR: tmpDir,
+      TEMP: tmpDir,
+      TMP: tmpDir
     },
     stdio: "inherit"
   }

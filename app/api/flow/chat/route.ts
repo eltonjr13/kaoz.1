@@ -42,7 +42,7 @@ type SpotifyDirectCommand = {
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
 const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras", "zenmux", "iamhc"]);
-const EXTERNAL_TOOL_INTENT_PATTERN = /\b(internet|web|google|site|pesquis|buscar|busque|pesquise|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|musica|playlist|tocando|volume|fila)\b/;
+const EXTERNAL_TOOL_INTENT_PATTERN = /\b(internet|web|google|site|pesquisa|pesquisar|pesquise|buscar|busque|procure|procurar|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|musica|playlist|tocando|volume|fila)\b/;
 
 function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
   if (!body || typeof body !== "object" || !Array.isArray((body as FlowChatRequestBody).messages)) {
@@ -106,7 +106,7 @@ function enforceRequestedFlow(
 }
 
 function buildSpotifyPlaylistName(text: string): string {
-  const quoted = text.match(/["â€œâ€']([^"â€œâ€']+)["â€œâ€']/)?.[1]?.trim();
+  const quoted = text.match(/["â€œâ€ ']([^"â€œâ€ ']+)["â€œâ€ ']/)?.[1]?.trim();
   if (quoted) return quoted;
 
   const theme = text.match(/\b(?:com|de)\s+(.+)$/i)?.[1]
@@ -175,7 +175,8 @@ function detectSpotifyDirectCommand(messages: ChatMessage[]): SpotifyDirectComma
 
 function needsExternalTools(messages: ChatMessage[]): boolean {
   const text = getLatestUserMessageText(messages);
-  return EXTERNAL_TOOL_INTENT_PATTERN.test(normalizeCommandText(text));
+  const normalized = normalizeCommandText(text);
+  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized);
 }
 
 function extractMcpText(toolResult: any): string {

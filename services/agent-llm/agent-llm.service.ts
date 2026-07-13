@@ -224,6 +224,19 @@ function commandLookupTool(): { command: string; args: string[] } {
     : { command: "which", args: [] };
 }
 
+function chooseRunnableCommandPath(paths: string[]): string | null {
+  const candidates = paths.map((candidate) => candidate.trim()).filter(Boolean);
+  if (process.platform !== "win32") return candidates[0] || null;
+
+  // npm installs three shims on Windows: extensionless, .cmd and .ps1. Node's
+  // spawn cannot execute the extensionless POSIX shim, so prefer native/cmd.
+  for (const extension of [".exe", ".cmd", ".bat"]) {
+    const candidate = candidates.find((value) => value.toLowerCase().endsWith(extension));
+    if (candidate) return candidate;
+  }
+  return candidates[0] || null;
+}
+
 function uniquePathEntries(entries: string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
@@ -397,7 +410,7 @@ async function checkCommandStatus(command: string): Promise<AgentLLMCommandStatu
       timeoutMs: 10_000,
       label: `Localizacao do comando ${normalizedCommand}`,
     });
-    const resolvedPath = cleanCliOutput(result.stdout).split(/\r?\n/).find(Boolean) || null;
+    const resolvedPath = chooseRunnableCommandPath(cleanCliOutput(result.stdout).split(/\r?\n/));
     if (result.exitCode === 0 && resolvedPath) {
       return baseCommandStatus(command, { available: true, resolvedPath });
     }
