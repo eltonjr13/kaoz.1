@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -127,6 +127,25 @@ async function startProductionServer() {
 }
 
 function createWindow(url) {
+  const appOrigin = new URL(url).origin;
+  const isTrustedLocalOrigin = (candidate) => {
+    try {
+      const parsed = new URL(candidate);
+      return parsed.origin === appOrigin && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
+    } catch {
+      return false;
+    }
+  };
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+    return permission === "media" && isTrustedLocalOrigin(requestingOrigin);
+  });
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const requestingUrl = details.requestingUrl || webContents.getURL();
+    const isAudioRequest = !details.mediaTypes || details.mediaTypes.length === 0 || details.mediaTypes.includes("audio");
+    callback(permission === "media" && isAudioRequest && isTrustedLocalOrigin(requestingUrl));
+  });
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,

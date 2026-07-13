@@ -163,7 +163,6 @@ Button.displayName = "Button";
 
 const VOICE_BAR_COUNT = 32;
 const SILENCE_LEVELS = Array.from({ length: VOICE_BAR_COUNT }, () => 0.08);
-const VOICE_ACTIVITY_THRESHOLD = 0.035;
 
 const formatRecordingTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -207,52 +206,7 @@ const VoiceInteractionLight: React.FC<VoiceInteractionLightProps> = ({ isVoiceAc
   );
 };
 
-interface VoiceAnalysisFrame {
-  isVoiceActive: boolean;
-  levels: number[];
-}
-
-type BrowserAudioContextConstructor = new () => AudioContext;
-
 const createSilenceLevels = () => [...SILENCE_LEVELS];
-
-const createBrowserAudioContext = () => {
-  if (typeof window === "undefined") return null;
-  const browserWindow = window as typeof window & {
-    webkitAudioContext?: BrowserAudioContextConstructor;
-  };
-  const AudioContextConstructor = window.AudioContext || browserWindow.webkitAudioContext;
-  return AudioContextConstructor ? new AudioContextConstructor() : null;
-};
-
-const analyzeVoiceFrame = (data: Uint8Array): VoiceAnalysisFrame => {
-  let sumSquares = 0;
-  for (let i = 0; i < data.length; i++) {
-    const centered = (data[i] - 128) / 128;
-    sumSquares += centered * centered;
-  }
-
-  const rms = Math.sqrt(sumSquares / data.length);
-  const isVoiceActive = rms > VOICE_ACTIVITY_THRESHOLD;
-  if (!isVoiceActive) {
-    return { isVoiceActive, levels: createSilenceLevels() };
-  }
-
-  const bucketSize = Math.max(1, Math.floor(data.length / VOICE_BAR_COUNT));
-  const levels = Array.from({ length: VOICE_BAR_COUNT }, (_, index) => {
-    let bucketPeak = 0;
-    const start = index * bucketSize;
-    const end = Math.min(data.length, start + bucketSize);
-
-    for (let i = start; i < end; i++) {
-      bucketPeak = Math.max(bucketPeak, Math.abs(data[i] - 128) / 128);
-    }
-
-    return Math.min(1, Math.max(0.12, bucketPeak * 3.2));
-  });
-
-  return { isVoiceActive, levels };
-};
 
 // ImageViewDialog Component
 interface ImageViewDialogProps {
@@ -552,12 +506,6 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const [showCanvas, setShowCanvas] = React.useState(false);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const promptBoxRef = React.useRef<HTMLDivElement>(null);
-  const audioContextRef = React.useRef<AudioContext | null>(null);
-  const audioSourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null);
-  const analyserRef = React.useRef<AnalyserNode | null>(null);
-  const micStreamRef = React.useRef<MediaStream | null>(null);
-  const voiceFrameRef = React.useRef<number | null>(null);
-  const voiceActiveRef = React.useRef(false);
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const inputRef = React.useRef(value ?? internalInput);
   const filesRef = React.useRef<File[]>([]);
@@ -651,7 +599,6 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   const openImageModal = (imageUrl: string) => setSelectedImage(imageUrl);
 
   const resetVoiceMeter = React.useCallback(() => {
-    voiceActiveRef.current = false;
     setIsVoiceActive(false);
     setVoiceLevels(createSilenceLevels());
   }, []);
@@ -667,70 +614,13 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     stopRecordingTimer();
     setRecordingSeconds(0);
     recordingTimerRef.current = setInterval(() => {
-      if (voiceActiveRef.current) {
-        setRecordingSeconds((seconds) => seconds + 1);
-      }
+      setRecordingSeconds((seconds) => seconds + 1);
     }, 1000);
   }, [stopRecordingTimer]);
 
   const stopVoiceMeter = React.useCallback(() => {
-    if (voiceFrameRef.current !== null) {
-      cancelAnimationFrame(voiceFrameRef.current);
-      voiceFrameRef.current = null;
-    }
-
-    audioSourceRef.current?.disconnect();
-    audioSourceRef.current = null;
-    analyserRef.current = null;
-
-    micStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micStreamRef.current = null;
-
-    const audioContext = audioContextRef.current;
-    audioContextRef.current = null;
-    if (audioContext && audioContext.state !== "closed") {
-      void audioContext.close();
-    }
-
     resetVoiceMeter();
   }, [resetVoiceMeter]);
-
-  const startVoiceMeter = React.useCallback(async () => {
-    const audioContext = createBrowserAudioContext();
-    if (!audioContext || !navigator.mediaDevices?.getUserMedia) {
-      throw new Error("Medidor de voz nativo nao esta disponivel neste navegador.");
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.74;
-
-    const source = audioContext.createMediaStreamSource(stream);
-    source.connect(analyser);
-
-    audioContextRef.current = audioContext;
-    audioSourceRef.current = source;
-    analyserRef.current = analyser;
-    micStreamRef.current = stream;
-
-    const data = new Uint8Array(analyser.fftSize);
-    const readVoiceFrame = () => {
-      analyser.getByteTimeDomainData(data);
-      const frame = analyzeVoiceFrame(data);
-      voiceActiveRef.current = frame.isVoiceActive;
-      setIsVoiceActive(frame.isVoiceActive);
-      setVoiceLevels(frame.levels);
-      voiceFrameRef.current = requestAnimationFrame(readVoiceFrame);
-    };
-
-    readVoiceFrame();
-  }, []);
 
   const handleStartRecording = React.useCallback(async () => {
     if (isLoading || isRecording) return;
@@ -739,13 +629,12 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     const started = await speech.start();
     if (started) {
       startRecordingTimer();
-      try {
-        await startVoiceMeter();
-      } catch (meterError) {
-        console.warn("Medidor de voz indisponivel:", meterError);
-      }
+      // The transcription provider already owns the microphone. Opening a
+      // second getUserMedia stream for a cosmetic meter caused duplicate
+      // Windows privacy requests and device contention in Electron.
+      setIsVoiceActive(true);
     }
-  }, [isLoading, isRecording, resetVoiceMeter, speech, startRecordingTimer, startVoiceMeter]);
+  }, [isLoading, isRecording, resetVoiceMeter, speech, startRecordingTimer]);
 
   const submitMessage = React.useCallback(() => {
     if (isLoading || submitInFlightRef.current) return;

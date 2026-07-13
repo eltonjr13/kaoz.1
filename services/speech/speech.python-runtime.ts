@@ -6,6 +6,7 @@ interface PythonRuntimeState {
   process: ChildProcessWithoutNullStreams | null;
   provider: SpeechProviderName | null;
   ready: Promise<void> | null;
+  startupError: Error | null;
 }
 
 const DEFAULT_PYTHON_URL = "http://127.0.0.1:8011";
@@ -16,6 +17,7 @@ const runtimeState: PythonRuntimeState = {
   process: null,
   provider: null,
   ready: null,
+  startupError: null,
 };
 
 function getPythonBaseUrl(): string {
@@ -84,6 +86,7 @@ function stopManagedProcess(): void {
   runtimeState.process = null;
   runtimeState.provider = null;
   runtimeState.ready = null;
+  runtimeState.startupError = null;
 }
 
 function startManagedProcess(provider: SpeechProviderName): void {
@@ -110,17 +113,22 @@ function startManagedProcess(provider: SpeechProviderName): void {
     },
   });
 
+  runtimeState.startupError = null;
+
   child.stdout.on("data", (data) => {
     console.log(`[Speech Python] ${data.toString().trim()}`);
   });
   child.stderr.on("data", (data) => {
     console.error(`[Speech Python] ${data.toString().trim()}`);
   });
+  child.on("error", (error) => {
+    runtimeState.startupError = error;
+    console.error(`[Speech Python] Falha ao iniciar: ${error.message}`);
+  });
   child.on("exit", () => {
     if (runtimeState.process === child) {
       runtimeState.process = null;
       runtimeState.provider = null;
-      runtimeState.ready = null;
     }
   });
 
@@ -131,6 +139,12 @@ function startManagedProcess(provider: SpeechProviderName): void {
 async function waitForHealth(): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < START_TIMEOUT_MS) {
+    if (runtimeState.startupError) {
+      throw new Error(`Python/Faster-Whisper nao pode ser iniciado: ${runtimeState.startupError.message}`);
+    }
+    if (runtimeState.process?.exitCode !== null) {
+      throw new Error(`Python/Faster-Whisper encerrou antes de ficar pronto (codigo ${runtimeState.process?.exitCode ?? "desconhecido"}).`);
+    }
     if (await checkHealth()) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -151,5 +165,10 @@ export async function ensurePythonSpeechServer(provider: SpeechProviderName): Pr
     runtimeState.ready = waitForHealth();
   }
 
-  await runtimeState.ready;
+  try {
+    await runtimeState.ready;
+  } catch (error) {
+    stopManagedProcess();
+    throw error;
+  }
 }

@@ -43,6 +43,7 @@ import {
   type ImageReferenceSource,
 } from "@/src/providers/flow/ImageGenerationContract";
 import { isBuildSkillsIntent } from "@/services/skills/skill.intent";
+import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -1047,6 +1048,7 @@ export default function FlowDashboardPage() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const voiceMicrophoneReleaseRef = useRef<(() => void) | null>(null);
   const voiceEnabledRef = useRef(false);
   const voiceAwaitingCommandRef = useRef(false);
   const voiceSpeakingRef = useRef(false);
@@ -2463,6 +2465,15 @@ export default function FlowDashboardPage() {
       return;
     }
 
+    try {
+      const microphoneSession = acquireMicrophoneSession();
+      voiceMicrophoneReleaseRef.current = microphoneSession.release;
+    } catch (error) {
+      setVoiceError(error instanceof Error ? error.message : "O microfone ja esta em uso.");
+      setVoiceStatus("Voz indisponivel.");
+      return;
+    }
+
     voiceRecognitionRef.current?.abort();
     const recognition = new Recognition();
     recognition.continuous = true;
@@ -2489,14 +2500,21 @@ export default function FlowDashboardPage() {
       }
       setVoiceTranscript(interim);
     };
+    let endedWithError = false;
     recognition.onerror = (event) => {
+      endedWithError = true;
       const errorMessage = event.message || event.error || "Falha no reconhecimento de voz.";
       setVoiceError(errorMessage);
-      setVoiceStatus("Escuta pausada.");
+      setVoiceStatus("Voz desligada apos erro de microfone.");
+      voiceEnabledRef.current = false;
+      setVoiceEnabled(false);
+      voiceMicrophoneReleaseRef.current?.();
+      voiceMicrophoneReleaseRef.current = null;
     };
     recognition.onend = () => {
-      if (!voiceEnabledRef.current) return;
+      if (!voiceEnabledRef.current || endedWithError) return;
       window.setTimeout(() => {
+        if (!voiceEnabledRef.current) return;
         try {
           recognition.start();
           setVoiceStatus("Voz ativada. Pode falar.");
@@ -2518,6 +2536,8 @@ export default function FlowDashboardPage() {
       const message = error instanceof Error ? error.message : "Nao foi possivel iniciar o microfone.";
       setVoiceError(message);
       setVoiceStatus("Voz indisponivel.");
+      voiceMicrophoneReleaseRef.current?.();
+      voiceMicrophoneReleaseRef.current = null;
     }
   };
 
@@ -2530,6 +2550,8 @@ export default function FlowDashboardPage() {
     setVoiceTranscript("");
     voiceRecognitionRef.current?.abort();
     voiceRecognitionRef.current = null;
+    voiceMicrophoneReleaseRef.current?.();
+    voiceMicrophoneReleaseRef.current = null;
     cancelAllVoicePlayback();
     voiceAudioRef.current = null;
   };
@@ -2546,6 +2568,8 @@ export default function FlowDashboardPage() {
     return () => {
       voiceEnabledRef.current = false;
       voiceRecognitionRef.current?.abort();
+      voiceMicrophoneReleaseRef.current?.();
+      voiceMicrophoneReleaseRef.current = null;
       cancelAllVoicePlayback();
     };
   }, [cancelAllVoicePlayback]);

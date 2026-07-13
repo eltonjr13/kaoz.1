@@ -1,5 +1,6 @@
 import * as React from "react";
 import { createSpeechProvider, type SpeechProvider, type SpeechProviderStatus } from "./providers";
+import { acquireMicrophoneSession } from "./microphone-session";
 
 interface UseSpeechDictationInput {
   value: string;
@@ -21,19 +22,34 @@ export function useSpeechDictation({ value, onValueChange, disabled = false }: U
   const [transcript, setTranscript] = React.useState("");
   const providerRef = React.useRef<SpeechProvider | null>(null);
   const baseTextRef = React.useRef("");
+  const releaseMicrophoneRef = React.useRef<(() => void) | null>(null);
 
   const stop = React.useCallback(async () => {
     const provider = providerRef.current;
     providerRef.current = null;
-    await provider?.stop();
-    setStatus("idle");
+    try {
+      await provider?.stop();
+    } finally {
+      releaseMicrophoneRef.current?.();
+      releaseMicrophoneRef.current = null;
+      setStatus("idle");
+    }
   }, []);
 
   const start = React.useCallback(async () => {
     if (disabled || status !== "idle") return false;
 
+    let microphoneSession: ReturnType<typeof acquireMicrophoneSession>;
+    try {
+      microphoneSession = acquireMicrophoneSession();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "O microfone ja esta em uso.");
+      return false;
+    }
+
     const provider = createSpeechProvider();
     providerRef.current = provider;
+    releaseMicrophoneRef.current = microphoneSession.release;
     baseTextRef.current = value;
     setError("");
     setTranscript("");
@@ -53,6 +69,8 @@ export function useSpeechDictation({ value, onValueChange, disabled = false }: U
       return true;
     } catch (nextError) {
       providerRef.current = null;
+      releaseMicrophoneRef.current?.();
+      releaseMicrophoneRef.current = null;
       setStatus("idle");
       setError(nextError instanceof Error ? getFriendlySpeechError(nextError) : "Nao foi possivel iniciar o microfone.");
       return false;
@@ -63,6 +81,8 @@ export function useSpeechDictation({ value, onValueChange, disabled = false }: U
     return () => {
       void providerRef.current?.stop();
       providerRef.current = null;
+      releaseMicrophoneRef.current?.();
+      releaseMicrophoneRef.current = null;
     };
   }, []);
 

@@ -1,4 +1,7 @@
 import type { PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechTranscriptionResult } from "./speech.types";
+import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
+import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { ensurePythonSpeechServer, getPythonTranscribeUrl } from "./speech.python-runtime";
 import { readSpeechSettings, writeSpeechSettings } from "./speech.settings";
 
@@ -13,6 +16,41 @@ function getChunkMs(provider: SpeechProviderName): number {
   if (provider === "whisper-speed") return WHISPER_SPEED_CHUNK_MS;
   if (provider === "whisper") return WHISPER_CHUNK_MS;
   return 0;
+}
+
+async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscriptionResult | null> {
+  const openaiConfig = await getApiProviderConfig("openai");
+  if (openaiConfig.apiKey) {
+    const client = new OpenAI({
+      apiKey: openaiConfig.apiKey,
+      ...(openaiConfig.baseUrl ? { baseURL: openaiConfig.baseUrl } : {}),
+    });
+    const result = await client.audio.transcriptions.create({
+      file: audio,
+      model: "whisper-1",
+      language: "pt",
+    });
+    return { text: result.text || "" };
+  }
+
+  const geminiConfig = await getApiProviderConfig("gemini");
+  if (geminiConfig.apiKey) {
+    const audioData = Buffer.from(await audio.arrayBuffer()).toString("base64");
+    const client = new GoogleGenAI({ apiKey: geminiConfig.apiKey });
+    const result = await client.models.generateContent({
+      model: geminiConfig.model || "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { text: "Transcreva exatamente este audio em portugues. Retorne somente a transcricao, sem comentarios." },
+          { inlineData: { mimeType: audio.type || "audio/webm", data: audioData } },
+        ],
+      }],
+    });
+    return { text: result.text?.trim() || "" };
+  }
+
+  return null;
 }
 
 export class SpeechService {
@@ -34,11 +72,26 @@ export class SpeechService {
 
   async transcribe(audio: File): Promise<SpeechTranscriptionResult> {
     const settings = await readSpeechSettings();
-    if (settings.provider === "webspeech") {
-      throw new Error("Servidor configurado para Web Speech. Transcricao Whisper desativada.");
+    const isDesktop = process.env.MRCHICKEN_DESKTOP === "1";
+
+    // Electron cannot depend on Chrome's hosted Web Speech service. Reuse the
+    // single MediaRecorder capture and transcribe with an already configured API.
+    if (settings.provider === "webspeech" && isDesktop) {
+      const cloudResult = await transcribeWithConfiguredCloud(audio);
+      if (cloudResult) return cloudResult;
+      throw new Error("No aplicativo para Windows, a transcricao Web requer uma chave OpenAI ou Gemini configurada em Configuracoes > Credenciais de API.");
     }
 
-    await ensurePythonSpeechServer(settings.provider);
+    const runtimeProvider = settings.provider === "webspeech" ? "whisper-speed" : settings.provider;
+
+    try {
+      await ensurePythonSpeechServer(runtimeProvider);
+    } catch (localError) {
+      const cloudResult = await transcribeWithConfiguredCloud(audio);
+      if (cloudResult) return cloudResult;
+      const localMessage = localError instanceof Error ? localError.message : String(localError);
+      throw new Error(`Transcricao local indisponivel (${localMessage}). Configure uma chave OpenAI ou Gemini para usar o fallback no Windows.`);
+    }
 
     const formData = new FormData();
     const audioBuffer = await audio.arrayBuffer();

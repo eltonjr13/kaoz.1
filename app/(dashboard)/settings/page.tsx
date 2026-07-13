@@ -158,17 +158,17 @@ const SPEECH_OPTIONS: Array<{
   {
     id: "webspeech",
     name: "Web",
-    description: "Usa a transcricao nativa do navegador."
+    description: "No navegador usa Web Speech; no aplicativo Windows usa OpenAI ou Gemini configurada."
   },
   {
     id: "whisper",
     name: "Whisper",
-    description: "Faster-Whisper local com mais estabilidade."
+    description: "Faster-Whisper local, com fallback para OpenAI ou Gemini quando Python nao estiver disponivel."
   },
   {
     id: "whisper-speed",
     name: "Whisper Speed",
-    description: "Faster-Whisper local priorizando baixa latencia."
+    description: "Faster-Whisper local rapido, com fallback para uma API de transcricao configurada."
   }
 ];
 

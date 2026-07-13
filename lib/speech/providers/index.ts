@@ -42,14 +42,24 @@ async function loadSpeechConfig(): Promise<{ provider: SpeechProviderName; chunk
     .catch(() => ({ provider: "whisper-speed", chunkMs: 1200 }));
 }
 
+function isElectronRuntime(): boolean {
+  return typeof navigator !== "undefined" && /Electron/i.test(navigator.userAgent);
+}
+
 class ConfiguredSpeechProvider extends SpeechProviderBase {
   private provider: SpeechProvider | null = null;
 
   async start(): Promise<void> {
     const config = await loadSpeechConfig();
-    const provider = config.provider === "webspeech"
+    const electronRuntime = isElectronRuntime();
+    // Electron's Chromium exposes parts of the Web Speech surface, but does not
+    // reliably provide Chrome's remote recognition service. Record once and use
+    // the server fallback instead of repeatedly reopening the Windows microphone.
+    // A long timeslice makes ordinary desktop dictation a single request on stop,
+    // avoiding repeated cloud calls when Python is not installed.
+    const provider = config.provider === "webspeech" && !electronRuntime
       ? new WebSpeechProvider()
-      : new WhisperProvider({ timesliceMs: config.chunkMs });
+      : new WhisperProvider({ timesliceMs: electronRuntime ? 30_000 : config.chunkMs });
 
     provider.onTranscript((text) => this.emitTranscript(text));
     provider.onError((error) => this.emitError(error));
