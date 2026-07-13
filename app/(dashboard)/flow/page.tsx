@@ -3249,27 +3249,11 @@ export default function FlowDashboardPage() {
   return (
     <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#09090B] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Backgrounds ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute", right: 0, top: 0, bottom: 0, width: "65%", zIndex: 1,
-          backgroundImage: "url('/mrchicken-anime-bg.jpeg')", backgroundSize: "cover",
-          backgroundPosition: "right 15% top", backgroundAttachment: "local",
-          opacity: 0.08, mixBlendMode: "luminosity",
-          filter: "blur(12px) contrast(1.2)",
-          maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.1) 10%, black 32%, black 78%, transparent 100%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute", inset: 0, zIndex: 0,
-          background: "radial-gradient(ellipse 55% 50% at 82% 10%, rgba(139,92,246,0.035) 0%, transparent 100%), linear-gradient(180deg, rgba(9,9,11,0.40) 0%, rgba(9,9,11,0.80) 52%, #09090B 100%)",
-          pointerEvents: "none",
-        }}
-      />
+      <div className="flow-cinematic-background" aria-hidden="true">
+        <div className="flow-cinematic-background__art" />
+        <div className="flow-cinematic-background__overlay" />
+        <div className="flow-cinematic-background__grain" />
+      </div>
 
       {/* ── Header ── */}
       <header
@@ -3453,7 +3437,7 @@ export default function FlowDashboardPage() {
                       });
                     }}
                   >
-                    <div className={`px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 rounded-tr-sm text-white/90' : 'bg-white/5 border border-white/10 rounded-tl-sm text-white/80'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
+                    <div className={`select-text cursor-text px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'flow-user-card rounded-tr-sm text-white' : 'flow-surface-card rounded-tl-sm text-white'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
                       {(!msg.attachedImage || msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '') && (
                         <ReactMarkdown>
                           {msg.attachedImage ? msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() : msg.content}
