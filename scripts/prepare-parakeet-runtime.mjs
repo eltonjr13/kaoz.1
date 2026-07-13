@@ -27,9 +27,13 @@ if (!fs.existsSync(pythonExe)) {
   console.log("Baixando runtime Python portatil para o Parakeet...");
   await download("https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip", pythonZip);
   run("powershell.exe", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${pythonZip}' -DestinationPath '${pythonRoot}' -Force`]);
-  const pth = path.join(pythonRoot, "python312._pth");
-  fs.writeFileSync(pth, fs.readFileSync(pth, "utf8").replace("#import site", "import site"));
 }
+
+// The embedded Python runs in isolated mode and deliberately ignores
+// PYTHONPATH. Register our sibling dependency folder in its ._pth file so the
+// packaged server can import onnx_asr, onnxruntime and soundfile.
+const pth = path.join(pythonRoot, "python312._pth");
+fs.writeFileSync(pth, "python312.zip\n.\n../packages\nimport site\n", "utf8");
 
 if (!fs.existsSync(marker)) {
   console.log("Preparando dependencias locais do Parakeet...");

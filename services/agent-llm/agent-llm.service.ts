@@ -240,6 +240,12 @@ function getWindowsProcessPathEntries(): string[] {
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
   const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
   return [
+    // npm installs global command shims here on Windows. Electron does not
+    // always inherit this user path, so include it explicitly for Codex/Gemini.
+    path.join(appData, "npm"),
+    // The Codex desktop app can expose a runnable CLI here even when the
+    // WindowsApps alias is blocked by package permissions.
+    path.join(os.homedir(), ".codex", ".sandbox-bin"),
     path.join(os.homedir(), ".grok", "bin"),
     path.join(localAppData, "Microsoft", "WindowsApps"),
     path.join(localAppData, WINDOWS_CODEX_BIN_ROOT),
@@ -650,7 +656,13 @@ export async function runSelectedChatModelCli(
       : currentPrompt;
 
     if (model === "gemini") {
-      return runProviderPromptCli("Gemini CLI", envOrDefault("GEMINI_CLI_COMMAND", "gemini"), envOrDefault("GEMINI_CLI_MODEL", "gemini-2.5-pro"), envOrDefault("GEMINI_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+      // In MrChicken, Gemini is provided by Antigravity (`agy`), which is
+      // already configured and authenticated in the Agent LLM settings. Do not
+      // invoke Google's unrelated `gemini` CLI here.
+      if (options.referenceImagePath) {
+        throw new Error("Antigravity CLI nao suporta imagem de referencia via arg simples (ainda).");
+      }
+      return runAntigravityCli(settings, currentPrompt, options);
     }
 
     if (model === "claude") {
