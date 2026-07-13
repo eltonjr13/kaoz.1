@@ -48,14 +48,19 @@ Orchestrate and verify the creation of two new skills (analisador-de-metricas an
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
 |-------|------|-----------|--------|---------|
-| Explorer 1 | teamwork_preview_explorer | Explore existing skills & UI | in-progress | 110f7b92-b47e-42ae-8151-4ef623814f64 |
-| Explorer 2 | teamwork_preview_explorer | Explore existing skills & UI | in-progress | e5cd9827-7f86-4543-a507-c6a0a2d0d92e |
-| Explorer 3 | teamwork_preview_explorer | Explore existing skills & UI | in-progress | c9556e2a-e65b-4e58-9e37-7b0833834e63 |
+| Explorer 1 | teamwork_preview_explorer | Explore existing skills & UI | completed | 110f7b92-b47e-42ae-8151-4ef623814f64 |
+| Explorer 2 | teamwork_preview_explorer | Explore existing skills & UI | completed | e5cd9827-7f86-4543-a507-c6a0a2d0d92e |
+| Explorer 3 | teamwork_preview_explorer | Explore existing skills & UI | completed | c9556e2a-e65b-4e58-9e37-7b0833834e63 |
+| Worker | teamwork_preview_worker | Implement skills, parser fixes, and UI | completed | 99c63e06-aa91-4168-8958-18aa17f94a8a |
+| Reviewer 1 | teamwork_preview_reviewer | Review changes and check build | in-progress | c523b0f0-28fc-400c-905f-769115977536 |
+| Reviewer 2 | teamwork_preview_reviewer | Review changes and check build | in-progress | ddfb639d-92d9-479c-abde-aa3c63e024cf |
+| Challenger 1 | teamwork_preview_challenger | Run scripts with sample inputs | in-progress | 859d6144-847d-4a0f-9cce-32df4d5a6d52 |
+| Challenger 2 | teamwork_preview_challenger | Run scripts with sample inputs | in-progress | 1bf2313a-d720-441c-ab24-8c0ab82c722d |
 
 ## Succession Status
 - Succession required: no
-- Spawn count: 3 / 16
-- Pending subagents: 110f7b92-b47e-42ae-8151-4ef623814f64, e5cd9827-7f86-4543-a507-c6a0a2d0d92e, c9556e2a-e65b-4e58-9e37-7b0833834e63
+- Spawn count: 8 / 16
+- Pending subagents: c523b0f0-28fc-400c-905f-769115977536, ddfb639d-92d9-479c-abde-aa3c63e024cf, 859d6144-847d-4a0f-9cce-32df4d5a6d52, 1bf2313a-d720-441c-ab24-8c0ab82c722d
 - Predecessor: none
 - Successor: not yet spawned
 

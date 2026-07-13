@@ -1,4 +1,4 @@
-# BRIEFING — 2026-07-13T19:08:00Z
+# BRIEFING — 2026-07-13T19:11:00Z
 
 ## Mission
 Investigate Mr. Chicken skills configuration, scripts, and UI integration to recommend settings and changes for metric analyzer and hashtag generator skills.
@@ -16,15 +16,16 @@ Investigate Mr. Chicken skills configuration, scripts, and UI integration to rec
 
 ## Current Parent
 - Conversation ID: 9980a620-cf7a-4b64-b1b9-73124f519a71
-- Updated: not yet
+- Updated: 2026-07-13T19:11:00Z
 
 ## Investigation State
-- **Explored paths**: [TBD]
-- **Key findings**: [TBD]
-- **Unexplored areas**: [TBD]
+- **Explored paths**: `skills/`, `components/settings/SkillsSettingsPanel.tsx`, `app/(dashboard)/settings/page.tsx`, `services/skills/skill.registry.ts`, `services/skills/skill.parser.ts`, `services/tools/tool.registry.ts`, `services/orchestrator/adapters/skill-script.adapter.ts`.
+- **Key findings**: Dynamic loading is sufficient for displaying skills; however, the `skill.parser.ts` has a parsing limitation which fails to load tool definitions unless they are specified as JSON inline in the frontmatter. Existing tool configurations are currently empty due to this bug.
+- **Unexplored areas**: None.
 
 ## Key Decisions Made
-- [TBD]
+- Recommended inline JSON formatting in the YAML frontmatter for the new skills to ensure they register their tools correctly.
+- Recommended full relative paths from the workspace root for the tool script paths.
 
 ## Artifact Index
 - d:\apps\mrchicken\.agents\explorer_skills_3\analysis.md — Main findings and recommendations report

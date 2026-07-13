@@ -24,10 +24,10 @@
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| 1 | Explore existing skills & UI | Run exploration agent to check `skills/` structure, API, and UI | None | IN_PROGRESS (IDs: 110f7b92, e5cd9827, c9556e2a) |
-| 2 | Create `analisador-de-metricas` skill | Write `SKILL.md` and script to analyze video engagement metrics | M1 | PLANNED |
-| 3 | Create `gerador-de-hashtags` skill | Write `SKILL.md` and script to generate tags based on niche/content | M1 | PLANNED |
-| 4 | UI Integration & Verification | Verify new skills show in Settings tab list and Supercomputer slash commands, design remains premium, and Next.js build succeeds | M2, M3 | PLANNED |
+| 1 | Explore existing skills & UI | Run exploration agent to check `skills/` structure, API, and UI | None | DONE |
+| 2 | Create `analisador-de-metricas` skill | Write `SKILL.md` and script to analyze video engagement metrics | M1 | IN_PROGRESS (Worker: 99c63e06) |
+| 3 | Create `gerador-de-hashtags` skill | Write `SKILL.md` and script to generate tags based on niche/content | M1 | IN_PROGRESS (Worker: 99c63e06) |
+| 4 | UI Integration & Verification | Verify new skills show in Settings tab list and Supercomputer slash commands, design remains premium, and Next.js build succeeds | M2, M3 | IN_PROGRESS (Worker: 99c63e06) |
 
 ## Interface Contracts
 ### API Endpoint ↔ Skills Settings Panel

@@ -1,4 +1,5 @@
 /// <reference types="node" />
+export {};
 // Script para buscar vídeos virais no DuckDuckGo HTML Lite
 // Utiliza a sintaxe 'site:tiktok.com OR site:youtube.com "nicho" viral'
 

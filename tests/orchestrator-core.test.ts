@@ -10,6 +10,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { applyAutomaticFailure, applyCancellation, applyManualRetry, applyResume } from "../services/orchestrator/orchestrator.transitions.ts";
 import { assertToolArguments } from "../services/tools/tool.validation.ts";
+import { parseSkillMarkdown } from "../services/skills/skill.parser.ts";
 const step=(id:string,dependsOn:string[]=[],toolId="system.summarize"):ExecutionStep=>({id,title:id,description:id,toolId,arguments:{},dependsOn,status:"pending",approvalMode:"never",retryCount:0,maxRetries:2});
 const plan=(steps:ExecutionStep[]):ExecutionPlan=>({id:"plan",objective:"objetivo válido",summary:"resumo",skillIds:["general.execute-goal"],status:"awaiting_approval",steps,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
 test("valida argumentos da ferramenta",()=>{const schema={type:"object",required:["query"],properties:{query:{type:"string"}},additionalProperties:false};assert.doesNotThrow(()=>assertToolArguments(schema,{query:"Kaoz"}));assert.throws(()=>assertToolArguments(schema,{}),/obrigatório/);assert.throws(()=>assertToolArguments(schema,{query:42}),/Tipo inválido/);assert.throws(()=>assertToolArguments(schema,{query:"ok",extra:true}),/não permitido/);});
@@ -36,3 +37,29 @@ test("MCP herda somente allowlist e env explícito",()=>{const env=buildSafeMcpE
 test("normaliza e interpreta ferramenta MCP",()=>assert.deepEqual(parseMcpToolId(mcpToolId("server-1","search.web")),{serverId:"server-1",toolName:"search.web"}));
 test("rejeita identificador MCP inseguro",()=>assert.throws(()=>mcpToolId("../server","tool"),/inválido/));
 test("recupera execução interrompida como pausada sem repetir etapa concluída",async()=>{const store=new OrchestratorStore();const id=crypto.randomUUID();const now=new Date().toISOString();await store.saveRun({id,planId:crypto.randomUUID(),status:"running",steps:[{...step("done"),status:"completed"},{...step("active"),status:"running"}],createdAt:now,updatedAt:now,callCount:1});await store.recoverInterruptedRuns();const recovered=await store.getRun(id);assert.equal(recovered?.status,"paused");assert.equal(recovered?.steps[0].status,"completed");assert.equal(recovered?.steps[1].status,"pending");await unlink(path.join(process.cwd(),".generated","orchestrator","runs",`${id}.json`));});
+
+test("parser de skill frontmatter", () => {
+  const markdown = `---
+name: "Calculadora de Gorjeta"
+description: "Sabe como calcular gorjetas"
+version: "1.0.0"
+preferredTools: []
+requiredCapabilities: []
+approvalMode: "plan"
+enabled: "true"
+tools: 
+  - id: "skill:calculadora:calcular"
+    description: "Calcula o valor da gorjeta."
+    script: "scripts/calc.js"
+    inputSchema:
+      type: "object"
+      required: ["valorConta"]
+---
+Você é um especialista em calcular contas.`;
+  const skill = parseSkillMarkdown("calculadora", markdown);
+  assert.equal(skill.enabled, true);
+  assert.equal(skill.tools.length, 1);
+  assert.equal(skill.tools[0].id, "skill:calculadora:calcular");
+  assert.equal(skill.tools[0].inputSchema.type, "object");
+  assert.deepEqual(skill.tools[0].inputSchema.required, ["valorConta"]);
+});

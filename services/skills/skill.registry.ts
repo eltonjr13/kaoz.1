@@ -101,6 +101,7 @@ preferredTools: ${JSON.stringify(skill.preferredTools || [])}
 requiredCapabilities: ${JSON.stringify(skill.requiredCapabilities || [])}
 approvalMode: ${skill.approvalMode}
 enabled: ${skill.enabled}
+tools: ${JSON.stringify(skill.tools || [])}
 ---
 ${skill.instructions}
 `;
