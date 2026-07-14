@@ -50,6 +50,8 @@ import {
   type ImageReferenceSource,
 } from "@/src/providers/flow/ImageGenerationContract";
 import { isBuildSkillsIntent } from "@/services/skills/skill.intent";
+import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
+import type { SkillToolDefinition } from "@/services/skills/skill.types";
 import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
 
 class SpeechQueue {
@@ -239,6 +241,11 @@ export interface ChatMessageState {
     name: string;
     description: string;
     instructions: string;
+    version?: string;
+    preferredTools?: string[];
+    requiredCapabilities?: string[];
+    approvalMode?: ApprovalMode;
+    tools?: SkillToolDefinition[];
     references?: Array<{ name: string; content: string }>;
     scripts?: Array<{ name: string; content: string }>;
     saveStatus?: 'saving' | 'saved' | 'error';
@@ -2463,13 +2470,13 @@ export default function FlowDashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...target.skillDraft,
           version: "1.0.0",
           enabled: true,
           approvalMode: "plan",
           preferredTools: [],
           requiredCapabilities: [],
           tools: [],
+          ...target.skillDraft,
         }),
       });
       const data = await response.json() as { error?: string };

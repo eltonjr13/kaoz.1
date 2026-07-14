@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     const approvalMode: ApprovalMode = ["never", "plan", "step"].includes(body.approvalMode)
       ? body.approvalMode
       : "plan";
+    const existingSkill = skillRegistry.getAll().find((skill) => skill.id === String(body.id).trim());
     const skillToSave = {
       id: String(body.id).trim(),
       name: String(body.name).trim(),
@@ -59,8 +60,8 @@ export async function POST(req: NextRequest) {
       approvalMode,
       enabled: body.enabled !== false,
       tools: parseTools(body.tools),
-      references: parseResourceFiles(body.references),
-      scripts: parseResourceFiles(body.scripts),
+      references: body.references === undefined ? existingSkill?.references || [] : parseResourceFiles(body.references),
+      scripts: body.scripts === undefined ? existingSkill?.scripts || [] : parseResourceFiles(body.scripts),
     };
 
     skillRegistry.save(skillToSave);

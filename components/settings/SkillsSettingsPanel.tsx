@@ -361,3 +361,52 @@ export function SkillsSettingsPanel() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="flex flex-col gap-1.5"><span className="text-xs text-white/60">{label}</span>{children}</label>;
 }
+
+function ResourceFilesEditor({
+  label,
+  emptyText,
+  files,
+  onChange,
+  newFileName,
+}: {
+  label: string;
+  emptyText: string;
+  files: SkillResourceFile[];
+  onChange: (files: SkillResourceFile[]) => void;
+  newFileName: string;
+}) {
+  const addFile = () => {
+    let name = newFileName;
+    let suffix = 2;
+    const extensionIndex = newFileName.lastIndexOf(".");
+    const base = extensionIndex >= 0 ? newFileName.slice(0, extensionIndex) : newFileName;
+    const extension = extensionIndex >= 0 ? newFileName.slice(extensionIndex) : "";
+    while (files.some((file) => file.name === name)) name = `${base}-${suffix++}${extension}`;
+    onChange([...files, { name, content: "" }]);
+  };
+
+  return <section className="rounded-xl border border-white/10 bg-black/20 p-4">
+    <div className="mb-3 flex items-center justify-between">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-white/60">{label} ({files.length})</h3>
+      <button type="button" onClick={addFile} className="flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[10px] text-[#b59dff] hover:bg-white/5"><Plus size={12}/> Adicionar</button>
+    </div>
+    {files.length === 0 ? <p className="text-xs italic text-white/30">{emptyText}</p> : <div className="space-y-3">
+      {files.map((file, index) => <div key={`${file.name}-${index}`} className="rounded-lg border border-white/10 bg-black/30 p-3">
+        <div className="mb-2 flex gap-2">
+          <input
+            value={file.name}
+            onChange={(event) => onChange(files.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))}
+            className="input-skill flex-1 font-mono text-xs"
+            aria-label={`Nome do arquivo ${index + 1}`}
+          />
+          <button type="button" onClick={() => onChange(files.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg border border-red-500/20 px-2 text-red-300 hover:bg-red-500/10" aria-label={`Remover ${file.name}`}><Trash2 size={14}/></button>
+        </div>
+        <textarea
+          value={file.content}
+          onChange={(event) => onChange(files.map((item, itemIndex) => itemIndex === index ? { ...item, content: event.target.value } : item))}
+          className="input-skill min-h-36 resize-y font-mono text-xs"
+        />
+      </div>)}
+    </div>}
+  </section>;
+}

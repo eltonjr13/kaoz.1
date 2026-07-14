@@ -9,6 +9,12 @@ let cachedSkills: KaozSkill[] | null = null;
 const referenceExtensions = new Set([".md", ".txt", ".json"]);
 const scriptExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".py"]);
 
+function validateSkillId(id: string): void {
+  if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(id) || id.length > 64) {
+    throw new Error("ID inválido. Use até 64 caracteres: letras minúsculas, números, ponto ou hífen.");
+  }
+}
+
 function validateResourceName(name: string, kind: "reference" | "script"): string {
   const clean = name.trim().replace(/\\/g, "/");
   const extensions = kind === "reference" ? referenceExtensions : scriptExtensions;
@@ -57,9 +63,7 @@ function normalizeToolScripts(skillId: string, tools: SkillToolDefinition[]): Sk
 }
 
 function validateSkill(skill: KaozSkill): void {
-  if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(skill.id) || skill.id.length > 64) {
-    throw new Error("ID inválido. Use até 64 caracteres: letras minúsculas, números, ponto ou hífen.");
-  }
+  validateSkillId(skill.id);
   if (!skill.name.trim()) throw new Error("O nome da skill é obrigatório.");
   if (!skill.description.trim()) throw new Error("A descrição da skill é obrigatória.");
   if (!skill.instructions.trim()) throw new Error("As instruções da skill são obrigatórias.");
@@ -177,6 +181,7 @@ ${skill.instructions}
   }
 
   delete(id: string): void {
+      validateSkillId(id);
       if (id === "general.execute-goal" || id === "research.web-research" || id === "content.create-short-video" || id === "build-skills") {
           throw new Error("Não é possível excluir uma skill nativa (built-in).");
       }

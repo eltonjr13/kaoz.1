@@ -252,6 +252,12 @@ function parseListOrJson(value: string, contentLines: string[], errMsg: string):
   return list;
 }
 
+function parseToolInputSchema(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : { type: "object" };
+}
+
 function parseToolsSection(value: string, contentLines: string[], id: string): SkillToolDefinition[] {
   let toolsList: Record<string, unknown>[] = [];
   if (value.startsWith("[")) {
@@ -272,7 +278,7 @@ function parseToolsSection(value: string, contentLines: string[], id: string): S
       id: String(t.id || ""),
       description: String(t.description || ""),
       script: String(t.script || ""),
-      inputSchema: t.inputSchema
+      inputSchema: parseToolInputSchema(t.inputSchema)
     };
     typedTools.push(toolDef);
   }

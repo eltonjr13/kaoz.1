@@ -114,7 +114,7 @@ async function availableToolsContext(): Promise<string> {
       inputSchema: tool.inputSchema,
       effect: tool.effect,
       approvalMode: tool.approvalMode,
-    })));
+    }))).slice(0, 24_000);
   } catch (error) {
     console.warn("[BuildSkills] Não foi possível listar todas as ferramentas:", error);
     return "[]";
