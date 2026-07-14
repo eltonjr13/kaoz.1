@@ -2259,7 +2259,8 @@ export default function FlowDashboardPage() {
           useCortexMemory,
           model: chatModel,
           stream: true,
-          voiceActive: options.speakResponse === true
+          voiceActive: options.speakResponse === true,
+          sessionId: activeConversationId
         })
       });
       if (!res.ok) {

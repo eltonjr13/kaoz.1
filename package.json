@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs",
     "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs",
+    "test:personality": "node --experimental-strip-types --no-warnings --test tests/agent-personality.test.ts",
     "test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts"
   },
   "dependencies": {

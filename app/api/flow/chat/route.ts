@@ -16,6 +16,7 @@ import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction } from "@/lib/ai/agent-voice";
+import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -30,6 +31,7 @@ type FlowChatRequestBody = {
   useCortexMemory?: boolean;
   stream?: boolean;
   voiceActive?: boolean;
+  sessionId?: string;
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
@@ -310,6 +312,31 @@ async function loadChatPersonality(avatarId?: string, useAvatarPersonality?: boo
   return avatar?.personality ? (avatar.personality as Record<string, unknown>) : null;
 }
 
+async function loadCortexChatContext(input: {
+  enabled: boolean;
+  latestUserText: string;
+  avatarId?: string;
+  immediateContextReference: boolean;
+}): Promise<{ relevantMemories?: string; activePersonalityMemories?: ChatMemoryRecord[] }> {
+  if (!input.enabled || !input.latestUserText || input.immediateContextReference) return {};
+
+  try {
+    const storage = new JsonStorageProvider();
+    const service = new ChatMemoryService(storage);
+    const [relevantMemories, activePersonalityMemories] = await Promise.all([
+      service.retrieveRelevantMemories(input.latestUserText, { avatarId: input.avatarId }),
+      service.listActiveChatMemories({ avatarId: input.avatarId })
+    ]);
+    return {
+      relevantMemories: relevantMemories || undefined,
+      activePersonalityMemories
+    };
+  } catch (err) {
+    console.warn("[API CHAT] Falha ao recuperar memorias relevantes do chat:", err);
+    return {};
+  }
+}
+
 function saveReferenceImageIfPresent(referenceImage?: string): string | undefined {
   if (!referenceImage) return undefined;
 
@@ -352,6 +379,20 @@ async function processChatMemory(
   } catch (err) {
     console.warn("[API CHAT] Falha ao extrair/salvar memória do chat:", err);
   }
+}
+
+function processPostChatLearning(
+  userText: string,
+  agentResponse: string,
+  avatarId: string | undefined,
+  cortexMemoryEnabled: boolean
+): void {
+  void Promise.all([
+    processChatMemory(userText, agentResponse, avatarId, cortexMemoryEnabled),
+    recordCharacterTurn({ userMessage: userText, agentResponse })
+  ]).catch((err) => {
+    console.warn("[API CHAT] Falha ao atualizar aprendizado pos-resposta:", err);
+  });
 }
 
 function createChatStreamResponse(
@@ -458,9 +499,9 @@ export async function POST(request: Request) {
       useCortexMemory,
       stream,
       voiceActive,
+      sessionId,
     } = body;
     const cortexMemoryEnabled = useCortexMemory !== false;
-    const personality = await loadChatPersonality(avatarId, useAvatarPersonality);
     const modelName = resolveFlowChatModel(model);
     const wantsExternalTools = needsExternalTools(messages);
     const hasExternalTools = wantsExternalTools;
@@ -469,31 +510,39 @@ export async function POST(request: Request) {
     const immediateContextReference = isImmediateContextReference(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
 
+    if (spotifyDirectCommand) {
+      if (stream === true) {
+        cleanupInPost = false;
+        return createChatStreamResponse(
+          () => runSpotifyDirectCommand(spotifyDirectCommand),
+          () => {},
+          (response) => processPostChatLearning(latestUserText, response.message, avatarId, cortexMemoryEnabled)
+        );
+      }
+
+      const response = await runSpotifyDirectCommand(spotifyDirectCommand);
+      processPostChatLearning(latestUserText, response.message, avatarId, cortexMemoryEnabled);
+      return NextResponse.json({
+        success: true,
+        message: response.message,
+        action: response.action,
+      });
+    }
+
+    const [personality, characterRuntime, cortexContext] = await Promise.all([
+      loadChatPersonality(avatarId, useAvatarPersonality),
+      prepareCharacterRuntime({ userMessage: latestUserText, sessionId }),
+      loadCortexChatContext({
+        enabled: cortexMemoryEnabled,
+        latestUserText,
+        avatarId,
+        immediateContextReference
+      })
+    ]);
+
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
-
-    let relevantMemories: string | undefined = undefined;
-    let activePersonalityMemories: ChatMemoryRecord[] | undefined = undefined;
-
-    // Referential actions ("gere uma imagem sobre isso/da história") must be
-    // grounded only in the immediately preceding exchange. Do not even retrieve
-    // Cortex memories for this turn, so an old topic cannot compete in the
-    // system-level context assembled by chatWithAgent.
-    if (cortexMemoryEnabled && latestUserText && !immediateContextReference) {
-      try {
-        const storage = new JsonStorageProvider();
-        const service = new ChatMemoryService(storage);
-        const retrieved = await service.retrieveRelevantMemories(latestUserText, { avatarId });
-        if (retrieved) {
-          relevantMemories = retrieved;
-        }
-        
-        // Buscar memórias ativas para construir a personalidade final do agente
-        activePersonalityMemories = await service.listActiveChatMemories({ avatarId });
-      } catch (err) {
-        console.warn("[API CHAT] Falha ao recuperar memórias relevantes do chat:", err);
-      }
-    }
+    const { relevantMemories, activePersonalityMemories } = cortexContext;
 
     const runChat = async (onMessageChunk?: (chunk: string) => void) => enforceRequestedFlow(
       await chatWithAgent(
@@ -516,27 +565,11 @@ export async function POST(request: Request) {
           activeMemories: activePersonalityMemories,
           voiceInstruction: getAgentVoiceInstruction(voiceContext),
           requestedFlow,
+          characterRuntime,
         }
       ),
       requestedFlow
     );
-
-    if (spotifyDirectCommand) {
-      if (stream === true) {
-        cleanupInPost = false;
-        return createChatStreamResponse(
-          () => runSpotifyDirectCommand(spotifyDirectCommand),
-          () => cleanupReferenceImage(referenceImagePath)
-        );
-      }
-
-      const response = await runSpotifyDirectCommand(spotifyDirectCommand);
-      return NextResponse.json({
-        success: true,
-        message: response.message,
-        action: response.action,
-      });
-    }
 
     if (stream === true) {
       cleanupInPost = false;
@@ -544,7 +577,7 @@ export async function POST(request: Request) {
         (send) => runChat((chunk) => send("chunk", { text: chunk })),
         () => cleanupReferenceImage(referenceImagePath),
         (response) => {
-          processChatMemory(latestUserText, response.message, avatarId, cortexMemoryEnabled);
+          processPostChatLearning(latestUserText, response.message, avatarId, cortexMemoryEnabled);
         }
       );
     }
@@ -552,7 +585,7 @@ export async function POST(request: Request) {
     const response = await runChat();
     
     // Processamento de memória no fluxo não-stream
-    processChatMemory(latestUserText, response.message, avatarId, cortexMemoryEnabled);
+    processPostChatLearning(latestUserText, response.message, avatarId, cortexMemoryEnabled);
 
     return NextResponse.json({
       success: true,

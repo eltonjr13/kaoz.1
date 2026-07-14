@@ -5,6 +5,7 @@ import path from "node:path";
 import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
 import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/AgentPersonalityResolver";
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
+import type { CharacterRuntimeSnapshot } from "@/lib/agent-personality/types";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -734,6 +735,7 @@ type ChatWithAgentOptions = {
   activeMemories?: ChatMemoryRecord[];
   voiceInstruction?: string;
   requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
+  characterRuntime?: CharacterRuntimeSnapshot;
 };
 
 type ExecuteWebQuery = (
@@ -962,7 +964,8 @@ export async function chatWithAgent(
     avatarPersonality,
     // A memory can define tone/preferences, but must never become the subject of
     // an anaphoric action such as "gere uma ilustração sobre isso".
-    activeMemories: immediateContextReference ? undefined : options?.activeMemories
+    activeMemories: immediateContextReference ? undefined : options?.activeMemories,
+    characterRuntime: options?.characterRuntime
   });
 
   const relevantMemoryContext = !immediateContextReference && options?.relevantMemories
