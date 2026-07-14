@@ -244,12 +244,14 @@ const AGENT_LLM_OPTIONS: Array<{
 ];
 
 const ANTIGRAVITY_FALLBACK_MODELS = [
-  "gemini-3.5-pro",
-  "gemini-3.5-flash",
-  "gemini-3.1-pro",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-thinking",
-  "claude-3-7-sonnet"
+  "Gemini 3.5 Flash (High)",
+  "Gemini 3.5 Flash (Medium)",
+  "Gemini 3.5 Flash (Low)",
+  "Gemini 3.1 Pro (High)",
+  "Gemini 3.1 Pro (Low)",
+  "Claude Sonnet 4.6 (Thinking)",
+  "Claude Opus 4.6 (Thinking)",
+  "GPT-OSS 120B (Medium)"
 ];
 
 const CODEX_FALLBACK_MODELS = [
@@ -355,7 +357,7 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
     grokCommand: stringOrEmpty(data.grokCommand) || "grok",
     grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
     antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
-    antigravityModel: stringOrEmpty(data.antigravityModel) || "gemini-3.5-pro",
+    antigravityModel: stringOrEmpty(data.antigravityModel) || "Gemini 3.5 Flash (High)",
     iamhcModel: stringOrEmpty(data.iamhcModel) || "DeepSeek-V4-Flash",
     timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : 45000,
     status: status
@@ -719,7 +721,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [grokCommand, setGrokCommand] = useState("grok");
   const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
-  const [antigravityModel, setAntigravityModel] = useState("gemini-3.5-pro");
+  const [antigravityModel, setAntigravityModel] = useState("Gemini 3.5 Flash (High)");
   const [iamhcModel, setIamhcModel] = useState("DeepSeek-V4-Flash");
   const [iamhcModels, setIamhcModels] = useState<Array<{ id: string; ownedBy: string }>>([]);
   const [iamhcModelsError, setIamhcModelsError] = useState<string | null>(null);
