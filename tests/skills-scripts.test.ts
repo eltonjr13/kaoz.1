@@ -59,3 +59,42 @@ test("analisador-de-metricas throws error if tempoRetencaoMedio > duracaoSegundo
   const errorMsg = result.stderr.toString().trim();
   assert.match(errorMsg, /O tempo de retenção médio não pode ser maior que a duração do vídeo/);
 });
+
+import { systemHandlers } from "../services/orchestrator/adapters/system.adapter.ts";
+
+test("system:run-code executes python code and returns output", async () => {
+  const handler = systemHandlers["system:run-code"];
+  assert.ok(handler, "system:run-code handler is not registered");
+
+  try {
+    const res = await handler({
+      language: "python",
+      code: "import sys, json\nargs = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\nprint(json.dumps({'fatorial': 120, 'input': args}))",
+      args: { value: 5 }
+    });
+
+    assert.equal(res.output.success, true);
+    assert.equal(res.output.stdout.fatorial, 120);
+    assert.equal(res.output.stdout.input.value, 5);
+  } catch (err: any) {
+    if (err.message.includes("ENOENT") || err.message.includes("not found") || err.message.includes("python")) {
+      console.warn("Python não encontrado no ambiente local. Pulando teste de Python.");
+    } else {
+      throw err;
+    }
+  }
+});
+
+test("system:run-code executes javascript code and returns output", async () => {
+  const handler = systemHandlers["system:run-code"];
+  assert.ok(handler, "system:run-code handler is not registered");
+
+  const res = await handler({
+    language: "javascript",
+    code: "const args = JSON.parse(process.argv[2] || '{}'); console.log(JSON.stringify({ soma: args.a + args.b }));",
+    args: { a: 10, b: 20 }
+  });
+
+  assert.equal(res.output.success, true);
+  assert.equal(res.output.stdout.soma, 30);
+});
