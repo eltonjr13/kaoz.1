@@ -45,3 +45,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao salvar skill." }, { status: 400 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "O ID da skill é obrigatório." }, { status: 400 });
+    }
+    skillRegistry.delete(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao excluir skill." }, { status: 400 });
+  }
+}

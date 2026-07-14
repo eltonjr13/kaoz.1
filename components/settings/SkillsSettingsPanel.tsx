@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Bot, CheckCircle, Loader2, Plus, Save, Send, Settings, Sparkles, ToggleLeft, ToggleRight, User, Search } from "lucide-react";
+import { AlertCircle, Bot, CheckCircle, Loader2, Plus, Save, Send, Settings, Sparkles, ToggleLeft, ToggleRight, User, Search, Trash2 } from "lucide-react";
 import type { KaozSkill } from "@/services/skills/skill.types";
 
 type Message = { type: "success" | "error"; text: string };
@@ -24,6 +24,7 @@ export function SkillsSettingsPanel() {
   const [chatInput, setChatInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -83,6 +84,22 @@ export function SkillsSettingsPanel() {
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao salvar skill." });
     } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedSkillId) return;
+    if (!confirm(`Tem certeza que deseja excluir permanentemente a skill "${editForm?.name || selectedSkillId}"?`)) return;
+    setDeleting(true); setMessage(null);
+    try {
+      const response = await fetch(`/api/skills?id=${selectedSkillId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Falha ao excluir skill.");
+      setMessage({ type: "success", text: "Skill excluída com sucesso." });
+      setEditForm(null); setSelectedSkillId(null);
+      await loadSkills();
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao excluir skill." });
+    } finally { setDeleting(false); }
   };
 
   const isBuiltIn = (id: string) => builtInSkillIds.includes(id);
@@ -168,6 +185,9 @@ export function SkillsSettingsPanel() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setEditForm({...editForm, enabled:!editForm.enabled})} className={editForm.enabled ? "flex items-center gap-2 text-sm text-emerald-400 cursor-pointer" : "flex items-center gap-2 text-sm text-white/40 cursor-pointer"}>{editForm.enabled ? <ToggleRight size={24}/> : <ToggleLeft size={24}/>} {editForm.enabled ? "Ativada" : "Desativada"}</button>
+            {selectedSkillId && !isBuiltIn(selectedSkillId) && (
+              <button onClick={handleDelete} disabled={deleting} className="flex items-center gap-2 rounded-lg bg-red-500/20 border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-200 disabled:opacity-50 cursor-pointer transition hover:bg-red-500/30 hover:border-red-500/50">{deleting ? <Loader2 className="animate-spin" size={16}/> : <Trash2 size={16}/>} Excluir</button>
+            )}
             <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-lg bg-[#9D7CFF] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50 cursor-pointer transition hover:brightness-110">{saving ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Salvar</button>
           </div>
         </div>

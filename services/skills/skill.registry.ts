@@ -137,6 +137,20 @@ ${skill.instructions}
       if (idx > -1) cachedSkills![idx] = skill;
       else cachedSkills!.push(skill);
   }
+
+  delete(id: string): void {
+      if (id === "general.execute-goal" || id === "research.web-research" || id === "content.create-short-video") {
+          throw new Error("Não é possível excluir uma skill nativa (built-in).");
+      }
+      const skillsDir = path.join(process.cwd(), "skills");
+      const skillDir = path.join(skillsDir, id);
+      if (fs.existsSync(skillDir)) {
+          fs.rmSync(skillDir, { recursive: true, force: true });
+      }
+      // Update cache
+      if (!cachedSkills) loadSkillsSync();
+      cachedSkills = cachedSkills!.filter(s => s.id !== id);
+  }
 }
 
 export const skillRegistry = new SkillRegistry();
