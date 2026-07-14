@@ -36,7 +36,14 @@ import { useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
-import { compileAgentSpeech, getAgentVoiceContext, resolveCartesiaVoiceControls } from "@/lib/ai/agent-voice";
+import {
+  compileAgentSpeech,
+  compileFishAudioSpeech,
+  createFishExpressionReplyState,
+  getAgentVoiceContext,
+  resolveCartesiaVoiceControls,
+  type VoiceExpressionContext
+} from "@/lib/ai/agent-voice";
 import {
   resolveImageGenerationOperation,
   type ImageGenerationOperation,
@@ -202,6 +209,7 @@ interface FlowChatResponse {
 
 interface FlowChatStreamPayload extends FlowChatResponse {
   text?: string;
+  context?: VoiceExpressionContext;
 }
 
 interface FlowChatStreamEvent {
@@ -2096,6 +2104,16 @@ export default function FlowDashboardPage() {
       cancelAllVoicePlayback();
       const playbackSession = voicePlaybackSessionRef.current;
       const voiceContext = getAgentVoiceContext(message, options.speakResponse === true);
+      let voiceExpressionContext: VoiceExpressionContext = {
+        mode: voiceContext.layers.includes("amused") ? "playful" : "neutral",
+        energy: 0.5,
+        warmth: 0.65,
+        seriousness: 0.5,
+        playfulness: voiceContext.layers.includes("amused") ? 0.8 : 0.4,
+        explicitLayers: voiceContext.layers,
+        explicit: voiceContext.explicit
+      };
+      const fishExpressionReplyState = createFishExpressionReplyState();
       const ttsRes = await fetch("/api/tts/config").catch(() => null);
       const ttsConfig = ttsRes ? await ttsRes.json().catch(() => null) : null;
 
@@ -2147,13 +2165,25 @@ export default function FlowDashboardPage() {
 
       const speakTextChunk = (textToSpeak: string, isLast = false) => {
         if (!options.speakResponse || voicePlaybackSessionRef.current !== playbackSession) return;
-        const speechText = compileAgentSpeech(textToSpeak, voiceContext, ttsConfig?.provider || "omnivoice");
+        const compiledSpeech = ttsConfig?.provider === "fish-audio"
+          ? compileFishAudioSpeech(
+              textToSpeak,
+              voiceExpressionContext,
+              ttsConfig.fishAudioExpressionLevel || "natural",
+              ttsConfig.fishAudioModel,
+              fishExpressionReplyState
+            )
+          : {
+              speechText: compileAgentSpeech(textToSpeak, voiceContext, ttsConfig?.provider || "omnivoice"),
+              transcriptText: getAssistantSpeechText(textToSpeak)
+            };
+        const speechText = compiledSpeech.speechText;
         if (!speechText) {
           if (cartesiaStream && isLast) cartesiaStream.sendChunk(" ", true);
           return;
         }
 
-        activeAssistantSpeechRef.current = `${activeAssistantSpeechRef.current} ${speechText}`.trim();
+        activeAssistantSpeechRef.current = `${activeAssistantSpeechRef.current} ${compiledSpeech.transcriptText}`.trim();
 
         if (cartesiaStream) {
           cartesiaStream.sendChunk(speechText, isLast);
@@ -2293,6 +2323,8 @@ export default function FlowDashboardPage() {
 
           if (parsed.event === "chunk") {
             await processStreamTextChunk(parsed.data.text || "");
+          } else if (parsed.event === "voice-context" && parsed.data.context) {
+            voiceExpressionContext = parsed.data.context;
           } else if (parsed.event === "status") {
             showAssistantStatus(parsed.data.text || "");
           } else if (parsed.event === "final") {

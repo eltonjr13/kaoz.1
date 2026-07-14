@@ -1,5 +1,6 @@
 import { Play, Save, CheckCircle, Volume2, Settings2, MoreVertical, ChevronUp, Loader2 } from "lucide-react";
 import type { TTSProviderName, TTSConfig } from "@/services/tts/tts.types";
+import type { FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
 
 export type TTSOption = {
   id: TTSProviderName;
@@ -24,6 +25,7 @@ type TTSProviderCardProps = {
   model: string;
   speed: string;
   emotion: string;
+  fishAudioExpressionLevel: FishAudioExpressionLevel;
   availableVoices: any[];
   isLoadingVoices: boolean;
   
@@ -32,6 +34,7 @@ type TTSProviderCardProps = {
   onModelChange: (value: string) => void;
   onSpeedChange: (value: string) => void;
   onEmotionChange: (value: string) => void;
+  onFishAudioExpressionLevelChange: (value: FishAudioExpressionLevel) => void;
 
   // Actions props
   busyAction: string | null;
@@ -52,6 +55,7 @@ export function TTSProviderCard({
   model,
   speed,
   emotion,
+  fishAudioExpressionLevel,
   availableVoices,
   isLoadingVoices,
   onApiKeyChange,
@@ -59,6 +63,7 @@ export function TTSProviderCard({
   onModelChange,
   onSpeedChange,
   onEmotionChange,
+  onFishAudioExpressionLevelChange,
   busyAction,
   onAction
 }: TTSProviderCardProps) {
@@ -193,16 +198,32 @@ export function TTSProviderCard({
             )}
 
             {isFishAudio && (
-              <label className="space-y-1.5 block md:col-span-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{voiceLabel}</span>
-                <input
-                  type="text"
-                  value={voiceId}
-                  onChange={(event) => onVoiceIdChange(event.target.value)}
-                  className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                  placeholder={voicePlaceholder}
-                />
-              </label>
+              <>
+                <label className="space-y-1.5 block md:col-span-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{voiceLabel}</span>
+                  <input
+                    type="text"
+                    value={voiceId}
+                    onChange={(event) => onVoiceIdChange(event.target.value)}
+                    className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                    placeholder={voicePlaceholder}
+                  />
+                </label>
+                <label className="space-y-1.5 block md:col-span-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Expressividade da personalidade</span>
+                  <select
+                    value={fishAudioExpressionLevel}
+                    onChange={(event) => onFishAudioExpressionLevelChange(event.target.value as FishAudioExpressionLevel)}
+                    className="w-full rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-zinc-200 outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+                  >
+                    <option value="off" className="bg-zinc-900 text-zinc-200">Desligada</option>
+                    <option value="subtle" className="bg-zinc-900 text-zinc-200">Sutil</option>
+                    <option value="natural" className="bg-zinc-900 text-zinc-200">Natural (recomendado)</option>
+                    <option value="expressive" className="bg-zinc-900 text-zinc-200">Alta</option>
+                  </select>
+                  <p className="text-[10px] leading-relaxed text-zinc-500">Controla emoção, pausas e risadas na fala; não altera o texto exibido no chat.</p>
+                </label>
+              </>
             )}
 
             {!isFishAudio && (

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
+import { compileFishAudioSpeech, type FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
 import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia";
 import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
@@ -1115,6 +1116,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
   const [fishAudioApiKey, setFishAudioApiKey] = useState("");
   const [fishAudioReferenceId, setFishAudioReferenceId] = useState("");
   const [fishAudioModel, setFishAudioModel] = useState("s2.1-pro-free");
+  const [fishAudioExpressionLevel, setFishAudioExpressionLevel] = useState<FishAudioExpressionLevel>("natural");
   
   const [availableVoices, setAvailableVoices] = useState<any[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -1135,6 +1137,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     setFishAudioApiKey(nextConfig.fishAudioApiKey || "");
     setFishAudioReferenceId(nextConfig.fishAudioReferenceId || "");
     setFishAudioModel(nextConfig.fishAudioModel || "s2.1-pro-free");
+    setFishAudioExpressionLevel(nextConfig.fishAudioExpressionLevel || "natural");
     
     let emotion = nextConfig.cartesiaEmotion || "auto";
     if (emotion === "happy") emotion = "positivity";
@@ -1208,11 +1211,25 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
           await testAudio.promise;
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
         } else if (actionProvider === "fish-audio") {
+          const testText = compileFishAudioSpeech(
+            "Essa é uma ótima notícia. Heh, heh... vamos aproveitar esse resultado.",
+            {
+              mode: "playful",
+              energy: 0.8,
+              warmth: 0.75,
+              seriousness: 0.2,
+              playfulness: 0.9,
+              explicitLayers: [],
+              explicit: false
+            },
+            fishAudioExpressionLevel,
+            fishAudioModel
+          ).speechText;
           const res = await fetch("/api/fish-audio/speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              text: "Ola! Esta e uma mensagem de teste do sistema MrChicken.",
+              text: testText,
               apiKey: fishAudioApiKey,
               referenceId: fishAudioReferenceId,
               model: fishAudioModel,
@@ -1243,6 +1260,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
           payload.fishAudioApiKey = fishAudioApiKey;
           payload.fishAudioReferenceId = fishAudioReferenceId;
           payload.fishAudioModel = fishAudioModel;
+          payload.fishAudioExpressionLevel = fishAudioExpressionLevel;
         }
         
         const res = await fetch("/api/tts/config", {
@@ -1285,6 +1303,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
             model={option.id === "fish-audio" ? fishAudioModel : cartesiaModel}
             speed={cartesiaSpeed}
             emotion={cartesiaEmotion}
+            fishAudioExpressionLevel={fishAudioExpressionLevel}
             availableVoices={availableVoices}
             isLoadingVoices={isLoadingVoices}
             onApiKeyChange={option.id === "fish-audio" ? setFishAudioApiKey : setCartesiaApiKey}
@@ -1292,6 +1311,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
             onModelChange={option.id === "fish-audio" ? setFishAudioModel : setCartesiaModel}
             onSpeedChange={setCartesiaSpeed}
             onEmotionChange={setCartesiaEmotion}
+            onFishAudioExpressionLevelChange={setFishAudioExpressionLevel}
             busyAction={busyAction}
             onAction={(action, successText) => handleAction(option.id, action, successText)}
           />

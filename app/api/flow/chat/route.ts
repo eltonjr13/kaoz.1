@@ -15,7 +15,7 @@ import { extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMem
 import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
-import { getAgentVoiceContext, getAgentVoiceInstruction } from "@/lib/ai/agent-voice";
+import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionContext } from "@/lib/ai/agent-voice";
 import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
 
 export const dynamic = "force-dynamic";
@@ -574,7 +574,14 @@ export async function POST(request: Request) {
     if (stream === true) {
       cleanupInPost = false;
       return createChatStreamResponse(
-        (send) => runChat((chunk) => send("chunk", { text: chunk })),
+        (send) => {
+          if (voiceActive === true) {
+            send("voice-context", {
+              context: getVoiceExpressionContext(characterRuntime.session, voiceContext)
+            });
+          }
+          return runChat((chunk) => send("chunk", { text: chunk }));
+        },
         () => cleanupReferenceImage(referenceImagePath),
         (response) => {
           processPostChatLearning(latestUserText, response.message, avatarId, cortexMemoryEnabled);

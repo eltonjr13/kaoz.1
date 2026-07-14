@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import type { TTSProviderName, TTSConfig } from "./tts.types";
+import type { FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
 
 const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "tts-settings.json");
@@ -37,6 +38,11 @@ function normalizeFishAudioModel(model: string | undefined): string {
   return value;
 }
 
+function normalizeFishAudioExpressionLevel(value: unknown): FishAudioExpressionLevel {
+  if (value === "off" || value === "subtle" || value === "natural" || value === "expressive") return value;
+  return "natural";
+}
+
 export async function readTTSConfig(): Promise<TTSConfig> {
   try {
     const settings = JSON.parse(await readFile(SETTINGS_FILE, "utf8")) as Partial<TTSConfig>;
@@ -50,6 +56,7 @@ export async function readTTSConfig(): Promise<TTSConfig> {
       fishAudioApiKey: settings.fishAudioApiKey || process.env.FISH_API_KEY || "",
       fishAudioReferenceId: settings.fishAudioReferenceId || "",
       fishAudioModel: normalizeFishAudioModel(settings.fishAudioModel),
+      fishAudioExpressionLevel: normalizeFishAudioExpressionLevel(settings.fishAudioExpressionLevel),
     };
   } catch {
     return {
@@ -62,6 +69,7 @@ export async function readTTSConfig(): Promise<TTSConfig> {
       fishAudioApiKey: process.env.FISH_API_KEY || "",
       fishAudioReferenceId: "",
       fishAudioModel: DEFAULT_FISH_AUDIO_MODEL,
+      fishAudioExpressionLevel: "natural",
     };
   }
 }
@@ -78,6 +86,9 @@ export async function writeTTSConfig(config: Partial<TTSConfig>): Promise<TTSCon
     fishAudioApiKey: config.fishAudioApiKey !== undefined ? config.fishAudioApiKey : current.fishAudioApiKey,
     fishAudioReferenceId: config.fishAudioReferenceId !== undefined ? config.fishAudioReferenceId : current.fishAudioReferenceId,
     fishAudioModel: config.fishAudioModel !== undefined ? normalizeFishAudioModel(config.fishAudioModel) : current.fishAudioModel,
+    fishAudioExpressionLevel: config.fishAudioExpressionLevel !== undefined
+      ? normalizeFishAudioExpressionLevel(config.fishAudioExpressionLevel)
+      : current.fishAudioExpressionLevel,
   };
   
   await mkdir(DATA_DIR, { recursive: true });

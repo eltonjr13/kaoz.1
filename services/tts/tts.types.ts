@@ -1,3 +1,5 @@
+import type { FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
+
 export type TTSProviderName = "cartesia" | "browser" | "elevenlabs" | "omnivoice" | "fish-audio";
 
 export interface TTSConfig {
@@ -10,6 +12,7 @@ export interface TTSConfig {
   fishAudioApiKey?: string;
   fishAudioReferenceId?: string;
   fishAudioModel?: string;
+  fishAudioExpressionLevel?: FishAudioExpressionLevel;
 }
 
 export interface TTSProviderStatus {
