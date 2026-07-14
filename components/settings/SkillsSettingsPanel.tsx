@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Bot, CheckCircle, Loader2, Plus, Save, Send, Settings, Sparkles, ToggleLeft, ToggleRight, User, Search, Trash2 } from "lucide-react";
-import type { KaozSkill } from "@/services/skills/skill.types";
+import type { KaozSkill, SkillResourceFile } from "@/services/skills/skill.types";
 
 type Message = { type: "success" | "error"; text: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -12,7 +12,7 @@ const welcome: ChatMessage = {
   content: "Conte o que você quer que a nova skill faça. Pode escrever do seu jeito — eu faço as perguntas necessárias e preparo o rascunho.",
 };
 
-const builtInSkillIds = ["general.execute-goal", "research.web-research", "content.create-short-video"];
+const builtInSkillIds = ["general.execute-goal", "research.web-research", "content.create-short-video", "build-skills"];
 
 export function SkillsSettingsPanel() {
   const [skills, setSkills] = useState<KaozSkill[]>([]);
@@ -25,6 +25,8 @@ export function SkillsSettingsPanel() {
   const [thinking, setThinking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const [message, setMessage] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -63,7 +65,17 @@ export function SkillsSettingsPanel() {
       if (!response.ok) throw new Error(data.error || "O modelo não conseguiu responder.");
       setChat((current) => [...current, { role: "assistant", content: data.message }]);
       if (data.ready && data.skill) {
-        setEditForm({ ...data.skill, version: "1.0.0", enabled: true, approvalMode: "plan", preferredTools: [], requiredCapabilities: [], tools: [] });
+        setEditForm({
+          ...data.skill,
+          version: data.skill.version || "1.0.0",
+          enabled: true,
+          approvalMode: data.skill.approvalMode || "plan",
+          preferredTools: data.skill.preferredTools || [],
+          requiredCapabilities: data.skill.requiredCapabilities || [],
+          tools: data.skill.tools || [],
+          references: data.skill.references || [],
+          scripts: data.skill.scripts || [],
+        });
         setCreatorOpen(false);
       }
     } catch (error) {
@@ -86,9 +98,14 @@ export function SkillsSettingsPanel() {
     } finally { setSaving(false); }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteTrigger = () => {
     if (!selectedSkillId) return;
-    if (!confirm(`Tem certeza que deseja excluir permanentemente a skill "${editForm?.name || selectedSkillId}"?`)) return;
+    setDeleteConfirmId("");
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedSkillId || deleteConfirmId !== selectedSkillId) return;
     setDeleting(true); setMessage(null);
     try {
       const response = await fetch(`/api/skills?id=${selectedSkillId}`, { method: "DELETE" });
@@ -96,6 +113,7 @@ export function SkillsSettingsPanel() {
       if (!response.ok) throw new Error(data.error || "Falha ao excluir skill.");
       setMessage({ type: "success", text: "Skill excluída com sucesso." });
       setEditForm(null); setSelectedSkillId(null);
+      setShowDeleteModal(false); setDeleteConfirmId("");
       await loadSkills();
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao excluir skill." });
@@ -186,7 +204,7 @@ export function SkillsSettingsPanel() {
           <div className="flex items-center gap-3">
             <button onClick={() => setEditForm({...editForm, enabled:!editForm.enabled})} className={editForm.enabled ? "flex items-center gap-2 text-sm text-emerald-400 cursor-pointer" : "flex items-center gap-2 text-sm text-white/40 cursor-pointer"}>{editForm.enabled ? <ToggleRight size={24}/> : <ToggleLeft size={24}/>} {editForm.enabled ? "Ativada" : "Desativada"}</button>
             {selectedSkillId && !isBuiltIn(selectedSkillId) && (
-              <button onClick={handleDelete} disabled={deleting} className="flex items-center gap-2 rounded-lg bg-red-500/20 border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-200 disabled:opacity-50 cursor-pointer transition hover:bg-red-500/30 hover:border-red-500/50">{deleting ? <Loader2 className="animate-spin" size={16}/> : <Trash2 size={16}/>} Excluir</button>
+              <button onClick={handleDeleteTrigger} disabled={deleting} className="flex items-center gap-2 rounded-lg bg-red-500/20 border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-200 disabled:opacity-50 cursor-pointer transition hover:bg-red-500/30 hover:border-red-500/50">{deleting ? <Loader2 className="animate-spin" size={16}/> : <Trash2 size={16}/>} Excluir</button>
             )}
             <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-lg bg-[#9D7CFF] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50 cursor-pointer transition hover:brightness-110">{saving ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Salvar</button>
           </div>
@@ -212,7 +230,7 @@ export function SkillsSettingsPanel() {
               className="input-skill bg-black/40 text-white h-[42px] border border-white/10 rounded-lg outline-none cursor-pointer focus:border-[#9D7CFF]"
             >
               <option value="plan" className="bg-[#1c1c1c] text-white">Revisar plano de execução (plan)</option>
-              <option value="always" className="bg-[#1c1c1c] text-white">Sempre pedir aprovação (always)</option>
+              <option value="step" className="bg-[#1c1c1c] text-white">Pedir aprovação por etapa (step)</option>
               <option value="never" className="bg-[#1c1c1c] text-white">Executar sem pedir aprovação (never)</option>
             </select>
           </Field>
@@ -250,6 +268,22 @@ export function SkillsSettingsPanel() {
           <textarea value={editForm.instructions || ""} onChange={(event)=>setEditForm({...editForm,instructions:event.target.value})} className="input-skill min-h-64 flex-1 resize-y font-mono"/>
         </Field>
 
+        <ResourceFilesEditor
+          label="Arquivos de referência"
+          emptyText="Nenhuma referência adicional."
+          files={editForm.references || []}
+          onChange={(references) => setEditForm({ ...editForm, references })}
+          newFileName="reference.md"
+        />
+
+        <ResourceFilesEditor
+          label="Scripts auxiliares"
+          emptyText="Nenhum script auxiliar."
+          files={editForm.scripts || []}
+          onChange={(scripts) => setEditForm({ ...editForm, scripts })}
+          newFileName="script.ts"
+        />
+
         <div className="border-t border-white/10 pt-4">
           <h3 className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wider">Ferramentas Associadas (custom tools)</h3>
           {editForm.tools && editForm.tools.length > 0 ? (
@@ -280,6 +314,46 @@ export function SkillsSettingsPanel() {
         {!selectedSkillId && <button onClick={() => setCreatorOpen(true)} className="self-start text-xs text-[#b59dff] hover:underline cursor-pointer">Voltar ao chat e pedir ajustes</button>}
       </div> : <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-white/35"><Sparkles size={48} className="text-[#9D7CFF]/30"/><div><p className="font-medium text-white/60">Crie uma capacidade conversando com a IA</p><p className="mt-1 max-w-sm text-sm">O modelo escolhido entende sua ideia, faz perguntas e escreve a skill para você revisar.</p></div><button onClick={startCreator} className="rounded-lg bg-[#9D7CFF] px-4 py-2 text-sm font-semibold text-black cursor-pointer">Conversar com o criador</button></div>}
     </main>
+    {showDeleteModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="w-full max-w-md rounded-2xl border border-red-500/20 bg-zinc-950 p-6 shadow-2xl animate-in scale-in duration-200">
+          <div className="mb-4 flex items-center gap-3 text-red-400">
+            <AlertCircle size={24} />
+            <h3 className="text-base font-bold text-white">Excluir Skill Permanentemente</h3>
+          </div>
+          <p className="text-xs leading-relaxed text-zinc-400 mb-4">
+            Esta ação é irreversível. A skill <span className="font-mono text-red-300">/{selectedSkillId}</span> e todos os seus arquivos, referências e scripts serão excluídos permanentemente.
+          </p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2 font-bold">
+            Digite o ID da skill para confirmar: <span className="font-mono text-zinc-300">{selectedSkillId}</span>
+          </p>
+          <input
+            type="text"
+            value={deleteConfirmId}
+            onChange={(e) => setDeleteConfirmId(e.target.value)}
+            placeholder={selectedSkillId || ""}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs font-mono text-white outline-none focus:border-red-500 mb-6"
+          />
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => { setShowDeleteModal(false); setDeleteConfirmId(""); }}
+              className="rounded-lg border border-white/10 px-4 py-2 text-xs text-zinc-300 hover:bg-white/5 transition cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleteConfirmId !== selectedSkillId || deleting}
+              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-30 disabled:hover:bg-red-600 transition cursor-pointer"
+            >
+              {deleting ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} Confirmar Exclusão
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <style jsx global>{`.input-skill{width:100%;border-radius:.5rem;border:1px solid rgb(255 255 255/.1);background:rgb(0 0 0/.4);padding:.625rem .75rem;font-size:.875rem;color:white;outline:none}.input-skill:focus{border-color:#9D7CFF}`}</style>
   </div>;
 }
@@ -287,4 +361,3 @@ export function SkillsSettingsPanel() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="flex flex-col gap-1.5"><span className="text-xs text-white/60">{label}</span>{children}</label>;
 }
-

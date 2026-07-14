@@ -4,7 +4,12 @@ export type SkillToolDefinition = {
   id: string; // Ex: "skill:db:query"
   description: string;
   script: string; // Caminho para o script
-  inputSchema: any;
+  inputSchema: Record<string, unknown>;
+};
+
+export type SkillResourceFile = {
+  name: string;
+  content: string;
 };
 
 export type KaozSkill = { 
@@ -17,5 +22,7 @@ export type KaozSkill = {
   requiredCapabilities: string[]; 
   approvalMode: ApprovalMode; 
   enabled: boolean;
-  tools?: SkillToolDefinition[]; 
+  tools?: SkillToolDefinition[];
+  references?: SkillResourceFile[];
+  scripts?: SkillResourceFile[];
 };
