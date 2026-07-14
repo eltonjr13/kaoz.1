@@ -600,15 +600,51 @@ async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, opt
     "--sandbox",
   ];
 
-  const result = await runProcess(command, args, {
-    cwd: options.cwd,
-    timeoutMs: settings.timeoutMs,
-    extraPathEntries: [path.dirname(command)],
-    label: `Antigravity CLI (${settings.antigravityModel})`,
-    onStdoutChunk: options.onTextChunk,
-  });
-  assertSuccessfulProcess(result, "Antigravity CLI");
-  return cleanCliOutput(result.stdout);
+  try {
+    const result = await runProcess(command, args, {
+      cwd: options.cwd,
+      timeoutMs: settings.timeoutMs,
+      extraPathEntries: [path.dirname(command)],
+      label: `Antigravity CLI (${settings.antigravityModel})`,
+      onStdoutChunk: options.onTextChunk,
+    });
+    assertSuccessfulProcess(result, "Antigravity CLI");
+    return cleanCliOutput(result.stdout);
+  } catch (error: any) {
+    const errText = String(error.message || "");
+    if (errText.includes("invalid --model") || errText.includes("is not recognized as a known model")) {
+      console.warn(`[runAntigravityCli] Modelo '${settings.antigravityModel}' indisponivel. Tentando fallback para modelos padrão...`);
+      const fallbacks = [
+        "Gemini 3.5 Flash (High)",
+        "Gemini 3.5 Flash (Medium)",
+        "Gemini 3.1 Pro (High)",
+        "Gemini 3.5 Flash (Low)",
+        "Gemini 3.1 Pro (Low)"
+      ];
+      for (const fallback of fallbacks) {
+        try {
+          const fallbackArgs = [
+            "--print", prompt,
+            "--model", fallback,
+            "--dangerously-skip-permissions",
+            "--sandbox",
+          ];
+          const result = await runProcess(command, fallbackArgs, {
+            cwd: options.cwd,
+            timeoutMs: settings.timeoutMs,
+            extraPathEntries: [path.dirname(command)],
+            label: `Antigravity CLI Fallback (${fallback})`,
+            onStdoutChunk: options.onTextChunk,
+          });
+          assertSuccessfulProcess(result, "Antigravity CLI");
+          return cleanCliOutput(result.stdout);
+        } catch (err) {
+          // prossegue tentando os outros modelos da lista
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 function envOrDefault(name: string, fallback: string): string {

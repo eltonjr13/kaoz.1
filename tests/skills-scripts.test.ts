@@ -66,16 +66,19 @@ test("system:run-code executes python code and returns output", async () => {
   const handler = systemHandlers["system:run-code"];
   assert.ok(handler, "system:run-code handler is not registered");
 
+  const context = { planId: "test", runId: "test", stepId: "test", signal: new AbortController().signal };
+
   try {
     const res = await handler({
       language: "python",
       code: "import sys, json\nargs = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}\nprint(json.dumps({'fatorial': 120, 'input': args}))",
       args: { value: 5 }
-    });
+    }, context);
 
-    assert.equal(res.output.success, true);
-    assert.equal(res.output.stdout.fatorial, 120);
-    assert.equal(res.output.stdout.input.value, 5);
+    const output = res.output as any;
+    assert.equal(output.success, true);
+    assert.equal(output.stdout.fatorial, 120);
+    assert.equal(output.stdout.input.value, 5);
   } catch (err: any) {
     if (err.message.includes("ENOENT") || err.message.includes("not found") || err.message.includes("python")) {
       console.warn("Python não encontrado no ambiente local. Pulando teste de Python.");
@@ -89,12 +92,15 @@ test("system:run-code executes javascript code and returns output", async () => 
   const handler = systemHandlers["system:run-code"];
   assert.ok(handler, "system:run-code handler is not registered");
 
+  const context = { planId: "test", runId: "test", stepId: "test", signal: new AbortController().signal };
+
   const res = await handler({
     language: "javascript",
     code: "const args = JSON.parse(process.argv[2] || '{}'); console.log(JSON.stringify({ soma: args.a + args.b }));",
     args: { a: 10, b: 20 }
-  });
+  }, context);
 
-  assert.equal(res.output.success, true);
-  assert.equal(res.output.stdout.soma, 30);
+  const output = res.output as any;
+  assert.equal(output.success, true);
+  assert.equal(output.stdout.soma, 30);
 });

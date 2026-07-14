@@ -140,13 +140,13 @@ type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
 const TURNAROUND_IMAGE_LABELS = ["Base", "Lateral esquerda", "Lateral direita", "Costas", "Topo", "Inferior"];
 const AGENT_MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
-  { value: "gemini", label: "Gemini" },
-  { value: "cerebras", label: "Cerebras + MCP" },
-  { value: "zenmux", label: "ZenMux + MCP" },
-  { value: "iamhc", label: "IAMHC (modelos chineses)" },
-  { value: "chatgpt", label: "ChatGPT" },
-  { value: "claude", label: "Claude" },
-  { value: "deepseek", label: "DeepSeek" },
+  { value: "gemini", label: "Gemini (CLI Antigravity)" },
+  { value: "chatgpt", label: "ChatGPT (CLI Codex)" },
+  { value: "claude", label: "Claude (CLI)" },
+  { value: "deepseek", label: "DeepSeek (CLI)" },
+  { value: "cerebras", label: "Cerebras (API + MCP)" },
+  { value: "zenmux", label: "ZenMux (API + MCP)" },
+  { value: "iamhc", label: "IAMHC (API - Modelos Chineses)" },
 ];
 
 interface PendingPlan {
