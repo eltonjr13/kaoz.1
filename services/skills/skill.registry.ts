@@ -82,7 +82,7 @@ export class SkillRegistry {
       return automaticId ? this.get(automaticId) || defaultSkill : defaultSkill;
   } 
 
-  save(skill: KaozSkill): void {
+  save(skill: KaozSkill & { references?: Array<{ name: string; content: string }>; scripts?: Array<{ name: string; content: string }> }): void {
       validateSkill(skill);
       const skillsDir = path.join(process.cwd(), "skills");
       if (!fs.existsSync(skillsDir)) {
@@ -106,6 +106,30 @@ tools: ${JSON.stringify(skill.tools || [])}
 ${skill.instructions}
 `;
       fs.writeFileSync(path.join(skillDir, "SKILL.md"), content, "utf-8");
+
+      if (skill.references && Array.isArray(skill.references)) {
+          const refsDir = path.join(skillDir, "references");
+          if (!fs.existsSync(refsDir)) {
+              fs.mkdirSync(refsDir, { recursive: true });
+          }
+          for (const ref of skill.references) {
+              if (ref.name && ref.content) {
+                  fs.writeFileSync(path.join(refsDir, ref.name), ref.content, "utf-8");
+              }
+          }
+      }
+
+      if (skill.scripts && Array.isArray(skill.scripts)) {
+          const scriptsDir = path.join(skillDir, "scripts");
+          if (!fs.existsSync(scriptsDir)) {
+              fs.mkdirSync(scriptsDir, { recursive: true });
+          }
+          for (const script of skill.scripts) {
+              if (script.name && script.content) {
+                  fs.writeFileSync(path.join(scriptsDir, script.name), script.content, "utf-8");
+              }
+          }
+      }
       
       // Update cache
       if (!cachedSkills) loadSkillsSync();

@@ -239,6 +239,8 @@ export interface ChatMessageState {
     name: string;
     description: string;
     instructions: string;
+    references?: Array<{ name: string; content: string }>;
+    scripts?: Array<{ name: string; content: string }>;
     saveStatus?: 'saving' | 'saved' | 'error';
     saveError?: string;
   } | null;
@@ -3494,6 +3496,32 @@ export default function FlowDashboardPage() {
                           <summary className="cursor-pointer text-[11px] font-medium text-white/70">Ver instruções geradas</summary>
                           <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed text-white/50">{msg.skillDraft.instructions}</pre>
                         </details>
+                        {msg.skillDraft.references && msg.skillDraft.references.length > 0 && (
+                          <details className="mb-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                            <summary className="cursor-pointer text-[11px] font-medium text-white/70">Ver arquivos de referência ({msg.skillDraft.references.length})</summary>
+                            <div className="mt-3 space-y-3 max-h-56 overflow-auto">
+                              {msg.skillDraft.references.map((ref) => (
+                                <div key={ref.name} className="border-t border-white/5 pt-2 first:border-0 first:pt-0">
+                                  <div className="text-[10px] font-bold text-[#9D7CFF]">{ref.name}</div>
+                                  <pre className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-white/50">{ref.content}</pre>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                        {msg.skillDraft.scripts && msg.skillDraft.scripts.length > 0 && (
+                          <details className="mb-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                            <summary className="cursor-pointer text-[11px] font-medium text-white/70">Ver scripts auxiliares ({msg.skillDraft.scripts.length})</summary>
+                            <div className="mt-3 space-y-3 max-h-56 overflow-auto">
+                              {msg.skillDraft.scripts.map((scr) => (
+                                <div key={scr.name} className="border-t border-white/5 pt-2 first:border-0 first:pt-0">
+                                  <div className="text-[10px] font-bold text-emerald-400">{scr.name}</div>
+                                  <pre className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-white/50">{scr.content}</pre>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                         {msg.skillDraft.saveError && <p className="mb-2 text-[10px] text-red-400">{msg.skillDraft.saveError}</p>}
                         <button
                           type="button"

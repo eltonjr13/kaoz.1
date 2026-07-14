@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
       approvalMode,
       enabled: body.enabled !== false,
       tools: Array.isArray(body.tools) ? body.tools : [],
+      references: Array.isArray(body.references) ? body.references : [],
+      scripts: Array.isArray(body.scripts) ? body.scripts : [],
     };
 
     skillRegistry.save(skillToSave);

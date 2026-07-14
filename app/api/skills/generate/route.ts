@@ -6,7 +6,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
-type GeneratedSkill = Pick<KaozSkill, "id" | "name" | "description" | "instructions">;
+type GeneratedSkill = Pick<KaozSkill, "id" | "name" | "description" | "instructions"> & {
+  references?: Array<{ name: string; content: string }>;
+  scripts?: Array<{ name: string; content: string }>;
+};
 
 function extractJson(text: string): Record<string, unknown> {
   const clean = text.replace(/^```json\s*|\s*```$/gi, "").trim();
@@ -31,7 +34,33 @@ function parseSkill(value: unknown): GeneratedSkill | null {
   const skill = value as Record<string, unknown>;
   if (![skill.id, skill.name, skill.description, skill.instructions].every((field) => typeof field === "string" && field.trim())) return null;
   if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(skill.id as string) || (skill.id as string).length > 64) return null;
-  return { id: skill.id as string, name: skill.name as string, description: skill.description as string, instructions: skill.instructions as string };
+
+  const references: Array<{ name: string; content: string }> = [];
+  if (Array.isArray(skill.references)) {
+    for (const ref of skill.references) {
+      if (ref && typeof ref === "object" && typeof ref.name === "string" && typeof ref.content === "string") {
+        references.push({ name: ref.name, content: ref.content });
+      }
+    }
+  }
+
+  const scripts: Array<{ name: string; content: string }> = [];
+  if (Array.isArray(skill.scripts)) {
+    for (const scr of skill.scripts) {
+      if (scr && typeof scr === "object" && typeof scr.name === "string" && typeof scr.content === "string") {
+        scripts.push({ name: scr.name, content: scr.content });
+      }
+    }
+  }
+
+  return {
+    id: skill.id as string,
+    name: skill.name as string,
+    description: skill.description as string,
+    instructions: skill.instructions as string,
+    references,
+    scripts
+  };
 }
 
 export async function POST(request: Request) {
@@ -47,16 +76,18 @@ export async function POST(request: Request) {
 
 Faça no máximo duas perguntas curtas por resposta e só pergunte o que muda materialmente a skill. Se o pedido já estiver claro, produza o rascunho imediatamente. Seja conciso: Skills compartilham contexto e não devem ensinar conhecimentos óbvios ao modelo.
 
-Quando houver contexto suficiente, crie:
+Quando houver contexto suficiente, crie a skill seguindo o padrão Higgsfield.ai:
 - id em lowercase kebab-case, com até 64 caracteres;
 - name humano e claro;
 - description contendo o que faz E os pedidos/contextos que devem ativá-la;
-- instructions em Markdown, no imperativo, com fluxo, regras, validação e uso de ferramentas sem inventar ferramentas inexistentes.
+- instructions em Markdown, no imperativo, contendo o fluxo e regras essenciais de orquestração do SKILL.md.
+- references: Opcional. Se as instruções contiverem playbooks, limites de plataformas, templates específicos ou detalhes de configuração extensos, coloque esses detalhes em arquivos separados nesta lista. Cada item deve ter { "name": "nome_do_arquivo.md", "content": "conteúdo em markdown" }. No SKILL.md principal, use "See references/nome_do_arquivo.md" para ligar as referências.
+- scripts: Opcional. Se a skill precisar de scripts permanentes auxiliares em JavaScript/TypeScript ou Python, coloque-os nesta lista. Cada item deve ter { "name": "nome_do_script.js", "content": "código" }
 
 Responda SOMENTE JSON válido em um destes formatos:
 {"message":"pergunta ou orientação ao usuário","ready":false,"skill":null}
 ou
-{"message":"resumo curto do que foi criado","ready":true,"skill":{"id":"...","name":"...","description":"...","instructions":"..."}}
+{"message":"resumo curto do que foi criado","ready":true,"skill":{"id":"...","name":"...","description":"...","instructions":"...","references":[{"name":"...","content":"..."}],"scripts":[{"name":"...","content":"..."}]}}
 
 CONVERSA:
 ${transcript}`;
