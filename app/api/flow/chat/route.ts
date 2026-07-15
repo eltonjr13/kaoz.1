@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   chatWithAgent,
+  isActionContinuationRequest,
   isImmediateContextReference,
 } from "@/lib/ai/gemini";
 import type { ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
@@ -19,6 +20,7 @@ import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionConte
 import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
 import { materializeResponseArtifacts } from "@/services/artifacts/artifact.service";
 import { skillRegistry } from "@/services/skills/skill.registry";
+import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -135,6 +137,11 @@ function enforceRequestedFlow(
       explanation: `${response.action.explanation} O modo ${requestedFlow} selecionado na interface foi preservado.`,
     },
   };
+}
+
+function protectOutputIntent(response: ChatAgentResponse, intent: OutputIntent, allowContinuation: boolean): ChatAgentResponse {
+  if (allowsMediaAction(intent) || allowContinuation || !response.action) return response;
+  return { ...response, action: null };
 }
 
 function buildSpotifyPlaylistName(text: string): string {
@@ -539,6 +546,9 @@ export async function POST(request: Request) {
     const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
     const latestUserText = getLatestUserMessageText(messages);
+    const outputIntent = classifyOutputIntent(latestUserText, getSkillArtifactHint(latestUserText));
+    const actionContinuation = isActionContinuationRequest(messages);
+    const requestedMediaFlow = outputIntent.mediaFlow || ((allowsMediaAction(outputIntent) || actionContinuation) ? requestedFlow : undefined);
     const immediateContextReference = isImmediateContextReference(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
 
@@ -576,8 +586,8 @@ export async function POST(request: Request) {
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
     const { relevantMemories, activePersonalityMemories } = cortexContext;
 
-    const runChat = async (onMessageChunk?: (chunk: string) => void) => attachRequestedArtifacts(enforceRequestedFlow(
-      await chatWithAgent(
+    const runChat = async (onMessageChunk?: (chunk: string) => void) => {
+      const response = await chatWithAgent(
         messages,
         personality,
         async (compiledPrompt: string, imagePath?: string, queryOptions?: {
@@ -596,12 +606,14 @@ export async function POST(request: Request) {
           relevantMemories,
           activeMemories: activePersonalityMemories,
           voiceInstruction: getAgentVoiceInstruction(voiceContext),
-          requestedFlow,
+          requestedFlow: requestedMediaFlow,
           characterRuntime,
         }
-      ),
-      requestedFlow
-    ), latestUserText, sessionId);
+      );
+      const protectedResponse = protectOutputIntent(response, outputIntent, actionContinuation);
+      const routedResponse = enforceRequestedFlow(protectedResponse, requestedMediaFlow);
+      return attachRequestedArtifacts(routedResponse, latestUserText, sessionId);
+    };
 
     if (stream === true) {
       cleanupInPost = false;

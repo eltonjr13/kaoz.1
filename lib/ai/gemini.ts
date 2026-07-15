@@ -7,6 +7,7 @@ import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/Age
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import type { CharacterRuntimeSnapshot } from "@/lib/agent-personality/types";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
+import { hasExplicitMediaGenerationIntent } from "@/services/artifacts/artifact.intent";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -759,17 +760,8 @@ function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
   return executeWebQuery;
 }
 
-const ACTION_REQUEST_PATTERN =
-  /\b(gerar|gera|gere|criar|cria|crie|fazer|faz|faca|imagem|foto|ilustracao|ilustracoes|desenho|desenhar|video|projeto|react|anuncio|anuncios|campanha|criativo|criativos|editar|ajustar|corrigir|refinar|alterar)\b/;
-
 function hasDirectActionIntent(value: string): boolean {
-  const normalized = normalizeIntentText(value)
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalized) return false;
-  return ACTION_REQUEST_PATTERN.test(normalized);
+  return hasExplicitMediaGenerationIntent(value);
 }
 
 function getPreviousUserText(messages: ChatMessage[]): string {
@@ -987,6 +979,7 @@ Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seg
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
 2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
 - "action" é um contrato interno que o aplicativo executará depois da sua resposta; não é uma ferramenta externa. Para pedidos de imagem/vídeo, nunca diga que não consegue gerar por falta de ferramentas: preencha "action" corretamente.
+- PDF, Markdown, texto, documento, JSON, CSV, HTML e TXT não são fluxos de mídia. Se o pedido for apenas documental, retorne obrigatoriamente "action": null, mesmo que use verbos como criar, gerar, fazer ou produzir.
 
 A estrutura de "action" (se aplicável) deve ser:
 {
