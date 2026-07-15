@@ -1,6 +1,6 @@
 import { execFile, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ToolHandler, ToolResult } from "../../tools/tool.types";
 import type { ArtifactType } from "../orchestrator.types";
@@ -11,6 +11,8 @@ import { registerContentArtifact, registerExistingArtifact } from "../../artifac
 
 const ARTIFACT_TYPES = new Set<ArtifactType>(["image", "video", "audio", "document", "markdown", "pdf", "json", "csv", "html", "text", "file"]);
 const OUTPUT_KEY = /(^|_)(output|destination|dest|target|artifact|save|write)(_|$)/i;
+const METRICS_RECORDED = Symbol("skillMetricsRecorded");
+type RecordedError = Error & { [METRICS_RECORDED]?: boolean };
 
 function asArtifactType(value: unknown): ArtifactType | undefined {
   return typeof value === "string" && ARTIFACT_TYPES.has(value as ArtifactType) ? value as ArtifactType : undefined;
@@ -56,6 +58,8 @@ function assertInside(candidate: string, root: string, message: string): void {
   if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(message);
 }
 
+// Recursive validation intentionally handles objects, arrays, read paths and write paths in one boundary.
+// eslint-disable-next-line complexity
 function validateArgumentPaths(value: unknown, policy: SkillScriptPolicy, root: string, key = ""): void {
   if (Array.isArray(value)) return value.forEach((item) => validateArgumentPaths(item, policy, root, key));
   if (value && typeof value === "object") {
@@ -84,9 +88,9 @@ function validateSource(source: string, policy: SkillScriptPolicy): void {
   }
 }
 
-function commandForExtension(extension: string, scriptPath: string, policy: SkillScriptPolicy): { bin: string; args: string[] } {
+function commandForExtension(extension: string, scriptPath: string, policy: SkillScriptPolicy, guardPath: string): { bin: string; args: string[] } {
   if ([".ts", ".js", ".mjs", ".cjs"].includes(extension)) {
-    const args = [`--max-old-space-size=${policy.maxMemoryMb}`, "--permission", `--allow-fs-read=${scriptPath}`];
+    const args = [`--max-old-space-size=${policy.maxMemoryMb}`, "--permission", `--allow-fs-read=${scriptPath}`, `--allow-fs-read=${guardPath}`, `--require=${guardPath}`];
     if (extension === ".ts") args.push("--experimental-strip-types", "--no-warnings");
     if (policy.fileRead === "workspace") args.push(`--allow-fs-read=${process.cwd()}`);
     if (policy.fileWrite === "artifacts") args.push(`--allow-fs-write=${path.join(process.cwd(), ".generated", "artifacts")}`);
@@ -95,6 +99,50 @@ function commandForExtension(extension: string, scriptPath: string, policy: Skil
   }
   if (extension === ".py") return { bin: process.platform === "win32" ? "python.exe" : "python", args: [] };
   throw new Error(`Extensão de script não suportada: ${extension}`);
+}
+
+function nodeGuardSource(policy: SkillScriptPolicy): string {
+  return `"use strict";
+const deny = () => { throw new Error("A política da skill bloqueou acesso à rede."); };
+if (${JSON.stringify(!policy.network)}) {
+  globalThis.fetch = deny;
+  for (const name of ["node:http", "node:https"]) { const mod = require(name); mod.request = deny; mod.get = deny; }
+  for (const name of ["node:net", "node:tls"]) { const mod = require(name); mod.connect = deny; mod.createConnection = deny; }
+  const dns = require("node:dns"); dns.lookup = deny; dns.resolve = deny;
+}
+`;
+}
+
+function pythonGuardSource(policy: SkillScriptPolicy, skillId: string, root: string, sandbox: string): string {
+  const skillRoot = path.join(root, "skills", skillId);
+  const readRoots = policy.fileRead === "workspace" ? [root] : [skillRoot];
+  const writeRoots = policy.fileWrite === "artifacts" ? [path.join(root, ".generated", "artifacts"), sandbox] : [sandbox];
+  return `import os, sys
+READ_ROOTS = ${JSON.stringify(readRoots)}
+WRITE_ROOTS = ${JSON.stringify(writeRoots)}
+SYSTEM_ROOTS = [sys.prefix, sys.base_prefix]
+NETWORK = ${policy.network ? "True" : "False"}
+SUBPROCESS = ${policy.subprocess ? "True" : "False"}
+def inside(candidate, roots):
+    try:
+        value = os.path.realpath(os.fspath(candidate))
+        return any(os.path.commonpath([value, os.path.realpath(root)]) == os.path.realpath(root) for root in roots)
+    except Exception:
+        return False
+def audit(event, args):
+    if event == "open" and args:
+        filename = args[0]
+        if isinstance(filename, int): return
+        mode = args[1] if len(args) > 1 else "r"
+        writing = isinstance(mode, str) and any(flag in mode for flag in "wax+")
+        roots = WRITE_ROOTS if writing else READ_ROOTS + SYSTEM_ROOTS
+        if not inside(filename, roots): raise PermissionError("Caminho bloqueado pela política da skill")
+    if not NETWORK and (event.startswith("socket.") or event.startswith("http.")):
+        raise PermissionError("Rede bloqueada pela política da skill")
+    if not SUBPROCESS and event in ("subprocess.Popen", "os.system", "os.posix_spawn"):
+        raise PermissionError("Subprocesso bloqueado pela política da skill")
+sys.addaudithook(audit)
+`;
 }
 
 function sampleResources(child: ChildProcess, update: (rss: number, cpuMs: number) => void): () => void {
@@ -112,8 +160,12 @@ function sampleResources(child: ChildProcess, update: (rss: number, cpuMs: numbe
     } else {
       fs.readFile(`/proc/${child.pid}/status`, "utf8", (_error, content) => {
         const rss = Number(content?.match(/^VmRSS:\s+(\d+)/m)?.[1] || 0) * 1024;
-        if (rss) update(rss, 0);
-        sampling = false;
+        fs.readFile(`/proc/${child.pid}/stat`, "utf8", (_statError, stat) => {
+          const fields = stat?.slice((stat.lastIndexOf(")") || 0) + 2).trim().split(/\s+/) || [];
+          const cpuMs = (Number(fields[11] || 0) + Number(fields[12] || 0)) * 10;
+          if (rss || cpuMs) update(rss, cpuMs);
+          sampling = false;
+        });
       });
     }
   }, 250);
@@ -121,20 +173,32 @@ function sampleResources(child: ChildProcess, update: (rss: number, cpuMs: numbe
   return () => clearInterval(timer);
 }
 
-async function runProcess(bin: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }) {
+async function runProcess(bin: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number; maxMemoryBytes: number; maxCpuMs: number; signal?: AbortSignal }) {
   return new Promise<{ stdout: string; stderr: string; exitCode: number; peakRssBytes?: number; cpuTimeMs?: number }>((resolve, reject) => {
+    // Normalizes the mutually exclusive process termination modes in one callback.
+    // eslint-disable-next-line complexity
     const child = execFile(bin, args, { ...options, windowsHide: true, encoding: "utf8" }, (error, stdout, stderr) => {
       stopSampling();
       const result = { stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0, peakRssBytes: peakRss || undefined, cpuTimeMs: cpuMs || undefined };
+      if (memoryExceeded && error) error.message = `Limite de memória excedido (${Math.ceil(peakRss / 1024 / 1024)} MB usados; ${Math.ceil(options.maxMemoryBytes / 1024 / 1024)} MB permitidos).`;
+      if (cpuExceeded && error) error.message = `Limite de CPU excedido (${Math.ceil(cpuMs)} ms usados; ${options.maxCpuMs} ms permitidos).`;
       if (error) Object.assign(error, result);
-      error ? reject(error) : resolve(result);
+      if (error) reject(error); else resolve(result);
     });
     let peakRss = 0;
     let cpuMs = 0;
-    const stopSampling = sampleResources(child, (rss, cpu) => { peakRss = Math.max(peakRss, rss); cpuMs = Math.max(cpuMs, cpu); });
+    let memoryExceeded = false;
+    let cpuExceeded = false;
+    const stopSampling = sampleResources(child, (rss, cpu) => {
+      peakRss = Math.max(peakRss, rss); cpuMs = Math.max(cpuMs, cpu);
+      if (rss > options.maxMemoryBytes && !memoryExceeded) { memoryExceeded = true; child.kill(); }
+      if (cpu > options.maxCpuMs && !cpuExceeded) { cpuExceeded = true; child.kill(); }
+    });
   });
 }
 
+// Child process errors vary across timeout, abort, maxBuffer and exit-code failures.
+// eslint-disable-next-line complexity
 function errorDetails(error: unknown) {
   const value = error as Error & { stdout?: string; stderr?: string; code?: number | string; killed?: boolean; peakRssBytes?: number; cpuTimeMs?: number };
   return { message: value?.message || String(error), stdout: value?.stdout || "", stderr: value?.stderr || "", exitCode: typeof value?.code === "number" ? value.code : undefined, timedOut: value?.killed === true || /timeout/i.test(value?.message || ""), peakRssBytes: value?.peakRssBytes, cpuTimeMs: value?.cpuTimeMs };
@@ -146,7 +210,7 @@ async function parseScriptOutput(stdout: string): Promise<ToolResult> {
   catch (error) { if (error instanceof SyntaxError) return { output }; throw error; }
 }
 
-async function runSkillScript(skillId: string, tool: SkillToolDefinition, args: Record<string, unknown>): Promise<ToolResult> {
+async function runSkillScript(skillId: string, tool: SkillToolDefinition, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
   const policy = normalizeScriptPolicy(tool.policy);
   const absolutePath = path.resolve(process.cwd(), tool.script);
   assertInside(absolutePath, path.join(process.cwd(), "skills", skillId, "scripts"), "Script fora do diretório autorizado da skill.");
@@ -156,15 +220,22 @@ async function runSkillScript(skillId: string, tool: SkillToolDefinition, args: 
   const sandbox = path.join(process.cwd(), ".generated", "skills", "sandbox", crypto.randomUUID());
   await mkdir(sandbox, { recursive: true });
   const argsString = JSON.stringify(args);
-  const command = commandForExtension(path.extname(absolutePath).toLowerCase(), absolutePath, policy);
+  const extension = path.extname(absolutePath).toLowerCase();
+  const nodeGuard = path.join(sandbox, "skill-guard.cjs");
+  const pythonGuard = path.join(sandbox, "sitecustomize.py");
+  if (extension === ".py") await writeFile(pythonGuard, pythonGuardSource(policy, skillId, process.cwd(), sandbox), "utf8");
+  else await writeFile(nodeGuard, nodeGuardSource(policy), "utf8");
+  const command = commandForExtension(extension, absolutePath, policy, nodeGuard);
+  const env = safeEnvironment(argsString, sandbox);
+  if (extension === ".py") { env.PYTHONPATH = sandbox; env.PYTHONDONTWRITEBYTECODE = "1"; }
   const startedAt = new Date();
   const metric: SkillExecutionMetrics = {
     id: crypto.randomUUID(), skillId, toolId: tool.id, startedAt: startedAt.toISOString(), completedAt: "", durationMs: 0,
     success: false, timedOut: false, stdoutBytes: 0, stderrBytes: 0,
-    limits: { timeoutMs: policy.timeoutMs, maxMemoryMb: policy.maxMemoryMb, maxOutputBytes: policy.maxOutputBytes },
+    limits: { timeoutMs: policy.timeoutMs, maxCpuMs: policy.maxCpuMs, maxMemoryMb: policy.maxMemoryMb, maxOutputBytes: policy.maxOutputBytes },
   };
   try {
-    const processResult = await runProcess(command.bin, [...command.args, absolutePath, argsString], { cwd: sandbox, env: safeEnvironment(argsString, sandbox), timeout: policy.timeoutMs, maxBuffer: policy.maxOutputBytes });
+    const processResult = await runProcess(command.bin, [...command.args, absolutePath, argsString], { cwd: sandbox, env, timeout: policy.timeoutMs, maxBuffer: policy.maxOutputBytes, maxMemoryBytes: policy.maxMemoryMb * 1024 * 1024, maxCpuMs: policy.maxCpuMs, signal });
     metric.success = true;
     metric.exitCode = processResult.exitCode;
     metric.stdoutBytes = Buffer.byteLength(processResult.stdout);
@@ -182,7 +253,9 @@ async function runSkillScript(skillId: string, tool: SkillToolDefinition, args: 
     metric.peakRssBytes = details.peakRssBytes;
     metric.cpuTimeMs = details.cpuTimeMs;
     metric.error = details.stderr.trim() || details.message;
-    throw new Error(`Erro ao executar script da skill: ${metric.error}`);
+    const executionError = new Error(`Erro ao executar script da skill: ${metric.error}`) as RecordedError;
+    executionError[METRICS_RECORDED] = true;
+    throw executionError;
   } finally {
     const completedAt = new Date();
     metric.completedAt = completedAt.toISOString();
@@ -193,5 +266,22 @@ async function runSkillScript(skillId: string, tool: SkillToolDefinition, args: 
 }
 
 export function createSkillScriptHandler(skillId: string, tool: SkillToolDefinition): ToolHandler {
-  return (args) => runSkillScript(skillId, tool, args);
+  return async (args, context) => {
+    const started = new Date();
+    try { return await runSkillScript(skillId, tool, args, context.signal); }
+    catch (error) {
+      if (!(error as RecordedError)?.[METRICS_RECORDED]) {
+        const completed = new Date();
+        const policy = normalizeScriptPolicy(tool.policy);
+        await skillMetricsStore.record({
+          id: crypto.randomUUID(), skillId, toolId: tool.id, startedAt: started.toISOString(), completedAt: completed.toISOString(),
+          durationMs: completed.getTime() - started.getTime(), success: false, timedOut: false,
+          stdoutBytes: 0, stderrBytes: 0,
+          limits: { timeoutMs: policy.timeoutMs, maxCpuMs: policy.maxCpuMs, maxMemoryMb: policy.maxMemoryMb, maxOutputBytes: policy.maxOutputBytes },
+          error: error instanceof Error ? error.message : String(error),
+        }).catch(() => {});
+      }
+      throw error;
+    }
+  };
 }

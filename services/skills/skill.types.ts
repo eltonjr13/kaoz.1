@@ -16,6 +16,7 @@ export type SkillScriptPolicy = {
   fileWrite: "none" | "artifacts";
   subprocess: boolean;
   timeoutMs: number;
+  maxCpuMs: number;
   maxMemoryMb: number;
   maxOutputBytes: number;
 };
@@ -34,7 +35,7 @@ export type SkillExecutionMetrics = {
   stderrBytes: number;
   peakRssBytes?: number;
   cpuTimeMs?: number;
-  limits: Pick<SkillScriptPolicy, "timeoutMs" | "maxMemoryMb" | "maxOutputBytes">;
+  limits: Pick<SkillScriptPolicy, "timeoutMs" | "maxCpuMs" | "maxMemoryMb" | "maxOutputBytes">;
   error?: string;
 };
 

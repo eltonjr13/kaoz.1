@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Bot, CheckCircle, Loader2, Plus, Save, Send, Settings, Sparkles, ToggleLeft, ToggleRight, User, Search, Trash2 } from "lucide-react";
-import type { KaozSkill, SkillResourceFile } from "@/services/skills/skill.types";
+import type { KaozSkill, SkillExecutionMetrics, SkillResourceFile } from "@/services/skills/skill.types";
+import type { SkillRevision } from "@/services/skills/skill.registry";
 
 type Message = { type: "success" | "error"; text: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -29,6 +30,9 @@ export function SkillsSettingsPanel() {
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const [message, setMessage] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [revisions, setRevisions] = useState<SkillRevision[]>([]);
+  const [metrics, setMetrics] = useState<SkillExecutionMetrics[]>([]);
+  const [rollingBack, setRollingBack] = useState<string | null>(null);
 
   const loadSkills = async () => {
     setLoading(true);
@@ -44,8 +48,21 @@ export function SkillsSettingsPanel() {
 
   useEffect(() => { void loadSkills(); }, []);
 
+  const loadOperations = async (id: string) => {
+    try {
+      const [revisionResponse, metricsResponse] = await Promise.all([
+        fetch(`/api/skills?revisions=${encodeURIComponent(id)}`),
+        fetch(`/api/skills?metrics=${encodeURIComponent(id)}&limit=20`),
+      ]);
+      const [revisionData, metricsData] = await Promise.all([revisionResponse.json(), metricsResponse.json()]);
+      setRevisions(revisionResponse.ok ? revisionData.revisions || [] : []);
+      setMetrics(metricsResponse.ok ? metricsData.metrics || [] : []);
+    } catch { setRevisions([]); setMetrics([]); }
+  };
+
   const selectSkill = (skill: KaozSkill) => {
     setSelectedSkillId(skill.id); setEditForm({ ...skill }); setCreatorOpen(false); setMessage(null);
+    void loadOperations(skill.id);
   };
 
   const startCreator = () => {
@@ -93,9 +110,26 @@ export function SkillsSettingsPanel() {
       setEditForm(data.skill); setSelectedSkillId(data.skill.id);
       setMessage({ type: "success", text: "Skill criada e disponível para o agente." });
       await loadSkills();
+      await loadOperations(data.skill.id);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao salvar skill." });
     } finally { setSaving(false); }
+  };
+
+  const rollback = async (revisionId: string) => {
+    if (!selectedSkillId || rollingBack) return;
+    setRollingBack(revisionId); setMessage(null);
+    try {
+      const response = await fetch("/api/skills", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selectedSkillId, revisionId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Falha ao restaurar revisão.");
+      setEditForm(data.skill); setRevisions(data.revisions || []);
+      setMessage({ type: "success", text: `Revisão restaurada. A versão ativa agora é ${data.skill.version}.` });
+      await loadSkills();
+      await loadOperations(selectedSkillId);
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Falha ao restaurar revisão." });
+    } finally { setRollingBack(null); }
   };
 
   const handleDeleteTrigger = () => {
@@ -311,6 +345,28 @@ export function SkillsSettingsPanel() {
           )}
         </div>
 
+        <div className="grid gap-4 border-t border-white/10 pt-4 xl:grid-cols-2">
+          <section className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">Revisões e rollback</h3>
+            {revisions.length === 0 ? <p className="text-xs italic text-white/30">Nenhuma versão anterior publicada.</p> : <div className="space-y-2">
+              {revisions.slice(0, 8).map((revision) => <div key={revision.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-black/20 p-2.5">
+                <div><p className="text-xs text-white/75">v{revision.version}</p><p className="text-[10px] text-white/35">{new Date(revision.createdAt).toLocaleString("pt-BR")} · {revision.reason}</p></div>
+                <button type="button" onClick={() => void rollback(revision.id)} disabled={Boolean(rollingBack)} className="rounded-md border border-[#9D7CFF]/30 px-2 py-1 text-[10px] text-[#b59dff] disabled:opacity-40">{rollingBack === revision.id ? "Restaurando..." : "Restaurar"}</button>
+              </div>)}
+            </div>}
+          </section>
+
+          <section className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">Execuções recentes</h3>
+            {metrics.length === 0 ? <p className="text-xs italic text-white/30">Esta skill ainda não possui métricas registradas.</p> : <div className="space-y-2">
+              {metrics.slice(0, 8).map((metric) => <div key={metric.id} className="rounded-lg border border-white/5 bg-black/20 p-2.5">
+                <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[10px] text-white/55">{metric.toolId}</span><span className={metric.success ? "text-[10px] text-emerald-400" : "text-[10px] text-red-400"}>{metric.success ? "Sucesso" : metric.timedOut ? "Timeout" : "Falha"}</span></div>
+                <p className="mt-1 text-[10px] text-white/35">{metric.durationMs} ms · saída {formatBytes(metric.stdoutBytes + metric.stderrBytes)}{metric.peakRssBytes ? ` · pico ${formatBytes(metric.peakRssBytes)}` : ""}</p>
+              </div>)}
+            </div>}
+          </section>
+        </div>
+
         {!selectedSkillId && <button onClick={() => setCreatorOpen(true)} className="self-start text-xs text-[#b59dff] hover:underline cursor-pointer">Voltar ao chat e pedir ajustes</button>}
       </div> : <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-white/35"><Sparkles size={48} className="text-[#9D7CFF]/30"/><div><p className="font-medium text-white/60">Crie uma capacidade conversando com a IA</p><p className="mt-1 max-w-sm text-sm">O modelo escolhido entende sua ideia, faz perguntas e escreve a skill para você revisar.</p></div><button onClick={startCreator} className="rounded-lg bg-[#9D7CFF] px-4 py-2 text-sm font-semibold text-black cursor-pointer">Conversar com o criador</button></div>}
     </main>
@@ -356,6 +412,12 @@ export function SkillsSettingsPanel() {
     )}
     <style jsx global>{`.input-skill{width:100%;border-radius:.5rem;border:1px solid rgb(255 255 255/.1);background:rgb(0 0 0/.4);padding:.625rem .75rem;font-size:.875rem;color:white;outline:none}.input-skill:focus{border-color:#9D7CFF}`}</style>
   </div>;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -6,7 +6,7 @@ preferredTools: []
 requiredCapabilities: ["web"]
 approvalMode: never
 enabled: true
-tools: [{"id":"skill:trend-hunter:search","description":"Busca tópicos virais e vídeos populares de um determinado nicho.","script":"skills/trend-hunter/scripts/search-viral.ts","inputSchema":{"type":"object","required":["niche"]},"effect":"external","approvalMode":"step","policy":{"network":true,"fileRead":"skill","fileWrite":"none","subprocess":false,"timeoutMs":30000,"maxMemoryMb":128,"maxOutputBytes":1000000}}]
+tools: [{"id":"skill:trend-hunter:search","description":"Busca tópicos virais e vídeos populares de um determinado nicho.","script":"skills/trend-hunter/scripts/search-viral.ts","inputSchema":{"type":"object","required":["niche"]},"effect":"external","approvalMode":"step","policy":{"network":true,"fileRead":"skill","fileWrite":"none","subprocess":false,"timeoutMs":30000,"maxCpuMs":30000,"maxMemoryMb":128,"maxOutputBytes":1000000}}]
 ---
 Você é um especialista em encontrar tendências virais para UGC (User Generated Content).
 Sempre que o usuário pedir para buscar vídeos virais ou analisar um nicho:

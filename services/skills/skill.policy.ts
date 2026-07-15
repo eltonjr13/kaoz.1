@@ -9,13 +9,17 @@ export const DEFAULT_SKILL_SCRIPT_POLICY: SkillScriptPolicy = {
   fileWrite: "none",
   subprocess: false,
   timeoutMs: 30_000,
+  maxCpuMs: 30_000,
   maxMemoryMb: 128,
   maxOutputBytes: 1_000_000,
 };
 
+// Centralizes clamping and legacy defaults for every policy field.
+// eslint-disable-next-line complexity
 export function normalizeScriptPolicy(value?: Partial<SkillScriptPolicy>): SkillScriptPolicy {
   const timeoutMs = Number(value?.timeoutMs ?? DEFAULT_SKILL_SCRIPT_POLICY.timeoutMs);
   const maxMemoryMb = Number(value?.maxMemoryMb ?? DEFAULT_SKILL_SCRIPT_POLICY.maxMemoryMb);
+  const maxCpuMs = Number(value?.maxCpuMs ?? DEFAULT_SKILL_SCRIPT_POLICY.maxCpuMs);
   const maxOutputBytes = Number(value?.maxOutputBytes ?? DEFAULT_SKILL_SCRIPT_POLICY.maxOutputBytes);
   return {
     network: value?.network === true,
@@ -27,11 +31,14 @@ export function normalizeScriptPolicy(value?: Partial<SkillScriptPolicy>): Skill
       : DEFAULT_SKILL_SCRIPT_POLICY.fileWrite,
     subprocess: value?.subprocess === true,
     timeoutMs: Number.isFinite(timeoutMs) ? Math.min(120_000, Math.max(100, timeoutMs)) : DEFAULT_SKILL_SCRIPT_POLICY.timeoutMs,
+    maxCpuMs: Number.isFinite(maxCpuMs) ? Math.min(120_000, Math.max(100, maxCpuMs)) : DEFAULT_SKILL_SCRIPT_POLICY.maxCpuMs,
     maxMemoryMb: Number.isFinite(maxMemoryMb) ? Math.min(512, Math.max(32, maxMemoryMb)) : DEFAULT_SKILL_SCRIPT_POLICY.maxMemoryMb,
     maxOutputBytes: Number.isFinite(maxOutputBytes) ? Math.min(5_000_000, Math.max(1_024, maxOutputBytes)) : DEFAULT_SKILL_SCRIPT_POLICY.maxOutputBytes,
   };
 }
 
+// Keep all least-privilege invariants in the publication gate.
+// eslint-disable-next-line complexity
 export function validateSkillPermissions(skill: KaozSkill): void {
   const capabilities = new Set(skill.requiredCapabilities);
   for (const capability of capabilities) {

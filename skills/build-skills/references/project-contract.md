@@ -72,6 +72,12 @@ Todo script deve:
 5. encerrar com código diferente de zero em falha real;
 6. evitar rede ou escrita externa não declarada.
 
+## Política de execução
+
+Cada ferramenta de script deve declarar `effect`, `approvalMode` e uma `policy` com `network`, `fileRead`, `fileWrite`, `subprocess`, `timeoutMs`, `maxCpuMs`, `maxMemoryMb` e `maxOutputBytes`.
+
+Use o menor privilégio possível. `network: true` exige a capacidade `web`; `subprocess: true` exige `system`; escrita só pode usar `fileWrite: "artifacts"`. Não declare `system:run-code` quando uma ferramenta de script da própria skill resolver o trabalho.
+
 ## Regras de consistência
 
 - Cada caminho de ferramenta deve corresponder a um arquivo em `scripts`.

@@ -40,7 +40,7 @@ tools:
     script: "skills/analisador-de-metricas/scripts/fetch-and-analyze.ts"
     effect: "external"
     approvalMode: "step"
-    policy: {"network":true,"fileRead":"skill","fileWrite":"none","subprocess":false,"timeoutMs":30000,"maxMemoryMb":128,"maxOutputBytes":1000000}
+    policy: {"network":true,"fileRead":"skill","fileWrite":"none","subprocess":false,"timeoutMs":30000,"maxCpuMs":30000,"maxMemoryMb":128,"maxOutputBytes":1000000}
     inputSchema:
       type: "object"
       required: ["url"]

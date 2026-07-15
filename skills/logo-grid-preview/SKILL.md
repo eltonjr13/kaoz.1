@@ -6,7 +6,7 @@ preferredTools: ["creative:generate-image"]
 requiredCapabilities: []
 approvalMode: plan
 enabled: true
-tools: [{"id":"skill:logo-grid-preview:merge-grid","description":"Gera um grid 3x3 mesclando exatamente 9 imagens em uma única imagem JPEG de alta qualidade.","script":"skills/logo-grid-preview/scripts/generate_grid.py","inputSchema":{"type":"object","required":["images","output_path"],"properties":{"images":{"type":"array","description":"Lista com exatamente 9 caminhos dentro do workspace.","items":{"type":"string"}},"output_path":{"type":"string","description":"Caminho de destino dentro de .generated/artifacts."}}},"effect":"write","approvalMode":"plan","policy":{"network":false,"fileRead":"workspace","fileWrite":"artifacts","subprocess":false,"timeoutMs":30000,"maxMemoryMb":256,"maxOutputBytes":1000000}}]
+tools: [{"id":"skill:logo-grid-preview:merge-grid","description":"Gera um grid 3x3 mesclando exatamente 9 imagens em uma única imagem JPEG de alta qualidade.","script":"skills/logo-grid-preview/scripts/generate_grid.py","inputSchema":{"type":"object","required":["images","output_path"],"properties":{"images":{"type":"array","description":"Lista com exatamente 9 caminhos dentro do workspace.","items":{"type":"string"}},"output_path":{"type":"string","description":"Caminho de destino dentro de .generated/artifacts."}}},"effect":"write","approvalMode":"plan","policy":{"network":false,"fileRead":"workspace","fileWrite":"artifacts","subprocess":false,"timeoutMs":30000,"maxCpuMs":30000,"maxMemoryMb":256,"maxOutputBytes":1000000}}]
 ---
 # Visualizador de Marca 3x3
 

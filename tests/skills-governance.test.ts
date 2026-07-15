@@ -7,6 +7,12 @@ import { SkillRegistry, validateSkill } from "../services/skills/skill.registry.
 import { createSkillScriptHandler } from "../services/orchestrator/adapters/skill-script.adapter.ts";
 import { skillRegistry } from "../services/skills/skill.registry.ts";
 import type { KaozSkill } from "../services/skills/skill.types.ts";
+import { skillMetricsStore } from "../services/skills/skill.metrics.ts";
+
+const createdMetricIds = new Set<string>();
+test.after(async () => {
+  await Promise.all([...createdMetricIds].map((id) => rm(path.join(process.cwd(), ".generated", "skills", "executions", `${id}.json`), { force: true })));
+});
 
 function textSkill(version: string, instructions = `Instruções ${version}`): KaozSkill {
   return {
@@ -38,7 +44,7 @@ test("rejeita rede sem capacidade web", () => {
     description: "Busca dados.",
     script: "scripts/buscar.ts",
     inputSchema: { type: "object" },
-    policy: { network: true, fileRead: "skill", fileWrite: "none", subprocess: false, timeoutMs: 1_000, maxMemoryMb: 64, maxOutputBytes: 10_000 },
+    policy: { network: true, fileRead: "skill", fileWrite: "none", subprocess: false, timeoutMs: 1_000, maxCpuMs: 1_000, maxMemoryMb: 64, maxOutputBytes: 10_000 },
   }];
   skill.scripts = [{ name: "buscar.ts", content: "console.log('{}')" }];
   assert.throws(() => validateSkill(skill), /capacidade web/);
@@ -74,9 +80,11 @@ test("executor isola ambiente, aplica limites e registra métricas", async () =>
   const result = await handler({ valorConta: 100, porcentagem: 10 }, { planId: "test", runId: "test", stepId: "test", signal: new AbortController().signal });
   assert.equal((result.output as { totalAPagar?: number }).totalAPagar, 110);
   assert.equal(result.metrics?.success, true);
+  if (result.metrics) createdMetricIds.add(result.metrics.id);
   assert.ok((result.metrics?.durationMs || 0) >= 0);
   assert.ok((result.metrics?.stdoutBytes || 0) > 0);
   assert.equal(result.metrics?.limits.maxMemoryMb, 128);
+  assert.equal(result.metrics?.limits.maxCpuMs, 30_000);
 });
 
 test("sandbox bloqueia script com rede não declarada antes da execução", async () => {
@@ -88,4 +96,8 @@ test("sandbox bloqueia script com rede não declarada antes da execução", asyn
     handler({ niche: "tecnologia" }, { planId: "test", runId: "test", stepId: "test", signal: new AbortController().signal }),
     /acessar a rede sem declarar/
   );
+  const [metric] = await skillMetricsStore.list("trend-hunter", 1);
+  createdMetricIds.add(metric.id);
+  assert.equal(metric.success, false);
+  assert.match(metric.error || "", /acessar a rede sem declarar/);
 });

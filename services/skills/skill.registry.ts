@@ -162,6 +162,8 @@ export class SkillRegistry {
       return (includeDisabled ? this.getAll() : this.list()).find((s) => s.id === id); 
   } 
   
+  // Explicit selection, hard safety intents and relevance scoring share one deterministic boundary.
+  // eslint-disable-next-line complexity
   select(objective: string, requested = "auto"): KaozSkill { 
       const defaultSkill = this.get("general.execute-goal") || fallbackSkills[0];
       if (requested !== "auto") return this.get(requested) || defaultSkill; 

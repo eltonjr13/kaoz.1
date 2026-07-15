@@ -260,6 +260,8 @@ function parseToolInputSchema(value: unknown): Record<string, unknown> {
     : { type: "object" };
 }
 
+// Supports both compact JSON and the legacy multiline YAML tool format.
+// eslint-disable-next-line complexity
 function parseToolsSection(value: string, contentLines: string[], id: string): SkillToolDefinition[] {
   let toolsList: Record<string, unknown>[] = [];
   if (value.startsWith("[")) {
