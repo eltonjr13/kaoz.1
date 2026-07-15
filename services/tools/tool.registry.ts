@@ -2,6 +2,7 @@ import type { KaozTool, ToolHandler } from "./tool.types";
 import { discoverMcpTools, executeMcpTool } from "../orchestrator/adapters/mcp.adapter";
 import { systemHandlers } from "../orchestrator/adapters/system.adapter";
 import { contentHandlers } from "../orchestrator/adapters/content.adapter";
+import { connectorHandlers } from "../orchestrator/adapters/connector.adapter";
 const nativeTools:KaozTool[]=[
  {id:"native:web-research",name:"Pesquisa web",description:"Pesquisa a web e retorna fontes observadas.",source:"native",inputSchema:{type:"object",required:["query"]},effect:"read",approvalMode:"never",timeoutMs:15_000,enabled:true},
  {id:"system.summarize",name:"Resumir dados",description:"Limita e organiza texto já disponível.",source:"native",inputSchema:{type:"object",required:["text"]},effect:"read",approvalMode:"never",timeoutMs:5_000,enabled:true},
@@ -11,6 +12,8 @@ const nativeTools:KaozTool[]=[
  {id:"creative:generate-image",name:"Gerar Imagem via Flow",description:"Gera imagens de alta qualidade usando o Flow do Google de forma automatizada e gratuita.",source:"native",inputSchema:{type:"object",required:["prompt"],properties:{prompt:{type:"string",description:"O prompt detalhado descrevendo a imagem a ser gerada."},aspectRatio:{type:"string",enum:["16:9","4:3","1:1","3:4","9:16"],description:"Proporção da imagem (padrão 1:1)."},quantity:{type:"number",minimum:1,maximum:4,description:"Quantidade de imagens a gerar."}}},effect:"write",approvalMode:"plan",timeoutMs:120_000,enabled:true},
  {id:"creative:generate-video",name:"Gerar Vídeo via Flow",description:"Gera vídeos a partir de prompts ou imagem usando o Flow do Google de forma automatizada.",source:"native",inputSchema:{type:"object",required:["prompt"],properties:{prompt:{type:"string",description:"O prompt descrevendo as ações/elementos do vídeo."},aspectRatio:{type:"string",enum:["16:9","4:3","1:1","3:4","9:16"],description:"Proporção do vídeo (padrão 9:16)."},referenceImage:{type:"string",description:"Caminho local de uma imagem de referência para geração baseada em imagem."}}},effect:"write",approvalMode:"plan",timeoutMs:300_000,enabled:true},
  {id:"system:run-code",name:"Executar Código Dinâmico",description:"Executa blocos de script em Python ou JavaScript em uma sandbox local para processamento e geração dinâmica.",source:"native",inputSchema:{type:"object",required:["language","code"],properties:{language:{type:"string",enum:["python","javascript"],description:"Linguagem do script a ser executado."},code:{type:"string",description:"Código-fonte completo a executar."},args:{type:"object",description:"Variáveis passadas como argumento (objeto JSON)."}}},effect:"write",approvalMode:"plan",timeoutMs:60_000,enabled:true}
+ ,{id:"social:discord:publish",name:"Publicar no Discord",description:"Publica texto e mídia em uma conexão Discord configurada. Esta ação sempre exige aprovação explícita.",source:"native",inputSchema:{type:"object",required:["text"],properties:{text:{type:"string"},accountId:{type:"string"},media:{type:"array"}}},effect:"external",approvalMode:"step",timeoutMs:30_000,enabled:true}
+ ,{id:"social:bluesky:publish",name:"Publicar no Bluesky",description:"Publica texto e até quatro imagens em uma conta Bluesky configurada. Esta ação sempre exige aprovação explícita.",source:"native",inputSchema:{type:"object",required:["text"],properties:{text:{type:"string"},accountId:{type:"string"},media:{type:"array"}}},effect:"external",approvalMode:"step",timeoutMs:30_000,enabled:true}
 ];
 
 import { skillRegistry } from "../skills/skill.registry";
@@ -63,7 +66,7 @@ export class ToolRegistry {
              return createSkillScriptHandler(skill.id, toolDef);
           }
       }
-      return systemHandlers[id]||contentHandlers[id]; 
+      return systemHandlers[id]||contentHandlers[id]||connectorHandlers[id]; 
   } 
 }
 export const toolRegistry=new ToolRegistry();
