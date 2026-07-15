@@ -74,7 +74,7 @@ function getSkillArtifactHint(userText: string): string {
   if (!skillId) return "";
   const skill = skillRegistry.get(skillId);
   if (!skill) return skillId;
-  return [skill.id, skill.name, skill.description, skill.instructions.slice(0, 4_000)].join("\n");
+  return [skill.id, skill.name, skill.description].join("\n");
 }
 
 async function attachRequestedArtifacts(

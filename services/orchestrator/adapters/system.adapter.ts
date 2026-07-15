@@ -4,7 +4,7 @@ import { getQuickWebSearchResponse } from "../../web-search/quick-web-search";
 import type { ToolHandler } from "../../tools/tool.types";
 import { assertSafeWorkspacePath } from "../orchestrator.policy";
 import crypto from "node:crypto";
-import { registerExistingArtifact } from "../../artifacts/artifact.service";
+import { registerExistingArtifact } from "../../artifacts/artifact.service.ts";
 
 export const systemHandlers: Record<string, ToolHandler> = {
   "native:web-research": async (args) => {

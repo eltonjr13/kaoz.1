@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { ArtifactType, ExecutionArtifact } from "../orchestrator/orchestrator.types";
-import { assertSafeWorkspacePath } from "../orchestrator/orchestrator.policy";
+import { assertSafeWorkspacePath } from "../orchestrator/orchestrator.policy.ts";
 
 const ARTIFACT_ROOT = path.join(process.cwd(), ".generated", "artifacts");
 const MAX_TEXT_ARTIFACT_BYTES = 5 * 1024 * 1024;

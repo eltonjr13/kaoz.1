@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { ToolHandler, ToolResult } from "../../tools/tool.types";
 import type { ArtifactType } from "../orchestrator.types";
-import { registerContentArtifact, registerExistingArtifact } from "../../artifacts/artifact.service";
+import { registerContentArtifact, registerExistingArtifact } from "../../artifacts/artifact.service.ts";
 
 const execFileAsync = promisify(execFile);
 const ARTIFACT_TYPES = new Set<ArtifactType>(["image", "video", "audio", "document", "markdown", "pdf", "json", "csv", "html", "text", "file"]);

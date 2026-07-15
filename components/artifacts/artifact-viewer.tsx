@@ -9,6 +9,17 @@ function withDownload(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}download=true`;
 }
 
+function artifactUrl(artifact: ExecutionArtifact): string {
+  if (artifact.url) return artifact.url;
+  return artifact.path ? `/api/orchestrator/artifacts?path=${encodeURIComponent(artifact.path)}` : "";
+}
+
+function canPreview(artifact: ExecutionArtifact): boolean {
+  if (typeof artifact.previewAvailable === "boolean") return artifact.previewAvailable;
+  const mime = artifact.mimeType || "";
+  return mime === "application/pdf" || mime.startsWith("text/") || mime.startsWith("application/json");
+}
+
 function formatSize(size?: number): string {
   if (!size || size < 1) return "";
   if (size < 1024) return `${size} B`;
@@ -98,7 +109,7 @@ export function ArtifactCards({ artifacts, className = "" }: { artifacts: Execut
     <>
       <div className={`grid w-full gap-2 sm:grid-cols-2 ${className}`}>
         {artifacts.map((artifact) => {
-          const url = artifact.url || artifact.path || "";
+          const url = artifactUrl(artifact);
           return (
             <div key={artifact.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-3">
               <span className="rounded-lg bg-[#9D7CFF]/15 p-2 text-[#9D7CFF]">{artifactIcon(artifact)}</span>
@@ -106,7 +117,7 @@ export function ArtifactCards({ artifacts, className = "" }: { artifacts: Execut
                 <div className="truncate text-xs font-medium text-white/90">{artifact.name}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-wide text-white/35">{artifact.type}{artifact.size ? ` · ${formatSize(artifact.size)}` : ""}</div>
               </div>
-              {artifact.previewAvailable && url && (
+              {canPreview(artifact) && url && (
                 <button type="button" onClick={() => setActiveId(artifact.id)} className="rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white" aria-label={`Visualizar ${artifact.name}`}>
                   <Eye size={15} />
                 </button>

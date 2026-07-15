@@ -8,7 +8,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { artifact, content } = await readStoredArtifact(id);
     const download = new URL(request.url).searchParams.get("download") === "true";
     const safeName = artifact.name.replace(/["\r\n]/g, "-");
-    return new Response(content, {
+    return new Response(new Uint8Array(content), {
       headers: {
         "Content-Type": artifact.mimeType || "application/octet-stream",
         "Content-Length": String(content.byteLength),
