@@ -154,7 +154,7 @@ Ferramentas disponíveis: ${availableTools}
 Responda SOMENTE JSON válido em um destes formatos:
 {"message":"pergunta curta ou orientação ao usuário","ready":false,"skill":null}
 ou
-{"message":"resumo curto do pacote completo","ready":true,"skill":{"id":"lowercase-kebab-case","name":"Nome humano","description":"o que faz e quando ativar","version":"1.0.0","instructions":"Markdown integral do SKILL.md","preferredTools":["tool:id-existente"],"requiredCapabilities":["web|content|system"],"approvalMode":"never|plan|step","tools":[{"id":"skill:<id>:<acao>","description":"...","script":"scripts/arquivo.ts","inputSchema":{"type":"object","required":[],"properties":{}}}],"references":[{"name":"arquivo.md","content":"Markdown integral"}],"scripts":[{"name":"arquivo.ts","content":"código integral"}]}}
+{"message":"resumo curto do pacote completo","ready":true,"skill":{"id":"lowercase-kebab-case","name":"Nome humano","description":"o que faz e quando ativar","version":"1.0.0","instructions":"Markdown integral do SKILL.md","preferredTools":["native:web-research"],"requiredCapabilities":["web"],"approvalMode":"plan","tools":[{"id":"skill:<id>:<acao>","description":"...","script":"scripts/arquivo.ts","inputSchema":{"type":"object","required":[],"properties":{}}}],"references":[{"name":"arquivo.md","content":"Markdown integral"}],"scripts":[{"name":"arquivo.ts","content":"código integral"}]}}
 
 [CONVERSA]
 ${transcript}`;
