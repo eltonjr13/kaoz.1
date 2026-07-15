@@ -4,6 +4,7 @@ import { skillRegistry } from "@/services/skills/skill.registry";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "@/services/skills/skill.types";
 import { toolRegistry } from "@/services/tools/tool.registry";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
+import { normalizeScriptPolicy } from "@/services/skills/skill.policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,7 +72,12 @@ function parseTools(value: unknown): SkillToolDefinition[] {
     const inputSchema = tool.inputSchema && typeof tool.inputSchema === "object" && !Array.isArray(tool.inputSchema)
       ? tool.inputSchema as Record<string, unknown>
       : { type: "object" };
-    return [{ id: tool.id.trim(), description: tool.description.trim(), script: tool.script.trim(), inputSchema }];
+    const effect = ["read", "write", "external", "destructive"].includes(String(tool.effect))
+      ? tool.effect as SkillToolDefinition["effect"] : "write";
+    const approvalMode = ["never", "plan", "step"].includes(String(tool.approvalMode))
+      ? tool.approvalMode as SkillToolDefinition["approvalMode"] : "plan";
+    const policy = normalizeScriptPolicy(tool.policy && typeof tool.policy === "object" ? tool.policy : undefined);
+    return [{ id: tool.id.trim(), description: tool.description.trim(), script: tool.script.trim(), inputSchema, effect, approvalMode, policy }];
   });
 }
 

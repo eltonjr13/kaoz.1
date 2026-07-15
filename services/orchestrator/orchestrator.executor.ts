@@ -102,7 +102,7 @@ export class OrchestratorExecutor {
     try {
       const args = resolveDependencies(step, run.steps);
       const result = await executeTool(step.toolId, args, { planId: run.planId, runId, stepId, signal }, approval !== "step" || Boolean(step.startedAt));
-      await this.completeStep(runId, stepId, result.output, result.artifacts);
+      await this.completeStep(runId, stepId, result.output, result.artifacts, result.metrics);
     } catch (error) {
       const latest = await orchestratorStore.getRun(runId);
       const latestStep = latest?.steps.find((item) => item.id === stepId);
@@ -123,8 +123,8 @@ export class OrchestratorExecutor {
     await emitOrchestratorEvent({ planId: run.planId, runId: run.id, type: "step_started", message: step.title, data: { stepId: step.id } });
   }
 
-  private async completeStep(runId: string, stepId: string, output: unknown, artifacts?: ExecutionStep["artifacts"]) {
-    const run = await orchestratorStore.updateRun(runId, (latest) => { const step = latest.steps.find((item) => item.id === stepId); if (!step || latest.status === "cancelled" || step.status === "cancelled") return; step.output = truncateToolResult(output); step.artifacts = artifacts; step.status = "completed"; step.completedAt = new Date().toISOString(); });
+  private async completeStep(runId: string, stepId: string, output: unknown, artifacts?: ExecutionStep["artifacts"], metrics?: ExecutionStep["metrics"]) {
+    const run = await orchestratorStore.updateRun(runId, (latest) => { const step = latest.steps.find((item) => item.id === stepId); if (!step || latest.status === "cancelled" || step.status === "cancelled") return; step.output = truncateToolResult(output); step.artifacts = artifacts; step.metrics = metrics; step.status = "completed"; step.completedAt = new Date().toISOString(); });
     const step = run?.steps.find((item) => item.id === stepId);
     if (!run || !step || step.status !== "completed") return;
     await emitOrchestratorEvent({ planId: run.planId, runId, type: "step_completed", message: `${step.title} concluída.`, data: { stepId } });

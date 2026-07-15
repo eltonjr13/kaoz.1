@@ -16,7 +16,7 @@ export type ExecutionArtifact = {
   createdAt?: string;
   metadata?: Record<string, unknown>;
 };
-export type ExecutionStep = { id: string; title: string; description: string; toolId: string; arguments: Record<string, unknown>; dependsOn: string[]; status: StepStatus; approvalMode: ApprovalMode; retryCount: number; maxRetries: number; continueOnError?: boolean; startedAt?: string; completedAt?: string; output?: unknown; artifacts?: ExecutionArtifact[]; error?: string };
+export type ExecutionStep = { id: string; title: string; description: string; toolId: string; arguments: Record<string, unknown>; dependsOn: string[]; status: StepStatus; approvalMode: ApprovalMode; retryCount: number; maxRetries: number; continueOnError?: boolean; startedAt?: string; completedAt?: string; output?: unknown; artifacts?: ExecutionArtifact[]; metrics?: import("../skills/skill.types").SkillExecutionMetrics; error?: string };
 export type ExecutionPlan = { id: string; objective: string; summary: string; skillIds: string[]; status: PlanStatus; steps: ExecutionStep[]; estimatedCost?: number | null; estimatedDurationSeconds?: number | null; createdAt: string; updatedAt: string };
 export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled";
 export type ExecutionRun = { id: string; planId: string; status: RunStatus; steps: ExecutionStep[]; createdAt: string; updatedAt: string; startedAt?: string; completedAt?: string; error?: string; callCount: number };

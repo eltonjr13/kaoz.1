@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { skillRegistry } from "../../../services/skills/skill.registry";
 import type { ApprovalMode } from "../../../services/orchestrator/orchestrator.types";
 import type { SkillResourceFile, SkillToolDefinition } from "../../../services/skills/skill.types";
+import { normalizeScriptPolicy } from "../../../services/skills/skill.policy";
+import { skillMetricsStore } from "../../../services/skills/skill.metrics";
 
 function parseResourceFiles(value: unknown): SkillResourceFile[] {
   if (!Array.isArray(value)) return [];
@@ -22,13 +24,23 @@ function parseTools(value: unknown): SkillToolDefinition[] {
     const inputSchema = tool.inputSchema && typeof tool.inputSchema === "object" && !Array.isArray(tool.inputSchema)
       ? tool.inputSchema as Record<string, unknown>
       : { type: "object" };
-    return [{ id: tool.id, description: tool.description, script: tool.script, inputSchema }];
+    const effect = ["read", "write", "external", "destructive"].includes(String(tool.effect))
+      ? tool.effect as SkillToolDefinition["effect"] : "write";
+    const approvalMode = ["never", "plan", "step"].includes(String(tool.approvalMode))
+      ? tool.approvalMode as SkillToolDefinition["approvalMode"] : "plan";
+    const policy = normalizeScriptPolicy(tool.policy && typeof tool.policy === "object" ? tool.policy : undefined);
+    return [{ id: tool.id, description: tool.description, script: tool.script, inputSchema, effect, approvalMode, policy }];
   });
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const full = new URL(req.url).searchParams.get("full") === "true";
+    const params = new URL(req.url).searchParams;
+    const full = params.get("full") === "true";
+    const revisionsFor = params.get("revisions");
+    if (revisionsFor) return NextResponse.json({ revisions: skillRegistry.listRevisions(revisionsFor) });
+    const metricsFor = params.get("metrics");
+    if (metricsFor) return NextResponse.json({ metrics: await skillMetricsStore.list(metricsFor, Number(params.get("limit") || 100)) });
     const skills = full ? skillRegistry.getAll() : skillRegistry.list();
     return NextResponse.json({
       skills: full ? skills : skills.map(({ id, name, description }) => ({ id, name, description })),
@@ -65,9 +77,22 @@ export async function POST(req: NextRequest) {
     };
 
     skillRegistry.save(skillToSave);
-    return NextResponse.json({ success: true, skill: skillRegistry.get(skillToSave.id) || skillToSave });
+    return NextResponse.json({ success: true, skill: skillRegistry.get(skillToSave.id, true) || skillToSave, revisions: skillRegistry.listRevisions(skillToSave.id) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao salvar skill." }, { status: 400 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json() as { id?: unknown; revisionId?: unknown };
+    if (typeof body.id !== "string" || typeof body.revisionId !== "string") {
+      return NextResponse.json({ error: "ID da skill e revisão são obrigatórios." }, { status: 400 });
+    }
+    const skill = skillRegistry.rollback(body.id.trim(), body.revisionId.trim());
+    return NextResponse.json({ success: true, skill, revisions: skillRegistry.listRevisions(skill.id) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao restaurar revisão." }, { status: 400 });
   }
 }
 
