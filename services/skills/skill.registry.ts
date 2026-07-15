@@ -143,7 +143,8 @@ function loadSkillsSync(root: string): KaozSkill[] {
 
 export class SkillRegistry { 
   private cachedSkills: KaozSkill[] | null = null;
-  constructor(private readonly root = process.cwd()) {}
+  private readonly root: string;
+  constructor(root = process.cwd()) { this.root = root; }
 
   private skillsDir() { return path.join(this.root, "skills"); }
   private generatedDir() { return path.join(this.root, ".generated", "skills"); }

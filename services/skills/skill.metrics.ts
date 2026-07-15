@@ -3,7 +3,8 @@ import path from "node:path";
 import type { SkillExecutionMetrics } from "./skill.types";
 
 export class SkillMetricsStore {
-  constructor(private readonly root = process.cwd()) {}
+  private readonly root: string;
+  constructor(root = process.cwd()) { this.root = root; }
 
   private directory() { return path.join(this.root, ".generated", "skills", "executions"); }
 
