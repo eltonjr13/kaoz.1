@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { assertSafeWorkspacePath } from "../orchestrator/orchestrator.policy";
-import type { ConnectorMedia } from "./connector.types";
+import { assertSafeWorkspacePath } from "../orchestrator/orchestrator.policy.ts";
+import type { ConnectorMedia } from "./connector.types.ts";
 
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",

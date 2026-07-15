@@ -26,7 +26,8 @@ import {
   Compass,
   Rocket,
   Activity,
-  Server
+  Server,
+  PlugZap
 } from "lucide-react";
 import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
@@ -34,6 +35,7 @@ import { compileFishAudioSpeech, type FishAudioExpressionLevel } from "@/lib/ai/
 import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia";
 import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
+import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1626,7 +1628,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1867,6 +1869,17 @@ export default function SettingsPage() {
           OmniVoice
         </button>
         <button
+          onClick={() => setActiveTab("connectors")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+            activeTab === "connectors"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          <PlugZap size={14} className={activeTab === "connectors" ? "text-emerald-400" : "text-zinc-500"} />
+          Conectores
+        </button>
+        <button
           onClick={() => setActiveTab("mcp")}
           className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
             activeTab === "mcp"
@@ -1918,6 +1931,11 @@ export default function SettingsPage() {
 
       {/* Tab Content Areas */}
       <div className="space-y-6">
+        {activeTab === "connectors" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <ConnectorsSettingsPanel onStatusMessage={setStatusMessage} />
+          </div>
+        )}
         
         {/* TAB: Skills */}
         {activeTab === "skills" && (

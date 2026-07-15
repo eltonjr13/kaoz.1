@@ -1,5 +1,5 @@
-import type { ConnectorAdapter } from "../connector.types";
-import { loadConnectorMedia } from "../connector.media";
+import type { ConnectorAdapter } from "../connector.types.ts";
+import { loadConnectorMedia } from "../connector.media.ts";
 
 function webhookUrl(credentials: Record<string, string>) {
   const value = credentials.webhookUrl?.trim();
@@ -40,7 +40,7 @@ export const discordConnector: ConnectorAdapter = {
       form.set("payload_json", JSON.stringify({ content: text }));
       for (const [index, media] of input.media.entries()) {
         const loaded = await loadConnectorMedia(media, 8_000_000);
-        form.set(`files[${index}]`, new Blob([loaded.bytes], { type: loaded.mimeType }), loaded.filename);
+        form.set(`files[${index}]`, new Blob([new Uint8Array(loaded.bytes)], { type: loaded.mimeType }), loaded.filename);
       }
       body = form;
     } else {

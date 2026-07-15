@@ -1,4 +1,4 @@
-import type { ConnectorDefinition, ConnectorProvider } from "./connector.types";
+import type { ConnectorDefinition, ConnectorProvider } from "./connector.types.ts";
 
 export const CONNECTOR_CATALOG: ConnectorDefinition[] = [
   {

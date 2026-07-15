@@ -1,5 +1,5 @@
-import type { ConnectorAdapter } from "../connector.types";
-import { loadConnectorMedia } from "../connector.media";
+import type { ConnectorAdapter } from "../connector.types.ts";
+import { loadConnectorMedia } from "../connector.media.ts";
 
 interface BlueskySession { accessJwt: string; did: string; handle: string; }
 
@@ -57,7 +57,7 @@ export const blueskyConnector: ConnectorAdapter = {
         const uploaded = await fetch(`${endpoint}/xrpc/com.atproto.repo.uploadBlob`, {
           method: "POST",
           headers: { authorization: `Bearer ${session.accessJwt}`, "content-type": loaded.mimeType },
-          body: new Blob([loaded.bytes], { type: loaded.mimeType }),
+          body: new Blob([new Uint8Array(loaded.bytes)], { type: loaded.mimeType }),
           signal
         });
         const uploadBody = await jsonResponse(uploaded);

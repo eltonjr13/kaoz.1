@@ -79,6 +79,7 @@ export function validateSkill(skill: KaozSkill): void {
 
 function autoSkillId(objective: string): string | null {
   if (isBuildSkillsIntent(objective)) return "build-skills";
+  if (/(?:public|post|compartilh|envi).*(?:discord|bluesky|twitter|linkedin)|(?:discord|bluesky|twitter|linkedin).*(?:public|post|compartilh|envi)/i.test(objective)) return "social.publish";
   if (/vídeo|video|reels|short|tiktok/i.test(objective)) return "content.create-short-video";
   if (/pesquis|notícia|fontes|relatório/i.test(objective)) return "research.web-research";
   return null;

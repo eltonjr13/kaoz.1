@@ -24,6 +24,25 @@ function fallbackSteps(objective: string, skillId: string, fallbackToolId = "sys
     const jobId = objective.match(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i)?.[0] || "";
     return [{ ...base, id: "render-video", title: "Executar pipeline de vídeo", description: "Usar voz, lip-sync e renderização do pipeline existente.", toolId: "content:start-video-pipeline", arguments: { jobId }, dependsOn: [], approvalMode: "plan" }];
   }
+  if (skillId === "social.publish") {
+    const text = objective.includes(":") ? objective.slice(objective.indexOf(":") + 1).trim() : objective.trim();
+    const candidates = [
+      { pattern: /discord/i, id: "discord", toolId: "social:discord:publish", title: "Publicar no Discord" },
+      { pattern: /bluesky/i, id: "bluesky", toolId: "social:bluesky:publish", title: "Publicar no Bluesky" }
+    ];
+    const matchingProviders = candidates.filter((item) => item.pattern.test(objective));
+    const providers = matchingProviders.length ? matchingProviders : candidates;
+    return providers.map((provider) => ({
+      ...base,
+      id: `publish-${provider.id}`,
+      title: provider.title,
+      description: "Revisar o conteúdo e publicar pela conexão configurada.",
+      toolId: provider.toolId,
+      arguments: { text },
+      dependsOn: [],
+      approvalMode: "step"
+    }));
+  }
   return [{ ...base, id: "execute-goal", title: "Executar capacidade", description: "Executar a ferramenta permitida pela skill.", toolId: fallbackToolId, arguments: fallbackToolId === "system.summarize" ? { text: objective } : {}, dependsOn: [], approvalMode: "plan" }];
 }
 

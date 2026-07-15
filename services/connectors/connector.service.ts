@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import { CONNECTOR_CATALOG, getConnectorDefinition } from "./connector.catalog";
-import { connectorStore } from "./connector.store";
-import { connectorVault } from "./connector.vault";
-import type { ConnectorAccount, ConnectorAdapter, ConnectorProvider, ConnectorPublishInput, StoredConnectorAccount } from "./connector.types";
-import { discordConnector } from "./adapters/discord.connector";
-import { blueskyConnector } from "./adapters/bluesky.connector";
+import { CONNECTOR_CATALOG, getConnectorDefinition } from "./connector.catalog.ts";
+import { connectorStore } from "./connector.store.ts";
+import { connectorVault } from "./connector.vault.ts";
+import type { ConnectorAccount, ConnectorAdapter, ConnectorProvider, ConnectorPublishInput, StoredConnectorAccount } from "./connector.types.ts";
+import { discordConnector } from "./adapters/discord.connector.ts";
+import { blueskyConnector } from "./adapters/bluesky.connector.ts";
 
 const adapters: Partial<Record<ConnectorProvider, ConnectorAdapter>> = {
   discord: discordConnector,
@@ -19,7 +19,9 @@ function adapterFor(provider: ConnectorProvider) {
 
 function cleanCredentials(credentials: unknown) {
   if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) return {};
-  return Object.fromEntries(Object.entries(credentials).filter((entry): entry is [string, string] => typeof entry[1] === "string").map(([key, value]) => [key, value.trim()]));
+  return Object.fromEntries(Object.entries(credentials)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0)
+    .map(([key, value]) => [key, value.trim()]));
 }
 
 async function publicAccount(account: StoredConnectorAccount): Promise<ConnectorAccount> {

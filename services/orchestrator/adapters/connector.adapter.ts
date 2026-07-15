@@ -1,6 +1,6 @@
-import type { ToolHandler } from "../../tools/tool.types";
-import { connectorService } from "../../connectors/connector.service";
-import type { ConnectorMedia, ConnectorProvider } from "../../connectors/connector.types";
+import type { ToolHandler } from "../../tools/tool.types.ts";
+import { connectorService } from "../../connectors/connector.service.ts";
+import type { ConnectorMedia, ConnectorProvider } from "../../connectors/connector.types.ts";
 
 function mediaFromArgs(value: unknown): ConnectorMedia[] | undefined {
   if (!Array.isArray(value)) return undefined;

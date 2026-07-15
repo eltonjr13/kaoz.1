@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import type { ConnectorHistoryEntry, StoredConnectorAccount } from "./connector.types";
+import type { ConnectorHistoryEntry, StoredConnectorAccount } from "./connector.types.ts";
 
 const ROOT = path.join(process.cwd(), ".generated", "connectors");
 const ACCOUNTS_FILE = path.join(ROOT, "accounts.json");
