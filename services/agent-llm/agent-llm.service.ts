@@ -26,6 +26,7 @@ export type SelectedChatModelCli = "gemini" | "chatgpt" | "claude" | "deepseek";
 
 const MAX_OUTPUT_CHARS = 250_000;
 const MAX_INLINE_GROK_PROMPT_CHARS = 24_000;
+const MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS = 28_000;
 const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 const MCP_TOOL_TIMEOUT_MS = 45_000;
 const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
@@ -592,6 +593,9 @@ async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: Q
 }
 
 async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
+  if (prompt.length > MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS) {
+    throw new Error(`O prompt tem ${prompt.length.toLocaleString("pt-BR")} caracteres e excede o limite seguro do Antigravity no Windows (${MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS.toLocaleString("pt-BR")}). Reduza o contexto ou use um provedor por API.`);
+  }
   const command = await resolveRunnableCommand(settings.antigravityCommand);
   const args = [
     "--print", prompt,

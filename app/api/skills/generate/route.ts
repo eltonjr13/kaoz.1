@@ -13,6 +13,10 @@ type GeneratedSkill = Omit<KaozSkill, "enabled">;
 
 const allowedCapabilities = new Set(["web", "content", "system"]);
 const allowedApprovalModes = new Set<ApprovalMode>(["never", "plan", "step"]);
+const MAX_TRANSCRIPT_CHARS = 4_500;
+const MAX_INSTALLED_SKILLS_CHARS = 1_500;
+const MAX_TOOLS_CONTEXT_CHARS = 3_000;
+const MAX_BUILD_SKILL_PROMPT_CHARS = 26_000;
 
 function extractJson(text: string): Record<string, unknown> {
   const clean = text.replace(/^```json\s*|\s*```$/gi, "").trim();
@@ -28,8 +32,18 @@ function parseMessages(value: unknown): ChatMessage[] {
     if (!item || typeof item !== "object") return [];
     const candidate = item as Record<string, unknown>;
     if ((candidate.role !== "user" && candidate.role !== "assistant") || typeof candidate.content !== "string") return [];
-    return [{ role: candidate.role, content: candidate.content.slice(0, 8_000) }];
+    return [{ role: candidate.role, content: candidate.content.slice(0, 4_000) }];
   });
+}
+
+function truncateFromEnd(value: string, maximum: number): string {
+  if (value.length <= maximum) return value;
+  return `[…contexto anterior resumido]\n${value.slice(-maximum)}`;
+}
+
+function buildTranscript(messages: ChatMessage[]): string {
+  const transcript = messages.map((message) => `${message.role === "user" ? "USUÁRIO" : "ASSISTENTE"}: ${message.content}`).join("\n\n");
+  return truncateFromEnd(transcript, MAX_TRANSCRIPT_CHARS);
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -108,13 +122,8 @@ function builderContext(): string {
 async function availableToolsContext(): Promise<string> {
   try {
     const tools = await toolRegistry.list();
-    return JSON.stringify(tools.map((tool) => ({
-      id: tool.id,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      effect: tool.effect,
-      approvalMode: tool.approvalMode,
-    }))).slice(0, 24_000);
+    const compact = tools.map((tool) => `${tool.id}: ${tool.description.slice(0, 180)} (${tool.effect}/${tool.approvalMode})`).join("\n");
+    return compact.slice(0, MAX_TOOLS_CONTEXT_CHARS);
   } catch (error) {
     console.warn("[BuildSkills] Não foi possível listar todas as ferramentas:", error);
     return "[]";
@@ -129,8 +138,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Envie uma mensagem para o criador de skills." }, { status: 400 });
     }
 
-    const transcript = messages.map((message) => `${message.role === "user" ? "USUÁRIO" : "ASSISTENTE"}: ${message.content}`).join("\n\n");
-    const installedSkills = skillRegistry.getAll().map((skill) => ({ id: skill.id, name: skill.name, description: skill.description }));
+    const transcript = buildTranscript(messages);
+    const installedSkills = skillRegistry.getAll()
+      .map((skill) => `${skill.id}: ${skill.name} — ${skill.description.slice(0, 120)}`)
+      .join("\n")
+      .slice(0, MAX_INSTALLED_SKILLS_CHARS);
     const availableTools = await availableToolsContext();
     const prompt = `Você está executando a skill Build Skills do MrChicken. Siga integralmente as instruções e referências abaixo.
 
@@ -138,7 +150,7 @@ export async function POST(request: Request) {
 ${builderContext()}
 
 [CONTEXTO REAL DO PROJETO]
-Skills instaladas: ${JSON.stringify(installedSkills)}
+Skills instaladas: ${installedSkills}
 Ferramentas disponíveis: ${availableTools}
 
 [REGRAS DESTA CONVERSA]
@@ -158,6 +170,10 @@ ou
 
 [CONVERSA]
 ${transcript}`;
+
+    if (prompt.length > MAX_BUILD_SKILL_PROMPT_CHARS) {
+      throw new Error("O contexto do criador de skills ficou grande demais para um provedor CLI. Continue a conversa com um pedido mais curto ou selecione ZenMux, Cerebras ou IAMHC.");
+    }
 
     const output = await queryConfiguredAgentCli(prompt);
     if (!output) throw new Error("O provedor Browser não está disponível para este criador. Selecione um provedor CLI ou API em Agente LLM.");

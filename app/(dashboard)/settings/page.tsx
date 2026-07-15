@@ -355,7 +355,7 @@ function parseAgentLLMConfig(data: Record<string, unknown>): AgentLLMConfig {
     codexCommand: stringOrEmpty(data.codexCommand) || "codex",
     codexModel: stringOrEmpty(data.codexModel) || "gpt-5.6",
     grokCommand: stringOrEmpty(data.grokCommand) || "grok",
-    grokModel: stringOrEmpty(data.grokModel) || "grok-composer-2.5-fast",
+    grokModel: stringOrEmpty(data.grokModel) || "grok-4.5",
     antigravityCommand: stringOrEmpty(data.antigravityCommand) || "agy",
     antigravityModel: stringOrEmpty(data.antigravityModel) || "Gemini 3.5 Flash (High)",
     iamhcModel: stringOrEmpty(data.iamhcModel) || "DeepSeek-V4-Flash",
@@ -719,7 +719,7 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   const [codexCommand, setCodexCommand] = useState("codex");
   const [codexModel, setCodexModel] = useState("gpt-5.6");
   const [grokCommand, setGrokCommand] = useState("grok");
-  const [grokModel, setGrokModel] = useState("grok-composer-2.5-fast");
+  const [grokModel, setGrokModel] = useState("grok-4.5");
   const [antigravityCommand, setAntigravityCommand] = useState("agy");
   const [antigravityModel, setAntigravityModel] = useState("Gemini 3.5 Flash (High)");
   const [iamhcModel, setIamhcModel] = useState("DeepSeek-V4-Flash");

@@ -7,7 +7,7 @@ const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "agent-llm-settings.json");
 const DEFAULT_PROVIDER: AgentLLMProvider = "codex-cli";
 const DEFAULT_CODEX_MODEL = "gpt-5.6";
-const DEFAULT_GROK_MODEL = "grok-composer-2.5-fast";
+const DEFAULT_GROK_MODEL = "grok-4.5";
 const DEFAULT_ANTIGRAVITY_MODEL = "Gemini 3.5 Flash (High)";
 const DEFAULT_IAMHC_MODEL = "DeepSeek-V4-Flash";
 const DEFAULT_TIMEOUT_MS = 90000;
@@ -25,6 +25,11 @@ function stringOrDefault(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function normalizeGrokModel(value: unknown, fallback: string): string {
+  const model = stringOrDefault(value, fallback);
+  return model === "grok-composer-2.5-fast" ? DEFAULT_GROK_MODEL : model;
+}
+
 function normalizeTimeoutMs(value: unknown): number {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(parsed)) return DEFAULT_TIMEOUT_MS;
@@ -37,7 +42,7 @@ export function getEnvAgentLLMSettings(): AgentLLMSettings {
     codexCommand: stringOrDefault(process.env.CODEX_CLI_COMMAND, "codex"),
     codexModel: stringOrDefault(process.env.CODEX_CLI_MODEL, DEFAULT_CODEX_MODEL),
     grokCommand: stringOrDefault(process.env.GROK_CLI_COMMAND, "grok"),
-    grokModel: stringOrDefault(process.env.GROK_CLI_MODEL, DEFAULT_GROK_MODEL),
+    grokModel: normalizeGrokModel(process.env.GROK_CLI_MODEL, DEFAULT_GROK_MODEL),
     antigravityCommand: stringOrDefault(process.env.ANTIGRAVITY_CLI_COMMAND, "agy"),
     antigravityModel: stringOrDefault(process.env.ANTIGRAVITY_CLI_MODEL, DEFAULT_ANTIGRAVITY_MODEL),
     iamhcModel: stringOrDefault(process.env.IAMHC_MODEL, DEFAULT_IAMHC_MODEL),
@@ -52,7 +57,7 @@ export function normalizeAgentLLMSettings(settings: Partial<AgentLLMSettings>): 
     codexCommand: stringOrDefault(settings.codexCommand, defaults.codexCommand),
     codexModel: stringOrDefault(settings.codexModel, defaults.codexModel),
     grokCommand: stringOrDefault(settings.grokCommand, defaults.grokCommand),
-    grokModel: stringOrDefault(settings.grokModel, defaults.grokModel),
+    grokModel: normalizeGrokModel(settings.grokModel, defaults.grokModel),
     antigravityCommand: stringOrDefault(settings.antigravityCommand, defaults.antigravityCommand),
     antigravityModel: stringOrDefault(settings.antigravityModel, defaults.antigravityModel),
     iamhcModel: stringOrDefault(settings.iamhcModel, defaults.iamhcModel),
