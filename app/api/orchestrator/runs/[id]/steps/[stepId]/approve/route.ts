@@ -1,2 +1,0 @@
-import { NextResponse } from "next/server"; import { orchestratorExecutor } from "@/services/orchestrator/orchestrator.executor"; import { apiError } from "../../../../../_response";
-export async function POST(_:Request,{params}:{params:Promise<{id:string;stepId:string}>}){try{const p=await params;return NextResponse.json({run:await orchestratorExecutor.approveStep(p.id,p.stepId)});}catch(error){return apiError(error);}}

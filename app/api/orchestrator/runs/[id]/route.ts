@@ -1,2 +1,0 @@
-import { NextResponse } from "next/server"; import { orchestratorStore } from "@/services/orchestrator/orchestrator.store"; import { apiError } from "../../_response";
-export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){ try{ const run=await orchestratorStore.getRun((await params).id); if(!run) throw new Error("Execução não encontrada."); return NextResponse.json({run}); }catch(error){return apiError(error);} }

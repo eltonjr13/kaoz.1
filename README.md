@@ -60,7 +60,6 @@ A Agente utiliza o **Model Context Protocol (MCP)** para se transformar em um hu
 ## 🎬 Estúdio de Criação UGC (Legacy Feature)
 
 Mesmo com foco em orquestração geral de tarefas, a suíte de vídeo original continua 100% ativa:
-*   **Pesquisa Viral:** Ferramenta interna em `/viral-search` para monitorar oportunidades e tópicos quentes no TikTok, Instagram e YouTube.
 *   **Cadastro de Avatares:** Permite registrar avatares autorizados com foto, vídeo base e voz customizada.
 *   **Pipeline de Vídeo em Background:**
     *   Gera roteiro adaptado para a plataforma de destino.
@@ -149,10 +148,8 @@ app/
     flow/                   Chat principal de comando e interação com a agente kaoz.1
     avatars/                Controle de avatares para o estúdio UGC
     jobs/                   Status e gerenciamento dos renders de vídeos
-    viral-search/           Pesquisa de tendências e referências
 components/
   cortex/                   Visualizador gráfico 2D/3D da memória do Córtex
-  mrchicken/                Painéis e componentes de IA do chat (Interface da Kaoz.1)
 lib/
   cognitive-memory/         Núcleo do Córtex Cognitivo (Hippocampus, Cortex, Amygdala)
   ai/                       Provedores de inteligência (Gemini, OpenAI, Cartesia)

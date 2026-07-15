@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
 
   if (path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/flow";
     url.search = "";
     return NextResponse.redirect(url);
   }

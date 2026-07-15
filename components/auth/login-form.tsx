@@ -15,7 +15,7 @@ export function LoginForm() {
     setIsLoading(true);
 
     const nextPath = searchParams.get("next");
-    const redirectTo = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
+    const redirectTo = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/flow";
 
     router.replace(redirectTo as Route);
     router.refresh();

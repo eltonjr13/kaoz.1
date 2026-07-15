@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Clapperboard, Globe, Mic2, Play, Search, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Clapperboard, Mic2, Play, Sparkles } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -15,9 +15,6 @@ export default function HomePage() {
           <Link className="button secondary" href="/flow">
             Agente MrChicken
           </Link>
-          <Link className="button secondary" href="/viral-search">
-            Busca viral
-          </Link>
         </div>
       </header>
 
@@ -28,18 +25,12 @@ export default function HomePage() {
             <h1>AI UGC Reaction Studio</h1>
             <p>
               Crie jobs de react vertical com avatar real autorizado, roteiro curto, voz OmniVoice,
-              lip-sync e render final pronto para revisao e download. Agora o foco esta na pesquisa
-              de videos virais por nicho para TikTok, Instagram e YouTube.
+              lip-sync e render final pronto para revisão e download. Tudo integrado com o
+              Córtex Cognitivo e ferramentas inteligentes.
             </p>
             <div className="hero-actions">
-              <Link className="button" href="/viral-search">
-                Buscar virais <Search size={18} />
-              </Link>
-              <Link className="button secondary" href="/dashboard">
-                Abrir dashboard <ArrowRight size={18} />
-              </Link>
-              <Link className="button secondary" href="/flow">
-                Agente MrChicken <Globe size={18} />
+              <Link className="button" href="/flow">
+                Entrar no Workspace <ArrowRight size={18} />
               </Link>
             </div>
           </div>

@@ -32,9 +32,7 @@ const eslintConfig = [
       "services/orchestrator/**/*.{ts,tsx}",
       "services/tools/**/*.{ts,tsx}",
       "services/skills/**/*.{ts,tsx}",
-      "app/api/orchestrator/**/*.{ts,tsx}",
-      "components/supercomputer/**/*.{ts,tsx}",
-      "app/(dashboard)/supercomputer/**/*.{ts,tsx}"
+      "app/api/orchestrator/**/*.{ts,tsx}"
     ],
     rules: {
       complexity: ["error", 10],

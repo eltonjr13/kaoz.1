@@ -7,10 +7,8 @@ import {
   Briefcase,
   ChevronLeft,
   ChevronRight,
-  Compass,
   Cpu,
   Menu,
-  Rss,
   Settings,
   Shirt,
   Sparkles,
@@ -20,13 +18,10 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard", label: "Feed", icon: Rss },
-  { href: "/viral-search", label: "Discovery", icon: Compass },
   { href: "/jobs", label: "Projects", icon: Briefcase },
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
   { href: "/flow", label: "AgenteMrChicken", icon: Sparkles },
-  { href: "/supercomputer", label: "Supercomputer", icon: Cpu },
   { href: "/cortex", label: "Córtex", icon: Brain },
   { href: "/patterns", label: "Estampas", icon: Shirt },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -53,7 +48,7 @@ export function AppShell({
       {/* Logo */}
       <div className={`mb-1 flex items-center gap-2 ${sidebarCollapsed ? "md:flex-col" : ""}`}>
         <Link
-          href="/dashboard"
+          href="/flow"
           className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
           onClick={() => setSidebarOpen(false)}
           title={sidebarCollapsed ? "AgenteMrChicken" : undefined}
