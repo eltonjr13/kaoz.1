@@ -3,7 +3,9 @@ import crypto from "node:crypto";
 import path from "node:path";
 import type { ConnectorHistoryEntry, StoredConnectorAccount } from "./connector.types.ts";
 
-const ROOT = path.join(process.cwd(), ".generated", "connectors");
+const ROOT = process.env.MRCHICKEN_DATA_DIR
+  ? path.join(process.env.MRCHICKEN_DATA_DIR, "connectors")
+  : path.join(process.cwd(), ".generated", "connectors");
 const ACCOUNTS_FILE = path.join(ROOT, "accounts.json");
 const HISTORY_FILE = path.join(ROOT, "history.json");
 

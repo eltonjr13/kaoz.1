@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, discordPublishIntentState } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -30,4 +30,10 @@ test("reduz schema de ferramenta sem perder campos operacionais", () => {
     properties: { query: { type: "string" }, limit: { type: "number", enum: [5, 10] } },
     additionalProperties: false,
   });
+});
+
+test("publicação no Discord exige confirmação explícita", () => {
+  assert.equal(discordPublishIntentState("Envie uma mensagem no Discord"), "needs_confirmation");
+  assert.equal(discordPublishIntentState("Confirmo, publique agora no Discord: teste do agente"), "confirmed");
+  assert.equal(discordPublishIntentState("Explique como funciona o Discord"), "none");
 });

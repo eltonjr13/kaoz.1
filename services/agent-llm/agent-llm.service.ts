@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, discordPublishIntentState } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -790,8 +790,16 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
+  const discordIntentState = discordPublishIntentState(normalizedPrompt);
+  const discordPublishIntent = discordIntentState !== "none";
+  const discordPublishConfirmed = discordIntentState === "confirmed";
+  if (discordPublishIntent && !discordPublishConfirmed) {
+    return JSON.stringify({ message: "A publicação no Discord altera um canal externo. Confirme explicitamente com 'confirmo, publique agora' e repita a mensagem que deseja enviar.", action: null });
+  }
   
-  let relevantTools = spotifyIntent
+  let relevantTools = discordPublishConfirmed
+    ? allTools.filter((tool) => tool.id === "social:discord:publish")
+    : spotifyIntent
     ? allTools.filter((tool) => {
         if (tool.id.startsWith("mcp:")) {
           const { parseMcpToolId } = require("../mcp/mcp-tool-id");
@@ -802,7 +810,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       })
     : [];
 
-  if (!spotifyIntent) {
+  if (!spotifyIntent && !discordPublishIntent) {
     const { skillRegistry } = await import("../skills/skill.registry.ts");
     let selectedSkill = skillRegistry.select(toolIntentPrompt);
     if (selectedSkill.id === "general.execute-goal" && WEB_INTENT_PATTERN.test(normalizedPrompt)) {

@@ -25,7 +25,10 @@ function cleanCredentials(credentials: unknown) {
 }
 
 async function publicAccount(account: StoredConnectorAccount): Promise<ConnectorAccount> {
-  return { ...account, hasCredentials: await connectorVault.has(account.id) };
+  const definition = getConnectorDefinition(account.provider);
+  const credentials: Record<string, string> = await connectorVault.read(account.id).catch(() => ({}));
+  const requiredFields = definition?.credentialFields.filter((field) => field.required) || [];
+  return { ...account, hasCredentials: requiredFields.length > 0 && requiredFields.every((field) => Boolean(credentials[field.key])) };
 }
 
 export class ConnectorService {
@@ -44,7 +47,15 @@ export class ConnectorService {
     const existing = input.id ? await connectorStore.getAccount(input.id) : null;
     if (existing && existing.provider !== provider) throw new Error("Não é possível trocar o provedor de uma conexão existente.");
     const credentials = cleanCredentials(input.credentials);
-    const missing = definition.credentialFields.filter((field) => field.required && !credentials[field.key] && !existing);
+    const storedCredentials: Record<string, string> = existing
+      ? await connectorVault.read(existing.id).catch(() => ({}))
+      : {};
+    const mergedCredentials = definition.credentialFields.reduce<Record<string, string>>((result, field) => {
+      const value = credentials[field.key] || storedCredentials[field.key];
+      if (value) result[field.key] = value;
+      return result;
+    }, {});
+    const missing = definition.credentialFields.filter((field) => field.required && !mergedCredentials[field.key]);
     if (missing.length) throw new Error(`Preencha: ${missing.map((field) => field.label).join(", ")}.`);
     const now = new Date().toISOString();
     const account: StoredConnectorAccount = {
@@ -62,7 +73,7 @@ export class ConnectorService {
       lastError: existing?.lastError
     };
     await connectorStore.saveAccount(account);
-    if (Object.keys(credentials).length) await connectorVault.write(account.id, { ...(existing ? await connectorVault.read(account.id).catch(() => ({})) : {}), ...credentials });
+    if (Object.keys(credentials).length) await connectorVault.write(account.id, mergedCredentials);
     return publicAccount(account);
   }
 

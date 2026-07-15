@@ -40,7 +40,7 @@ export interface ConnectorAccount {
   updatedAt: string;
 }
 
-export interface StoredConnectorAccount extends Omit<ConnectorAccount, "hasCredentials"> {}
+export type StoredConnectorAccount = Omit<ConnectorAccount, "hasCredentials">;
 
 export interface ConnectorMedia {
   path: string;

@@ -2,7 +2,9 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 
-const ROOT = path.join(process.cwd(), ".generated", "connectors");
+const ROOT = process.env.MRCHICKEN_DATA_DIR
+  ? path.join(process.env.MRCHICKEN_DATA_DIR, "connectors")
+  : path.join(process.cwd(), ".generated", "connectors");
 const KEY_FILE = path.join(ROOT, "master.key");
 const VAULT_ROOT = path.join(ROOT, "vault");
 

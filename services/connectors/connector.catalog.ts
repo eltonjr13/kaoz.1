@@ -4,11 +4,12 @@ export const CONNECTOR_CATALOG: ConnectorDefinition[] = [
   {
     provider: "discord",
     name: "Discord",
-    description: "Publica mensagens e arquivos em um canal por webhook.",
+    description: "Publica mensagens e arquivos em um canal usando um bot do Discord.",
     availability: "available",
     capabilities: ["publish_text", "publish_image", "publish_video"],
     credentialFields: [
-      { key: "webhookUrl", label: "URL do webhook", type: "password", placeholder: "https://discord.com/api/webhooks/...", required: true }
+      { key: "channelId", label: "ID do canal", type: "text", placeholder: "123456789012345678", required: true },
+      { key: "botToken", label: "Token do bot", type: "password", placeholder: "Cole o token gerado no Discord Developer Portal", required: true }
     ]
   },
   {

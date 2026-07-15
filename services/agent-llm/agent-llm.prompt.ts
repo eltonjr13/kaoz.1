@@ -1,4 +1,12 @@
 export const ANTIGRAVITY_INLINE_PROMPT_BUDGET = 27_500;
+const DISCORD_PUBLISH_INTENT_PATTERN = /\bdiscord\b[\s\S]*\b(publicar|publique|postar|poste|enviar|envie|mandar|mande)\b|\b(publicar|publique|postar|poste|enviar|envie|mandar|mande)\b[\s\S]*\bdiscord\b/;
+const EXPLICIT_PUBLISH_CONFIRMATION_PATTERN = /\b(confirmo|autorizo|pode publicar|pode enviar|publique agora|envie agora)\b/;
+
+export function discordPublishIntentState(text: string): "none" | "needs_confirmation" | "confirmed" {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!DISCORD_PUBLISH_INTENT_PATTERN.test(normalized)) return "none";
+  return EXPLICIT_PUBLISH_CONFIRMATION_PATTERN.test(normalized) ? "confirmed" : "needs_confirmation";
+}
 
 export function compactInlinePrompt(prompt: string, maximum: number, latestUserPrompt = ""): string {
   if (prompt.length <= maximum) return prompt;
