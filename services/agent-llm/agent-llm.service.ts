@@ -6,6 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -593,12 +594,11 @@ async function runGrokCli(settings: AgentLLMSettings, prompt: string, options: Q
 }
 
 async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, options: QueryOptions): Promise<string> {
-  if (prompt.length > MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS) {
-    throw new Error(`O prompt tem ${prompt.length.toLocaleString("pt-BR")} caracteres e excede o limite seguro do Antigravity no Windows (${MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS.toLocaleString("pt-BR")}). Reduza o contexto ou use um provedor por API.`);
-  }
+  const safePrompt = compactInlinePrompt(prompt, ANTIGRAVITY_INLINE_PROMPT_BUDGET, options.toolIntentText || extractLatestUserPrompt(prompt));
+  if (safePrompt.length > MAX_INLINE_ANTIGRAVITY_PROMPT_CHARS) throw new Error("Não foi possível compactar o prompt para o limite seguro do Antigravity.");
   const command = await resolveRunnableCommand(settings.antigravityCommand);
   const args = [
-    "--print", prompt,
+    "--print", safePrompt,
     "--model", settings.antigravityModel,
     "--dangerously-skip-permissions",
     "--sandbox",
@@ -628,7 +628,7 @@ async function runAntigravityCli(settings: AgentLLMSettings, prompt: string, opt
       for (const fallback of fallbacks) {
         try {
           const fallbackArgs = [
-            "--print", prompt,
+            "--print", safePrompt,
             "--model", fallback,
             "--dangerously-skip-permissions",
             "--sandbox",
@@ -791,7 +791,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   
-  const relevantTools = spotifyIntent
+  let relevantTools = spotifyIntent
     ? allTools.filter((tool) => {
         if (tool.id.startsWith("mcp:")) {
           const { parseMcpToolId } = require("../mcp/mcp-tool-id");
@@ -800,13 +800,25 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
         }
         return tool.id.includes("spotify");
       })
-    : allTools;
+    : [];
+
+  if (!spotifyIntent) {
+    const { skillRegistry } = await import("../skills/skill.registry.ts");
+    let selectedSkill = skillRegistry.select(toolIntentPrompt);
+    if (selectedSkill.id === "general.execute-goal" && WEB_INTENT_PATTERN.test(normalizedPrompt)) {
+      selectedSkill = skillRegistry.get("research.web-research") || selectedSkill;
+    }
+    const allowedIds = new Set([...selectedSkill.preferredTools, ...(selectedSkill.tools || []).map((tool) => tool.id)]);
+    relevantTools = allTools.filter((tool) => allowedIds.has(tool.id));
+  }
 
   if (relevantTools.length === 0) return executor(prompt);
+  const allowedToolIds = new Set(relevantTools.map((tool) => tool.id));
 
   let toolsDescription = "\n\n[FERRAMENTAS DISPONIVEIS]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\"toolId\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
   for (const tool of relevantTools) {
-    toolsDescription += `- toolId: "${tool.id}", description: "${tool.description}", schema: ${JSON.stringify(tool.inputSchema)}\n`;
+    const line = `- toolId: "${tool.id}", description: "${tool.description.slice(0, 240)}", schema: ${JSON.stringify(compactToolSchema(tool.inputSchema))}\n`;
+    if (toolsDescription.length + line.length <= 6_000) toolsDescription += line;
   }
 
   let currentPrompt = prompt + toolsDescription;
@@ -819,6 +831,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       const call = JSON.parse(match[1]) as { toolId?: string; serverId?: string; toolName?: string; args?: Record<string, unknown> };
       const toolId = call.toolId || (call.serverId && call.toolName ? require("../mcp/mcp-tool-id").mcpToolId(call.serverId, call.toolName) : null);
       if (!toolId) throw new Error("Formato de chamada invalido. Use toolId.");
+      if (!allowedToolIds.has(toolId)) throw new Error(`Ferramenta '${toolId}' não está autorizada para este pedido.`);
       
       const handler = toolRegistry.handler(toolId);
       if (!handler) throw new Error(`Ferramenta '${toolId}' nao encontrada.`);

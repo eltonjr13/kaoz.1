@@ -215,7 +215,10 @@ function detectSpotifyDirectCommand(messages: ChatMessage[]): SpotifyDirectComma
 function needsExternalTools(messages: ChatMessage[]): boolean {
   const text = getLatestUserMessageText(messages);
   const normalized = normalizeCommandText(text);
-  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized);
+  const selectedSkill = skillRegistry.select(text);
+  const skillHasExecutableTools = selectedSkill.id !== "general.execute-goal" &&
+    (Boolean(selectedSkill.tools?.length) || Boolean(selectedSkill.preferredTools.length));
+  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || skillHasExecutableTools;
 }
 
 function extractMcpText(toolResult: any): string {
