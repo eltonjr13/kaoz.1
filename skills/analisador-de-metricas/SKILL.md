@@ -3,7 +3,7 @@ name: "Analisador de Métricas"
 description: "Analisa métricas de engajamento e retenção de vídeos (visualizações, curtidas, comentários, compartilhamentos, salvamentos e retenção) para diagnosticar performance. Aceita dados manuais ou um link direto do vídeo."
 version: "1.1.0"
 preferredTools: []
-requiredCapabilities: []
+requiredCapabilities: ["web"]
 approvalMode: "plan"
 enabled: "true"
 tools:
@@ -38,6 +38,9 @@ tools:
   - id: "skill:analisador-de-metricas:analisar-url"
     description: "Recebe o link de um vídeo (YouTube, TikTok ou Instagram), extrai automaticamente as métricas públicas via scraping e retorna o diagnóstico completo de engajamento."
     script: "skills/analisador-de-metricas/scripts/fetch-and-analyze.ts"
+    effect: "external"
+    approvalMode: "step"
+    policy: {"network":true,"fileRead":"skill","fileWrite":"none","subprocess":false,"timeoutMs":30000,"maxMemoryMb":128,"maxOutputBytes":1000000}
     inputSchema:
       type: "object"
       required: ["url"]

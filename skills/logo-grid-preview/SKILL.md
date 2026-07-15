@@ -2,11 +2,11 @@
 name: "Visualizador de Marca 3x3"
 description: "Cria um grid 3x3 de mockups realistas aplicando o logotipo do usuário em 9 mídias/objetos específicos do seu nicho de atuação."
 version: "1.0.0"
-preferredTools: ["creative:generate-image","system:run-code"]
-requiredCapabilities: ["system"]
+preferredTools: ["creative:generate-image"]
+requiredCapabilities: []
 approvalMode: plan
 enabled: true
-tools: [{"id":"skill:logo-grid-preview:merge-grid","description":"Gera um grid 3x3 mesclando exatamente 9 imagens em uma única imagem JPEG de alta qualidade.","script":"skills/logo-grid-preview/scripts/generate_grid.py","inputSchema":{"type":"object","required":["images","output_path"],"properties":{"images":{"type":"array","description":"Lista com exatamente 9 caminhos absolutos das imagens geradas.","items":{"type":"string"}},"output_path":{"type":"string","description":"Caminho absoluto de destino para a imagem final do grid (geralmente na pasta de artefatos)."}}}}]
+tools: [{"id":"skill:logo-grid-preview:merge-grid","description":"Gera um grid 3x3 mesclando exatamente 9 imagens em uma única imagem JPEG de alta qualidade.","script":"skills/logo-grid-preview/scripts/generate_grid.py","inputSchema":{"type":"object","required":["images","output_path"],"properties":{"images":{"type":"array","description":"Lista com exatamente 9 caminhos dentro do workspace.","items":{"type":"string"}},"output_path":{"type":"string","description":"Caminho de destino dentro de .generated/artifacts."}}},"effect":"write","approvalMode":"plan","policy":{"network":false,"fileRead":"workspace","fileWrite":"artifacts","subprocess":false,"timeoutMs":30000,"maxMemoryMb":256,"maxOutputBytes":1000000}}]
 ---
 # Visualizador de Marca 3x3
 

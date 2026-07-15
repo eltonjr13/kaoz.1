@@ -39,6 +39,11 @@ export function validateSkillPermissions(skill: KaozSkill): void {
   }
   if (capabilities.size !== skill.requiredCapabilities.length) throw new Error("Capacidades duplicadas não são permitidas.");
   if (new Set(skill.preferredTools).size !== skill.preferredTools.length) throw new Error("Ferramentas preferidas duplicadas não são permitidas.");
+  for (const toolId of skill.preferredTools) {
+    if (toolId === "native:web-research" && !capabilities.has("web")) throw new Error(`${toolId} exige a capacidade web.`);
+    if (toolId.startsWith("content:") && !capabilities.has("content")) throw new Error(`${toolId} exige a capacidade content.`);
+    if (toolId === "system:run-code" && !capabilities.has("system")) throw new Error(`${toolId} exige a capacidade system.`);
+  }
 
   const toolIds = new Set<string>();
   for (const tool of skill.tools || []) {

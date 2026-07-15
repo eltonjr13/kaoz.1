@@ -3,10 +3,10 @@ name: "Criador de Logotipos"
 description: "Cria conceitos de logotipos profissionais e gera imagens usando o pipeline criativo. Ative quando o usuário solicitar a criação de um logotipo, marca, identidade visual ou identidade gráfica."
 version: "1.0.0"
 preferredTools: ["creative:generate-image"]
-requiredCapabilities: ["system"]
+requiredCapabilities: []
 approvalMode: plan
 enabled: true
-tools: [{"id":"skill:criador-de-logos:gerar-prompts","description":"Gera e organiza prompts otimizados para criação de logotipos no Flow, com base em estilo, cores e nicho definidos no briefing.","script":"skills/criador-de-logos/scripts/briefing_to_prompt.ts","inputSchema":{"type":"object","required":["nicho","estilo","cores"],"properties":{"nomeMarca":{"type":"string","description":"Nome da marca a ser incorporado ou sugerido no logotipo."},"nicho":{"type":"string","description":"Nicho ou segmento de mercado da empresa (ex: tecnologia, advocacia, confeitaria)."},"estilo":{"type":"string","enum":["minimalista","moderno","retro","geometrico","emblema","mascote","line-art"],"description":"Estilo visual desejado para o logotipo."},"cores":{"type":"array","items":{"type":"string"},"description":"Cores principais preferidas (ex: ['azul', 'laranja', 'branco'])."},"elementos":{"type":"string","description":"Elementos visuais ou símbolos específicos a incluir (ex: 'folha, árvore, engrenagem')."}}}}]
+tools: [{"id":"skill:criador-de-logos:gerar-prompts","description":"Gera e organiza prompts otimizados para criação de logotipos no Flow, com base em estilo, cores e nicho definidos no briefing.","script":"skills/criador-de-logos/scripts/briefing_to_prompt.ts","inputSchema":{"type":"object","required":["nicho","estilo","cores"],"properties":{"nomeMarca":{"type":"string","description":"Nome da marca a ser incorporado ou sugerido no logotipo."},"nicho":{"type":"string","description":"Nicho ou segmento de mercado da empresa (ex: tecnologia, advocacia, confeitaria)."},"estilo":{"type":"string","enum":["minimalista","moderno","retro","geometrico","emblema","mascote","line-art"],"description":"Estilo visual desejado para o logotipo."},"cores":{"type":"array","items":{"type":"string"},"description":"Cores principais preferidas (ex: ['azul', 'laranja', 'branco'])."},"elementos":{"type":"string","description":"Elementos visuais ou símbolos específicos a incluir (ex: 'folha, árvore, engrenagem')."}}},"effect":"read","approvalMode":"never"}]
 ---
 # Criador de Logotipos
 

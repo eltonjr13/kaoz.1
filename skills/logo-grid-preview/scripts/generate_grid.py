@@ -1,7 +1,6 @@
 import sys
 import os
 import json
-import subprocess
 
 def main():
     args = {}
@@ -40,14 +39,9 @@ def main():
 
     try:
         from PIL import Image
-    except ImportError:
-        try:
-            sys.stderr.write("Instalando Pillow para processamento de imagem...\n")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
-            from PIL import Image
-        except Exception as e:
-            sys.stderr.write(f"Falha ao instalar Pillow: {e}\n")
-            sys.exit(1)
+    except ImportError as e:
+        sys.stderr.write(f"Pillow nao esta disponivel no runtime autorizado: {e}\n")
+        sys.exit(1)
 
     loaded_images = []
     tile_size = (600, 600)

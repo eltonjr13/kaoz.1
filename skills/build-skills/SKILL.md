@@ -2,8 +2,8 @@
 name: "Build Skills"
 description: "Projeta, cria, revisa e evolui skills completas e prontas para uso no MrChicken. Use quando o usuário pedir para criar, montar, gerar, projetar, melhorar, revisar ou atualizar uma skill, inclusive com /build-skills, exemplos de referência ou padrões de qualidade externos."
 version: "2.0.0"
-preferredTools: ["native:file-read","native:file-write","system:run-code"]
-requiredCapabilities: ["system"]
+preferredTools: ["native:file-read","native:file-write"]
+requiredCapabilities: []
 approvalMode: never
 enabled: true
 tools: []
