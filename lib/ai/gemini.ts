@@ -7,7 +7,7 @@ import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/Age
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import type { CharacterRuntimeSnapshot } from "@/lib/agent-personality/types";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
-import { hasExplicitMediaGenerationIntent } from "@/services/artifacts/artifact.intent";
+import { allowsMediaAction, classifyOutputIntent } from "@/services/artifacts/artifact.intent";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -761,7 +761,7 @@ function requireWebQuery(executeWebQuery?: ExecuteWebQuery): ExecuteWebQuery {
 }
 
 function hasDirectActionIntent(value: string): boolean {
-  return hasExplicitMediaGenerationIntent(value);
+  return allowsMediaAction(classifyOutputIntent(value));
 }
 
 function getPreviousUserText(messages: ChatMessage[]): string {

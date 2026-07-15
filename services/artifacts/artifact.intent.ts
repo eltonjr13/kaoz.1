@@ -39,11 +39,13 @@ const MEDIA_ACTION = "(?:gerar|gera|gere|criar|cria|crie|fazer|faz|faca|produzir
 const MEDIA_DESIRE = "(?:quero|preciso|gostaria|desejo)";
 const MEDIA_ACTION_PATTERN = new RegExp(`\\b${MEDIA_ACTION}\\b[^.!?\\n]{0,48}\\b${MEDIA_OBJECT}\\b|\\b${MEDIA_OBJECT}\\b[^.!?\\n]{0,32}\\b${MEDIA_ACTION}\\b|\\b${MEDIA_DESIRE}\\b[^.!?\\n]{0,32}\\b${MEDIA_OBJECT}\\b`, "i");
 const DIRECT_MEDIA_COMMAND_PATTERN = new RegExp(`^\\s*${MEDIA_OBJECT}\\b`, "i");
+const NEGATED_MEDIA_PATTERN = new RegExp(`\\b(?:nao|sem)\\s+(?:(?:quero|preciso|desejo)\\s+)?${MEDIA_ACTION}\\b[^.!?;\\n]{0,48}\\b${MEDIA_OBJECT}\\b`, "gi");
+const DOCUMENT_CONTAINER_PATTERN = /\b(?:pdf|markdown|documento|arquivo|relatorio|guia|ebook|e-book)\b[^.!?\n]{0,48}\b(?:com|contendo|incluindo|usando)\b[^.!?\n]{0,40}\b(?:imagem|imagens|foto|fotos|ilustracao|ilustracoes|desenho|desenhos)\b/;
 
 export function hasExplicitMediaGenerationIntent(requestText: string): boolean {
   const normalized = normalizeIntentText(requestText);
-  if (/\b(nao|sem)\s+(?:gerar|criar|fazer|produzir)\b[^.!?\n]{0,32}\b(?:imagem|foto|video)\b/.test(normalized)) return false;
-  return MEDIA_ACTION_PATTERN.test(normalized) || DIRECT_MEDIA_COMMAND_PATTERN.test(normalized);
+  const actionableText = normalized.replace(NEGATED_MEDIA_PATTERN, " ");
+  return MEDIA_ACTION_PATTERN.test(actionableText) || DIRECT_MEDIA_COMMAND_PATTERN.test(actionableText);
 }
 
 export function inferRequestedMediaFlow(requestText: string): MediaFlowIntent | undefined {
@@ -56,10 +58,15 @@ export function inferRequestedMediaFlow(requestText: string): MediaFlowIntent | 
   return undefined;
 }
 
+function isEmbeddedMediaInDocumentRequest(requestText: string): boolean {
+  return DOCUMENT_CONTAINER_PATTERN.test(normalizeIntentText(requestText));
+}
+
 export function classifyOutputIntent(requestText: string, skillHint = ""): OutputIntent {
   const formats = inferRequestedArtifactFormats(requestText, skillHint);
-  const explicitMedia = hasExplicitMediaGenerationIntent(requestText);
-  const mediaFlow = inferRequestedMediaFlow(requestText);
+  const detectedMedia = hasExplicitMediaGenerationIntent(requestText);
+  const explicitMedia = detectedMedia && !(formats.length > 0 && isEmbeddedMediaInDocumentRequest(requestText));
+  const mediaFlow = explicitMedia ? inferRequestedMediaFlow(requestText) : undefined;
   const kind: OutputIntentKind = formats.length > 0
     ? explicitMedia ? "mixed" : "document"
     : explicitMedia ? "media" : "conversation";
