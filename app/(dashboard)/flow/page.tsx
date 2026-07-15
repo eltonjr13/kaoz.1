@@ -51,8 +51,10 @@ import {
 } from "@/src/providers/flow/ImageGenerationContract";
 import { isBuildSkillsIntent } from "@/services/skills/skill.intent";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
+import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 import type { SkillToolDefinition } from "@/services/skills/skill.types";
 import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
+import { ArtifactCards } from "@/components/artifacts/artifact-viewer";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -207,6 +209,8 @@ interface FlowChatResponse {
   message?: string;
   action?: FlowChatAction | null;
   error?: string;
+  artifacts?: ExecutionArtifact[];
+  artifactError?: string;
 }
 
 interface FlowChatStreamPayload extends FlowChatResponse {
@@ -236,6 +240,8 @@ export interface ChatMessageState {
   projectResult?: { success: boolean; jobId?: string; videoPath?: string; error?: string } | null;
   showLogs?: boolean;
   feedback?: 'good' | 'bad' | null;
+  artifacts?: ExecutionArtifact[];
+  artifactError?: string;
   skillDraft?: {
     id: string;
     name: string;
@@ -605,6 +611,9 @@ const formatChatExport = (conversation: ChatConversation, messages: ChatMessageS
     }
     if (msg.jobId) {
       lines.push("### Job", "", `ID: ${msg.jobId}`, `Status: ${msg.jobStatus || "pendente"}`, "");
+    }
+    if (msg.artifacts?.length) {
+      lines.push("### Arquivos", "", ...msg.artifacts.map((artifact) => `- ${artifact.name} (${artifact.type})`), "");
     }
   });
 
@@ -2377,7 +2386,9 @@ export default function FlowDashboardPage() {
         id: assistantMessageId,
         role: 'assistant',
         content: data.message || "Aqui está o que preparei.",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        artifacts: data.artifacts,
+        artifactError: data.artifactError,
       };
 
       if (data.action && data.action.flow) {
@@ -3451,7 +3462,7 @@ export default function FlowDashboardPage() {
             )}
 
             {chatMessages.map(msg => (
-              <div key={msg.id} className={`flex flex-col ${msg.plan && !msg.jobId ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+              <div key={msg.id} className={`flex flex-col ${(msg.plan && !msg.jobId) || msg.artifacts?.length ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
                 <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                   <div className="shrink-0 mt-1">
                     {msg.role === 'user' ? (
@@ -3491,6 +3502,15 @@ export default function FlowDashboardPage() {
                         </div>
                       )}
                     </div>
+
+                    {msg.artifacts && msg.artifacts.length > 0 && (
+                      <ArtifactCards artifacts={msg.artifacts} className="mt-1 max-w-[760px]" />
+                    )}
+                    {msg.artifactError && (
+                      <div className="mt-1 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-[11px] text-red-300">
+                        A resposta foi concluída, mas o arquivo não pôde ser criado: {msg.artifactError}
+                      </div>
+                    )}
 
                     {msg.skillDraft && (
                       <div className="mt-2 w-full max-w-lg rounded-[20px] border border-[#9D7CFF]/30 bg-[#0a0a0e] p-4 shadow-lg">

@@ -17,6 +17,8 @@ import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageP
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionContext } from "@/lib/ai/agent-voice";
 import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
+import { materializeResponseArtifacts } from "@/services/artifacts/artifact.service";
+import { skillRegistry } from "@/services/skills/skill.registry";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -65,6 +67,34 @@ function normalizeCommandText(value: string): string {
 function getLatestUserMessageText(messages: ChatMessage[]): string {
   const latest = [...messages].reverse().find((message) => message.role === "user");
   return latest?.parts.map((part) => part.text).join("\n").trim() || "";
+}
+
+function getSkillArtifactHint(userText: string): string {
+  const skillId = userText.match(/^\s*\/([a-z0-9.-]+)(?:\s|$)/i)?.[1]?.toLowerCase();
+  if (!skillId) return "";
+  const skill = skillRegistry.get(skillId);
+  if (!skill) return skillId;
+  return [skill.id, skill.name, skill.description, skill.instructions.slice(0, 4_000)].join("\n");
+}
+
+async function attachRequestedArtifacts(
+  response: ChatAgentResponse,
+  userText: string,
+  sessionId?: string
+): Promise<ChatAgentResponse> {
+  try {
+    const artifacts = await materializeResponseArtifacts({
+      requestText: userText,
+      content: response.message,
+      skillHint: getSkillArtifactHint(userText),
+      sessionId,
+    });
+    return artifacts.length ? { ...response, artifacts } : response;
+  } catch (error) {
+    const artifactError = error instanceof Error ? error.message : String(error);
+    console.error("[FlowArtifacts] Falha ao materializar resposta:", error);
+    return { ...response, artifactError };
+  }
 }
 
 function cleanSpotifyQuery(value?: string): string {
@@ -443,6 +473,8 @@ function createChatStreamResponse(
           success: true,
           message: response.message,
           action: response.action,
+          artifacts: response.artifacts,
+          artifactError: response.artifactError,
         });
 
         if (onComplete) {
@@ -544,7 +576,7 @@ export async function POST(request: Request) {
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
     const { relevantMemories, activePersonalityMemories } = cortexContext;
 
-    const runChat = async (onMessageChunk?: (chunk: string) => void) => enforceRequestedFlow(
+    const runChat = async (onMessageChunk?: (chunk: string) => void) => attachRequestedArtifacts(enforceRequestedFlow(
       await chatWithAgent(
         messages,
         personality,
@@ -569,7 +601,7 @@ export async function POST(request: Request) {
         }
       ),
       requestedFlow
-    );
+    ), latestUserText, sessionId);
 
     if (stream === true) {
       cleanupInPost = false;
@@ -597,7 +629,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: response.message,
-      action: response.action
+      action: response.action,
+      artifacts: response.artifacts,
+      artifactError: response.artifactError,
     });
 
   } catch (err: unknown) {

@@ -1,9 +1,48 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import type { ToolHandler } from "../../tools/tool.types";
+import type { ToolHandler, ToolResult } from "../../tools/tool.types";
+import type { ArtifactType } from "../orchestrator.types";
+import { registerContentArtifact, registerExistingArtifact } from "../../artifacts/artifact.service";
 
 const execFileAsync = promisify(execFile);
+const ARTIFACT_TYPES = new Set<ArtifactType>(["image", "video", "audio", "document", "markdown", "pdf", "json", "csv", "html", "text", "file"]);
+
+function asArtifactType(value: unknown): ArtifactType | undefined {
+  return typeof value === "string" && ARTIFACT_TYPES.has(value as ArtifactType) ? value as ArtifactType : undefined;
+}
+
+export async function normalizeSkillScriptResult(parsed: unknown): Promise<ToolResult> {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { output: parsed };
+  const record = parsed as Record<string, unknown>;
+  if (!Array.isArray(record.artifacts)) return { output: parsed };
+
+  const artifacts = await Promise.all(record.artifacts.map(async (candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error(`Artefato ${index + 1} retornado pelo script é inválido.`);
+    }
+    const artifact = candidate as Record<string, unknown>;
+    const name = typeof artifact.name === "string" && artifact.name.trim() ? artifact.name.trim() : `artifact-${index + 1}`;
+    const type = asArtifactType(artifact.type);
+    const mimeType = typeof artifact.mimeType === "string" ? artifact.mimeType : undefined;
+    const metadata = artifact.metadata && typeof artifact.metadata === "object" && !Array.isArray(artifact.metadata)
+      ? artifact.metadata as Record<string, unknown>
+      : undefined;
+
+    if (typeof artifact.path === "string" && artifact.path.trim()) {
+      return registerExistingArtifact({ path: artifact.path.trim(), name, type, mimeType, metadata });
+    }
+    if (typeof artifact.content === "string") {
+      return registerContentArtifact({ content: artifact.content, name, type, mimeType, metadata });
+    }
+    throw new Error(`Artefato ${name} não possui path ou content.`);
+  }));
+
+  return {
+    output: Object.prototype.hasOwnProperty.call(record, "output") ? record.output : parsed,
+    artifacts,
+  };
+}
 
 /**
  * Cria um handler dinâmico para uma ferramenta que executa um script de uma skill.
@@ -49,11 +88,13 @@ export function createSkillScriptHandler(scriptPath: string): ToolHandler {
         
         // Tentar parsear o stdout como JSON, ou retornar a string pura se não for JSON
         const outputStr = stdout.trim();
+        let parsed: unknown;
         try {
-            return { output: JSON.parse(outputStr) };
-        } catch (e) {
+            parsed = JSON.parse(outputStr);
+        } catch {
             return { output: outputStr };
         }
+        return await normalizeSkillScriptResult(parsed);
     } catch (error: any) {
         throw new Error(`Erro ao executar script da skill: ${error.message}\n${error.stderr || ''}`);
     }

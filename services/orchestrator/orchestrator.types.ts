@@ -3,7 +3,19 @@ export type StepStatus = "pending" | "awaiting_approval" | "running" | "complete
 export type ToolEffect = "read" | "write" | "external" | "destructive";
 export type ApprovalMode = "never" | "plan" | "step";
 
-export type ExecutionArtifact = { id: string; type: "image" | "video" | "audio" | "document" | "json" | "text" | "file"; name: string; path?: string; url?: string; mimeType?: string; metadata?: Record<string, unknown> };
+export type ArtifactType = "image" | "video" | "audio" | "document" | "markdown" | "pdf" | "json" | "csv" | "html" | "text" | "file";
+export type ExecutionArtifact = {
+  id: string;
+  type: ArtifactType;
+  name: string;
+  path?: string;
+  url?: string;
+  mimeType?: string;
+  size?: number;
+  previewAvailable?: boolean;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
+};
 export type ExecutionStep = { id: string; title: string; description: string; toolId: string; arguments: Record<string, unknown>; dependsOn: string[]; status: StepStatus; approvalMode: ApprovalMode; retryCount: number; maxRetries: number; continueOnError?: boolean; startedAt?: string; completedAt?: string; output?: unknown; artifacts?: ExecutionArtifact[]; error?: string };
 export type ExecutionPlan = { id: string; objective: string; summary: string; skillIds: string[]; status: PlanStatus; steps: ExecutionStep[]; estimatedCost?: number | null; estimatedDurationSeconds?: number | null; createdAt: string; updatedAt: string };
 export type RunStatus = "running" | "paused" | "completed" | "failed" | "cancelled";

@@ -6,6 +6,7 @@ import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service"
 import { AgentPersonalityResolver } from "@/lib/cognitive-memory/personality/AgentPersonalityResolver";
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import type { CharacterRuntimeSnapshot } from "@/lib/agent-personality/types";
+import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -725,6 +726,8 @@ export interface ChatMessage {
 export interface ChatAgentResponse {
   message: string;
   action: FlowDecision | null;
+  artifacts?: ExecutionArtifact[];
+  artifactError?: string;
 }
 
 type ChatWithAgentOptions = {

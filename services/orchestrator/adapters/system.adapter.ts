@@ -4,6 +4,7 @@ import { getQuickWebSearchResponse } from "../../web-search/quick-web-search";
 import type { ToolHandler } from "../../tools/tool.types";
 import { assertSafeWorkspacePath } from "../orchestrator.policy";
 import crypto from "node:crypto";
+import { registerExistingArtifact } from "../../artifacts/artifact.service";
 
 export const systemHandlers: Record<string, ToolHandler> = {
   "native:web-research": async (args) => {
@@ -26,7 +27,8 @@ export const systemHandlers: Record<string, ToolHandler> = {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, content, "utf8");
     const relative = path.relative(process.cwd(), file).replaceAll("\\", "/");
-    return { output: { path: relative, bytes: Buffer.byteLength(content) }, artifacts: [{ id: crypto.randomUUID(), type: "file", name: path.basename(file), path: relative, url: `/api/orchestrator/artifacts?path=${encodeURIComponent(relative)}`, mimeType: "text/plain" }] };
+    const artifact = await registerExistingArtifact({ path: relative, name: path.basename(file), metadata: { source: "native:file-write" } });
+    return { output: { path: relative, bytes: Buffer.byteLength(content) }, artifacts: [artifact] };
   },
   "system:run-code": async (args) => {
     const language = typeof args.language === "string" ? args.language.trim().toLowerCase() : "";
