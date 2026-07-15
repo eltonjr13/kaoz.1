@@ -15,6 +15,7 @@ const nativeTools:KaozTool[]=[
 
 import { skillRegistry } from "../skills/skill.registry";
 import { createSkillScriptHandler } from "../orchestrator/adapters/skill-script.adapter";
+import type { KaozSkill } from "../skills/skill.types";
 
 export class ToolRegistry { 
   async list(){ 
@@ -31,9 +32,9 @@ export class ToolRegistry {
                     description: t.description,
                     source: "native",
                     inputSchema: t.inputSchema || { type: "object" },
-                    effect: "write", // Por padrão assumimos write para ser seguro
-                    approvalMode: "plan",
-                    timeoutMs: 30_000,
+                    effect: t.effect || "write",
+                    approvalMode: t.approvalMode || "plan",
+                    timeoutMs: t.policy?.timeoutMs || 30_000,
                     enabled: true
                 });
             }
@@ -42,6 +43,11 @@ export class ToolRegistry {
     
     return [...nativeTools, ...mcpTools, ...skillTools].filter((t)=>t.enabled); 
   } 
+
+  async listForSkill(skill: KaozSkill) {
+    const allowed = new Set([...skill.preferredTools, ...(skill.tools || []).map((tool) => tool.id)]);
+    return (await this.list()).filter((tool) => allowed.has(tool.id));
+  }
 
   async get(id:string){ 
       return (await this.list()).find((t)=>t.id===id); 
@@ -54,7 +60,7 @@ export class ToolRegistry {
           const skill = skillRegistry.list().find(s => s.tools?.some(t => t.id === id));
           const toolDef = skill?.tools?.find(t => t.id === id);
           if (skill && toolDef) {
-             return createSkillScriptHandler(toolDef.script);
+             return createSkillScriptHandler(skill.id, toolDef);
           }
       }
       return systemHandlers[id]||contentHandlers[id]; 

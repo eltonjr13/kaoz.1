@@ -5,6 +5,37 @@ export type SkillToolDefinition = {
   description: string;
   script: string; // Caminho para o script
   inputSchema: Record<string, unknown>;
+  effect?: "read" | "write" | "external" | "destructive";
+  approvalMode?: ApprovalMode;
+  policy?: SkillScriptPolicy;
+};
+
+export type SkillScriptPolicy = {
+  network: boolean;
+  fileRead: "none" | "skill" | "workspace";
+  fileWrite: "none" | "artifacts";
+  subprocess: boolean;
+  timeoutMs: number;
+  maxMemoryMb: number;
+  maxOutputBytes: number;
+};
+
+export type SkillExecutionMetrics = {
+  id: string;
+  skillId: string;
+  toolId: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  success: boolean;
+  timedOut: boolean;
+  exitCode?: number;
+  stdoutBytes: number;
+  stderrBytes: number;
+  peakRssBytes?: number;
+  cpuTimeMs?: number;
+  limits: Pick<SkillScriptPolicy, "timeoutMs" | "maxMemoryMb" | "maxOutputBytes">;
+  error?: string;
 };
 
 export type SkillResourceFile = {
@@ -25,4 +56,5 @@ export type KaozSkill = {
   tools?: SkillToolDefinition[];
   references?: SkillResourceFile[];
   scripts?: SkillResourceFile[];
+  revisionId?: string;
 };

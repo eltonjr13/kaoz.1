@@ -1,4 +1,6 @@
 import type { KaozSkill, SkillToolDefinition } from "./skill.types";
+import type { ApprovalMode, ToolEffect } from "../orchestrator/orchestrator.types";
+import { normalizeScriptPolicy } from "./skill.policy";
 
 /**
  * Faz o parse simples de um arquivo SKILL.md.
@@ -278,7 +280,10 @@ function parseToolsSection(value: string, contentLines: string[], id: string): S
       id: String(t.id || ""),
       description: String(t.description || ""),
       script: String(t.script || ""),
-      inputSchema: parseToolInputSchema(t.inputSchema)
+      inputSchema: parseToolInputSchema(t.inputSchema),
+      effect: ["read", "write", "external", "destructive"].includes(String(t.effect)) ? t.effect as ToolEffect : "write",
+      approvalMode: ["never", "plan", "step"].includes(String(t.approvalMode)) ? t.approvalMode as ApprovalMode : "plan",
+      policy: normalizeScriptPolicy(t.policy && typeof t.policy === "object" ? t.policy : undefined),
     };
     typedTools.push(toolDef);
   }

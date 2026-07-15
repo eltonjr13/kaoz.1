@@ -3,8 +3,9 @@ import path from "path";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "./skill.types";
 import { parseSkillMarkdown } from "./skill.parser";
 import { isBuildSkillsIntent } from "./skill.intent";
+import { normalizeSkillTool, validateSkillPermissions, validateToolScriptExists } from "./skill.policy";
 
-let cachedSkills: KaozSkill[] | null = null;
+export type SkillRevision = { id: string; skillId: string; version: string; createdAt: string; reason: "publish" | "rollback" };
 
 const referenceExtensions = new Set([".md", ".txt", ".json"]);
 const scriptExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".py"]);
@@ -62,7 +63,7 @@ function normalizeToolScripts(skillId: string, tools: SkillToolDefinition[]): Sk
   });
 }
 
-function validateSkill(skill: KaozSkill): void {
+export function validateSkill(skill: KaozSkill): void {
   validateSkillId(skill.id);
   if (!skill.name.trim()) throw new Error("O nome da skill é obrigatório.");
   if (!skill.description.trim()) throw new Error("A descrição da skill é obrigatória.");
@@ -72,6 +73,8 @@ function validateSkill(skill: KaozSkill): void {
       throw new Error(`Ferramenta inválida na skill ${skill.id}: use um ID skill:${skill.id}:acao, descrição e script.`);
     }
   }
+  validateSkillPermissions(skill);
+  validateToolScriptExists(skill);
 }
 
 function autoSkillId(objective: string): string | null {
@@ -88,23 +91,28 @@ const fallbackSkills: KaozSkill[] = [
  { id:"content.create-short-video", name:"Criar vídeo curto", description:"Cria vídeo curto usando o pipeline de jobs existente.", version:"1.0.0", instructions:"Defina tema, gancho e roteiro; reutilize o job e pipeline existentes para voz, lip-sync e render.", preferredTools:["content:start-video-pipeline"], requiredCapabilities:["content"], approvalMode:"plan", enabled:true }
 ];
 
-function loadSkillsSync(): KaozSkill[] {
-  if (cachedSkills) return cachedSkills;
-  cachedSkills = [];
+function loadSkillDirectory(skillDirectory: string, id: string): KaozSkill {
+  const content = fs.readFileSync(path.join(skillDirectory, "SKILL.md"), "utf-8");
+  const skill = parseSkillMarkdown(id, content);
+  skill.references = readResourceFiles(path.join(skillDirectory, "references"), "reference");
+  skill.scripts = readResourceFiles(path.join(skillDirectory, "scripts"), "script");
+  skill.tools = (skill.tools || []).map(normalizeSkillTool);
+  validateSkill(skill);
+  return skill;
+}
+
+function loadSkillsSync(root: string): KaozSkill[] {
+  const loaded: KaozSkill[] = [];
   try {
-    const skillsDir = path.join(process.cwd(), "skills");
+    const skillsDir = path.join(root, "skills");
     if (fs.existsSync(skillsDir)) {
         const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isDirectory()) {
             const skillFile = path.join(skillsDir, entry.name, "SKILL.md");
             if (fs.existsSync(skillFile)) {
-               const content = fs.readFileSync(skillFile, "utf-8");
                try {
-                   const skill = parseSkillMarkdown(entry.name, content);
-                   skill.references = readResourceFiles(path.join(skillsDir, entry.name, "references"), "reference");
-                   skill.scripts = readResourceFiles(path.join(skillsDir, entry.name, "scripts"), "script");
-                   cachedSkills.push(skill);
+                   loaded.push(loadSkillDirectory(path.join(skillsDir, entry.name), entry.name));
                } catch (e) {
                    console.error(`[SkillRegistry] Erro ao fazer parse da skill ${entry.name}:`, e);
                }
@@ -116,23 +124,27 @@ function loadSkillsSync(): KaozSkill[] {
     console.error("[SkillRegistry] Erro ao carregar skills locais:", error);
   }
   
-  if (cachedSkills.length === 0) {
-      cachedSkills = [...fallbackSkills];
-  }
-  return cachedSkills;
+  return loaded.length ? loaded : [...fallbackSkills];
 }
 
 export class SkillRegistry { 
+  private cachedSkills: KaozSkill[] | null = null;
+  constructor(private readonly root = process.cwd()) {}
+
+  private skillsDir() { return path.join(this.root, "skills"); }
+  private generatedDir() { return path.join(this.root, ".generated", "skills"); }
+  private load() { return this.cachedSkills ||= loadSkillsSync(this.root); }
+
   list(): KaozSkill[] { 
-      return loadSkillsSync().filter((s) => s.enabled); 
+      return this.load().filter((s) => s.enabled); 
   } 
   
   getAll(): KaozSkill[] {
-      return loadSkillsSync();
+      return this.load();
   }
 
-  get(id: string): KaozSkill | undefined { 
-      return this.list().find((s) => s.id === id); 
+  get(id: string, includeDisabled = false): KaozSkill | undefined { 
+      return (includeDisabled ? this.getAll() : this.list()).find((s) => s.id === id); 
   } 
   
   select(objective: string, requested = "auto"): KaozSkill { 
@@ -144,40 +156,88 @@ export class SkillRegistry {
   } 
 
   save(skill: KaozSkill): void {
-      validateSkill(skill);
-      const skillsDir = path.join(process.cwd(), "skills");
+      const normalizedSkill = { ...skill, tools: (skill.tools || []).map(normalizeSkillTool) };
+      validateSkill(normalizedSkill);
+      const skillsDir = this.skillsDir();
       if (!fs.existsSync(skillsDir)) {
           fs.mkdirSync(skillsDir, { recursive: true });
       }
       const skillDir = path.join(skillsDir, skill.id);
-      if (!fs.existsSync(skillDir)) {
-          fs.mkdirSync(skillDir, { recursive: true });
-      }
+      const stagingRoot = path.join(this.generatedDir(), "staging", `${skill.id}-${crypto.randomUUID()}`);
+      const stagingDir = path.join(stagingRoot, "package");
+      fs.mkdirSync(stagingDir, { recursive: true });
       
-      const normalizedTools = normalizeToolScripts(skill.id, skill.tools || []);
+      const normalizedTools = normalizeToolScripts(skill.id, normalizedSkill.tools || []);
       const content = `---
-name: ${JSON.stringify(skill.name)}
-description: ${JSON.stringify(skill.description)}
-version: ${JSON.stringify(skill.version)}
-preferredTools: ${JSON.stringify(skill.preferredTools || [])}
-requiredCapabilities: ${JSON.stringify(skill.requiredCapabilities || [])}
-approvalMode: ${skill.approvalMode}
-enabled: ${skill.enabled}
+name: ${JSON.stringify(normalizedSkill.name)}
+description: ${JSON.stringify(normalizedSkill.description)}
+version: ${JSON.stringify(normalizedSkill.version)}
+preferredTools: ${JSON.stringify(normalizedSkill.preferredTools || [])}
+requiredCapabilities: ${JSON.stringify(normalizedSkill.requiredCapabilities || [])}
+approvalMode: ${normalizedSkill.approvalMode}
+enabled: ${normalizedSkill.enabled}
 tools: ${JSON.stringify(normalizedTools)}
 ---
-${skill.instructions}
+${normalizedSkill.instructions}
 `;
-      fs.writeFileSync(path.join(skillDir, "SKILL.md"), content, "utf-8");
+      fs.writeFileSync(path.join(stagingDir, "SKILL.md"), content, "utf-8");
 
-      const references = writeResourceFiles(path.join(skillDir, "references"), skill.references || [], "reference");
-      const scripts = writeResourceFiles(path.join(skillDir, "scripts"), skill.scripts || [], "script");
-      const savedSkill: KaozSkill = { ...skill, tools: normalizedTools, references, scripts };
-      
-      // Update cache
-      if (!cachedSkills) loadSkillsSync();
-      const idx = cachedSkills!.findIndex(s => s.id === skill.id);
-      if (idx > -1) cachedSkills![idx] = savedSkill;
-      else cachedSkills!.push(savedSkill);
+      writeResourceFiles(path.join(stagingDir, "references"), normalizedSkill.references || [], "reference");
+      writeResourceFiles(path.join(stagingDir, "scripts"), normalizedSkill.scripts || [], "script");
+      loadSkillDirectory(stagingDir, skill.id);
+
+      if (fs.existsSync(skillDir)) this.snapshot(skillDir, skill.id, "publish");
+      this.swapPackage(skillDir, stagingDir);
+      fs.rmSync(stagingRoot, { recursive: true, force: true });
+      this.cachedSkills = null;
+  }
+
+  private snapshot(skillDir: string, skillId: string, reason: SkillRevision["reason"]): SkillRevision {
+      const current = loadSkillDirectory(skillDir, skillId);
+      const revision: SkillRevision = { id: `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`, skillId, version: current.version, createdAt: new Date().toISOString(), reason };
+      const target = path.join(this.generatedDir(), "revisions", skillId, revision.id);
+      fs.mkdirSync(target, { recursive: true });
+      fs.cpSync(skillDir, path.join(target, "package"), { recursive: true });
+      fs.writeFileSync(path.join(target, "revision.json"), `${JSON.stringify(revision, null, 2)}\n`, "utf8");
+      return revision;
+  }
+
+  private swapPackage(skillDir: string, stagingDir: string): void {
+      const backup = `${skillDir}.backup-${crypto.randomUUID()}`;
+      try {
+          if (fs.existsSync(skillDir)) fs.renameSync(skillDir, backup);
+          fs.renameSync(stagingDir, skillDir);
+          if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
+      } catch (error) {
+          if (!fs.existsSync(skillDir) && fs.existsSync(backup)) fs.renameSync(backup, skillDir);
+          throw error;
+      }
+  }
+
+  listRevisions(id: string): SkillRevision[] {
+      validateSkillId(id);
+      const directory = path.join(this.generatedDir(), "revisions", id);
+      if (!fs.existsSync(directory)) return [];
+      return fs.readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).flatMap((entry) => {
+          try { return [JSON.parse(fs.readFileSync(path.join(directory, entry.name, "revision.json"), "utf8")) as SkillRevision]; }
+          catch { return []; }
+      }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  rollback(id: string, revisionId: string): KaozSkill {
+      validateSkillId(id);
+      if (!/^[a-zA-Z0-9-]+$/.test(revisionId)) throw new Error("Revisão inválida.");
+      const source = path.join(this.generatedDir(), "revisions", id, revisionId, "package");
+      if (!fs.existsSync(source)) throw new Error("Revisão não encontrada.");
+      loadSkillDirectory(source, id);
+      const skillDir = path.join(this.skillsDir(), id);
+      if (fs.existsSync(skillDir)) this.snapshot(skillDir, id, "rollback");
+      const staging = path.join(this.generatedDir(), "staging", `${id}-${crypto.randomUUID()}`, "package");
+      fs.mkdirSync(path.dirname(staging), { recursive: true });
+      fs.cpSync(source, staging, { recursive: true });
+      this.swapPackage(skillDir, staging);
+      this.cachedSkills = null;
+      return this.get(id, true)!;
   }
 
   delete(id: string): void {
@@ -185,14 +245,13 @@ ${skill.instructions}
       if (id === "general.execute-goal" || id === "research.web-research" || id === "content.create-short-video" || id === "build-skills") {
           throw new Error("Não é possível excluir uma skill nativa (built-in).");
       }
-      const skillsDir = path.join(process.cwd(), "skills");
+      const skillsDir = this.skillsDir();
       const skillDir = path.join(skillsDir, id);
       if (fs.existsSync(skillDir)) {
           fs.rmSync(skillDir, { recursive: true, force: true });
       }
       // Update cache
-      if (!cachedSkills) loadSkillsSync();
-      cachedSkills = cachedSkills!.filter(s => s.id !== id);
+      this.cachedSkills = null;
   }
 }
 
