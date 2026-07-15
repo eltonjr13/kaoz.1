@@ -4,11 +4,10 @@ import path from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { ArtifactType, ExecutionArtifact } from "../orchestrator/orchestrator.types";
 import { assertSafeWorkspacePath } from "../orchestrator/orchestrator.policy.ts";
+import { inferRequestedArtifactFormats, type TextArtifactFormat } from "./artifact.intent.ts";
 
 const ARTIFACT_ROOT = path.join(process.cwd(), ".generated", "artifacts");
 const MAX_TEXT_ARTIFACT_BYTES = 5 * 1024 * 1024;
-
-export type TextArtifactFormat = "markdown" | "pdf" | "text" | "json" | "csv" | "html";
 
 type StoredArtifactManifest = {
   artifact: ExecutionArtifact;
@@ -23,32 +22,6 @@ const FORMAT_CONFIG: Record<TextArtifactFormat, { extension: string; mimeType: s
   csv: { extension: ".csv", mimeType: "text/csv; charset=utf-8", type: "csv" },
   html: { extension: ".html", mimeType: "text/html; charset=utf-8", type: "html" },
 };
-
-function normalizeText(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-
-function uniqueFormats(formats: TextArtifactFormat[]): TextArtifactFormat[] {
-  return [...new Set(formats)];
-}
-
-export function inferRequestedArtifactFormats(requestText: string, skillHint = ""): TextArtifactFormat[] {
-  const request = normalizeText(requestText);
-  const hint = normalizeText(skillHint);
-  const slashCommand = /^\s*\/[a-z0-9.-]+(?:\s|$)/i.test(requestText);
-  const creationIntent = slashCommand || /\b(gerar|gere|gera|criar|crie|cria|produzir|produza|entregar|entregue|exportar|exporte|salvar|salve|baixar|arquivo|documento|formato)\b/.test(request);
-  if (!creationIntent) return [];
-
-  const formats: TextArtifactFormat[] = [];
-  const combined = `${request}\n${slashCommand ? hint : ""}`;
-  if (/\bpdf\b|\.pdf\b/.test(combined)) formats.push("pdf");
-  if (/\bmarkdown\b|\.md\b/.test(combined)) formats.push("markdown");
-  if (/\bjson\b|\.json\b/.test(request)) formats.push("json");
-  if (/\bcsv\b|\.csv\b/.test(request)) formats.push("csv");
-  if (/\bhtml\b|\.html\b/.test(request)) formats.push("html");
-  if (/\btxt\b|texto simples|\.txt\b/.test(request)) formats.push("text");
-  return uniqueFormats(formats);
-}
 
 function safeBaseName(value: string): string {
   const normalized = value
