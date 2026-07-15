@@ -20,6 +20,7 @@
     "test:personality": "node --experimental-strip-types --no-warnings --test tests/agent-personality.test.ts",
     "test:voice-expression": "node --experimental-strip-types --no-warnings --test tests/agent-voice-expression.test.ts",
     "test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts",
+    "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts",
     "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts"
   },
   "dependencies": {

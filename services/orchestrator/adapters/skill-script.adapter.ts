@@ -5,8 +5,8 @@ import path from "node:path";
 import type { ToolHandler, ToolResult } from "../../tools/tool.types";
 import type { ArtifactType } from "../orchestrator.types";
 import type { SkillExecutionMetrics, SkillScriptPolicy, SkillToolDefinition } from "../../skills/skill.types";
-import { normalizeScriptPolicy } from "../../skills/skill.policy";
-import { skillMetricsStore } from "../../skills/skill.metrics";
+import { normalizeScriptPolicy } from "../../skills/skill.policy.ts";
+import { skillMetricsStore } from "../../skills/skill.metrics.ts";
 import { registerContentArtifact, registerExistingArtifact } from "../../artifacts/artifact.service.ts";
 
 const ARTIFACT_TYPES = new Set<ArtifactType>(["image", "video", "audio", "document", "markdown", "pdf", "json", "csv", "html", "text", "file"]);
@@ -40,7 +40,7 @@ export async function normalizeSkillScriptResult(parsed: unknown): Promise<ToolR
 
 function safeEnvironment(argsString: string, sandbox: string): NodeJS.ProcessEnv {
   const keys = ["PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC"];
-  const env: NodeJS.ProcessEnv = {};
+  const env = {} as NodeJS.ProcessEnv;
   for (const key of keys) if (process.env[key]) env[key] = process.env[key];
   env.TEMP = sandbox;
   env.TMP = sandbox;

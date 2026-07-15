@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "./skill.types";
-import { parseSkillMarkdown } from "./skill.parser";
-import { isBuildSkillsIntent, normalizeSkillIntent } from "./skill.intent";
-import { normalizeSkillTool, validateSkillPermissions, validateToolScriptExists } from "./skill.policy";
+import { parseSkillMarkdown } from "./skill.parser.ts";
+import { isBuildSkillsIntent, normalizeSkillIntent } from "./skill.intent.ts";
+import { normalizeSkillTool, validateSkillPermissions, validateToolScriptExists } from "./skill.policy.ts";
 
 export type SkillRevision = { id: string; skillId: string; version: string; createdAt: string; reason: "publish" | "rollback" };
 

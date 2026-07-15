@@ -90,7 +90,7 @@ function main() {
     const result = {
       briefing: {
         nomeMarca: brandName || "Não informado",
-        nicho,
+        nicho: input.nicho,
         estilo: input.estilo,
         cores: input.cores,
         elementos: input.elementos || "Livre"

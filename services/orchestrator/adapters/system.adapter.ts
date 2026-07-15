@@ -1,9 +1,9 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { getQuickWebSearchResponse } from "../../web-search/quick-web-search";
+import { getQuickWebSearchResponse } from "../../web-search/quick-web-search.ts";
 import type { ToolHandler } from "../../tools/tool.types";
-import { assertSafeWorkspacePath } from "../orchestrator.policy";
+import { assertSafeWorkspacePath } from "../orchestrator.policy.ts";
 import { registerExistingArtifact } from "../../artifacts/artifact.service.ts";
 
 function parseProcessOutput(value: string): unknown {

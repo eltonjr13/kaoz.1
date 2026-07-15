@@ -1,6 +1,6 @@
 import type { KaozSkill, SkillToolDefinition } from "./skill.types";
 import type { ApprovalMode, ToolEffect } from "../orchestrator/orchestrator.types";
-import { normalizeScriptPolicy } from "./skill.policy";
+import { normalizeScriptPolicy } from "./skill.policy.ts";
 
 /**
  * Faz o parse simples de um arquivo SKILL.md.
