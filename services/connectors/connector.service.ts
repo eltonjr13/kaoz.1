@@ -6,6 +6,12 @@ import type { ConnectorAccount, ConnectorAdapter, ConnectorProvider, ConnectorPu
 import { discordConnector } from "./adapters/discord.connector.ts";
 import { blueskyConnector } from "./adapters/bluesky.connector.ts";
 
+async function reconcileDiscordGateway() {
+  const { discordGatewayManager } = await import("./discord.gateway.ts");
+  await discordGatewayManager.reconcile();
+  return discordGatewayManager;
+}
+
 const adapters: Partial<Record<ConnectorProvider, ConnectorAdapter>> = {
   discord: discordConnector,
   bluesky: blueskyConnector
@@ -33,10 +39,16 @@ async function publicAccount(account: StoredConnectorAccount): Promise<Connector
 
 export class ConnectorService {
   async overview() {
+    const discordGatewayManager = await reconcileDiscordGateway().catch((error) => {
+      console.warn("[DiscordGateway] Falha ao reconciliar:", error);
+      return null;
+    });
     return {
       catalog: CONNECTOR_CATALOG,
       accounts: await Promise.all((await connectorStore.listAccounts()).map(publicAccount)),
-      history: await connectorStore.listHistory(30)
+      history: await connectorStore.listHistory(30),
+      inboundHistory: await connectorStore.listInboundHistory(30),
+      discordGateway: discordGatewayManager?.getStatus() || { state: "error", reconnectCount: 0, lastError: "Gateway indisponível." },
     };
   }
 
@@ -48,7 +60,7 @@ export class ConnectorService {
     if (existing && existing.provider !== provider) throw new Error("Não é possível trocar o provedor de uma conexão existente.");
     const credentials = cleanCredentials(input.credentials);
     const storedCredentials: Record<string, string> = existing
-      ? await connectorVault.read(existing.id).catch(() => ({}))
+      ? await connectorVault.read(existing.id)
       : {};
     const mergedCredentials = definition.credentialFields.reduce<Record<string, string>>((result, field) => {
       const value = credentials[field.key] || storedCredentials[field.key];
@@ -74,12 +86,14 @@ export class ConnectorService {
     };
     await connectorStore.saveAccount(account);
     if (Object.keys(credentials).length) await connectorVault.write(account.id, mergedCredentials);
+    await reconcileDiscordGateway();
     return publicAccount(account);
   }
 
   async remove(id: string) {
     await connectorStore.removeAccount(id);
     await connectorVault.remove(id);
+    await reconcileDiscordGateway();
   }
 
   async test(id: string, signal?: AbortSignal) {
@@ -92,8 +106,10 @@ export class ConnectorService {
       account.lastCheckedAt = now;
       account.lastError = undefined;
       if (result.displayName && account.displayName === getConnectorDefinition(account.provider)?.name) account.displayName = result.displayName;
+      if (result.publicConfig) account.publicConfig = { ...account.publicConfig, ...result.publicConfig };
       account.updatedAt = now;
       await connectorStore.saveAccount(account);
+      await reconcileDiscordGateway();
       return publicAccount(account);
     } catch (error) {
       account.health = "error";

@@ -27,7 +27,13 @@ export const discordConnector: ConnectorAdapter = {
     const response = await fetch(`${API_ROOT}/channels/${channelId}`, { headers: authHeaders(botToken), signal, cache: "no-store" });
     const body = await responseBody(response);
     if (!response.ok) throw new Error(`Discord retornou HTTP ${response.status}: ${String(body.message || "bot sem acesso ao canal")}`);
-    return { displayName: typeof body.name === "string" ? `#${body.name}` : undefined };
+    return {
+      displayName: typeof body.name === "string" ? `#${body.name}` : undefined,
+      publicConfig: {
+        channelId,
+        ...(typeof body.guild_id === "string" ? { guildId: body.guild_id } : {}),
+      },
+    };
   },
 
   async publish(_account, credentials, input, signal) {

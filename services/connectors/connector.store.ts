@@ -1,13 +1,14 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import type { ConnectorHistoryEntry, StoredConnectorAccount } from "./connector.types.ts";
+import type { ConnectorHistoryEntry, ConnectorInboundHistoryEntry, StoredConnectorAccount } from "./connector.types.ts";
 
 const ROOT = process.env.MRCHICKEN_DATA_DIR
   ? path.join(process.env.MRCHICKEN_DATA_DIR, "connectors")
   : path.join(process.cwd(), ".generated", "connectors");
 const ACCOUNTS_FILE = path.join(ROOT, "accounts.json");
 const HISTORY_FILE = path.join(ROOT, "history.json");
+const INBOUND_HISTORY_FILE = path.join(ROOT, "inbound-history.json");
 
 async function read<T>(file: string, fallback: T): Promise<T> {
   try { return JSON.parse(await readFile(file, "utf8")) as T; } catch { return fallback; }
@@ -65,6 +66,19 @@ export class ConnectorStore {
 
   async listHistory(limit = 50) {
     return (await read<ConnectorHistoryEntry[]>(HISTORY_FILE, [])).slice(0, Math.max(1, Math.min(limit, 200)));
+  }
+
+  async appendInboundHistory(entry: ConnectorInboundHistoryEntry) {
+    return this.locked(async () => {
+      const history = await read<ConnectorInboundHistoryEntry[]>(INBOUND_HISTORY_FILE, []);
+      history.unshift(entry);
+      await atomicWrite(INBOUND_HISTORY_FILE, history.slice(0, 500));
+      return entry;
+    });
+  }
+
+  async listInboundHistory(limit = 50) {
+    return (await read<ConnectorInboundHistoryEntry[]>(INBOUND_HISTORY_FILE, [])).slice(0, Math.max(1, Math.min(limit, 200)));
   }
 }
 

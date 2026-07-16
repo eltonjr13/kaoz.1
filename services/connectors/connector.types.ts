@@ -67,8 +67,40 @@ export interface ConnectorHistoryEntry extends ConnectorPublishResult {
   error?: string;
 }
 
+export type ConnectorInboundStatus = "received" | "ignored" | "responded" | "failed";
+
+export interface ConnectorInboundHistoryEntry {
+  id: string;
+  provider: "discord";
+  accountId: string;
+  messageId: string;
+  channelId: string;
+  guildId?: string;
+  userId: string;
+  username?: string;
+  receivedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  status: ConnectorInboundStatus;
+  requestPreview: string;
+  responsePreview?: string;
+  remoteReplyId?: string;
+  error?: string;
+  reason?: string;
+}
+
+export interface DiscordGatewayRuntimeStatus {
+  state: "stopped" | "connecting" | "connected" | "error";
+  accountId?: string;
+  botUserId?: string;
+  connectedAt?: string;
+  lastEventAt?: string;
+  lastError?: string;
+  reconnectCount: number;
+}
+
 export interface ConnectorAdapter {
-  test(credentials: Record<string, string>, signal?: AbortSignal): Promise<{ displayName?: string }>;
+  test(credentials: Record<string, string>, signal?: AbortSignal): Promise<{ displayName?: string; publicConfig?: Record<string, string> }>;
   publish(
     account: StoredConnectorAccount,
     credentials: Record<string, string>,

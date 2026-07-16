@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Clock3, Link2, Loader2, PlugZap, Save, Send, ShieldCheck, Trash2 } from "lucide-react";
-import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorProvider } from "@/services/connectors/connector.types";
+import { AlertCircle, Bot, CheckCircle2, Clock3, Link2, Loader2, MessageCircle, PlugZap, Save, Send, ShieldCheck, Trash2 } from "lucide-react";
+import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus } from "@/services/connectors/connector.types";
 
 interface StatusMessage { text: string; type: "success" | "error" | "info"; }
-interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; }
+interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; inboundHistory: ConnectorInboundHistoryEntry[]; discordGateway: DiscordGatewayRuntimeStatus; }
 
-const EMPTY: Overview = { catalog: [], accounts: [], history: [] };
+const EMPTY: Overview = { catalog: [], accounts: [], history: [], inboundHistory: [], discordGateway: { state: "stopped", reconnectCount: 0 } };
 
 async function responseJson(response: Response) {
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -27,12 +27,15 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
   const [overview, setOverview] = useState<Overview>(EMPTY);
   const [credentials, setCredentials] = useState<Record<string, Record<string, string>>>({});
   const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
+  const [publicConfigs, setPublicConfigs] = useState<Record<string, Record<string, string>>>({});
   const [busy, setBusy] = useState<string | null>("load");
 
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/connectors", { cache: "no-store" });
-      setOverview(await responseJson(response) as unknown as Overview);
+      const next = await responseJson(response) as unknown as Overview;
+      setOverview(next);
+      setPublicConfigs((current) => Object.fromEntries(next.accounts.map((account) => [account.provider, { ...account.publicConfig, ...current[account.provider] }])));
     } catch (error) {
       onStatusMessage({ text: `Falha ao carregar conectores: ${error instanceof Error ? error.message : String(error)}`, type: "error" });
     } finally { setBusy(null); }
@@ -54,7 +57,8 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
           provider: definition.provider,
           displayName: displayNames[definition.provider] || account?.displayName || definition.name,
           enabled: account?.enabled ?? true,
-          credentials: credentials[definition.provider] || {}
+          credentials: credentials[definition.provider] || {},
+          publicConfig: publicConfigs[definition.provider] || account?.publicConfig || {},
         })
       });
       await responseJson(response);
@@ -109,7 +113,7 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
       <div className="flex flex-col gap-3 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
           <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-200"><PlugZap size={15} className="text-emerald-400" /> Conectores</h2>
-          <p className="max-w-3xl text-[11px] leading-relaxed text-zinc-500">Conecte canais externos ao agente. Toda publicação feita pelo Supercomputer é exibida no plano e exige sua aprovação explícita.</p>
+          <p className="max-w-3xl text-[11px] leading-relaxed text-zinc-500">Conecte canais externos ao agente. Pedidos explícitos de envio publicam diretamente; no Discord, o modo bidirecional responde apenas a menções autorizadas.</p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-[10px] font-bold text-emerald-300"><ShieldCheck size={13} /> Credenciais cifradas localmente</div>
       </div>
@@ -146,6 +150,11 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
                       <input type={field.type === "password" ? "password" : field.type} value={credentials[definition.provider]?.[field.key] || ""} onChange={(event) => setCredentials((current) => ({ ...current, [definition.provider]: { ...current[definition.provider], [field.key]: event.target.value } }))} placeholder={account?.hasCredentials ? "Deixe em branco para manter o valor atual" : field.placeholder} className="w-full rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-emerald-500/40" />
                     </label>
                   ))}
+                  {definition.provider === "discord" && <DiscordInboundSettings
+                    config={publicConfigs.discord || account?.publicConfig || {}}
+                    status={overview.discordGateway}
+                    onChange={(next) => setPublicConfigs((current) => ({ ...current, discord: next }))}
+                  />}
                   {account?.lastError && <div className="flex items-start gap-2 rounded-lg border border-rose-500/15 bg-rose-500/[0.04] p-2.5 text-[10px] leading-relaxed text-rose-300"><AlertCircle size={12} className="mt-0.5 shrink-0" />{account.lastError}</div>}
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button disabled={!!busy} onClick={() => void save(definition)} className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-[10px] font-bold text-black disabled:opacity-40">{isBusy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar</button>
@@ -166,6 +175,37 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
           <div className="mt-4 divide-y divide-white/[0.05]">{overview.history.map((entry) => <div key={entry.id} className="flex items-start gap-3 py-3"><div className={`mt-0.5 ${entry.status === "published" ? "text-emerald-400" : "text-rose-400"}`}>{entry.status === "published" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-bold uppercase text-zinc-400">{entry.provider}</span><span className="text-[9px] text-zinc-600">{new Date(entry.publishedAt).toLocaleString("pt-BR")}</span></div><p className="mt-1 truncate text-[11px] text-zinc-500">{entry.textPreview || entry.error}</p></div>{entry.url && <a href={entry.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 hover:text-emerald-300"><Send size={11} /> Abrir</a>}</div>)}</div>
         )}
       </section>
+
+      <section className="rounded-2xl border border-white/[0.07] bg-[#111114] p-5">
+        <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-300"><MessageCircle size={14} /> Interações recebidas</h3><span className="text-[10px] text-zinc-600">Últimas {overview.inboundHistory.length}</span></div>
+        {overview.inboundHistory.length === 0 ? <p className="py-7 text-center text-[11px] text-zinc-600">Mencione o bot em um canal permitido. As respostas e bloqueios aparecerão aqui.</p> : (
+          <div className="mt-4 divide-y divide-white/[0.05]">{overview.inboundHistory.map((entry) => <div key={entry.id} className="flex items-start gap-3 py-3">
+            <div className={`mt-0.5 ${entry.status === "responded" ? "text-emerald-400" : entry.status === "failed" ? "text-rose-400" : "text-amber-400"}`}>{entry.status === "responded" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}</div>
+            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-bold text-zinc-400">{entry.username || entry.userId}</span><span className="text-[9px] uppercase text-zinc-600">{entry.status}</span><span className="text-[9px] text-zinc-600">{new Date(entry.receivedAt).toLocaleString("pt-BR")}</span></div><p className="mt-1 truncate text-[11px] text-zinc-500">{entry.requestPreview}</p>{(entry.error || entry.reason) && <p className="mt-1 text-[10px] text-rose-300">{entry.error || `Ignorado: ${entry.reason}`}</p>}</div>
+            {typeof entry.durationMs === "number" && <span className="text-[9px] text-zinc-600">{entry.durationMs} ms</span>}
+          </div>)}</div>
+        )}
+      </section>
     </div>
   );
+}
+
+function DiscordInboundSettings({ config, status, onChange }: { config: Record<string, string>; status: DiscordGatewayRuntimeStatus; onChange: (next: Record<string, string>) => void }) {
+  const update = (key: string, value: string) => onChange({ ...config, [key]: value });
+  const statusColor = status.state === "connected" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/[0.05]" : status.state === "error" ? "text-rose-400 border-rose-500/20 bg-rose-500/[0.05]" : "text-amber-400 border-amber-500/20 bg-amber-500/[0.05]";
+  return <div className="space-y-3 rounded-xl border border-indigo-500/15 bg-indigo-500/[0.035] p-3.5">
+    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde somente quando for mencionado em canais permitidos.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={config.inboundEnabled === "true"} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Ativar</label></div>
+    {config.inboundEnabled === "true" && <>
+      <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Gateway: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>
+      <ConfigField label="IDs de canais permitidos" value={config.allowedChannelIds || config.channelId || ""} placeholder="Um ou mais IDs separados por vírgula" onChange={(value) => update("allowedChannelIds", value)} />
+      <ConfigField label="IDs de servidores permitidos (opcional)" value={config.allowedGuildIds || config.guildId || ""} placeholder="Vazio usa apenas a allowlist de canais" onChange={(value) => update("allowedGuildIds", value)} />
+      <ConfigField label="IDs de usuários permitidos (opcional)" value={config.allowedUserIds || ""} placeholder="Vazio permite qualquer usuário do canal" onChange={(value) => update("allowedUserIds", value)} />
+      <ConfigField label="Máximo de pedidos por usuário/minuto" value={config.maxRequestsPerMinute || "5"} placeholder="5" onChange={(value) => update("maxRequestsPerMinute", value.replace(/\D/g, "").slice(0, 2))} />
+      <p className="text-[9px] leading-relaxed text-zinc-600">Use IDs copiados com o Modo desenvolvedor do Discord. O bot ignora mensagens sem menção e mensagens de outros bots.</p>
+    </>}
+  </div>;
+}
+
+function ConfigField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (value: string) => void }) {
+  return <label className="block space-y-1.5"><span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-indigo-500/40" /></label>;
 }
