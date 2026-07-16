@@ -79,7 +79,7 @@ body {
 .flow-cinematic-background {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -10;
   overflow: hidden;
   pointer-events: none;
   background: #09090b;
