@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, missingConnectorToolCallInstruction } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -45,4 +45,18 @@ test("resposta sem tool call gera correção obrigatória sem fingir publicaçã
   assert.match(instruction, /social:discord:publish/);
   assert.match(instruction, /CONTEUDO FINAL COMPLETO/);
   assert.match(instruction, /Nao escreva promessa/);
+});
+
+test("publicação concluída retorna confirmação determinística sem nova chamada ao modelo", () => {
+  const response = JSON.parse(connectorToolResultResponse("discord", { output: { remoteId: "123", url: "https://discord.com/channels/1/2/123" } }));
+  assert.equal(response.action, null);
+  assert.match(response.message, /Publicado no Discord com sucesso/);
+  assert.match(response.message, /123/);
+});
+
+test("falha do conector retorna erro real e afirma que nada foi enviado", () => {
+  const response = JSON.parse(connectorToolErrorResponse("bluesky", new Error("HTTP 429")));
+  assert.equal(response.action, null);
+  assert.match(response.message, /HTTP 429/);
+  assert.match(response.message, /Nada foi enviado/);
 });

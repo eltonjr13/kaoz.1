@@ -21,6 +21,24 @@ Em args.text, escreva o conteudo concreto solicitado pelo usuario. Nao escreva p
 `;
 }
 
+export function connectorToolResultResponse(provider: "discord" | "bluesky", result: unknown): string {
+  const record = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const output = record.output && typeof record.output === "object" && !Array.isArray(record.output)
+    ? record.output as Record<string, unknown>
+    : record;
+  const remoteId = typeof output.remoteId === "string" ? output.remoteId : "";
+  const url = typeof output.url === "string" ? output.url : "";
+  const destination = provider === "discord" ? "Discord" : "Bluesky";
+  const details = url ? ` [Abrir publicação](${url})` : remoteId ? ` ID: ${remoteId}.` : "";
+  return JSON.stringify({ message: `Publicado no ${destination} com sucesso.${details}`, action: null });
+}
+
+export function connectorToolErrorResponse(provider: "discord" | "bluesky", error: unknown): string {
+  const destination = provider === "discord" ? "Discord" : "Bluesky";
+  const message = error instanceof Error ? error.message : String(error);
+  return JSON.stringify({ message: `Não foi possível publicar no ${destination}: ${message}. Nada foi enviado.`, action: null });
+}
+
 export function compactInlinePrompt(prompt: string, maximum: number, latestUserPrompt = ""): string {
   if (prompt.length <= maximum) return prompt;
   const latest = latestUserPrompt.trim().slice(-4_000);

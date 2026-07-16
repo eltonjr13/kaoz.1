@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -851,8 +851,10 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       
       const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
       const result = await handler(call.args || {}, context);
+      if (connectorProvider) return connectorToolResultResponse(connectorProvider, result);
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {
+      if (connectorProvider) return connectorToolErrorResponse(connectorProvider, error);
       const message = error instanceof Error ? error.message : String(error);
       currentPrompt += `\n<TOOL_RESULT>{"error":${JSON.stringify(message)}}</TOOL_RESULT>\nTente novamente ou responda ao usuario.`;
     }
