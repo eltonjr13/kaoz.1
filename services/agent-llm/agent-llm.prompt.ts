@@ -10,6 +10,17 @@ export function connectorPublishProvider(text: string): "discord" | "bluesky" | 
   return null;
 }
 
+export function missingConnectorToolCallInstruction(provider: "discord" | "bluesky", previousOutput: string): string {
+  return `
+
+[CORRECAO OBRIGATORIA - PUBLICACAO NAO EXECUTADA]
+O usuario pediu explicitamente para enviar/publicar no ${provider}. Sua resposta anterior nao chamou a ferramenta e, portanto, nada foi publicado.
+Resposta anterior: ${JSON.stringify(previousOutput.slice(0, 2_000))}
+Agora responda SOMENTE com <TOOL_CALL>{"toolId":"social:${provider}:publish","args":{"text":"CONTEUDO FINAL COMPLETO"}}</TOOL_CALL>.
+Em args.text, escreva o conteudo concreto solicitado pelo usuario. Nao escreva promessa, introducao, explicacao, "vou enviar" ou texto fora de TOOL_CALL.
+`;
+}
+
 export function compactInlinePrompt(prompt: string, maximum: number, latestUserPrompt = ""): string {
   if (prompt.length <= maximum) return prompt;
   const latest = latestUserPrompt.trim().slice(-4_000);

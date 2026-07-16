@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, connectorPublishProvider } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, missingConnectorToolCallInstruction } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -37,4 +37,12 @@ test("pedido direto de publicação seleciona o conector sem confirmação redun
   assert.equal(connectorPublishProvider("Publique no Bluesky: novidade lançada"), "bluesky");
   assert.equal(connectorPublishProvider("Explique como funciona o Discord"), null);
   assert.equal(connectorPublishProvider("Escreva uma mensagem para o Discord, mas não envie"), null);
+});
+
+test("resposta sem tool call gera correção obrigatória sem fingir publicação", () => {
+  const instruction = missingConnectorToolCallInstruction("discord", "Pode deixar, vou mandar agora!");
+  assert.match(instruction, /PUBLICACAO NAO EXECUTADA/);
+  assert.match(instruction, /social:discord:publish/);
+  assert.match(instruction, /CONTEUDO FINAL COMPLETO/);
+  assert.match(instruction, /Nao escreva promessa/);
 });

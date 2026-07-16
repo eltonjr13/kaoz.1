@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -829,7 +829,16 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   for (let loop = 0; loop < 10; loop++) {
     const cliOutput = await executor(currentPrompt);
     const match = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
-    if (!match) return cliOutput;
+    if (!match) {
+      if (connectorProvider && loop === 0) {
+        currentPrompt += missingConnectorToolCallInstruction(connectorProvider, cliOutput);
+        continue;
+      }
+      if (connectorProvider) {
+        return JSON.stringify({ message: `Não consegui executar a publicação no ${connectorProvider}: o modelo não chamou a ferramenta autorizada. Nada foi enviado.`, action: null });
+      }
+      return cliOutput;
+    }
 
     try {
       const call = JSON.parse(match[1]) as { toolId?: string; serverId?: string; toolName?: string; args?: Record<string, unknown> };

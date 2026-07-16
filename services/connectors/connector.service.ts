@@ -115,10 +115,12 @@ export class ConnectorService {
       const publishedAt = new Date().toISOString();
       const output = { ...result, provider, accountId: account.id, publishedAt };
       await connectorStore.appendHistory({ ...output, id: crypto.randomUUID(), status: "published", textPreview: preview });
+      console.info(`[ConnectorPublish] provider=${provider} accountId=${account.id} remoteId=${output.remoteId} status=published`);
       return output;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await connectorStore.appendHistory({ id: crypto.randomUUID(), remoteId: "", provider, accountId: account.id, publishedAt: new Date().toISOString(), status: "failed", textPreview: preview, error: message });
+      console.error(`[ConnectorPublish] provider=${provider} accountId=${account.id} status=failed error=${message}`);
       throw error;
     }
   }
