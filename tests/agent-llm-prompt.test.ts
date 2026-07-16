@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, discordPublishIntentState } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, connectorPublishProvider } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -32,8 +32,9 @@ test("reduz schema de ferramenta sem perder campos operacionais", () => {
   });
 });
 
-test("publicação no Discord exige confirmação explícita", () => {
-  assert.equal(discordPublishIntentState("Envie uma mensagem no Discord"), "needs_confirmation");
-  assert.equal(discordPublishIntentState("Confirmo, publique agora no Discord: teste do agente"), "confirmed");
-  assert.equal(discordPublishIntentState("Explique como funciona o Discord"), "none");
+test("pedido direto de publicação seleciona o conector sem confirmação redundante", () => {
+  assert.equal(connectorPublishProvider("Envie uma mensagem no Discord"), "discord");
+  assert.equal(connectorPublishProvider("Publique no Bluesky: novidade lançada"), "bluesky");
+  assert.equal(connectorPublishProvider("Explique como funciona o Discord"), null);
+  assert.equal(connectorPublishProvider("Escreva uma mensagem para o Discord, mas não envie"), null);
 });

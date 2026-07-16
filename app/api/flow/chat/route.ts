@@ -21,7 +21,7 @@ import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-person
 import { materializeResponseArtifacts } from "@/services/artifacts/artifact.service";
 import { skillRegistry } from "@/services/skills/skill.registry";
 import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
-import { discordPublishIntentState } from "@/services/agent-llm/agent-llm.prompt";
+import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -219,7 +219,7 @@ function needsExternalTools(messages: ChatMessage[]): boolean {
   const selectedSkill = skillRegistry.select(text);
   const skillHasExecutableTools = selectedSkill.id !== "general.execute-goal" &&
     (Boolean(selectedSkill.tools?.length) || Boolean(selectedSkill.preferredTools.length));
-  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || discordPublishIntentState(normalized) !== "none" || skillHasExecutableTools;
+  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || connectorPublishProvider(normalized) !== null || skillHasExecutableTools;
 }
 
 function extractMcpText(toolResult: any): string {

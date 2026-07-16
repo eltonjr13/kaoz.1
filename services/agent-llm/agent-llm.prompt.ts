@@ -1,11 +1,13 @@
 export const ANTIGRAVITY_INLINE_PROMPT_BUDGET = 27_500;
-const DISCORD_PUBLISH_INTENT_PATTERN = /\bdiscord\b[\s\S]*\b(publicar|publique|postar|poste|enviar|envie|mandar|mande)\b|\b(publicar|publique|postar|poste|enviar|envie|mandar|mande)\b[\s\S]*\bdiscord\b/;
-const EXPLICIT_PUBLISH_CONFIRMATION_PATTERN = /\b(confirmo|autorizo|pode publicar|pode enviar|publique agora|envie agora)\b/;
+const PUBLISH_VERB_PATTERN = /\b(publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/;
 
-export function discordPublishIntentState(text: string): "none" | "needs_confirmation" | "confirmed" {
+export function connectorPublishProvider(text: string): "discord" | "bluesky" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (!DISCORD_PUBLISH_INTENT_PATTERN.test(normalized)) return "none";
-  return EXPLICIT_PUBLISH_CONFIRMATION_PATTERN.test(normalized) ? "confirmed" : "needs_confirmation";
+  if (/\b(nao|não|sem)\s+(?:quero\s+que\s+)?(?:publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/.test(normalized)) return null;
+  if (!PUBLISH_VERB_PATTERN.test(normalized)) return null;
+  if (/\bdiscord\b/.test(normalized)) return "discord";
+  if (/\b(bluesky|blue sky)\b/.test(normalized)) return "bluesky";
+  return null;
 }
 
 export function compactInlinePrompt(prompt: string, maximum: number, latestUserPrompt = ""): string {
