@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
+import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
 import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
@@ -166,7 +166,8 @@ export class DiscordGatewayManager {
       await fetch(`${API_ROOT}/channels/${message.channel_id}/typing`, { method: "POST", headers: authHeaders(this.token), signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
       const selectedSkill = skillRegistry.select(decision.prompt);
       const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
-      const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, recent }), {
+      const agentIdentity = await getConfiguredAgentIdentity();
+      const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent }), {
         useExternalTools: useTools,
         toolIntentText: decision.prompt,
       });

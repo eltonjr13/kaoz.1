@@ -784,6 +784,17 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   return runAgentCli(settings, prompt, options);
 }
 
+export async function getConfiguredAgentIdentity(): Promise<{ provider: string; model: string }> {
+  const settings = await readAgentLLMSettings();
+  if (settings.provider === "codex-cli") return { provider: settings.provider, model: settings.codexModel };
+  if (settings.provider === "grok-cli") return { provider: settings.provider, model: settings.grokModel };
+  if (settings.provider === "antigravity-cli") return { provider: settings.provider, model: settings.antigravityModel };
+  if (settings.provider === "browser") return { provider: settings.provider, model: "sessão autenticada do navegador" };
+  const apiProvider = settings.provider === "zenmux-grok" ? "zenmux" : settings.provider;
+  const config = await getApiProviderConfig(apiProvider);
+  return { provider: settings.provider, model: config.model };
+}
+
 async function runCliWithToolsLoop(prompt: string, options: QueryOptions, executor: (currentPrompt: string) => Promise<string>): Promise<string> {
   const { toolRegistry } = await import("../tools/tool.registry");
   const allTools = await toolRegistry.list();

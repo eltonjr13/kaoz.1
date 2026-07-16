@@ -50,6 +50,7 @@ export function evaluateDiscordInbound(
 export function buildDiscordAgentPrompt(input: {
   prompt: string;
   username: string;
+  agentIdentity: { provider: string; model: string };
   recent: Array<{ role: "user" | "assistant"; content: string }>;
 }): string {
   const context = input.recent.slice(-6).map((item) => `${item.role === "user" ? "USUARIO" : "MRCHICKEN"}: ${item.content.slice(0, 1_500)}`).join("\n");
@@ -59,6 +60,9 @@ Você pode usar Markdown compatível com Discord. Não use @everyone, @here ou m
 Não diga que executou ações que não foram realmente executadas. A resposta será enviada automaticamente como reply; não use a ferramenta social:discord:publish.
 
 CONTEXTO RECENTE DESTA CONVERSA:
+PROVEDOR E MODELO EM USO: ${input.agentIdentity.provider} / ${input.agentIdentity.model}
+Se perguntarem qual modelo ou provedor voce usa, responda somente com esses dados efetivamente configurados; nao invente outro nome.
+
 ${context || "Sem contexto anterior."}
 
 USUÁRIO ATUAL: ${input.username}

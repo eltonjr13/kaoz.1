@@ -51,9 +51,15 @@ test("bloqueia mensagem sem menção, canal ou usuário fora da allowlist", () =
 
 test("normaliza IDs, contexto e resposta do modelo", () => {
   assert.deepEqual([...parseSnowflakeList("1527111111111111111, inválido;1527222222222222222")], ["1527111111111111111", "1527222222222222222"]);
-  const prompt = buildDiscordAgentPrompt({ prompt: "resuma isso", username: "Elton", recent: [{ role: "assistant", content: "contexto" }] });
+  const prompt = buildDiscordAgentPrompt({
+    prompt: "resuma isso",
+    username: "Elton",
+    agentIdentity: { provider: "iamhc", model: "DeepSeek-V4-Flash" },
+    recent: [{ role: "assistant", content: "contexto" }],
+  });
   assert.match(prompt, /resuma isso/);
   assert.match(prompt, /contexto/);
+  assert.match(prompt, /DeepSeek-V4-Flash/);
   assert.equal(normalizeDiscordAgentResponse('{"message":"Resposta pronta","action":null}'), "Resposta pronta");
   assert.equal(normalizeDiscordAgentResponse("<TOOL_CALL>{}</TOOL_CALL>"), "Não consegui gerar uma resposta agora.");
 });
