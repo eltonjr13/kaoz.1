@@ -3300,13 +3300,7 @@ export default function FlowDashboardPage() {
   };
 
   return (
-    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-[#09090B] text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      {/* ── Backgrounds ── */}
-      <div className="flow-cinematic-background" aria-hidden="true">
-        <div className="flow-cinematic-background__art" />
-        <div className="flow-cinematic-background__overlay" />
-        <div className="flow-cinematic-background__grain" />
-      </div>
+    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-transparent text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
       {/* ── Header ── */}
       <header

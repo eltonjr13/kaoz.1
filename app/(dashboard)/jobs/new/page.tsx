@@ -52,7 +52,7 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
     await listLocalAvatars();
 
   return (
-    <div className="min-h-screen bg-[#080808] px-4 py-8 text-white md:px-8 lg:px-12">
+    <div className="min-h-screen bg-transparent px-4 py-8 text-white md:px-8 lg:px-12">
       <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex max-w-3xl flex-col gap-3">

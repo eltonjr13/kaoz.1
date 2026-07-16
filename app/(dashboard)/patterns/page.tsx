@@ -69,17 +69,7 @@ export default function PatternsPage() {
     terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [globalLogs]);
 
-  // Auto-scroll background page element to deep dark
-  useEffect(() => {
-    const mainEl = document.querySelector('main');
-    if (mainEl) {
-      const originalBg = mainEl.style.backgroundColor;
-      mainEl.style.backgroundColor = '#080808';
-      return () => {
-        mainEl.style.backgroundColor = originalBg;
-      };
-    }
-  }, []);
+
 
   // Clean memory object URLs on unmount
   useEffect(() => {
@@ -441,25 +431,9 @@ export default function PatternsPage() {
 
   return (
     <div
-      className="relative isolate min-h-screen overflow-y-auto bg-[#080808] pb-48 pt-10 text-white select-none"
+      className="relative isolate min-h-screen overflow-y-auto bg-transparent pb-48 pt-10 text-white select-none"
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      {/* ── Background: Watermark image layer ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          minHeight: "100vh",
-          zIndex: 0,
-          backgroundImage: "url('/mrchicken-anime-bg.jpeg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "local",
-          opacity: 0.05,
-          pointerEvents: "none",
-        }}
-      />
 
       {/* ── Main Content ── */}
       <div className="relative mx-auto w-full max-w-[1200px] px-6 sm:px-8 lg:px-10" style={{ zIndex: 1 }}>

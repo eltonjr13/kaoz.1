@@ -1789,7 +1789,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-4 py-6 pb-20 sm:px-6 lg:px-8 lg:py-8 select-none overflow-y-auto" style={{ backgroundColor: '#0a0a0a', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-4 py-6 pb-20 sm:px-6 lg:px-8 lg:py-8 select-none overflow-y-auto" style={{ backgroundColor: 'transparent', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.07] pb-6 mb-6 gap-4">

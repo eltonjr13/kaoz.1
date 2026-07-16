@@ -160,7 +160,7 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-screen bg-[#080808] text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Mobile top bar */}
       <div
         className="fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"

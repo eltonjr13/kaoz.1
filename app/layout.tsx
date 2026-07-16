@@ -19,7 +19,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>{children}</body>
+      <body className={inter.className} suppressHydrationWarning>
+        <div className="flow-cinematic-background" aria-hidden="true">
+          <div className="flow-cinematic-background__art" />
+          <div className="flow-cinematic-background__overlay" />
+          <div className="flow-cinematic-background__grain" />
+        </div>
+        {children}
+      </body>
     </html>
   );
 }
