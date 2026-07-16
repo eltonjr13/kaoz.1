@@ -251,7 +251,7 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
         <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-[10px] font-bold text-emerald-300"><ShieldCheck size={13} /> Credenciais cifradas localmente</div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
         {overview.catalog.map((definition) => {
           const account = accountByProvider.get(definition.provider);
           const health = healthLabel(account);
