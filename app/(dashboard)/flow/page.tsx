@@ -454,6 +454,22 @@ const getFlowMediaUrl = (mediaPath?: string | null) => {
   return `/api/flow/media?path=${encodeURIComponent(mediaPath)}`;
 };
 
+const createImageFileFromDataUrl = (dataUrl: string) => {
+  const [metadata, encodedData] = dataUrl.split(",", 2);
+  if (!metadata || !encodedData) return null;
+
+  const mimeType = metadata.match(/^data:(.*?);base64$/)?.[1] || "image/png";
+  try {
+    const binary = atob(encodedData);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const extension = mimeType.split("/")[1] || "png";
+    return new File([bytes], `imagem-anexada.${extension}`, { type: mimeType });
+  } catch {
+    return null;
+  }
+};
+
 const getFlowDownloadUrl = (mediaPath?: string | null) => {
   const url = getFlowMediaUrl(mediaPath);
   if (!url) return "";
@@ -978,6 +994,7 @@ export default function FlowDashboardPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [expandedResultImage, setExpandedResultImage] = useState<{ src: string; alt: string; downloadUrl: string } | null>(null);
   const [draftMessage, setDraftMessage] = useState("");
+  const [editAttachmentFile, setEditAttachmentFile] = useState<File | null>(null);
   const [availableSkills, setAvailableSkills] = useState<{id:string,name:string,description?:string}[]>([]);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashSearch, setSlashSearch] = useState("");
@@ -3096,6 +3113,7 @@ export default function FlowDashboardPage() {
     if (messageIndex < 0) return;
 
     setEditing3dImageMessageId(null);
+    setEditAttachmentFile(null);
     setDraftMessage("");
     setChatMessages(chatMessages.slice(0, messageIndex + 1));
   };
@@ -3108,6 +3126,7 @@ export default function FlowDashboardPage() {
     if (!message || message.role !== "user") return;
 
     setDraftMessage(getEditableMessageContent(message.content));
+    setEditAttachmentFile(message.attachedImage ? createImageFileFromDataUrl(message.attachedImage) : null);
     setEditing3dImageMessageId(null);
     setChatMessages(chatMessages.slice(0, messageIndex));
   };
@@ -4020,8 +4039,12 @@ export default function FlowDashboardPage() {
               isLoading={isLoading}
               value={draftMessage}
               onValueChange={setDraftMessage}
+              initialFile={editAttachmentFile}
               placeholder={editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode && image3dReadyMode ? "Anexe a imagem pronta para gerar apenas os ângulos..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
-              onSend={(message, files) => handleSendMessage(message, (files ?? []).map(f => ({ file: f })), [])}
+              onSend={(message, files) => {
+                setEditAttachmentFile(null);
+                void handleSendMessage(message, (files ?? []).map(f => ({ file: f })), []);
+              }}
               onOptionsClick={() => setShowSettings(!showSettings)}
               showOptions={showSettings}
               useCortexMemory={useCortexMemory}

@@ -419,6 +419,7 @@ const CustomDivider: React.FC = () => (
 // Main PromptInputBox Component
 interface PromptInputBoxProps {
   onSend?: (message: string, files?: File[]) => void;
+  initialFile?: File | null;
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
@@ -478,6 +479,7 @@ const LatencyTimer = ({ isActive }: { isActive: boolean }) => {
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
   const {
     onSend = () => {},
+    initialFile = null,
     isLoading = false,
     placeholder = "Type your message here...",
     className,
@@ -519,6 +521,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   React.useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  React.useEffect(() => {
+    if (!initialFile) return;
+    setFiles([initialFile]);
+    const reader = new FileReader();
+    reader.onload = (event) => setFilePreviews({ [initialFile.name]: event.target?.result as string });
+    reader.readAsDataURL(initialFile);
+  }, [initialFile]);
   
   React.useEffect(() => {
     showCanvasRef.current = showCanvas;
