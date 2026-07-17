@@ -1705,7 +1705,9 @@ export default function FlowDashboardPage() {
     if (mainEl) {
       const originalBg = mainEl.style.backgroundColor;
       const originalOverflow = mainEl.style.overflow;
-      mainEl.style.backgroundColor = '#080808';
+      // The cinematic background is rendered by this route. Keep the shared
+      // dashboard container transparent so it is not painted over.
+      mainEl.style.backgroundColor = 'transparent';
       mainEl.style.overflow = 'hidden';
       return () => {
         bodyEl.style.overflow = originalBodyOverflow;
@@ -3301,6 +3303,11 @@ export default function FlowDashboardPage() {
 
   return (
     <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-transparent text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div className="flow-cinematic-background" aria-hidden="true">
+        <div className="flow-cinematic-background__art" />
+        <div className="flow-cinematic-background__overlay" />
+        <div className="flow-cinematic-background__grain" />
+      </div>
 
       {/* ── Header ── */}
       <header
