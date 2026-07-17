@@ -8,6 +8,7 @@ import path from "node:path";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import {
+  resolveTurnaroundReferencePolicy,
   resolveVisualReference,
   type ImageGenerationOperation,
   type ImageReferenceSource,
@@ -617,13 +618,12 @@ export class FlowAgent {
 
     const viewsToGenerate = referencePath ? views.filter(view => view !== 'front') : views;
 
-    for (const view of viewsToGenerate) {
+    for (const [viewIndex, view] of viewsToGenerate.entries()) {
       const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
-      const isFirstGeneratedView = view === viewsToGenerate[0];
-      const hasInputReference = Boolean(options.inputReferenceImage);
-      const useExistingReferenceAsset = hasInputReference
-        ? false
-        : options.useExistingFlowReference || !isFirstGeneratedView;
+      const referencePolicy = resolveTurnaroundReferencePolicy(
+        viewIndex,
+        options.useExistingFlowReference === true
+      );
 
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);
@@ -633,8 +633,8 @@ export class FlowAgent {
         quantity: '1x',
         model: options.imageModel || 'Nano Banana Pro',
         referenceImage: referencePath,
-        forceReferenceUpload: isFirstGeneratedView,
-        useExistingFlowReference: useExistingReferenceAsset
+        forceReferenceUpload: referencePolicy.forceReferenceUpload,
+        useExistingFlowReference: referencePolicy.useExistingFlowReference
       });
 
       const viewPaths = this.getImageResultPaths(viewResult);

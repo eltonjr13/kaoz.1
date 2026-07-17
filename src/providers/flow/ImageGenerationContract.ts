@@ -48,3 +48,45 @@ export function resolveVisualReference(input: ResolveVisualReferenceInput): stri
   if (input.useAvatarVisualReference) return input.avatarReferenceImage;
   return undefined;
 }
+
+export interface TurnaroundReferencePolicy {
+  forceReferenceUpload: boolean;
+  useExistingFlowReference: boolean;
+}
+
+/**
+ * A turnaround package uploads a new reference only for its first generated
+ * angle. Every later angle reuses the asset already stored in the same Flow
+ * project. References that already came from that project never need upload.
+ */
+export function resolveTurnaroundReferencePolicy(
+  viewIndex: number,
+  referenceAlreadyInFlow = false
+): TurnaroundReferencePolicy {
+  const isFirstGeneratedView = viewIndex === 0;
+  return {
+    forceReferenceUpload: isFirstGeneratedView && !referenceAlreadyInFlow,
+    useExistingFlowReference: referenceAlreadyInFlow || !isFirstGeneratedView,
+  };
+}
+
+export type ReferenceAttachmentStrategy = 'reuse-attached' | 'select-existing' | 'upload';
+
+export interface ResolveReferenceAttachmentStrategyInput {
+  alreadyAttached: boolean;
+  useExistingFlowReference: boolean;
+  forceReferenceUpload: boolean;
+}
+
+/**
+ * Distinguishes uploading a file from selecting an asset that was uploaded in
+ * an earlier generation. This prevents one media-library copy per 3D angle.
+ */
+export function resolveReferenceAttachmentStrategy(
+  input: ResolveReferenceAttachmentStrategyInput
+): ReferenceAttachmentStrategy {
+  if (input.useExistingFlowReference && !input.forceReferenceUpload) {
+    return input.alreadyAttached ? 'reuse-attached' : 'select-existing';
+  }
+  return 'upload';
+}

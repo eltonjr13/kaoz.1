@@ -6,12 +6,14 @@ import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './Flo
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
-import { imageOperationRequiresReference } from './ImageGenerationContract';
+import {
+  imageOperationRequiresReference,
+  resolveReferenceAttachmentStrategy,
+} from './ImageGenerationContract';
 
 const PROMPT_TEXTBOX_SELECTOR = 'div[role="textbox"], div[contenteditable="true"], [contenteditable="true"], textarea';
 
 export class FlowImageGenerator {
-  private lastUploadedReferenceImage: string | null = null;
   private lastProjectUrl: string | null = null;
 
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
@@ -190,7 +192,8 @@ export class FlowImageGenerator {
     page: Page,
     dialog: Locator,
     referenceImage: string,
-    requireUploadedAsset: boolean
+    requireUploadedAsset: boolean,
+    allowFirstThumbnailFallback = true
   ): Promise<void> {
     const namedAsset = requireUploadedAsset
       ? await this.waitForUploadedReferenceAsset(page, dialog, referenceImage)
@@ -205,18 +208,14 @@ export class FlowImageGenerator {
       throw new Error('O upload da imagem de referencia nao apareceu na lista do Flow. Geracao bloqueada para evitar anexar uma imagem anterior.');
     }
 
+    if (!allowFirstThumbnailFallback) {
+      throw new Error('A referencia enviada no primeiro angulo nao foi localizada no projeto do Flow para reutilizacao.');
+    }
+
     logger.warn('Nao encontrei o recurso de referencia pelo nome no Flow. Selecionando o primeiro thumbnail visivel como fallback.');
     const thumbnail = dialog.locator('img').filter({ visible: true }).first();
     await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
     await thumbnail.click();
-  }
-
-  private shouldReuseExistingAttachment(
-    alreadyAttached: boolean,
-    skipUpload: boolean,
-    forceReferenceSelection: boolean
-  ): boolean {
-    return alreadyAttached && skipUpload && !forceReferenceSelection;
   }
 
   private async clearPromptDraft(page: Page): Promise<void> {
@@ -382,7 +381,6 @@ export class FlowImageGenerator {
     const promptPlusBtn = page.locator('button').filter({ hasText: 'add_2' }).first();
     await promptPlusBtn.waitFor({ state: 'visible', timeout: 15000 });
 
-    this.lastUploadedReferenceImage = null;
   }
 
   private async confirmReferenceInclude(dialog: Locator): Promise<void> {
@@ -429,7 +427,6 @@ export class FlowImageGenerator {
     if (operation !== 'simple') return;
     const hasStaleReference = await this.isReferenceImageAttached(page);
     if (!hasStaleReference) {
-      this.lastUploadedReferenceImage = null;
       return;
     }
 
@@ -440,7 +437,6 @@ export class FlowImageGenerator {
       logger.warn('Nao foi possivel limpar a referencia antiga no workspace atual. Abrindo um workspace limpo.', error);
       await this.openCleanWorkspaceForReferenceUpload(page);
     }
-    this.lastUploadedReferenceImage = null;
   }
 
   /**
@@ -449,23 +445,27 @@ export class FlowImageGenerator {
   private async uploadReferenceImage(
     page: Page,
     referenceImage: string,
-    skipUpload = false,
     useExistingFlowReference = false,
     forceReferenceSelection = false
   ): Promise<void> {
-    logger.info(`Upload de imagem de referência solicitado: ${referenceImage} (skipUpload: ${skipUpload})`);
+    logger.info(`Preparacao de imagem de referencia solicitada: ${referenceImage} (reuse: ${useExistingFlowReference})`);
 
-    // Only reuse an existing attachment when this run explicitly targets the same Flow reference.
     const alreadyAttached = await this.isReferenceImageAttached(page);
-    if (this.shouldReuseExistingAttachment(alreadyAttached, skipUpload, forceReferenceSelection)) {
+    const attachmentStrategy = resolveReferenceAttachmentStrategy({
+      alreadyAttached,
+      useExistingFlowReference,
+      forceReferenceUpload: forceReferenceSelection,
+    });
+
+    if (attachmentStrategy === 'reuse-attached') {
       logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
       return;
     }
 
     if (alreadyAttached) {
       logger.info('Ja existe uma imagem no prompt, mas a referencia solicitada precisa ser anexada novamente.');
-    } else if (useExistingFlowReference) {
-      logger.info('Referencia existente solicitada, mas nenhum anexo confiavel foi detectado. Reenviando o arquivo local para evitar midia antiga.');
+    } else if (attachmentStrategy === 'select-existing') {
+      logger.info('Reutilizando a referencia ja enviada ao projeto do Flow, sem novo upload.');
     }
     await this.preparePromptForFreshReference(page);
 
@@ -474,7 +474,9 @@ export class FlowImageGenerator {
     try {
       await promptPlusBtn.waitFor({ state: 'visible', timeout: 15000 });
 
-      const uploadedFileThisRun = await this.prepareReferenceFile(page, fileInput, referenceImage);
+      const uploadedFileThisRun = attachmentStrategy === 'upload'
+        ? await this.prepareReferenceFile(page, fileInput, referenceImage)
+        : false;
 
       logger.info('Abrindo menu de mídia do prompt...');
       await promptPlusBtn.click();
@@ -486,7 +488,13 @@ export class FlowImageGenerator {
 
       // Avoid search because Flow can truncate filenames in the media list.
       logger.info('Selecionando recurso de referencia na lista...');
-      await this.selectReferenceAsset(page, dialog, referenceImage, uploadedFileThisRun);
+      await this.selectReferenceAsset(
+        page,
+        dialog,
+        referenceImage,
+        uploadedFileThisRun,
+        attachmentStrategy !== 'select-existing'
+      );
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');
@@ -603,8 +611,7 @@ export class FlowImageGenerator {
       }
 
       if (activeProjectUrl !== this.lastProjectUrl) {
-        logger.info(`URL do workspace alterada ou nova sessão detectada: ${activeProjectUrl}. Resetando cache de upload.`);
-        this.lastUploadedReferenceImage = null;
+        logger.info(`URL do workspace alterada ou nova sessão detectada: ${activeProjectUrl}.`);
         this.lastProjectUrl = activeProjectUrl;
       }
 
@@ -759,17 +766,12 @@ export class FlowImageGenerator {
 
       // 4.5. Upload reference image if provided
       if (options?.referenceImage) {
-        const skipUpload = options.useExistingFlowReference === true
-          && !options.forceReferenceUpload
-          && options.referenceImage === this.lastUploadedReferenceImage;
         await this.uploadReferenceImage(
           page,
           options.referenceImage,
-          skipUpload,
           options.useExistingFlowReference,
           options.forceReferenceUpload
         );
-        this.lastUploadedReferenceImage = options.referenceImage;
       }
 
       await imageCards().evaluateAll((images, marker) => {
