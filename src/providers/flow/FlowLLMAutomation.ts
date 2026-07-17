@@ -322,11 +322,15 @@ export class FlowLLMAutomation {
     referenceImagePath?: string,
     options: QueryWebLLMOptions = {}
   ): Promise<string> {
-    // The named models from the chat selector always use their own local CLI.
-    // No API or Playwright/browser fallback is allowed for this path.
+    // The chat model only writes the structured generation prompt. The actual
+    // reference file is retained by the 3D/image flow and attached directly to
+    // the image generator, so it must not be passed to a text-only CLI.
     if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
-      return this.cleanLLMResponse(await runSelectedChatModelCli(model, prompt, {
-        referenceImagePath,
+      const promptForReferencedGeneration = referenceImagePath
+        ? `${prompt}\n\n[IMAGEM DE REFERENCIA]\nA imagem anexada sera enviada diretamente ao gerador de imagem. Nao tente analisar, descrever ou gerar a imagem aqui. Retorne apenas a acao JSON com um optimizedPrompt para transformar fielmente a referencia em um objeto/personagem 3D, preservando identidade, proporcoes, materiais e detalhes visuais.`
+        : prompt;
+      return this.cleanLLMResponse(await runSelectedChatModelCli(model, promptForReferencedGeneration, {
+        referenceImagePath: undefined,
         onTextChunk: options.onTextChunk,
         useExternalTools: options.useExternalTools,
         toolIntentText: options.toolIntentText,
