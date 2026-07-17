@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     "192.169.0.104:3000",
     "localhost:3000"
   ],
-  serverExternalPackages: ["@modelcontextprotocol/sdk", "cross-spawn"],
+  serverExternalPackages: ["@modelcontextprotocol/sdk", "cross-spawn", "sharp"],
   logging: {
     incomingRequests: {
       ignore: [
