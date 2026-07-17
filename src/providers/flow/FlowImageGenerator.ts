@@ -89,7 +89,6 @@ export class FlowImageGenerator {
    */
   private async isReferenceImageAttached(page: Page): Promise<boolean> {
     try {
-      // eslint-disable-next-line complexity
       const isAttached = await page.evaluate((promptSelector) => {
         const visibleTextboxes = Array.from(document.querySelectorAll<HTMLElement>(promptSelector))
           .filter((element) => {
@@ -101,31 +100,25 @@ export class FlowImageGenerator {
         const textbox = visibleTextboxes[0];
         if (!textbox) return false;
 
-        const textboxRect = textbox.getBoundingClientRect();
-        const isPromptThumbnail = (image: HTMLImageElement) => {
+        let composer: HTMLElement | null = textbox.parentElement;
+        for (let depth = 0; depth < 6 && composer && composer !== document.body; depth++) {
+          const hasComposerAction = Array.from(composer.querySelectorAll<HTMLElement>('button, [role="button"]'))
+            .some((button) => /add_2|arrow_forward/i.test(button.textContent || ''));
+          if (hasComposerAction) break;
+          composer = composer.parentElement;
+        }
+        if (!composer || composer === document.body) return false;
+
+        return Array.from(composer.querySelectorAll<HTMLImageElement>('img')).some((image) => {
           const rect = image.getBoundingClientRect();
           const style = window.getComputedStyle(image);
-          const isVisible = rect.width > 20 && rect.height > 20 && style.display !== "none" && style.visibility !== "hidden";
-          const isNearPrompt = rect.bottom >= textboxRect.top - 360 && rect.top <= textboxRect.bottom + 160;
-          return isVisible && isNearPrompt && rect.width < 280 && rect.height < 280;
-        };
-
-        if (Array.from(document.querySelectorAll<HTMLImageElement>('img')).some(isPromptThumbnail)) return true;
-
-        let parent = textbox.parentElement;
-        for (let i = 0; i < 8 && parent && parent !== document.body; i++) {
-          const containerImgs = parent.querySelectorAll('img');
-          for (const img of Array.from(containerImgs)) {
-            const src = img.src || '';
-            const isRef = /blob|googleusercontent|usercontent\.google|data:image/i.test(src);
-            const rect = img.getBoundingClientRect();
-            if (isRef || (rect.width > 20 && rect.height > 20)) {
-              return true;
-            }
-          }
-          parent = parent.parentElement;
-        }
-        return false;
+          return rect.width > 20
+            && rect.height > 20
+            && rect.width < 280
+            && rect.height < 280
+            && style.display !== 'none'
+            && style.visibility !== 'hidden';
+        });
       }, PROMPT_TEXTBOX_SELECTOR);
       return isAttached;
     } catch (err) {
@@ -253,13 +246,21 @@ export class FlowImageGenerator {
         .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
       const textbox = textboxes[0];
       if (!textbox) return { removed: 0, remaining: 0 };
-      const textboxRect = textbox.getBoundingClientRect();
+
+      let composer: HTMLElement | null = textbox.parentElement;
+      for (let depth = 0; depth < 6 && composer && composer !== document.body; depth++) {
+        const hasComposerAction = Array.from(composer.querySelectorAll<HTMLElement>('button, [role="button"]'))
+          .some((button) => /add_2|arrow_forward/i.test(button.textContent || ''));
+        if (hasComposerAction) break;
+        composer = composer.parentElement;
+      }
+      if (!composer || composer === document.body) return { removed: 0, remaining: 0 };
+      const promptComposer = composer;
 
       const isReferenceImage = (image: HTMLImageElement) => {
         const rect = image.getBoundingClientRect();
         const isThumbnailSize = rect.width > 20 && rect.height > 20 && rect.width < 280 && rect.height < 280;
-        const isPromptArea = rect.bottom >= textboxRect.top - 360 && rect.top <= textboxRect.bottom + 160;
-        return isThumbnailSize && isPromptArea && isVisibleElement(image);
+        return isThumbnailSize && isVisibleElement(image);
       };
       const looksLikeRemoveControl = (element: HTMLElement) => {
         const text = element.textContent?.trim() || "";
@@ -279,7 +280,7 @@ export class FlowImageGenerator {
         for (const [x, y] of points) {
           const target = document.elementFromPoint(x, y);
           const control = target?.closest<HTMLElement>("button, [role='button']");
-          if (control && isVisibleElement(control)) {
+          if (control && promptComposer.contains(control) && isVisibleElement(control)) {
             control.click();
             return true;
           }
@@ -288,7 +289,7 @@ export class FlowImageGenerator {
       };
       const findControlInCard = (image: HTMLImageElement) => {
         let parent: HTMLElement | null = image.parentElement;
-        for (let depth = 0; depth < 6 && parent && parent !== document.body; depth++) {
+        for (let depth = 0; depth < 6 && parent && promptComposer.contains(parent); depth++) {
           const control = Array.from(parent.querySelectorAll<HTMLElement>("button, [role='button']"))
             .find((candidate) => isVisibleElement(candidate) && looksLikeRemoveControl(candidate));
           if (control) return control;
@@ -298,7 +299,7 @@ export class FlowImageGenerator {
       };
 
       let removed = 0;
-      for (const image of Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage)) {
+      for (const image of Array.from(promptComposer.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage)) {
         image.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
         const card = image.closest<HTMLElement>("div, [role='listitem'], [data-testid]");
         card?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -312,7 +313,7 @@ export class FlowImageGenerator {
         }
       }
 
-      const remaining = Array.from(document.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage).length;
+      const remaining = Array.from(promptComposer.querySelectorAll<HTMLImageElement>("img")).filter(isReferenceImage).length;
       return { removed, remaining };
     }, PROMPT_TEXTBOX_SELECTOR).catch(() => ({ removed: 0, remaining: 0 }));
   }
@@ -493,9 +494,17 @@ export class FlowImageGenerator {
 
       logger.info('Confirmando inclusão da imagem no comando...');
       await this.confirmReferenceInclude(dialog);
-      
+
+      await pollCondition(
+        page,
+        () => this.isReferenceImageAttached(page),
+        'O Flow nao confirmou a referencia no prompt deste angulo.',
+        15000,
+        500
+      );
+
       logger.info('Imagem de referência anexada com sucesso ao prompt.');
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(500);
     } catch (uploadErr) {
       logger.error('Falha ao enviar e anexar imagem de referência:', uploadErr);
       throw new Error(`Erro ao enviar imagem de referência: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
