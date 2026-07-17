@@ -67,19 +67,12 @@ test('pacote 3D envia a referencia uma vez e reutiliza nos demais angulos', () =
   });
 });
 
-test('referencia existente e reutilizada sem criar outro upload no Flow', () => {
+test('cada novo angulo seleciona a referencia existente sem criar outro upload no Flow', () => {
   assert.equal(resolveReferenceAttachmentStrategy({
-    alreadyAttached: true,
-    useExistingFlowReference: true,
-    forceReferenceUpload: false,
-  }), 'reuse-attached');
-  assert.equal(resolveReferenceAttachmentStrategy({
-    alreadyAttached: false,
     useExistingFlowReference: true,
     forceReferenceUpload: false,
   }), 'select-existing');
   assert.equal(resolveReferenceAttachmentStrategy({
-    alreadyAttached: false,
     useExistingFlowReference: false,
     forceReferenceUpload: true,
   }), 'upload');
