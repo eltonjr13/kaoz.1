@@ -70,10 +70,9 @@ export function resolveTurnaroundReferencePolicy(
   };
 }
 
-export type ReferenceAttachmentStrategy = 'reuse-attached' | 'select-existing' | 'upload';
+export type ReferenceAttachmentStrategy = 'select-existing' | 'upload';
 
 export interface ResolveReferenceAttachmentStrategyInput {
-  alreadyAttached: boolean;
   useExistingFlowReference: boolean;
   forceReferenceUpload: boolean;
 }
@@ -86,7 +85,10 @@ export function resolveReferenceAttachmentStrategy(
   input: ResolveReferenceAttachmentStrategyInput
 ): ReferenceAttachmentStrategy {
   if (input.useExistingFlowReference && !input.forceReferenceUpload) {
-    return input.alreadyAttached ? 'reuse-attached' : 'select-existing';
+    // Each generate() call submits a new prompt. Even when the UI still shows
+    // a nearby thumbnail, explicitly select the known project asset again so
+    // every requested angle is conditioned by the same reference.
+    return 'select-existing';
   }
   return 'upload';
 }

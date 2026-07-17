@@ -197,7 +197,7 @@ export class FlowImageGenerator {
   ): Promise<void> {
     const namedAsset = requireUploadedAsset
       ? await this.waitForUploadedReferenceAsset(page, dialog, referenceImage)
-      : await this.findVisibleReferenceAsset(dialog, referenceImage);
+      : await this.findVisibleReferenceAsset(dialog, referenceImage, allowFirstThumbnailFallback);
     if (namedAsset) {
       logger.info(`Recurso de referencia localizado no Flow pelo nome: ${namedAsset.fragment}`);
       await namedAsset.item.click();
@@ -452,18 +452,12 @@ export class FlowImageGenerator {
 
     const alreadyAttached = await this.isReferenceImageAttached(page);
     const attachmentStrategy = resolveReferenceAttachmentStrategy({
-      alreadyAttached,
       useExistingFlowReference,
       forceReferenceUpload: forceReferenceSelection,
     });
 
-    if (attachmentStrategy === 'reuse-attached') {
-      logger.info('Imagem de referência já detectada como anexada no prompt. Pulando upload e anexo.');
-      return;
-    }
-
     if (alreadyAttached) {
-      logger.info('Ja existe uma imagem no prompt, mas a referencia solicitada precisa ser anexada novamente.');
+      logger.info('Thumbnail detectado perto do prompt. Limpando-o e selecionando explicitamente a referencia correta para este angulo.');
     } else if (attachmentStrategy === 'select-existing') {
       logger.info('Reutilizando a referencia ja enviada ao projeto do Flow, sem novo upload.');
     }
