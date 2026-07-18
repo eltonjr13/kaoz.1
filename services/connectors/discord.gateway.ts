@@ -167,16 +167,26 @@ export class DiscordGatewayManager {
     console.info(`[DiscordInbound] status=received messageId=${message.id} channelId=${message.channel_id} userId=${decision.userId}`);
     try {
       await fetch(`${API_ROOT}/channels/${message.channel_id}/typing`, { method: "POST", headers: authHeaders(this.token), signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
-      const selectedSkill = skillRegistry.select(decision.prompt);
-      const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
-      const agentIdentity = await getConfiguredAgentIdentity();
-      const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent }), {
-        useExternalTools: useTools,
-        toolIntentText: decision.prompt,
-      });
-      if (!response) throw new Error("O provedor Browser não pode atender mensagens do Discord em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
-      const text = normalizeDiscordAgentResponse(response);
-      const reply = await this.postReply(message.channel_id, message.id, text);
+      let text: string;
+      let reply: { id: string };
+      if (requestsDiscordImageGeneration(decision.prompt)) {
+        const generated = await flowProvider.generateImage(decision.prompt, { quantity: 1 });
+        const imagePath = generated.paths?.[0] || generated.path;
+        if (!generated.success || !imagePath) throw new Error(`Falha ao gerar a imagem: ${generated.error || "o Flow não retornou um arquivo"}`);
+        text = "Aqui está a imagem que você pediu.";
+        reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
+      } else {
+        const selectedSkill = skillRegistry.select(decision.prompt);
+        const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
+        const agentIdentity = await getConfiguredAgentIdentity();
+        const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent }), {
+          useExternalTools: useTools,
+          toolIntentText: decision.prompt,
+        });
+        if (!response) throw new Error("O provedor Browser não pode atender mensagens do Discord em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
+        text = normalizeDiscordAgentResponse(response);
+        reply = await this.postReply(message.channel_id, message.id, text);
+      }
       const updated: ConversationTurn[] = [...recent, { role: "user", content: decision.prompt }, { role: "assistant", content: text }];
       this.conversations.set(historyKey, updated.slice(-6));
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: reply.id });
@@ -198,6 +208,25 @@ export class DiscordGatewayManager {
     });
     const body = await response.json().catch(() => ({})) as { id?: string; message?: string };
     if (!response.ok || !body.id) throw new Error(`Discord respondeu HTTP ${response.status}: ${body.message || "falha ao responder"}`);
+    return { id: body.id };
+  }
+
+  private async postImageReply(channelId: string, messageId: string, content: string, imagePath: string): Promise<{ id: string }> {
+    const bytes = await readFile(imagePath);
+    const filename = path.basename(imagePath);
+    const extension = path.extname(filename).toLowerCase();
+    const mimeType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : extension === ".webp" ? "image/webp" : "image/png";
+    const form = new FormData();
+    form.set("payload_json", JSON.stringify({ content, allowed_mentions: { parse: [] }, message_reference: { message_id: messageId, fail_if_not_exists: false } }));
+    form.set("files[0]", new Blob([new Uint8Array(bytes)], { type: mimeType }), filename);
+    const response = await fetch(`${API_ROOT}/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: { authorization: `Bot ${this.token}`, accept: "application/json" },
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
+    const body = await response.json().catch(() => ({})) as { id?: string; message?: string };
+    if (!response.ok || !body.id) throw new Error(`Discord respondeu HTTP ${response.status}: ${body.message || "falha ao enviar a imagem"}`);
     return { id: body.id };
   }
 
