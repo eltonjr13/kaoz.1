@@ -17,6 +17,16 @@ export function parseSnowflakeList(value?: string): Set<string> {
   return new Set((value || "").split(/[\s,;]+/).map((item) => item.trim()).filter((item) => /^\d{15,22}$/.test(item)));
 }
 
+/** Routes explicit image requests through Flow instead of a chat-model tool call. */
+export function requestsDiscordImageGeneration(prompt: string): boolean {
+  const normalized = prompt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(ger[ea]|cri[ea]|faca|faz|desenh[ea]|imagina|generate|create|draw|make)\b[\s\S]{0,80}\b(imagem|foto|ilustracao|arte|artwork|image|picture)\b/.test(normalized)
+    || /\b(imagem|foto|ilustracao|arte|artwork|image|picture)\b[\s\S]{0,50}\b(ger[ea]|cri[ea]|faca|faz|desenh[ea]|generate|create|draw|make)\b/.test(normalized);
+}
+
 export function discordInboundEnabled(account: StoredConnectorAccount): boolean {
   return account.enabled && account.provider === "discord" && account.publicConfig.inboundEnabled === "true";
 }

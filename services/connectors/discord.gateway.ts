@@ -1,10 +1,13 @@
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
+import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
-import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, type DiscordInboundMessage } from "./discord.inbound.ts";
+import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, requestsDiscordImageGeneration, type DiscordInboundMessage } from "./discord.inbound.ts";
 
 const DEFAULT_GATEWAY = "wss://gateway.discord.gg";
 const GATEWAY_VERSION = 10;

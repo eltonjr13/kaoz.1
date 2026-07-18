@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, parseSnowflakeList } from "../services/connectors/discord.inbound.ts";
+import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration } from "../services/connectors/discord.inbound.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
 
 const account: StoredConnectorAccount = {
@@ -62,4 +62,10 @@ test("normaliza IDs, contexto e resposta do modelo", () => {
   assert.match(prompt, /DeepSeek-V4-Flash/);
   assert.equal(normalizeDiscordAgentResponse('{"message":"Resposta pronta","action":null}'), "Resposta pronta");
   assert.equal(normalizeDiscordAgentResponse("<TOOL_CALL>{}</TOOL_CALL>"), "Não consegui gerar uma resposta agora.");
+});
+
+test("identifica pedidos explícitos de geração de imagem", () => {
+  assert.equal(requestsDiscordImageGeneration("gere uma imagem de um frango cyberpunk"), true);
+  assert.equal(requestsDiscordImageGeneration("faça uma ilustração de uma cidade futurista"), true);
+  assert.equal(requestsDiscordImageGeneration("explique como gerar uma imagem no Flow"), false);
 });
