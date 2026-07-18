@@ -5,6 +5,7 @@ import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-ll
 import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
+import { executeDiscordCommand, parseDiscordCommand } from "./discord.commands.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, requestsDiscordImageGeneration, type DiscordImageAttachment, type DiscordInboundMessage } from "./discord.inbound.ts";
 
@@ -205,13 +206,25 @@ export class DiscordGatewayManager {
       await fetch(`${API_ROOT}/channels/${message.channel_id}/typing`, { method: "POST", headers: authHeaders(this.token), signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
       let text: string;
       let reply: { id: string };
-      const imageAttachment = getDiscordImageAttachment(message);
-      if (requestsDiscordImageGeneration(decision.prompt) || imageAttachment) {
-        const referenceImage = imageAttachment ? await downloadDiscordImageReference(imageAttachment) : undefined;
-        const imagePath = await generateDiscordImage(decision.prompt, referenceImage, discordImageOperation(decision.prompt, Boolean(referenceImage)));
-        text = "Aqui está a imagem que você pediu.";
-        reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
+      let resetConversation = false;
+      const command = parseDiscordCommand(decision.prompt);
+      if (command) {
+        if (command.kind === "reset") {
+          this.conversations.delete(historyKey);
+          resetConversation = true;
+          text = "Contexto desta conversa apagado.";
+        } else {
+          text = await executeDiscordCommand(command);
+        }
+        reply = await this.postReply(message.channel_id, message.id, text);
       } else {
+        const imageAttachment = getDiscordImageAttachment(message);
+        if (requestsDiscordImageGeneration(decision.prompt) || imageAttachment) {
+          const referenceImage = imageAttachment ? await downloadDiscordImageReference(imageAttachment) : undefined;
+          const imagePath = await generateDiscordImage(decision.prompt, referenceImage, discordImageOperation(decision.prompt, Boolean(referenceImage)));
+          text = "Aqui está a imagem que você pediu.";
+          reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
+        } else {
         const selectedSkill = skillRegistry.select(decision.prompt);
         const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
         const agentIdentity = await getConfiguredAgentIdentity();
@@ -222,9 +235,12 @@ export class DiscordGatewayManager {
         if (!response) throw new Error("O provedor Browser não pode atender mensagens do Discord em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
         text = normalizeDiscordAgentResponse(response);
         reply = await this.postReply(message.channel_id, message.id, text);
+        }
       }
-      const updated: ConversationTurn[] = [...recent, { role: "user", content: decision.prompt }, { role: "assistant", content: text }];
-      this.conversations.set(historyKey, updated.slice(-6));
+      if (!resetConversation) {
+        const updated: ConversationTurn[] = [...recent, { role: "user", content: decision.prompt }, { role: "assistant", content: text }];
+        this.conversations.set(historyKey, updated.slice(-6));
+      }
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: reply.id });
       console.info(`[DiscordInbound] status=responded messageId=${message.id} remoteReplyId=${reply.id}`);
     } catch (error) {

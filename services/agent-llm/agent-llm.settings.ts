@@ -89,5 +89,7 @@ export async function writeAgentLLMSettings(settings: Partial<AgentLLMSettings>)
   const normalized = normalizeAgentLLMSettings(settings);
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(SETTINGS_FILE, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  cachedSettings = normalized;
+  cachedSettingsTime = Date.now();
   return normalized;
 }

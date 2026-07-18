@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration } from "../services/connectors/discord.inbound.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
+import { parseDiscordCommand } from "../services/connectors/discord.commands.ts";
 
 const account: StoredConnectorAccount = {
   id: "account-1",
@@ -23,6 +24,13 @@ test("ativa inbound somente para conta Discord habilitada", () => {
   assert.equal(discordInboundEnabled(account), true);
   assert.equal(discordInboundEnabled({ ...account, enabled: false }), false);
   assert.equal(discordInboundEnabled({ ...account, publicConfig: { ...account.publicConfig, inboundEnabled: "false" } }), false);
+});
+
+test("interpreta comandos do Discord sem delegar ao LLM", () => {
+  assert.deepEqual(parseDiscordCommand("/help"), { kind: "help" });
+  assert.deepEqual(parseDiscordCommand("/model iamhc DeepSeek-V4-Flash"), { kind: "model", provider: "iamhc", model: "DeepSeek-V4-Flash" });
+  assert.deepEqual(parseDiscordCommand("/reset"), { kind: "reset" });
+  assert.deepEqual(parseDiscordCommand("explique /model"), null);
 });
 
 test("aceita menção autorizada e remove a menção do pedido", () => {
