@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration } from "../services/connectors/discord.inbound.ts";
+import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration } from "../services/connectors/discord.inbound.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
 
 const account: StoredConnectorAccount = {
@@ -68,4 +68,17 @@ test("identifica pedidos explícitos de geração de imagem", () => {
   assert.equal(requestsDiscordImageGeneration("gere uma imagem de um frango cyberpunk"), true);
   assert.equal(requestsDiscordImageGeneration("faça uma ilustração de uma cidade futurista"), true);
   assert.equal(requestsDiscordImageGeneration("explique como gerar uma imagem no Flow"), false);
+});
+
+test("aceita imagem anexada como referência e identifica edição", () => {
+  const message = {
+    id: "image-1", channel_id: "1527075963958071508", guild_id: "1527000000000000000",
+    content: "<@1527222222222222222> transforme em arte cyberpunk", author: { id: "1527111111111111111" }, mentions: [{ id: "1527222222222222222" }],
+    attachments: [{ url: "https://cdn.discordapp.com/attachments/1/2/referencia.png", filename: "referencia.png", content_type: "image/png", size: 1024 }],
+  };
+  assert.deepEqual(getDiscordImageAttachment(message), { url: "https://cdn.discordapp.com/attachments/1/2/referencia.png", filename: "referencia.png", mimeType: "image/png", size: 1024 });
+  assert.equal(discordImageOperation("transforme em arte cyberpunk", true), "edit");
+  const onlyImage = evaluateDiscordInbound({ ...message, content: "<@1527222222222222222>" }, account, "1527222222222222222", message.channel_id);
+  assert.equal(onlyImage.accepted, true);
+  if (onlyImage.accepted) assert.match(onlyImage.prompt, /baseada na imagem enviada/);
 });

@@ -6,7 +6,7 @@ import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
-import { buildDiscordAgentPrompt, discordInboundEnabled, evaluateDiscordInbound, normalizeDiscordAgentResponse, requestsDiscordImageGeneration, type DiscordInboundMessage } from "./discord.inbound.ts";
+import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, requestsDiscordImageGeneration, type DiscordImageAttachment, type DiscordInboundMessage } from "./discord.inbound.ts";
 
 const DEFAULT_GATEWAY = "wss://gateway.discord.gg";
 const GATEWAY_VERSION = 10;
@@ -33,14 +33,33 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function generateDiscordImage(prompt: string): Promise<string> {
+const MAX_DISCORD_REFERENCE_BYTES = 10 * 1024 * 1024;
+
+async function downloadDiscordImageReference(attachment: DiscordImageAttachment): Promise<string> {
+  const source = new URL(attachment.url);
+  if (!new Set(["cdn.discordapp.com", "media.discordapp.net"]).has(source.hostname)) {
+    throw new Error("O anexo de imagem não veio do CDN do Discord.");
+  }
+  if (attachment.size && attachment.size > MAX_DISCORD_REFERENCE_BYTES) {
+    throw new Error("A imagem de referência excede o limite de 10 MB.");
+  }
+  const response = await fetch(source, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`Não consegui baixar a imagem anexada (HTTP ${response.status}).`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > MAX_DISCORD_REFERENCE_BYTES) {
+    throw new Error("A imagem de referência está vazia ou excede o limite de 10 MB.");
+  }
+  return `data:${attachment.mimeType};base64,${bytes.toString("base64")}`;
+}
+
+async function generateDiscordImage(prompt: string, referenceImage?: string, operation: "simple" | "reference" | "edit" = "simple"): Promise<string> {
   // The Flow browser session belongs to the Next route runtime. Calling the
   // internal route also avoids loading Playwright in the Gateway startup chunk.
   const baseUrl = process.env.APP_BASE_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
   const response = await fetch(`${baseUrl}/api/flow/generate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ type: "image", prompt, quantity: 1 }),
+    body: JSON.stringify({ type: "image", prompt, quantity: 1, operation, referenceImage }),
     signal: AbortSignal.timeout(360_000),
   });
   const body = await response.json().catch(() => ({})) as { success?: boolean; path?: string; paths?: string[]; error?: string };
@@ -186,8 +205,10 @@ export class DiscordGatewayManager {
       await fetch(`${API_ROOT}/channels/${message.channel_id}/typing`, { method: "POST", headers: authHeaders(this.token), signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
       let text: string;
       let reply: { id: string };
-      if (requestsDiscordImageGeneration(decision.prompt)) {
-        const imagePath = await generateDiscordImage(decision.prompt);
+      const imageAttachment = getDiscordImageAttachment(message);
+      if (requestsDiscordImageGeneration(decision.prompt) || imageAttachment) {
+        const referenceImage = imageAttachment ? await downloadDiscordImageReference(imageAttachment) : undefined;
+        const imagePath = await generateDiscordImage(decision.prompt, referenceImage, discordImageOperation(decision.prompt, Boolean(referenceImage)));
         text = "Aqui está a imagem que você pediu.";
         reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
       } else {

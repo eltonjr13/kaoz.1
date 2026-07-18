@@ -5,8 +5,16 @@ export interface DiscordInboundMessage {
   channel_id: string;
   guild_id?: string;
   content?: string;
+  attachments?: Array<{ url?: string; proxy_url?: string; filename?: string; content_type?: string; size?: number }>;
   author?: { id?: string; username?: string; global_name?: string; bot?: boolean };
   mentions?: Array<{ id?: string }>;
+}
+
+export interface DiscordImageAttachment {
+  url: string;
+  filename: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  size?: number;
 }
 
 export type DiscordInboundDecision =
@@ -25,6 +33,27 @@ export function requestsDiscordImageGeneration(prompt: string): boolean {
     .toLowerCase();
   return /\b(ger[ea]|cri[ea]|faca|faz|desenh[ea]|imagina|generate|create|draw|make)\b[\s\S]{0,80}\b(imagem|foto|ilustracao|arte|artwork|image|picture)\b/.test(normalized)
     || /\b(imagem|foto|ilustracao|arte|artwork|image|picture)\b[\s\S]{0,50}\b(ger[ea]|cri[ea]|faca|faz|desenh[ea]|generate|create|draw|make)\b/.test(normalized);
+}
+
+export function getDiscordImageAttachment(message: DiscordInboundMessage): DiscordImageAttachment | null {
+  for (const attachment of message.attachments || []) {
+    const filename = attachment.filename || "imagem";
+    const declaredMime = attachment.content_type?.split(";", 1)[0].toLowerCase();
+    const extension = filename.toLowerCase().match(/\.(png|jpe?g|webp)$/)?.[1];
+    const mimeType = declaredMime === "image/png" || declaredMime === "image/jpeg" || declaredMime === "image/webp"
+      ? declaredMime
+      : extension === "png" ? "image/png" : extension === "jpg" || extension === "jpeg" ? "image/jpeg" : extension === "webp" ? "image/webp" : null;
+    if (mimeType && attachment.url) return { url: attachment.url, filename, mimeType, size: attachment.size };
+  }
+  return null;
+}
+
+export function discordImageOperation(prompt: string, hasReference: boolean): "simple" | "reference" | "edit" {
+  if (!hasReference) return "simple";
+  const normalized = prompt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /\b(edite|editar|altere|alterar|transforme|transformar|modifique|modificar|troque|trocar|remova|remover|adicione|adicionar|mude|mudar|retoque|retocar)\b/.test(normalized)
+    ? "edit"
+    : "reference";
 }
 
 export function discordInboundEnabled(account: StoredConnectorAccount): boolean {
@@ -53,6 +82,9 @@ export function evaluateDiscordInbound(
     .replace(new RegExp(`<@!?${botUserId}>`, "g"), " ")
     .replace(/\s+/g, " ")
     .trim();
+  if (!prompt && getDiscordImageAttachment(message)) {
+    return { accepted: true, prompt: "Crie uma nova imagem baseada na imagem enviada.", userId, username: message.author?.global_name || message.author?.username || userId };
+  }
   if (!prompt) return { accepted: false, reason: "empty" };
   return { accepted: true, prompt, userId, username: message.author?.global_name || message.author?.username || userId };
 }
