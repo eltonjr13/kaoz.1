@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
-import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
@@ -32,6 +31,24 @@ function authHeaders(token: string): HeadersInit {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function generateDiscordImage(prompt: string): Promise<string> {
+  // The Flow browser session belongs to the Next route runtime. Calling the
+  // internal route also avoids loading Playwright in the Gateway startup chunk.
+  const baseUrl = process.env.APP_BASE_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
+  const response = await fetch(`${baseUrl}/api/flow/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "image", prompt, quantity: 1 }),
+    signal: AbortSignal.timeout(360_000),
+  });
+  const body = await response.json().catch(() => ({})) as { success?: boolean; path?: string; paths?: string[]; error?: string };
+  const imagePath = body.paths?.[0] || body.path;
+  if (!response.ok || !body.success || !imagePath) {
+    throw new Error(`Falha ao gerar a imagem: ${body.error || `Flow respondeu HTTP ${response.status}`}`);
+  }
+  return imagePath;
 }
 
 export class DiscordGatewayManager {
@@ -170,9 +187,7 @@ export class DiscordGatewayManager {
       let text: string;
       let reply: { id: string };
       if (requestsDiscordImageGeneration(decision.prompt)) {
-        const generated = await flowProvider.generateImage(decision.prompt, { quantity: 1 });
-        const imagePath = generated.paths?.[0] || generated.path;
-        if (!generated.success || !imagePath) throw new Error(`Falha ao gerar a imagem: ${generated.error || "o Flow não retornou um arquivo"}`);
+        const imagePath = await generateDiscordImage(decision.prompt);
         text = "Aqui está a imagem que você pediu.";
         reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
       } else {
