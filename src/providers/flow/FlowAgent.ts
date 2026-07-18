@@ -620,10 +620,11 @@ export class FlowAgent {
 
     for (const [viewIndex, view] of viewsToGenerate.entries()) {
       const viewPrompt = this.buildSingleTurnaroundPrompt(cleanFlowPrompt, view);
-      const referencePolicy = resolveTurnaroundReferencePolicy(
-        viewIndex,
-        options.useExistingFlowReference === true
-      );
+      // A local path (including a previously generated image) is not proof that
+      // the file exists in the current Flow project. Upload it for the first
+      // angle, then reuse the exact asset selected by that upload for later
+      // angles.
+      const referencePolicy = resolveTurnaroundReferencePolicy(viewIndex);
 
       promptUsed = viewPrompt;
       await this.logAgentEvent(jobId, "researching", `Gerando uma imagem separada para o angulo: ${TURNAROUND_VIEW_LABELS[view]}.`);

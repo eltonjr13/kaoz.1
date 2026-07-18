@@ -301,7 +301,6 @@ export async function POST(request: Request) {
         referenceSource,
         referenceXPath,
         useAvatarVisualReference,
-        useExistingFlowReference: Boolean(generatedReferenceImage && !inputReferenceImage),
         useAvatarPersonality,
         useCortexMemory,
         jobId,
