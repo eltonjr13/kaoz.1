@@ -18,6 +18,17 @@ async function discordGatewayStatus() {
   return discordGatewayManager.getStatus();
 }
 
+async function reconcileTelegramPolling() {
+  const { telegramPollingManager } = await import("./telegram.polling.ts");
+  await telegramPollingManager.reconcile();
+  return telegramPollingManager;
+}
+
+async function telegramPollingStatus() {
+  const { telegramPollingManager } = await import("./telegram.polling.ts");
+  return telegramPollingManager.getStatus();
+}
+
 const adapters: Partial<Record<ConnectorProvider, ConnectorAdapter>> = {
   discord: discordConnector,
   bluesky: blueskyConnector,
@@ -47,12 +58,14 @@ async function publicAccount(account: StoredConnectorAccount): Promise<Connector
 export class ConnectorService {
   async overview() {
     const discordGateway = await discordGatewayStatus().catch(() => ({ state: "error" as const, reconnectCount: 0, lastError: "Gateway indisponível." }));
+    const telegramPolling = await telegramPollingStatus().catch(() => ({ state: "error" as const, reconnectCount: 0, lastError: "Polling indisponível." }));
     return {
       catalog: CONNECTOR_CATALOG,
       accounts: await Promise.all((await connectorStore.listAccounts()).map(publicAccount)),
       history: await connectorStore.listHistory(30),
       inboundHistory: await connectorStore.listInboundHistory(30),
       discordGateway,
+      telegramPolling,
     };
   }
 
@@ -91,6 +104,7 @@ export class ConnectorService {
     await connectorStore.saveAccount(account);
     if (Object.keys(credentials).length) await connectorVault.write(account.id, mergedCredentials);
     if (provider === "discord") await reconcileDiscordGateway();
+    if (provider === "telegram") await reconcileTelegramPolling();
     return publicAccount(account);
   }
 
@@ -99,6 +113,7 @@ export class ConnectorService {
     await connectorStore.removeAccount(id);
     await connectorVault.remove(id);
     if (account?.provider === "discord") await reconcileDiscordGateway();
+    if (account?.provider === "telegram") await reconcileTelegramPolling();
   }
 
   async test(id: string, signal?: AbortSignal) {
@@ -115,6 +130,7 @@ export class ConnectorService {
       account.updatedAt = now;
       await connectorStore.saveAccount(account);
       if (account.provider === "discord") await reconcileDiscordGateway();
+      if (account.provider === "telegram") await reconcileTelegramPolling();
       return publicAccount(account);
     } catch (error) {
       account.health = "error";

@@ -71,7 +71,7 @@ export type ConnectorInboundStatus = "received" | "ignored" | "responded" | "fai
 
 export interface ConnectorInboundHistoryEntry {
   id: string;
-  provider: "discord";
+  provider: "discord" | "telegram";
   accountId: string;
   messageId: string;
   channelId: string;
@@ -90,6 +90,16 @@ export interface ConnectorInboundHistoryEntry {
 }
 
 export interface DiscordGatewayRuntimeStatus {
+  state: "stopped" | "connecting" | "connected" | "error";
+  accountId?: string;
+  botUserId?: string;
+  connectedAt?: string;
+  lastEventAt?: string;
+  lastError?: string;
+  reconnectCount: number;
+}
+
+export interface TelegramPollingRuntimeStatus {
   state: "stopped" | "connecting" | "connected" | "error";
   accountId?: string;
   botUserId?: string;
