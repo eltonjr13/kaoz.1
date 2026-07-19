@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Bot, CheckCircle2, Clock3, Link2, Loader2, MessageCircle, PlugZap, Save, Send, ShieldCheck, Trash2, ChevronDown, ChevronUp } from "lucide-react";
-import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus } from "@/services/connectors/connector.types";
+import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus, TelegramPollingRuntimeStatus } from "@/services/connectors/connector.types";
 
 interface StatusMessage { text: string; type: "success" | "error" | "info"; }
-interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; inboundHistory: ConnectorInboundHistoryEntry[]; discordGateway: DiscordGatewayRuntimeStatus; }
+interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; inboundHistory: ConnectorInboundHistoryEntry[]; discordGateway: DiscordGatewayRuntimeStatus; telegramPolling: TelegramPollingRuntimeStatus; }
 
-const EMPTY: Overview = { catalog: [], accounts: [], history: [], inboundHistory: [], discordGateway: { state: "stopped", reconnectCount: 0 } };
+const EMPTY: Overview = { catalog: [], accounts: [], history: [], inboundHistory: [], discordGateway: { state: "stopped", reconnectCount: 0 }, telegramPolling: { state: "stopped", reconnectCount: 0 } };
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -332,6 +332,11 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
                     status={overview.discordGateway}
                     onChange={(next) => setPublicConfigs((current) => ({ ...current, discord: next }))}
                   />}
+                  {definition.provider === "telegram" && <TelegramInboundSettings
+                    config={publicConfigs.telegram || account?.publicConfig || {}}
+                    status={overview.telegramPolling}
+                    onChange={(next) => setPublicConfigs((current) => ({ ...current, telegram: next }))}
+                  />}
                   {account?.lastError && <div className="flex items-start gap-2 rounded-lg border border-rose-500/15 bg-rose-500/[0.04] p-2.5 text-[10px] leading-relaxed text-rose-300"><AlertCircle size={12} className="mt-0.5 shrink-0" />{account.lastError}</div>}
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button disabled={!!busy} onClick={() => void save(definition)} className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-[10px] font-bold text-black disabled:opacity-40">{isBusy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar</button>
@@ -379,6 +384,21 @@ function DiscordInboundSettings({ config, status, onChange }: { config: Record<s
       <ConfigField label="IDs de usuários permitidos (opcional)" value={config.allowedUserIds || ""} placeholder="Vazio permite qualquer usuário do canal" onChange={(value) => update("allowedUserIds", value)} />
       <ConfigField label="Máximo de pedidos por usuário/minuto" value={config.maxRequestsPerMinute || "5"} placeholder="5" onChange={(value) => update("maxRequestsPerMinute", value.replace(/\D/g, "").slice(0, 2))} />
       <p className="text-[9px] leading-relaxed text-zinc-600">Use IDs copiados com o Modo desenvolvedor do Discord. O bot ignora mensagens sem menção e mensagens de outros bots.</p>
+    </>}
+  </div>;
+}
+
+function TelegramInboundSettings({ config, status, onChange }: { config: Record<string, string>; status: TelegramPollingRuntimeStatus; onChange: (next: Record<string, string>) => void }) {
+  const update = (key: string, value: string) => onChange({ ...config, [key]: value });
+  const statusColor = status.state === "connected" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/[0.05]" : status.state === "error" ? "text-rose-400 border-rose-500/20 bg-rose-500/[0.05]" : "text-amber-400 border-amber-500/20 bg-amber-500/[0.05]";
+  return <div className="space-y-3 rounded-xl border border-sky-500/15 bg-sky-500/[0.035] p-3.5">
+    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde no chat configurado usando polling seguro, sem webhook público.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={config.inboundEnabled === "true"} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Ativar</label></div>
+    {config.inboundEnabled === "true" && <>
+      <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Polling: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>
+      <ConfigField label="IDs de chats permitidos" value={config.allowedChatIds || config.chatId || ""} placeholder="Usa o chat configurado por padrão" onChange={(value) => update("allowedChatIds", value)} />
+      <ConfigField label="IDs de usuários permitidos (opcional)" value={config.allowedUserIds || ""} placeholder="Vazio permite usuários do chat autorizado" onChange={(value) => update("allowedUserIds", value)} />
+      <ConfigField label="Máximo de pedidos por usuário/minuto" value={config.maxRequestsPerMinute || "5"} placeholder="5" onChange={(value) => update("maxRequestsPerMinute", value.replace(/\D/g, "").slice(0, 2))} />
+      <p className="text-[9px] leading-relaxed text-zinc-600">Para conversar em privado, configure o ID daquele chat como destino e envie primeiro /start ao bot no Telegram.</p>
     </>}
   </div>;
 }
