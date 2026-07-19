@@ -33,10 +33,11 @@ function normalizeAgentResponse(value: string) {
   return trimmed || "Não consegui gerar uma resposta agora.";
 }
 
-function buildTelegramAgentPrompt(input: { prompt: string; username?: string; identity: string; recent: ConversationTurn[] }) {
+function buildTelegramAgentPrompt(input: { prompt: string; username?: string; identity: { provider: string; model: string }; recent: ConversationTurn[] }) {
   const history = input.recent.length ? input.recent.map((turn) => `${turn.role === "user" ? "Usuário" : "Agente"}: ${turn.content}`).join("\n") : "(nova conversa)";
-  return `Você é ${input.identity}, o agente MrChicken respondendo no Telegram.
+  return `Você é o agente MrChicken respondendo no Telegram.
 Responda diretamente, em português, de forma útil e natural. Não afirme ter executado uma ação que não foi executada. Não use a ferramenta social:telegram:publish, pois sua resposta já será enviada ao usuário.
+Se perguntarem qual modelo ou provedor você usa, responda somente com: ${input.identity.provider} / ${input.identity.model}.
 
 CONVERSA RECENTE:
 ${history}
@@ -144,7 +145,8 @@ export class TelegramPollingManager {
       if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
       const text = normalizeAgentResponse(response);
       const replyId = await this.sendMessage(chatId, text, message.message_id);
-      this.conversations.set(historyKey, [...recent, { role: "user", content: prompt }, { role: "assistant", content: text }].slice(-MAX_CONVERSATION_TURNS));
+      const updated: ConversationTurn[] = [...recent, { role: "user" as const, content: prompt }, { role: "assistant" as const, content: text }];
+      this.conversations.set(historyKey, updated.slice(-MAX_CONVERSATION_TURNS));
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: replyId });
       console.info(`[TelegramInbound] status=responded messageId=${message.message_id} chatId=${chatId}`);
     } catch (error) {
