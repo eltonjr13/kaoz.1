@@ -6,18 +6,19 @@ import { CONNECTOR_CATALOG } from "../services/connectors/connector.catalog.ts";
 import { ConnectorVault } from "../services/connectors/connector.vault.ts";
 import { discordConnector } from "../services/connectors/adapters/discord.connector.ts";
 import { blueskyConnector } from "../services/connectors/adapters/bluesky.connector.ts";
+import { telegramConnector } from "../services/connectors/adapters/telegram.connector.ts";
 import { skillRegistry } from "../services/skills/skill.registry.ts";
 import { connectorHandlers } from "../services/orchestrator/adapters/connector.adapter.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
 
-function account(provider: "discord" | "bluesky"): StoredConnectorAccount {
+function account(provider: "discord" | "bluesky" | "telegram"): StoredConnectorAccount {
   const now = new Date().toISOString();
   return { id: crypto.randomUUID(), provider, displayName: provider, enabled: true, health: "connected", publicConfig: {}, createdAt: now, updatedAt: now };
 }
 
-test("catálogo libera Discord e Bluesky e mantém integrações futuras visíveis", () => {
+test("catálogo libera Discord, Bluesky e Telegram e mantém integrações futuras visíveis", () => {
   const available = CONNECTOR_CATALOG.filter((item) => item.availability === "available").map((item) => item.provider);
-  assert.deepEqual(available, ["discord", "bluesky"]);
+  assert.deepEqual(available, ["discord", "bluesky", "telegram"]);
   assert.ok(CONNECTOR_CATALOG.some((item) => item.provider === "x" && item.availability === "planned"));
   assert.ok(CONNECTOR_CATALOG.some((item) => item.provider === "linkedin" && item.availability === "planned"));
 });
@@ -60,6 +61,48 @@ test("Discord testa o acesso do bot ao canal configurado", async () => {
 
 test("Bluesky exige PDS HTTPS", async () => {
   await assert.rejects(blueskyConnector.test({ identifier: "teste.bsky.social", appPassword: "secret", serviceUrl: "http://localhost:3000" }), /usar HTTPS/);
+});
+
+test("Telegram exige token do bot e um destino válido", async () => {
+  await assert.rejects(telegramConnector.test({ chatId: "-1001234567890" }), /token do bot/);
+  await assert.rejects(telegramConnector.test({ chatId: "canal geral", botToken: "token" }), /ID numérico ou um @canal/);
+});
+
+test("Telegram valida bot e acesso ao chat configurado", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    urls.push(url);
+    const body = url.includes("getMe")
+      ? { ok: true, result: { id: 123, username: "mrchicken_bot" } }
+      : { ok: true, result: { id: -1001234567890, title: "Canal de testes" } };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const result = await telegramConnector.test({ chatId: "-1001234567890", botToken: "bot-secret" });
+    assert.ok(urls.some((url) => url === "https://api.telegram.org/botbot-secret/getMe"));
+    assert.ok(urls.some((url) => url.includes("getChat?chat_id=-1001234567890")));
+    assert.equal(result.displayName, "Telegram: Canal de testes");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Telegram envia texto e devolve o id remoto", async () => {
+  const originalFetch = globalThis.fetch;
+  let observedUrl = "";
+  let observedBody = "";
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    observedUrl = String(input);
+    observedBody = String(init?.body || "");
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const result = await telegramConnector.publish(account("telegram"), { chatId: "@meucanal", botToken: "bot-secret" }, { text: "Olá Telegram" });
+    assert.equal(observedUrl, "https://api.telegram.org/botbot-secret/sendMessage");
+    assert.match(observedBody, /Olá Telegram/);
+    assert.equal(result.remoteId, "99");
+    assert.equal(result.url, "https://t.me/meucanal/99");
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("Discord publica texto e devolve link da mensagem", async () => {
@@ -107,9 +150,11 @@ test("Bluesky cria sessão e publica record no repositório correto", async () =
 test("ferramentas sociais têm handlers registrados", () => {
   assert.ok(connectorHandlers["social:discord:publish"]);
   assert.ok(connectorHandlers["social:bluesky:publish"]);
+  assert.ok(connectorHandlers["social:telegram:publish"]);
 });
 
 test("intenção de publicação seleciona a skill social", () => {
   assert.equal(skillRegistry.select("publique no Discord: lançamento amanhã").id, "social.publish");
   assert.equal(skillRegistry.select("poste no Bluesky esta novidade").id, "social.publish");
+  assert.equal(skillRegistry.select("envie no Telegram esta novidade").id, "social.publish");
 });

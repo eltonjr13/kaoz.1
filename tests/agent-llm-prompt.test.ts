@@ -35,6 +35,7 @@ test("reduz schema de ferramenta sem perder campos operacionais", () => {
 test("pedido direto de publicação seleciona o conector sem confirmação redundante", () => {
   assert.equal(connectorPublishProvider("Envie uma mensagem no Discord"), "discord");
   assert.equal(connectorPublishProvider("Publique no Bluesky: novidade lançada"), "bluesky");
+  assert.equal(connectorPublishProvider("Envie uma mensagem no Telegram"), "telegram");
   assert.equal(connectorPublishProvider("Explique como funciona o Discord"), null);
   assert.equal(connectorPublishProvider("Escreva uma mensagem para o Discord, mas não envie"), null);
 });
@@ -52,6 +53,11 @@ test("publicação concluída retorna confirmação determinística sem nova cha
   assert.equal(response.action, null);
   assert.match(response.message, /Publicado no Discord com sucesso/);
   assert.match(response.message, /123/);
+});
+
+test("confirma publicação no Telegram", () => {
+  const response = JSON.parse(connectorToolResultResponse("telegram", { output: { remoteId: "99" } }));
+  assert.match(response.message, /Publicado no Telegram com sucesso/);
 });
 
 test("falha do conector retorna erro real e afirma que nada foi enviado", () => {

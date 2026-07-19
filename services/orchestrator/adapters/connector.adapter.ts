@@ -22,5 +22,6 @@ function handler(provider: ConnectorProvider): ToolHandler {
 
 export const connectorHandlers: Record<string, ToolHandler> = {
   "social:discord:publish": handler("discord"),
-  "social:bluesky:publish": handler("bluesky")
+  "social:bluesky:publish": handler("bluesky"),
+  "social:telegram:publish": handler("telegram")
 };

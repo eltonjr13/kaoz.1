@@ -28,7 +28,8 @@ function fallbackSteps(objective: string, skillId: string, fallbackToolId = "sys
     const text = objective.includes(":") ? objective.slice(objective.indexOf(":") + 1).trim() : objective.trim();
     const candidates = [
       { pattern: /discord/i, id: "discord", toolId: "social:discord:publish", title: "Publicar no Discord" },
-      { pattern: /bluesky/i, id: "bluesky", toolId: "social:bluesky:publish", title: "Publicar no Bluesky" }
+      { pattern: /bluesky/i, id: "bluesky", toolId: "social:bluesky:publish", title: "Publicar no Bluesky" },
+      { pattern: /telegram/i, id: "telegram", toolId: "social:telegram:publish", title: "Enviar no Telegram" }
     ];
     const matchingProviders = candidates.filter((item) => item.pattern.test(objective));
     const providers = matchingProviders.length ? matchingProviders : candidates;

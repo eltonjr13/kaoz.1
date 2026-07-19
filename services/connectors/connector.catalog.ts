@@ -26,7 +26,17 @@ export const CONNECTOR_CATALOG: ConnectorDefinition[] = [
   },
   { provider: "x", name: "X / Twitter", description: "Posts, threads e mídia via API oficial.", availability: "planned", capabilities: ["publish_text", "publish_image", "read_metrics", "read_mentions"], credentialFields: [] },
   { provider: "linkedin", name: "LinkedIn", description: "Publicação em perfis e páginas profissionais.", availability: "planned", capabilities: ["publish_text", "publish_image", "publish_video", "read_metrics"], credentialFields: [] },
-  { provider: "telegram", name: "Telegram", description: "Mensagens e mídia para canais e grupos.", availability: "planned", capabilities: ["publish_text", "publish_image", "publish_video"], credentialFields: [] },
+  {
+    provider: "telegram",
+    name: "Telegram",
+    description: "Envia mensagens, imagens e vídeos para um canal ou grupo usando um bot.",
+    availability: "available",
+    capabilities: ["publish_text", "publish_image", "publish_video"],
+    credentialFields: [
+      { key: "chatId", label: "ID do chat ou @canal", type: "text", placeholder: "-1001234567890 ou @meucanal", required: true },
+      { key: "botToken", label: "Token do bot", type: "password", placeholder: "Cole o token do BotFather", required: true }
+    ]
+  },
   { provider: "youtube", name: "YouTube", description: "Upload de vídeos e leitura de desempenho.", availability: "planned", capabilities: ["publish_video", "read_metrics"], credentialFields: [] },
   { provider: "instagram", name: "Instagram / Facebook", description: "Publicação e métricas pela plataforma Meta.", availability: "planned", capabilities: ["publish_image", "publish_video", "read_metrics", "read_mentions"], credentialFields: [] }
 ];

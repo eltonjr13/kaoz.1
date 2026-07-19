@@ -5,6 +5,7 @@ import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorAccount, ConnectorAdapter, ConnectorProvider, ConnectorPublishInput, StoredConnectorAccount } from "./connector.types.ts";
 import { discordConnector } from "./adapters/discord.connector.ts";
 import { blueskyConnector } from "./adapters/bluesky.connector.ts";
+import { telegramConnector } from "./adapters/telegram.connector.ts";
 
 async function reconcileDiscordGateway() {
   const { discordGatewayManager } = await import("./discord.gateway.ts");
@@ -14,7 +15,8 @@ async function reconcileDiscordGateway() {
 
 const adapters: Partial<Record<ConnectorProvider, ConnectorAdapter>> = {
   discord: discordConnector,
-  bluesky: blueskyConnector
+  bluesky: blueskyConnector,
+  telegram: telegramConnector
 };
 
 function adapterFor(provider: ConnectorProvider) {

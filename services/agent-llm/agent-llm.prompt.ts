@@ -1,16 +1,17 @@
 export const ANTIGRAVITY_INLINE_PROMPT_BUDGET = 27_500;
 const PUBLISH_VERB_PATTERN = /\b(publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/;
 
-export function connectorPublishProvider(text: string): "discord" | "bluesky" | null {
+export function connectorPublishProvider(text: string): "discord" | "bluesky" | "telegram" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(nao|não|sem)\s+(?:quero\s+que\s+)?(?:publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/.test(normalized)) return null;
   if (!PUBLISH_VERB_PATTERN.test(normalized)) return null;
   if (/\bdiscord\b/.test(normalized)) return "discord";
   if (/\b(bluesky|blue sky)\b/.test(normalized)) return "bluesky";
+  if (/\btelegram\b/.test(normalized)) return "telegram";
   return null;
 }
 
-export function missingConnectorToolCallInstruction(provider: "discord" | "bluesky", previousOutput: string): string {
+export function missingConnectorToolCallInstruction(provider: "discord" | "bluesky" | "telegram", previousOutput: string): string {
   return `
 
 [CORRECAO OBRIGATORIA - PUBLICACAO NAO EXECUTADA]
@@ -21,20 +22,20 @@ Em args.text, escreva o conteudo concreto solicitado pelo usuario. Nao escreva p
 `;
 }
 
-export function connectorToolResultResponse(provider: "discord" | "bluesky", result: unknown): string {
+export function connectorToolResultResponse(provider: "discord" | "bluesky" | "telegram", result: unknown): string {
   const record = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
   const output = record.output && typeof record.output === "object" && !Array.isArray(record.output)
     ? record.output as Record<string, unknown>
     : record;
   const remoteId = typeof output.remoteId === "string" ? output.remoteId : "";
   const url = typeof output.url === "string" ? output.url : "";
-  const destination = provider === "discord" ? "Discord" : "Bluesky";
+  const destination = provider === "discord" ? "Discord" : provider === "bluesky" ? "Bluesky" : "Telegram";
   const details = url ? ` [Abrir publicação](${url})` : remoteId ? ` ID: ${remoteId}.` : "";
   return JSON.stringify({ message: `Publicado no ${destination} com sucesso.${details}`, action: null });
 }
 
-export function connectorToolErrorResponse(provider: "discord" | "bluesky", error: unknown): string {
-  const destination = provider === "discord" ? "Discord" : "Bluesky";
+export function connectorToolErrorResponse(provider: "discord" | "bluesky" | "telegram", error: unknown): string {
+  const destination = provider === "discord" ? "Discord" : provider === "bluesky" ? "Bluesky" : "Telegram";
   const message = error instanceof Error ? error.message : String(error);
   return JSON.stringify({ message: `Não foi possível publicar no ${destination}: ${message}. Nada foi enviado.`, action: null });
 }
