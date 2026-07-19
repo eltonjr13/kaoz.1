@@ -13,6 +13,11 @@ async function reconcileDiscordGateway() {
   return discordGatewayManager;
 }
 
+async function discordGatewayStatus() {
+  const { discordGatewayManager } = await import("./discord.gateway.ts");
+  return discordGatewayManager.getStatus();
+}
+
 const adapters: Partial<Record<ConnectorProvider, ConnectorAdapter>> = {
   discord: discordConnector,
   bluesky: blueskyConnector,
@@ -41,16 +46,13 @@ async function publicAccount(account: StoredConnectorAccount): Promise<Connector
 
 export class ConnectorService {
   async overview() {
-    const discordGatewayManager = await reconcileDiscordGateway().catch((error) => {
-      console.warn("[DiscordGateway] Falha ao reconciliar:", error);
-      return null;
-    });
+    const discordGateway = await discordGatewayStatus().catch(() => ({ state: "error" as const, reconnectCount: 0, lastError: "Gateway indisponível." }));
     return {
       catalog: CONNECTOR_CATALOG,
       accounts: await Promise.all((await connectorStore.listAccounts()).map(publicAccount)),
       history: await connectorStore.listHistory(30),
       inboundHistory: await connectorStore.listInboundHistory(30),
-      discordGateway: discordGatewayManager?.getStatus() || { state: "error", reconnectCount: 0, lastError: "Gateway indisponível." },
+      discordGateway,
     };
   }
 
@@ -88,14 +90,15 @@ export class ConnectorService {
     };
     await connectorStore.saveAccount(account);
     if (Object.keys(credentials).length) await connectorVault.write(account.id, mergedCredentials);
-    await reconcileDiscordGateway();
+    if (provider === "discord") await reconcileDiscordGateway();
     return publicAccount(account);
   }
 
   async remove(id: string) {
+    const account = await connectorStore.getAccount(id);
     await connectorStore.removeAccount(id);
     await connectorVault.remove(id);
-    await reconcileDiscordGateway();
+    if (account?.provider === "discord") await reconcileDiscordGateway();
   }
 
   async test(id: string, signal?: AbortSignal) {
@@ -111,7 +114,7 @@ export class ConnectorService {
       if (result.publicConfig) account.publicConfig = { ...account.publicConfig, ...result.publicConfig };
       account.updatedAt = now;
       await connectorStore.saveAccount(account);
-      await reconcileDiscordGateway();
+      if (account.provider === "discord") await reconcileDiscordGateway();
       return publicAccount(account);
     } catch (error) {
       account.health = "error";
