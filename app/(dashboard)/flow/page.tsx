@@ -1194,7 +1194,7 @@ export default function FlowDashboardPage() {
     return (
       <motion.div
         ref={settingsMenuRef}
-        className={`absolute bottom-full z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-5 rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto ${isFloatingRight ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'}`}
+        className={`absolute bottom-full z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] max-h-[calc(100dvh-var(--mrchicken-titlebar-height,0px)-9rem)] flex-col gap-5 overflow-y-auto rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto ${isFloatingRight ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'}`}
         initial={{ opacity: 0, y: 10, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -3321,7 +3321,7 @@ export default function FlowDashboardPage() {
   };
 
   return (
-    <div className="relative isolate flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden bg-transparent text-white select-none md:h-[100dvh]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="flow-page-shell relative isolate flex flex-col overflow-hidden bg-transparent text-white select-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div className="flow-cinematic-background" aria-hidden="true">
         <div className="flow-cinematic-background__art" />
         <div className="flow-cinematic-background__overlay" />
