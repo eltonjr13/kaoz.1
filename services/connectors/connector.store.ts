@@ -9,6 +9,9 @@ const ROOT = process.env.MRCHICKEN_DATA_DIR
 const ACCOUNTS_FILE = path.join(ROOT, "accounts.json");
 const HISTORY_FILE = path.join(ROOT, "history.json");
 const INBOUND_HISTORY_FILE = path.join(ROOT, "inbound-history.json");
+const TELEGRAM_POLLING_FILE = path.join(ROOT, "telegram-polling.json");
+
+type TelegramPollingState = { offsets: Record<string, number> };
 
 async function read<T>(file: string, fallback: T): Promise<T> {
   try { return JSON.parse(await readFile(file, "utf8")) as T; } catch { return fallback; }
@@ -79,6 +82,24 @@ export class ConnectorStore {
 
   async listInboundHistory(limit = 50) {
     return (await read<ConnectorInboundHistoryEntry[]>(INBOUND_HISTORY_FILE, [])).slice(0, Math.max(1, Math.min(limit, 200)));
+  }
+
+  async getTelegramPollingOffset(key: string) {
+    const state = await read<TelegramPollingState>(TELEGRAM_POLLING_FILE, { offsets: {} });
+    const offset = state.offsets[key];
+    return Number.isSafeInteger(offset) && offset > 0 ? offset : 0;
+  }
+
+  async saveTelegramPollingOffset(key: string, offset: number) {
+    if (!Number.isSafeInteger(offset) || offset <= 0) throw new Error("Offset do Telegram inv\u00e1lido.");
+    return this.locked(async () => {
+      const state = await read<TelegramPollingState>(TELEGRAM_POLLING_FILE, { offsets: {} });
+      const persisted = state.offsets[key] || 0;
+      const nextOffset = Math.max(persisted, offset);
+      state.offsets[key] = nextOffset;
+      await atomicWrite(TELEGRAM_POLLING_FILE, state);
+      return nextOffset;
+    });
   }
 }
 

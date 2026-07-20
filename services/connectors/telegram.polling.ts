@@ -21,6 +21,7 @@ function globalManager() {
 function apiUrl(token: string, method: string) { return `${API_ROOT}/bot${token}/${method}`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function parseIds(value?: string) { return new Set((value || "").split(",").map((item) => item.trim()).filter(Boolean)); }
+function offsetKey(accountId: string, token: string) { return `${accountId}:${crypto.createHash("sha256").update(token).digest("hex")}`; }
 
 function normalizeAgentResponse(value: string) {
   const trimmed = value.trim();
@@ -64,11 +65,11 @@ export class TelegramPollingManager {
     const credentials = await connectorVault.read(account.id).catch(() => ({} as Record<string, string>));
     const token = credentials.botToken?.trim() || "";
     if (!token) { this.setError("Telegram bidirecional exige um token de bot válido."); return; }
-    const changed = this.account?.id !== account.id || this.token !== token || JSON.stringify(this.account?.publicConfig) !== JSON.stringify(account.publicConfig);
+    const identityChanged = this.account?.id !== account.id || this.token !== token;
     this.account = account;
     this.token = token;
-    if (changed) {
-      this.offset = 0;
+    if (identityChanged) {
+      this.offset = await connectorStore.getTelegramPollingOffset(offsetKey(account.id, token));
       this.conversations.clear();
       this.status = { state: "connecting", accountId: account.id, reconnectCount: 0 };
     }
@@ -100,8 +101,10 @@ export class TelegramPollingManager {
         if (!response.ok || !body.ok || !Array.isArray(body.result)) throw new Error(`Telegram retornou HTTP ${response.status}: ${body.description || "falha no polling"}`);
         this.status = { ...this.status, state: "connected", connectedAt: this.status.connectedAt || new Date().toISOString(), lastError: undefined };
         for (const update of body.result) {
-          if (typeof update.update_id === "number") this.offset = update.update_id + 1;
           if (update.message) await this.handleMessage(update.message);
+          if (typeof update.update_id === "number") {
+            this.offset = await connectorStore.saveTelegramPollingOffset(offsetKey(this.account.id, this.token), update.update_id + 1);
+          }
         }
       }
     } catch (error) {
