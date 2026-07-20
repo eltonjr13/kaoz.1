@@ -38,6 +38,7 @@ import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
+import { DesktopBehaviorPanel } from "@/components/settings/DesktopBehaviorPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1912,7 +1913,7 @@ export default function SettingsPage() {
           }`}
         >
           <Download size={14} className={activeTab === "updates" ? "text-emerald-400" : "text-zinc-500"} />
-          Atualizações
+          Aplicativo
         </button>
       </div>
 
@@ -1958,7 +1959,8 @@ export default function SettingsPage() {
         )}
 
         {activeTab === "updates" && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+            <DesktopBehaviorPanel />
             <AppUpdatesPanel />
           </div>
         )}

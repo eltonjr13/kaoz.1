@@ -1,5 +1,6 @@
-const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { readDesktopPreferences, writeDesktopPreferences } = require("./desktop-preferences.cjs");
 const { updateErrorDetails } = require("./update-errors.cjs");
 const { stopProcessTree } = require("./process-lifecycle.cjs");
 const { spawn } = require("node:child_process");
@@ -9,6 +10,9 @@ const path = require("node:path");
 
 let mainWindow;
 let nextServer;
+let tray;
+let applicationUrl;
+let desktopPreferences;
 let updateCheckPromise;
 let installingUpdate = false;
 let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported: false };
@@ -20,6 +24,61 @@ app.setName("MrChicken");
 function getMainWindowForEvent(event) {
   const senderWindow = BrowserWindow.fromWebContents(event.sender);
   return senderWindow && senderWindow === mainWindow ? senderWindow : null;
+}
+
+function desktopPreferencesPath() {
+  return path.join(app.getPath("userData"), "desktop-preferences.json");
+}
+
+function getDesktopPreferences() {
+  if (!desktopPreferences) desktopPreferences = readDesktopPreferences(desktopPreferencesPath());
+  return desktopPreferences;
+}
+
+function saveDesktopPreferences(next) {
+  desktopPreferences = writeDesktopPreferences(desktopPreferencesPath(), next);
+  return desktopPreferences;
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (applicationUrl) createWindow(applicationUrl);
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function quitApplication() {
+  app.isQuitting = true;
+  app.quit();
+}
+
+function createTray() {
+  if (tray) return;
+  const iconPath = path.join(__dirname, "..", "build", "icon.png");
+  const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  tray = new Tray(trayIcon);
+  tray.setToolTip("MrChicken");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Abrir MrChicken", click: showMainWindow },
+    { type: "separator" },
+    { label: "Sair", click: quitApplication }
+  ]));
+  tray.on("click", showMainWindow);
+  tray.on("double-click", showMainWindow);
+}
+
+function notifyTrayOnce() {
+  const preferences = getDesktopPreferences();
+  if (preferences.trayNoticeShown || !tray || process.platform !== "win32") return;
+  tray.displayBalloon({
+    iconType: "info",
+    title: "MrChicken continua ativo",
+    content: "O aplicativo foi mantido nos ícones ocultos. Use o ícone para abrir ou sair."
+  });
+  saveDesktopPreferences({ ...preferences, trayNoticeShown: true });
 }
 
 function updaterIsSupported() {
@@ -141,6 +200,18 @@ ipcMain.handle("mrchicken-window:close", (event) => {
 ipcMain.handle("mrchicken-window:is-maximized", (event) => {
   const target = getMainWindowForEvent(event);
   return Boolean(target && target.isMaximized());
+});
+
+ipcMain.handle("mrchicken-desktop:get-preferences", (event) => {
+  if (!getMainWindowForEvent(event)) return null;
+  const { closeToTray } = getDesktopPreferences();
+  return { closeToTray };
+});
+
+ipcMain.handle("mrchicken-desktop:set-close-to-tray", (event, enabled) => {
+  if (!getMainWindowForEvent(event) || typeof enabled !== "boolean") return null;
+  const updated = saveDesktopPreferences({ ...getDesktopPreferences(), closeToTray: enabled });
+  return { closeToTray: updated.closeToTray };
 });
 
 function findFreePort(start = 3210) {
@@ -267,6 +338,7 @@ async function stopProductionServer() {
 }
 
 function createWindow(url) {
+  applicationUrl = url;
   const appOrigin = new URL(url).origin;
   const isTrustedLocalOrigin = (candidate) => {
     try {
@@ -306,6 +378,15 @@ function createWindow(url) {
   mainWindow.removeMenu();
   mainWindow.on("maximize", () => sendWindowState(mainWindow));
   mainWindow.on("unmaximize", () => sendWindowState(mainWindow));
+  mainWindow.on("close", (event) => {
+    if (app.isQuitting || installingUpdate || !getDesktopPreferences().closeToTray) return;
+    event.preventDefault();
+    mainWindow.hide();
+    notifyTrayOnce();
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = undefined;
+  });
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     sendWindowState(mainWindow);
@@ -321,15 +402,15 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 app.on("second-instance", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  showMainWindow();
 });
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
   try {
     configureAutoUpdater();
+    getDesktopPreferences();
+    createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
   } catch (error) {
     dialog.showErrorBox("Falha ao iniciar o MrChicken", error instanceof Error ? error.message : String(error));
@@ -338,7 +419,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0 && isDevelopment) createWindow(process.env.ELECTRON_START_URL);
+  showMainWindow();
 });
 
 app.on("before-quit", () => {

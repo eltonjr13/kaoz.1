@@ -6,6 +6,8 @@ if (process.platform === "win32") {
     toggleMaximize: () => ipcRenderer.invoke("mrchicken-window:toggle-maximize"),
     close: () => ipcRenderer.invoke("mrchicken-window:close"),
     isMaximized: () => ipcRenderer.invoke("mrchicken-window:is-maximized"),
+    getDesktopPreferences: () => ipcRenderer.invoke("mrchicken-desktop:get-preferences"),
+    setCloseToTray: (enabled) => ipcRenderer.invoke("mrchicken-desktop:set-close-to-tray", enabled),
     getUpdateStatus: () => ipcRenderer.invoke("mrchicken-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("mrchicken-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("mrchicken-update:download"),

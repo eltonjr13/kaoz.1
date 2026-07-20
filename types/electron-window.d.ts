@@ -18,6 +18,8 @@ declare global {
       toggleMaximize: () => Promise<boolean>;
       close: () => Promise<boolean>;
       isMaximized: () => Promise<boolean>;
+      getDesktopPreferences: () => Promise<{ closeToTray: boolean } | null>;
+      setCloseToTray: (enabled: boolean) => Promise<{ closeToTray: boolean } | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       getUpdateStatus: () => Promise<MrChickenUpdateStatus>;
       checkForUpdates: () => Promise<MrChickenUpdateStatus>;
