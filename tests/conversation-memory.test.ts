@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -82,4 +82,15 @@ test("contexto recuperado tem vizinhanca, limite e rotulo de dado nao confiavel"
     assert.match(result.context, /Aurora Boreal/);
     assert.ok(result.hits.length <= 6);
   } finally { store.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("banco corrompido e preservado e recriado de forma recuperavel", async () => {
+  const { root, file } = await fixture();
+  try {
+    await writeFile(file, "isto nao e sqlite");
+    const store = new ConversationMemoryStore(file);
+    assert.equal(store.stats().messages, 0);
+    store.close();
+    assert.ok((await readdir(root)).some((name) => name.startsWith("conversation-memory.sqlite3.corrupt-")));
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

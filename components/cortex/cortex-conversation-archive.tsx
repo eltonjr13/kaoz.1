@@ -24,7 +24,7 @@ export function CortexConversationArchive() {
     const identityData = await identitiesResponse.json();
     setConversations(archive.conversations || []);
     setStats(archive.stats || null);
-    setIdentities(identityData.identities || []);
+    setIdentities((identityData.identities || []).filter((identity: Identity) => identity.channel !== 'flow'));
   };
 
   useEffect(() => { void refresh(); }, [channel]);

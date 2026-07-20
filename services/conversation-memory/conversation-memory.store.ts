@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { getFlowStorageRoot } from "../../lib/runtime-paths.ts";
 import type {
@@ -19,9 +20,25 @@ const CONSOLIDATION_TURN_THRESHOLD = 12;
 type Row = Record<string, unknown>;
 
 export class ConversationMemoryStore {
-  private db: DatabaseSync;
+  private db!: DatabaseSync;
 
   constructor(databasePath = path.join(getFlowStorageRoot(), "conversation-memory.sqlite3")) {
+    if (databasePath !== ":memory:") mkdirSync(path.dirname(databasePath), { recursive: true });
+    try {
+      this.open(databasePath);
+    } catch (error) {
+      try { this.db?.close(); } catch { /* banco ja estava indisponivel */ }
+      if (databasePath === ":memory:" || !isCorruptionError(error)) throw error;
+      const suffix = `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      for (const file of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+        if (existsSync(file)) renameSync(file, `${file}${suffix}`);
+      }
+      console.error(`[ConversationMemory] Banco corrompido preservado como ${path.basename(databasePath)}${suffix}; um arquivo novo foi criado.`);
+      this.open(databasePath);
+    }
+  }
+
+  private open(databasePath: string): void {
     this.db = new DatabaseSync(databasePath);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
     this.migrate();
@@ -217,8 +234,6 @@ export class ConversationMemoryStore {
     `).run(profileId, now);
     const state = this.db.prepare("SELECT user_turns_since_job FROM consolidation_state WHERE profile_id=?").get(profileId) as Row;
     if (Number(state.user_turns_since_job) < CONSOLIDATION_TURN_THRESHOLD) return false;
-    const existing = this.db.prepare("SELECT id FROM consolidation_jobs WHERE profile_id=? AND status IN ('pending','running') LIMIT 1").get(profileId);
-    if (existing) return false;
     const through = this.db.prepare(`
       SELECT COALESCE(MAX(m.rowid), 0) AS value FROM messages m
       JOIN conversations c ON c.id=m.conversation_id WHERE c.profile_id=?
@@ -460,6 +475,10 @@ function mapJob(row: Row): ConsolidationJob {
 function toFtsQuery(value: string): string {
   const terms = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().match(/[a-z0-9]{2,}/g) || [];
   return [...new Set(terms)].slice(0, 12).map((term) => `"${term.replace(/"/g, "")}"*`).join(" AND ");
+}
+
+function isCorruptionError(error: unknown): boolean {
+  return /(?:not a database|database disk image is malformed|file is encrypted|SQLITE_CORRUPT|SQLITE_NOTADB)/i.test(error instanceof Error ? error.message : String(error));
 }
 
 export { LOCAL_PROFILE_ID, CONSOLIDATION_TURN_THRESHOLD };
