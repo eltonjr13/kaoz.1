@@ -29,8 +29,8 @@
     "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts tests/telegram-inbound.test.ts",
     "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts",
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
-    "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts"
-    ,"test:updates": "node --test tests/electron-update-errors.test.cjs"
+    "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts",
+    "test:updates": "node --test tests/electron-update-errors.test.cjs"
   },
   "dependencies": {
     "@cartesia/cartesia-js": "^3.2.0",
