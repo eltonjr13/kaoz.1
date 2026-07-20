@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { IStorageProvider, CognitiveMemoryData } from './IStorageProvider';
-import { getFlowStorageRoot } from '../../runtime-paths';
+import { getFlowStorageRoot } from '../../runtime-paths.ts';
 
 const DEFAULT_USER_ID = 'local-user';
 
@@ -44,9 +44,9 @@ export class JsonStorageProvider implements IStorageProvider {
   private legacyFilePath: string;
   private migrationPromise?: Promise<void>;
 
-  constructor(filePath?: string) {
+  constructor(filePath?: string, legacyFilePath?: string) {
     this.filePath = filePath || path.join(getFlowStorageRoot(), 'cognitive-memory.json');
-    this.legacyFilePath = path.join(process.cwd(), 'storage', 'cognitive-memory.json');
+    this.legacyFilePath = legacyFilePath || path.join(process.cwd(), 'storage', 'cognitive-memory.json');
   }
 
   public async readMemory(): Promise<CognitiveMemoryData> {

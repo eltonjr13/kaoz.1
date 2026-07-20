@@ -411,8 +411,11 @@ async function processChatMemoryBeforeResponse(
   sessionId: string | undefined,
   cortexMemoryEnabled: boolean
 ): Promise<{ receipt?: string }> {
-  if (!cortexMemoryEnabled || !userText) return {};
+  if (!userText) return {};
   const command = detectChatMemoryCommand(userText);
+  if (!cortexMemoryEnabled) {
+    return command.explicit ? { receipt: 'A memoria Cortex esta desligada; por isso, nao salvei nem removi nenhuma informacao.' } : {};
+  }
   try {
     const service = new ChatMemoryService(new JsonStorageProvider());
     if (command.type === 'forget') {
@@ -619,7 +622,11 @@ export async function POST(request: Request) {
 
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
-    const { relevantMemories, activePersonalityMemories } = cortexContext;
+    const activePersonalityMemories = cortexContext.activePersonalityMemories;
+    const relevantMemories = [
+      cortexContext.relevantMemories,
+      memoryOperation.receipt ? `[RESULTADO DA OPERACAO DE MEMORIA DESTE TURNO]\n${memoryOperation.receipt}\nNao afirme um resultado diferente deste.` : undefined
+    ].filter(Boolean).join('\n\n') || undefined;
 
     const runChat = async (onMessageChunk?: (chunk: string) => void) => {
       const response = await chatWithAgent(

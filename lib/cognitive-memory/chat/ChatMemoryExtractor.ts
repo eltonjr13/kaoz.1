@@ -60,7 +60,8 @@ const EXPLICIT_SIGNALS: SignalDefinition[] = [
   { phrase: 'nesse projeto', pattern: /\b(?:nesse|neste)\s+projeto\b\s*(?::|,|-)?\s*(.+)/, defaultKind: 'project_fact', defaultScope: 'project', confidenceScore: 0.9, status: 'active' },
   { phrase: 'gosto de', pattern: /\bgosto\s+de\s+(.+)/, defaultKind: 'user_preference', confidenceScore: 0.88, status: 'active' },
   { phrase: 'meu nome', pattern: /\bmeu\s+nome\s+(?:e|eh)\s+(.+)/, defaultKind: 'user_fact', confidenceScore: 0.96, status: 'active' },
-  { phrase: 'minha favorita', pattern: /\bminh(?:a|o)\s+([a-z]+)\s+favorit(?:a|o)\s+(?:e|eh)\s+(.+)/, defaultKind: 'user_preference', confidenceScore: 0.96, status: 'active' }
+  { phrase: 'fruta favorita', pattern: /\bminha\s+fruta\s+favorita\s+(?:e|eh)\s+(.+)/, defaultKind: 'user_preference', confidenceScore: 0.96, status: 'active' },
+  { phrase: 'cor favorita', pattern: /\bminha\s+cor\s+favorita\s+(?:e|eh)\s+(.+)/, defaultKind: 'user_preference', confidenceScore: 0.96, status: 'active' }
 ];
 
 const WEAK_SIGNALS: SignalDefinition[] = [
@@ -212,9 +213,12 @@ function classifyKind(content: string, defaultKind: ChatMemoryKind, matchedPhras
 
 function resolveScope(kind: ChatMemoryKind, content: string, signal: SignalDefinition, context: ChatMemoryExtractionContext): ChatMemoryScope {
   if (context.defaultScope) return context.defaultScope;
+  if (signal.defaultScope === 'project') return context.projectId ? 'project' : context.sessionId ? 'session' : 'user';
   if (signal.defaultScope) return signal.defaultScope;
   if (kind === 'avatar_style_signal') return 'avatar';
-  if (kind === 'project_fact' || PROJECT_SIGNAL.test(normalizeForMatch(content))) return 'project';
+  if (kind === 'project_fact' || PROJECT_SIGNAL.test(normalizeForMatch(content))) {
+    return context.projectId ? 'project' : context.sessionId ? 'session' : 'user';
+  }
   return signal.status === 'pending_review' ? 'session' : 'user';
 }
 
@@ -227,7 +231,8 @@ function formatCandidateContent(phrase: string, content: string): string {
     'nesse projeto': `Neste projeto: ${content}`,
     'gosto de': `Usuario gosta de ${content}`,
     'meu nome': `O nome do usuario e ${content}`,
-    'minha favorita': `Preferencia favorita do usuario: ${content}`,
+    'fruta favorita': `A fruta favorita do usuario e ${content}`,
+    'cor favorita': `A cor favorita do usuario e ${content}`,
     'da proxima vez': `Da proxima vez, ${content}`,
     'seria melhor': `Seria melhor ${content}`,
     'melhor usar': `Melhor usar ${content}`
@@ -260,7 +265,8 @@ function inferTags(content: string): string[] {
 
 function buildCanonicalKey(kind: ChatMemoryKind, content: string, phrase: string, tags: string[]): string {
   if (phrase === 'meu nome') return 'user:identity:name';
-  if (phrase === 'minha favorita') return `user:favorite:${tags[0] || 'general'}`;
+  if (phrase === 'fruta favorita') return 'user:favorite:fruit';
+  if (phrase === 'cor favorita') return 'user:favorite:color';
   return `${kind}:${normalizeForMatch(content).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
 }
 
@@ -283,7 +289,7 @@ function createSafetyBoundaryCandidate(context: ChatMemoryExtractionContext, sou
 
 function stripMemoryCommandPrefix(value: string): string {
   return cleanWhitespace(value)
-    .replace(/^\s*(?:por favor\s*,?\s*)?(?:salv(?:e|a)|anot(?:e|a)|guarde|grave|registre)\s+(?:isso\s+)?(?:na|em)\s+(?:sua\s+)?memoria\s*[:;,.-]?\s*/i, '')
+    .replace(/^\s*(?:por favor\s*,?\s*)?(?:salv(?:e|a)|anot(?:e|a)|guarde|grave|registre)\s+(?:isso\s+)?(?:na|em)\s+(?:sua\s+)?mem[oó]ria\s*[:;,.-]?\s*/i, '')
     .replace(/^\s*(?:por favor\s*,?\s*)?lembr(?:e|a)(?:-se)?\s+(?:que|de)\s*/i, '')
     .replace(/^\s*(?:na verdade|corrij(?:a|o)|correcao|eu quis dizer)\s*[:;,.-]?\s*/i, '');
 }

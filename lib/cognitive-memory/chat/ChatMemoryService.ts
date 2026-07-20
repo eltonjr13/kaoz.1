@@ -26,7 +26,11 @@ export interface ChatMemoryPromptContext {
 }
 
 export class ChatMemoryService {
-  constructor(private storage: IStorageProvider) {}
+  private storage: IStorageProvider;
+
+  constructor(storage: IStorageProvider) {
+    this.storage = storage;
+  }
 
   public async saveChatMemoryCandidates(
     candidates: ChatMemoryCandidate[],
