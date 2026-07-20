@@ -14,7 +14,7 @@
     "desktop:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
     "build": "node scripts/build-next.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs",
-    "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis",
+    "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish never",
     "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish always",
     "desktop:verify-release": "node scripts/verify-update-artifacts.mjs",
     "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
