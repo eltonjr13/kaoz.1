@@ -4,6 +4,7 @@ import { analyzeVideoForStep1, generateScriptFromAnalysis, classifyIntention, ty
 import { logger } from "./FlowUtils";
 import { getMemoryContextForPrompt, appendAgentMemory } from "@/lib/agent-memory";
 import { getFfmpegPath, runCommand } from "@/lib/videos/render";
+import { getFlowGeneratedDir, getFlowTempUploadsDir } from "@/lib/runtime-paths";
 import path from "node:path";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
@@ -159,7 +160,7 @@ export class FlowAgent {
 
     const contentType = response.headers.get("content-type") || "";
     const ext = this.avatarReferenceExtension(contentType, imagePath);
-    const tempDir = path.resolve("storage/temp_uploads");
+    const tempDir = getFlowTempUploadsDir();
     await mkdir(tempDir, { recursive: true });
     const localPath = path.join(tempDir, `avatar_ref_${jobId}${ext}`);
     await writeFile(localPath, Buffer.from(await response.arrayBuffer()));
@@ -182,7 +183,7 @@ export class FlowAgent {
       return mediaPath;
     }
 
-    const tempDir = path.resolve("storage/temp_uploads");
+    const tempDir = getFlowTempUploadsDir();
     await mkdir(tempDir, { recursive: true });
     const framePath = path.join(tempDir, `avatar_ref_${jobId}_frame.jpg`);
     await runCommand(getFfmpegPath(), [
@@ -604,7 +605,7 @@ export class FlowAgent {
         const fs = require('node:fs');
         const path = require('node:path');
         const crypto = require('node:crypto');
-        const destDir = path.resolve('storage/generated/images');
+        const destDir = path.join(getFlowGeneratedDir(), 'images');
         fs.mkdirSync(destDir, { recursive: true });
         const ext = path.extname(referencePath) || '.png';
         const persistedPath = path.join(destDir, `persisted_ref_${crypto.randomUUID()}${ext}`);
@@ -1315,7 +1316,7 @@ Retorne estritamente um JSON no formato:
 
     const temporaryPaths = [
       options.cleanupInputReferenceImage ? options.inputReferenceImage : undefined,
-      avatarReferenceImage && path.resolve(avatarReferenceImage).startsWith(path.resolve('storage/temp_uploads') + path.sep)
+      avatarReferenceImage && path.resolve(avatarReferenceImage).startsWith(getFlowTempUploadsDir() + path.sep)
         ? avatarReferenceImage
         : undefined,
     ].filter((candidate): candidate is string => Boolean(candidate));

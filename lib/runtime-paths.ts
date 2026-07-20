@@ -16,3 +16,18 @@ export function getLocalDataDir(): string {
 export function getRuntimeJobsDir(): string {
   return path.join(getRuntimeDataRoot(), "jobs");
 }
+
+/** Keep Flow media outside Electron's packaged resources so NSIS can replace it. */
+export function getFlowStorageRoot(): string {
+  const configured = process.env.MRCHICKEN_STORAGE_DIR?.trim();
+  return configured ? path.resolve(configured) : path.resolve("storage");
+}
+
+export function getFlowGeneratedDir(): string {
+  const configured = process.env.FLOW_DOWNLOAD_PATH?.trim();
+  return configured ? path.resolve(configured) : path.join(getFlowStorageRoot(), "generated");
+}
+
+export function getFlowTempUploadsDir(): string {
+  return path.join(getFlowStorageRoot(), "temp_uploads");
+}

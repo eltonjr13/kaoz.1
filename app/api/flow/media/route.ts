@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
+import { getFlowGeneratedDir, getFlowTempUploadsDir } from "@/lib/runtime-paths";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -25,17 +26,19 @@ export async function GET(request: NextRequest) {
     const markerGeneratedIndex = normalizedParam.toLowerCase().indexOf(storageMarkerGenerated.toLowerCase());
     const markerTempIndex = normalizedParam.toLowerCase().indexOf(storageMarkerTemp.toLowerCase());
     
+    const generatedRoot = getFlowGeneratedDir();
+    const tempRoot = getFlowTempUploadsDir();
     let targetPath = filePathParam;
     if (markerGeneratedIndex >= 0) {
       const relativePart = normalizedParam.substring(markerGeneratedIndex + storageMarkerGenerated.length);
-      targetPath = path.join("storage", "generated", relativePart);
+      targetPath = path.join(generatedRoot, relativePart);
     } else if (markerTempIndex >= 0) {
       const relativePart = normalizedParam.substring(markerTempIndex + storageMarkerTemp.length);
-      targetPath = path.join("storage", "temp_uploads", relativePart);
+      targetPath = path.join(tempRoot, relativePart);
     } else if (normalizedParam.toLowerCase().startsWith(`storage${path.sep}generated${path.sep}`)) {
-      targetPath = normalizedParam;
+      targetPath = path.join(generatedRoot, normalizedParam.substring(`storage${path.sep}generated${path.sep}`.length));
     } else if (normalizedParam.toLowerCase().startsWith(`storage${path.sep}temp_uploads${path.sep}`)) {
-      targetPath = normalizedParam;
+      targetPath = path.join(tempRoot, normalizedParam.substring(`storage${path.sep}temp_uploads${path.sep}`.length));
     }
 
     // Resolve path to check file availability
@@ -43,8 +46,8 @@ export async function GET(request: NextRequest) {
 
     // Security check: ensure the file resides inside our allowed storage paths
     const allowedRoots = [
-      path.resolve("storage/generated/"),
-      path.resolve("storage/temp_uploads/")
+      generatedRoot,
+      tempRoot
     ];
     
     const isWindows = process.platform === "win32";

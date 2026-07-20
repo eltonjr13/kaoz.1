@@ -9,6 +9,7 @@ const INITIAL_STATUS: UpdateStatus = { state: "idle" };
 
 function messageFor(status: UpdateStatus) {
   switch (status.state) {
+    case "installing": return "Fechando os servicos internos para instalar a atualizacao com seguranca...";
     case "checking": return "Verificando se existe uma nova versão...";
     case "available": return `A versão ${status.version || "mais recente"} está disponível.`;
     case "downloading": return `Baixando atualização${typeof status.progress === "number" ? `: ${status.progress}%` : "..."}`;
@@ -47,7 +48,7 @@ export function AppUpdatesPanel() {
     await bridge.installUpdate();
   };
 
-  const busy = status.state === "checking" || status.state === "downloading";
+  const busy = status.state === "checking" || status.state === "downloading" || status.state === "installing";
   const hasError = status.state === "error";
   const canCheck = Boolean(bridge) && !busy;
 
@@ -78,7 +79,7 @@ export function AppUpdatesPanel() {
               <RotateCw size={12} /> Reiniciar e atualizar
             </button>
           )}
-          {status.state !== "available" && status.state !== "downloaded" && (
+          {status.state !== "available" && status.state !== "downloaded" && status.state !== "installing" && (
             <button type="button" onClick={() => void check()} disabled={!canCheck} className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[10px] font-bold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
               {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               Verificar atualização

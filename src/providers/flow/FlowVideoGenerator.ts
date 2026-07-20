@@ -3,6 +3,8 @@ import { VideoGenerationResult, FlowConfig, VideoGenerationOptions } from './Flo
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { probeMediaInfo } from '@/lib/videos/render';
+import path from 'node:path';
+import { getFlowGeneratedDir } from '@/lib/runtime-paths';
 export class FlowVideoGenerator {
   constructor(private downloader: FlowDownloader, private config: FlowConfig) {}
 
@@ -553,8 +555,8 @@ export class FlowVideoGenerator {
       
       // Capture error screenshot for debugging
       try {
-        ensureDirExists('storage/generated/');
-        const screenshotPath = 'storage/generated/error_video_generator.png';
+        ensureDirExists(getFlowGeneratedDir());
+        const screenshotPath = path.join(getFlowGeneratedDir(), 'error_video_generator.png');
         await page.screenshot({ path: screenshotPath });
         logger.info(`Screenshot de erro salvo em: ${screenshotPath}`);
       } catch (screenshotErr) {

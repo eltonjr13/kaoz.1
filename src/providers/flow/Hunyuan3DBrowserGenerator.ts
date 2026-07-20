@@ -2,6 +2,7 @@ import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { Download, Locator, Page } from "playwright";
 import { logger } from "./FlowUtils";
+import { getFlowGeneratedDir } from "@/lib/runtime-paths";
 
 export interface Hunyuan3DBrowserResult {
   modelPaths: string[];
@@ -398,7 +399,7 @@ export class Hunyuan3DBrowserGenerator {
   }
 
   private async waitForDownload(page: Page, jobId: string): Promise<string[]> {
-    const outputDir = path.resolve("storage/generated/3d");
+    const outputDir = path.join(getFlowGeneratedDir(), "3d");
     await mkdir(outputDir, { recursive: true });
     const deadline = Date.now() + HUNYUAN_TIMEOUT;
 

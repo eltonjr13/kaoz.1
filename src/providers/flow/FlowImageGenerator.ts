@@ -6,6 +6,7 @@ import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './Flo
 import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
+import { getFlowGeneratedDir } from '@/lib/runtime-paths';
 import {
   imageOperationRequiresReference,
   resolveReferenceAttachmentStrategy,
@@ -1005,8 +1006,8 @@ export class FlowImageGenerator {
       
       // Capture error screenshot for debugging
       try {
-        ensureDirExists('storage/generated/');
-        const screenshotPath = 'storage/generated/error_image_generator.png';
+        ensureDirExists(getFlowGeneratedDir());
+        const screenshotPath = path.join(getFlowGeneratedDir(), 'error_image_generator.png');
         await page.screenshot({ path: screenshotPath });
         logger.info(`Screenshot de erro salvo em: ${screenshotPath}`);
       } catch (screenshotErr) {

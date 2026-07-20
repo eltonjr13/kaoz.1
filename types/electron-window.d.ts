@@ -2,7 +2,7 @@ export {};
 
 declare global {
   interface MrChickenUpdateStatus {
-    state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "unsupported" | "error";
+    state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "installing" | "not-available" | "unsupported" | "error";
     currentVersion?: string;
     supported?: boolean;
     version?: string;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
+import { getFlowGeneratedDir, getFlowTempUploadsDir } from "@/lib/runtime-paths";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +122,7 @@ function requireParsedRequest(body: Parameters<typeof parseRequestPayload>[0]): 
 
 function resolveAllowedMediaPath(mediaPath: string): string | null {
   const absolutePath = path.resolve(mediaPath);
-  const allowedRoots = [path.resolve("storage/generated"), path.resolve("storage/temp_uploads")];
+  const allowedRoots = [getFlowGeneratedDir(), getFlowTempUploadsDir()];
   const isWindows = process.platform === "win32";
   const normalizedPath = isWindows ? absolutePath.toLowerCase() : absolutePath;
 

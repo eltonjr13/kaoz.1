@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { updateErrorDetails } = require("./update-errors.cjs");
+const { stopProcessTree } = require("./process-lifecycle.cjs");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -9,6 +10,7 @@ const path = require("node:path");
 let mainWindow;
 let nextServer;
 let updateCheckPromise;
+let installingUpdate = false;
 let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported: false };
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
@@ -33,6 +35,19 @@ function setUpdateStatus(next) {
 function configureAutoUpdater() {
   if (!updaterIsSupported()) return;
 
+  const updaterLogDir = path.join(app.getPath("userData"), "logs");
+  fs.mkdirSync(updaterLogDir, { recursive: true });
+  const updaterLogPath = path.join(updaterLogDir, "updater.log");
+  const writeUpdaterLog = (level, ...values) => {
+    const line = values.map((value) => value instanceof Error ? value.message : String(value)).join(" ");
+    fs.appendFileSync(updaterLogPath, `[${new Date().toISOString()}] [${level}] ${line}\n`, "utf8");
+  };
+  autoUpdater.logger = {
+    debug: (...values) => writeUpdaterLog("debug", ...values),
+    info: (...values) => writeUpdaterLog("info", ...values),
+    warn: (...values) => writeUpdaterLog("warn", ...values),
+    error: (...values) => writeUpdaterLog("error", ...values)
+  };
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -80,10 +95,20 @@ ipcMain.handle("mrchicken-update:download", async (event) => {
   return updateStatus;
 });
 
-ipcMain.handle("mrchicken-update:install", (event) => {
+ipcMain.handle("mrchicken-update:install", async (event) => {
   if (!getMainWindowForEvent(event) || updateStatus.state !== "downloaded") return false;
-  setImmediate(() => autoUpdater.quitAndInstall(false, true));
-  return true;
+  if (installingUpdate) return true;
+  installingUpdate = true;
+  try {
+    setUpdateStatus({ state: "installing", error: undefined, errorCode: undefined });
+    await stopProductionServer();
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    return true;
+  } catch (error) {
+    installingUpdate = false;
+    setUpdateStatus({ state: "error", ...updateErrorDetails(error), progress: undefined });
+    return false;
+  }
 });
 
 function sendWindowState(target) {
@@ -207,6 +232,7 @@ async function startProductionServer() {
     APP_BASE_URL: `http://127.0.0.1:${port}`,
     MRCHICKEN_DESKTOP: "1",
     MRCHICKEN_DATA_DIR: path.join(dataRoot, "generated"),
+    MRCHICKEN_STORAGE_DIR: path.join(dataRoot, "storage"),
     FLOW_DOWNLOAD_PATH: path.join(dataRoot, "storage", "generated"),
     FLOW_PROFILE_PATH: path.join(dataRoot, "storage", "browser-profile"),
     // Use the user's installed Chrome so a separate `npx playwright install` is unnecessary.
@@ -231,6 +257,13 @@ async function startProductionServer() {
   const url = `http://127.0.0.1:${port}`;
   await waitForServer(url);
   return url;
+}
+
+async function stopProductionServer() {
+  const server = nextServer;
+  nextServer = undefined;
+  if (!server) return;
+  await stopProcessTree(server);
 }
 
 function createWindow(url) {
@@ -284,7 +317,17 @@ function createWindow(url) {
   mainWindow.loadURL(url);
 }
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
+app.on("second-instance", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
+
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   try {
     configureAutoUpdater();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
@@ -300,7 +343,7 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   app.isQuitting = true;
-  if (nextServer && !nextServer.killed) nextServer.kill();
+  void stopProductionServer();
 });
 
 app.on("window-all-closed", () => {

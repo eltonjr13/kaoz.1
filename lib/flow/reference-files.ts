@@ -1,10 +1,11 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getFlowGeneratedDir, getFlowTempUploadsDir } from '../runtime-paths.ts';
 
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
-const TEMP_REFERENCE_ROOT = path.resolve('storage/temp_uploads');
-const GENERATED_ROOT = path.resolve('storage/generated');
+const TEMP_REFERENCE_ROOT = getFlowTempUploadsDir();
+const GENERATED_ROOT = getFlowGeneratedDir();
 
 const MIME_EXTENSIONS: Record<string, string> = {
   'image/png': '.png',

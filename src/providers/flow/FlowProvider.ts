@@ -8,6 +8,7 @@ import { FlowLLMAutomation } from './FlowLLMAutomation';
 import { hunyuan3DBrowserGenerator } from './Hunyuan3DBrowserGenerator';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
+import { getFlowGeneratedDir } from '@/lib/runtime-paths';
 
 export class FlowProvider {
   private config: FlowConfig;
@@ -40,7 +41,7 @@ export class FlowProvider {
     this.config = {
       headless: process.env.FLOW_HEADLESS !== 'false', // Default true, override if 'false'
       timeout: process.env.FLOW_TIMEOUT ? parseInt(process.env.FLOW_TIMEOUT, 10) : 300000,
-      downloadPath: process.env.FLOW_DOWNLOAD_PATH || 'storage/generated/',
+      downloadPath: getFlowGeneratedDir(),
       profilePath: process.env.FLOW_PROFILE_PATH || 'storage/browser-profile/',
       browserChannel: process.env.FLOW_BROWSER_CHANNEL || undefined,
       flowUrl: process.env.FLOW_URL || 'https://flow.google',
