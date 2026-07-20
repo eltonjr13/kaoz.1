@@ -6,6 +6,15 @@ if (process.platform === "win32") {
     toggleMaximize: () => ipcRenderer.invoke("mrchicken-window:toggle-maximize"),
     close: () => ipcRenderer.invoke("mrchicken-window:close"),
     isMaximized: () => ipcRenderer.invoke("mrchicken-window:is-maximized"),
+    getUpdateStatus: () => ipcRenderer.invoke("mrchicken-update:get-status"),
+    checkForUpdates: () => ipcRenderer.invoke("mrchicken-update:check"),
+    downloadUpdate: () => ipcRenderer.invoke("mrchicken-update:download"),
+    installUpdate: () => ipcRenderer.invoke("mrchicken-update:install"),
+    onUpdateStatus: (listener) => {
+      const handler = (_event, status) => listener(status);
+      ipcRenderer.on("mrchicken-update:status", handler);
+      return () => ipcRenderer.removeListener("mrchicken-update:status", handler);
+    },
     onMaximizedChanged: (listener) => {
       const handler = (_event, isMaximized) => listener(Boolean(isMaximized));
       ipcRenderer.on("mrchicken-window:maximized-changed", handler);

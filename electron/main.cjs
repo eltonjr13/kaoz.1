@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -6,6 +7,8 @@ const path = require("node:path");
 
 let mainWindow;
 let nextServer;
+let updateCheckPromise;
+let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported: false };
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
 
@@ -15,6 +18,72 @@ function getMainWindowForEvent(event) {
   const senderWindow = BrowserWindow.fromWebContents(event.sender);
   return senderWindow && senderWindow === mainWindow ? senderWindow : null;
 }
+
+function updaterIsSupported() {
+  return process.platform === "win32" && app.isPackaged;
+}
+
+function setUpdateStatus(next) {
+  updateStatus = { ...updateStatus, ...next, currentVersion: app.getVersion(), supported: updaterIsSupported() };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mrchicken-update:status", updateStatus);
+  return updateStatus;
+}
+
+function configureAutoUpdater() {
+  if (!updaterIsSupported()) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", error: undefined, progress: undefined }));
+  autoUpdater.on("update-available", (info) => setUpdateStatus({ state: "available", version: info.version, releaseDate: info.releaseDate, error: undefined }));
+  autoUpdater.on("update-not-available", () => setUpdateStatus({ state: "not-available", version: undefined, progress: undefined, error: undefined }));
+  autoUpdater.on("download-progress", (progress) => setUpdateStatus({ state: "downloading", progress: Math.round(progress.percent) }));
+  autoUpdater.on("update-downloaded", (info) => setUpdateStatus({ state: "downloaded", version: info.version, progress: 100, error: undefined }));
+  autoUpdater.on("error", (error) => {
+    console.error("[AutoUpdater]", error);
+    setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error), progress: undefined });
+  });
+}
+
+ipcMain.handle("mrchicken-update:get-status", (event) => {
+  if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
+  return { ...updateStatus, currentVersion: app.getVersion(), supported: updaterIsSupported() };
+});
+
+ipcMain.handle("mrchicken-update:check", async (event) => {
+  if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
+  if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
+  if (!updateCheckPromise) {
+    updateCheckPromise = autoUpdater.checkForUpdates().catch((error) => {
+      setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }).finally(() => {
+      updateCheckPromise = undefined;
+    });
+  }
+  await updateCheckPromise;
+  return updateStatus;
+});
+
+ipcMain.handle("mrchicken-update:download", async (event) => {
+  if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
+  if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
+  if (updateStatus.state !== "available") return updateStatus;
+  try {
+    setUpdateStatus({ state: "downloading", progress: 0, error: undefined });
+    await autoUpdater.downloadUpdate();
+  } catch (error) {
+    setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error), progress: undefined });
+  }
+  return updateStatus;
+});
+
+ipcMain.handle("mrchicken-update:install", (event) => {
+  if (!getMainWindowForEvent(event) || updateStatus.state !== "downloaded") return false;
+  setImmediate(() => autoUpdater.quitAndInstall(false, true));
+  return true;
+});
 
 function sendWindowState(target) {
   if (!target || target.isDestroyed()) return;
@@ -216,6 +285,7 @@ function createWindow(url) {
 
 app.whenReady().then(async () => {
   try {
+    configureAutoUpdater();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
   } catch (error) {
     dialog.showErrorBox("Falha ao iniciar o MrChicken", error instanceof Error ? error.message : String(error));

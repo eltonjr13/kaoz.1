@@ -4,6 +4,10 @@
   "description": "MrChicken AI content creation studio for Windows",
   "author": "MrChicken",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eltonjr13/kaoz.1.git"
+  },
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack",
@@ -11,6 +15,7 @@
     "build": "node scripts/build-next.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis",
+    "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish always",
     "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
@@ -36,6 +41,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
+    "electron-updater": "^6.7.2",
     "ffmpeg-static": "^5.3.0",
     "framer-motion": "^12.41.0",
     "lucide-react": "^1.16.0",
@@ -110,6 +116,13 @@
         "nsis"
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "eltonjr13",
+        "repo": "kaoz.1"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

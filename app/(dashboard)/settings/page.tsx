@@ -27,7 +27,8 @@ import {
   Rocket,
   Activity,
   Server,
-  PlugZap
+  PlugZap,
+  Download
 } from "lucide-react";
 import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
@@ -36,6 +37,7 @@ import { fetchCartesiaVoices, playCartesiaVoiceWebSocket } from "@/lib/cartesia"
 import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
+import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1628,7 +1630,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors" | "updates";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1901,6 +1903,17 @@ export default function SettingsPage() {
           <Sparkles size={14} className={activeTab === "skills" ? "text-[#9D7CFF]" : "text-zinc-500"} />
           Skills
         </button>
+        <button
+          onClick={() => setActiveTab("updates")}
+          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+            activeTab === "updates"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+          }`}
+        >
+          <Download size={14} className={activeTab === "updates" ? "text-emerald-400" : "text-zinc-500"} />
+          Atualizações
+        </button>
       </div>
 
       {/* Info Status Board */}
@@ -1941,6 +1954,12 @@ export default function SettingsPage() {
         {activeTab === "skills" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <SkillsSettingsPanel />
+          </div>
+        )}
+
+        {activeTab === "updates" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <AppUpdatesPanel />
           </div>
         )}
 

@@ -1,6 +1,16 @@
 export {};
 
 declare global {
+  interface MrChickenUpdateStatus {
+    state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "unsupported" | "error";
+    currentVersion?: string;
+    supported?: boolean;
+    version?: string;
+    releaseDate?: string;
+    progress?: number;
+    error?: string;
+  }
+
   interface Window {
     mrChickenDesktop?: {
       minimize: () => Promise<boolean>;
@@ -8,6 +18,11 @@ declare global {
       close: () => Promise<boolean>;
       isMaximized: () => Promise<boolean>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
+      getUpdateStatus: () => Promise<MrChickenUpdateStatus>;
+      checkForUpdates: () => Promise<MrChickenUpdateStatus>;
+      downloadUpdate: () => Promise<MrChickenUpdateStatus>;
+      installUpdate: () => Promise<boolean>;
+      onUpdateStatus: (listener: (status: MrChickenUpdateStatus) => void) => () => void;
     };
   }
 }
