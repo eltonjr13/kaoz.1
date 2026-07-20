@@ -15,3 +15,17 @@ export async function GET(request: Request) {
   });
   return NextResponse.json({ conversations, stats: getConversationMemoryStore().stats() });
 }
+
+export async function PATCH(request: Request) {
+  const body = await request.json().catch(() => null) as { externalConversationId?: string; title?: string } | null;
+  if (!body?.externalConversationId || !body.title?.trim()) return NextResponse.json({ error: "Identificador e titulo sao obrigatorios" }, { status: 400 });
+  return NextResponse.json({ updated: getConversationMemoryStore().renameConversation("flow", "", body.externalConversationId, body.title) });
+}
+
+export async function DELETE(request: Request) {
+  const url = new URL(request.url);
+  const externalId = url.searchParams.get("externalConversationId");
+  if (!externalId) return NextResponse.json({ error: "externalConversationId e obrigatorio" }, { status: 400 });
+  const store = getConversationMemoryStore();
+  return NextResponse.json(store.deleteConversation(store.resolveConversationId("flow", "", externalId)));
+}

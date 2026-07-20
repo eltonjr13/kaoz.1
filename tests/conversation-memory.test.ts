@@ -14,8 +14,9 @@ async function fixture() {
 
 test("importacao do Flow e idempotente e persiste apos reinicio", async () => {
   const { root, file } = await fixture();
+  let store: ConversationMemoryStore | undefined;
   try {
-    let store = new ConversationMemoryStore(file);
+    store = new ConversationMemoryStore(file);
     const payload = [{ id: "chat-a", title: "Projeto verão", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:01:00.000Z", messages: [
       { id: "u1", role: "user" as const, content: "Decidimos usar iluminação âmbar no cenário", timestamp: "2026-01-01T00:00:00.000Z" },
       { id: "a1", role: "assistant" as const, content: "Combinado.", timestamp: "2026-01-01T00:01:00.000Z" },
@@ -24,11 +25,13 @@ test("importacao do Flow e idempotente e persiste apos reinicio", async () => {
     assert.equal(store.importFlowConversations(payload).alreadyImported, true);
     assert.equal(store.stats().messages, 2);
     store.close();
+    store = undefined;
     store = new ConversationMemoryStore(file);
     assert.equal(store.stats().messages, 2);
     assert.match(store.search({ query: "iluminacao amb", profileId: LOCAL_PROFILE_ID })[0]?.content || "", /âmbar/);
     store.close();
-  } finally { await rm(root, { recursive: true, force: true }); }
+    store = undefined;
+  } finally { store?.close(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("busca fria respeita perfil, canal, data e somente roda com intencao de recordacao", async () => {

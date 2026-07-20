@@ -3309,6 +3309,7 @@ export default function FlowDashboardPage() {
     setActiveConversationId(nextConversation.id);
     setChatMessages(nextConversation.messages);
     setDraftMessage("");
+    void fetch(`/api/conversations?externalConversationId=${encodeURIComponent(activeConversationId)}`, { method: 'DELETE' });
   };
 
   const handleDeleteSpecificConversation = (conversationId: string) => {
@@ -3325,12 +3326,14 @@ export default function FlowDashboardPage() {
     } else {
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [createChatConversation()]);
     }
+    void fetch(`/api/conversations?externalConversationId=${encodeURIComponent(conversationId)}`, { method: 'DELETE' });
   };
 
   const handleRenameConversation = (conversationId: string, newTitle: string) => {
     setChatConversations((prev) => 
       prev.map((c) => (c.id === conversationId ? { ...c, title: newTitle } : c))
     );
+    void fetch('/api/conversations', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ externalConversationId: conversationId, title: newTitle }) });
   };
 
   const handleExportSpecificConversation = (conversationId: string) => {

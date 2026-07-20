@@ -141,6 +141,9 @@ export class ConversationMemoryStore {
       ON CONFLICT(channel, account_id, external_user_id) DO UPDATE SET
         username=COALESCE(excluded.username, channel_identities.username), last_seen_at=excluded.last_seen_at
     `).run(id, input.channel, accountId, input.externalUserId, input.username || null, now, now);
+    if (input.channel === "flow" && input.externalUserId === LOCAL_PROFILE_ID) {
+      this.db.prepare("UPDATE channel_identities SET linked_profile_id=? WHERE id=?").run(LOCAL_PROFILE_ID, id);
+    }
     return this.getIdentity(id)!;
   }
 
@@ -307,6 +310,13 @@ export class ConversationMemoryStore {
     return { deleted: Number(result.changes) > 0, messageIds: ids };
   }
 
+  renameConversation(channel: ConversationChannel, accountId: string | undefined, externalConversationId: string, title: string): boolean {
+    const result = this.db.prepare("UPDATE conversations SET title=?, updated_at=? WHERE id=?").run(
+      title.trim(), new Date().toISOString(), this.resolveConversationId(channel, accountId, externalConversationId)
+    );
+    return Number(result.changes) > 0;
+  }
+
   listMessageIdsForIdentity(identityId: string): string[] {
     return (this.db.prepare("SELECT m.id FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.identity_id=?").all(identityId) as Row[]).map((row) => String(row.id));
   }
@@ -344,9 +354,10 @@ export class ConversationMemoryStore {
     this.transaction(() => {
       const row = this.db.prepare("SELECT * FROM consolidation_jobs WHERE status='pending' ORDER BY created_at LIMIT 1").get() as Row | undefined;
       if (!row) return;
+      const jobId = String(row.id);
       const now = new Date().toISOString();
-      this.db.prepare("UPDATE consolidation_jobs SET status='running', attempts=attempts+1, updated_at=? WHERE id=? AND status='pending'").run(now, row.id);
-      const next = this.db.prepare("SELECT * FROM consolidation_jobs WHERE id=?").get(row.id) as Row;
+      this.db.prepare("UPDATE consolidation_jobs SET status='running', attempts=attempts+1, updated_at=? WHERE id=? AND status='pending'").run(now, jobId);
+      const next = this.db.prepare("SELECT * FROM consolidation_jobs WHERE id=?").get(jobId) as Row;
       claimed = mapJob(next);
     });
     return claimed;
