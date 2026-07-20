@@ -189,7 +189,7 @@ function createWindow(url) {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    frame: false,
+    frame: process.platform !== "win32",
     backgroundColor: "#09090b",
     icon: path.join(__dirname, "..", "build", "icon.png"),
     webPreferences: {
