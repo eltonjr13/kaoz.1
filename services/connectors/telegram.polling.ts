@@ -1,15 +1,17 @@
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorInboundHistoryEntry, StoredConnectorAccount, TelegramPollingRuntimeStatus } from "./connector.types.ts";
+import { getTelegramImageAttachment, requestsTelegramImageGeneration, telegramImageOperation, telegramInboundEnabled, telegramMessagePrompt, type TelegramImageAttachment, type TelegramInboundMessage } from "./telegram.inbound.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_CONVERSATION_TURNS = 6;
+const MAX_TELEGRAM_REFERENCE_BYTES = 10 * 1024 * 1024;
 
-type TelegramUser = { id?: number; username?: string; first_name?: string; is_bot?: boolean };
-type TelegramMessage = { message_id?: number; chat?: { id?: number; type?: string; title?: string }; from?: TelegramUser; text?: string };
-type TelegramUpdate = { update_id?: number; message?: TelegramMessage };
+type TelegramUpdate = { update_id?: number; message?: TelegramInboundMessage };
 type ConversationTurn = { role: "user" | "assistant"; content: string };
 
 function globalManager() {
@@ -19,10 +21,6 @@ function globalManager() {
 function apiUrl(token: string, method: string) { return `${API_ROOT}/bot${token}/${method}`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function parseIds(value?: string) { return new Set((value || "").split(",").map((item) => item.trim()).filter(Boolean)); }
-
-function telegramInboundEnabled(account: StoredConnectorAccount) {
-  return account.enabled && account.provider === "telegram" && account.publicConfig.inboundEnabled === "true";
-}
 
 function normalizeAgentResponse(value: string) {
   const trimmed = value.trim();
@@ -114,12 +112,13 @@ export class TelegramPollingManager {
     } finally { this.running = false; }
   }
 
-  private async handleMessage(message: TelegramMessage) {
+  private async handleMessage(message: TelegramInboundMessage) {
     if (!this.account || !message.message_id || !message.chat?.id || !message.from?.id || message.from.is_bot) return;
     this.status.lastEventAt = new Date().toISOString();
     const chatId = String(message.chat.id);
     const userId = String(message.from.id);
-    const prompt = message.text?.trim() || "";
+    const imageAttachment = getTelegramImageAttachment(message);
+    const prompt = telegramMessagePrompt(message, Boolean(imageAttachment));
     const allowedChats = parseIds(this.account.publicConfig.allowedChatIds || this.account.publicConfig.chatId);
     const allowedUsers = parseIds(this.account.publicConfig.allowedUserIds);
     const isAllowed = (allowedChats.size === 0 || allowedChats.has(chatId)) && (allowedUsers.size === 0 || allowedUsers.has(userId));
@@ -140,11 +139,22 @@ export class TelegramPollingManager {
     const historyKey = `${chatId}:${userId}`;
     const recent = this.conversations.get(historyKey) || [];
     try {
-      const identity = await getConfiguredAgentIdentity();
-      const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent }), { toolIntentText: prompt });
-      if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
-      const text = normalizeAgentResponse(response);
-      const replyId = await this.sendMessage(chatId, text, message.message_id);
+      let text: string;
+      let replyId: string;
+      if (requestsTelegramImageGeneration(prompt) || imageAttachment) {
+        await this.sendChatAction(chatId, "upload_photo");
+        const referenceImage = imageAttachment ? await this.downloadImageReference(imageAttachment) : undefined;
+        const imagePath = await this.generateImage(prompt, referenceImage, telegramImageOperation(prompt, Boolean(referenceImage)));
+        text = "Aqui está a imagem que você pediu.";
+        replyId = await this.sendPhoto(chatId, text, imagePath, message.message_id);
+      } else {
+        await this.sendChatAction(chatId, "typing");
+        const identity = await getConfiguredAgentIdentity();
+        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent }), { toolIntentText: prompt });
+        if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
+        text = normalizeAgentResponse(response);
+        replyId = await this.sendMessage(chatId, text, message.message_id);
+      }
       const updated: ConversationTurn[] = [...recent, { role: "user" as const, content: prompt }, { role: "assistant" as const, content: text }];
       this.conversations.set(historyKey, updated.slice(-MAX_CONVERSATION_TURNS));
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: replyId });
@@ -165,6 +175,60 @@ export class TelegramPollingManager {
     });
     const body = await response.json().catch(() => ({})) as { ok?: boolean; result?: { message_id?: number }; description?: string };
     if (!response.ok || !body.ok || !body.result?.message_id) throw new Error(`Telegram retornou HTTP ${response.status}: ${body.description || "falha ao responder"}`);
+    return String(body.result.message_id);
+  }
+
+  private async sendChatAction(chatId: string, action: "typing" | "upload_photo") {
+    await fetch(apiUrl(this.token, "sendChatAction"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, action }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined);
+  }
+
+  private async downloadImageReference(attachment: TelegramImageAttachment): Promise<string> {
+    if (attachment.size && attachment.size > MAX_TELEGRAM_REFERENCE_BYTES) throw new Error("A imagem de referência excede o limite de 10 MB.");
+    const metadataResponse = await fetch(apiUrl(this.token, `getFile?file_id=${encodeURIComponent(attachment.fileId)}`), { signal: AbortSignal.timeout(15_000) });
+    const metadata = await metadataResponse.json().catch(() => ({})) as { ok?: boolean; result?: { file_path?: string; file_size?: number }; description?: string };
+    if (!metadataResponse.ok || !metadata.ok || !metadata.result?.file_path) {
+      throw new Error(`Não consegui localizar a imagem anexada: ${metadata.description || `HTTP ${metadataResponse.status}`}`);
+    }
+    if (metadata.result.file_size && metadata.result.file_size > MAX_TELEGRAM_REFERENCE_BYTES) throw new Error("A imagem de referência excede o limite de 10 MB.");
+    const response = await fetch(`${API_ROOT}/file/bot${this.token}/${metadata.result.file_path}`, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`Não consegui baixar a imagem anexada (HTTP ${response.status}).`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_TELEGRAM_REFERENCE_BYTES) throw new Error("A imagem de referência está vazia ou excede o limite de 10 MB.");
+    return `data:${attachment.mimeType};base64,${bytes.toString("base64")}`;
+  }
+
+  private async generateImage(prompt: string, referenceImage?: string, operation: "simple" | "reference" | "edit" = "simple"): Promise<string> {
+    const baseUrl = process.env.APP_BASE_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
+    const response = await fetch(`${baseUrl}/api/flow/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "image", prompt, quantity: 1, operation, referenceImage }),
+      signal: AbortSignal.timeout(360_000),
+    });
+    const body = await response.json().catch(() => ({})) as { success?: boolean; path?: string; paths?: string[]; error?: string };
+    const imagePath = body.paths?.[0] || body.path;
+    if (!response.ok || !body.success || !imagePath) throw new Error(`Falha ao gerar a imagem: ${body.error || `Flow respondeu HTTP ${response.status}`}`);
+    return imagePath;
+  }
+
+  private async sendPhoto(chatId: string, caption: string, imagePath: string, replyToMessageId: number) {
+    const bytes = await readFile(imagePath);
+    const filename = path.basename(imagePath);
+    const extension = path.extname(filename).toLowerCase();
+    const mimeType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : extension === ".webp" ? "image/webp" : "image/png";
+    const form = new FormData();
+    form.set("chat_id", chatId);
+    form.set("caption", caption.slice(0, 1_024));
+    form.set("reply_parameters", JSON.stringify({ message_id: replyToMessageId, allow_sending_without_reply: true }));
+    form.set("photo", new Blob([new Uint8Array(bytes)], { type: mimeType }), filename);
+    const response = await fetch(apiUrl(this.token, "sendPhoto"), { method: "POST", body: form, signal: AbortSignal.timeout(120_000) });
+    const body = await response.json().catch(() => ({})) as { ok?: boolean; result?: { message_id?: number }; description?: string };
+    if (!response.ok || !body.ok || !body.result?.message_id) throw new Error(`Telegram retornou HTTP ${response.status}: ${body.description || "falha ao enviar a imagem"}`);
     return String(body.result.message_id);
   }
 

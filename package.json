@@ -25,7 +25,7 @@
     "test:personality": "node --experimental-strip-types --no-warnings --test tests/agent-personality.test.ts",
     "test:voice-expression": "node --experimental-strip-types --no-warnings --test tests/agent-voice-expression.test.ts",
     "test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts",
-    "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts",
+    "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts tests/telegram-inbound.test.ts",
     "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts",
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
     "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts"
