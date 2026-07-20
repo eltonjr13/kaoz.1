@@ -11,10 +11,11 @@ export function DesktopBehaviorPanel() {
 
   useEffect(() => {
     if (!bridge) return;
-    void bridge.getDesktopPreferences().then((preferences) => {
-      if (preferences) setCloseToTray(preferences.closeToTray);
-      setLoading(false);
-    });
+    void bridge.getDesktopPreferences()
+      .then((preferences) => {
+        if (preferences) setCloseToTray(preferences.closeToTray);
+      })
+      .finally(() => setLoading(false));
   }, [bridge]);
 
   const toggleCloseToTray = async () => {
@@ -22,10 +23,15 @@ export function DesktopBehaviorPanel() {
     const next = !closeToTray;
     setCloseToTray(next);
     setSaving(true);
-    const saved = await bridge.setCloseToTray(next);
-    if (saved) setCloseToTray(saved.closeToTray);
-    else setCloseToTray(!next);
-    setSaving(false);
+    try {
+      const saved = await bridge.setCloseToTray(next);
+      if (saved) setCloseToTray(saved.closeToTray);
+      else setCloseToTray(!next);
+    } catch {
+      setCloseToTray(!next);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

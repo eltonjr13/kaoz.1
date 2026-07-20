@@ -29,9 +29,14 @@ function writeDesktopPreferences(filePath, preferences) {
   return normalized;
 }
 
+function shouldHideWindowOnClose({ isQuitting, installingUpdate, closeToTray }) {
+  return Boolean(closeToTray && !isQuitting && !installingUpdate);
+}
+
 module.exports = {
   DEFAULT_DESKTOP_PREFERENCES,
   normalizeDesktopPreferences,
   readDesktopPreferences,
+  shouldHideWindowOnClose,
   writeDesktopPreferences
 };

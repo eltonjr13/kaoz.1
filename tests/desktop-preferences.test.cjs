@@ -6,6 +6,7 @@ const test = require("node:test");
 const {
   normalizeDesktopPreferences,
   readDesktopPreferences,
+  shouldHideWindowOnClose,
   writeDesktopPreferences
 } = require("../electron/desktop-preferences.cjs");
 
@@ -34,4 +35,11 @@ test("persiste e recupera as preferências do desktop", (context) => {
     closeToTray: false,
     trayNoticeShown: true
   });
+});
+
+test("oculta somente no fechamento comum com a preferência ativa", () => {
+  assert.equal(shouldHideWindowOnClose({ isQuitting: false, installingUpdate: false, closeToTray: true }), true);
+  assert.equal(shouldHideWindowOnClose({ isQuitting: true, installingUpdate: false, closeToTray: true }), false);
+  assert.equal(shouldHideWindowOnClose({ isQuitting: false, installingUpdate: true, closeToTray: true }), false);
+  assert.equal(shouldHideWindowOnClose({ isQuitting: false, installingUpdate: false, closeToTray: false }), false);
 });

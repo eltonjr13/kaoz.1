@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
-const { readDesktopPreferences, writeDesktopPreferences } = require("./desktop-preferences.cjs");
+const { readDesktopPreferences, shouldHideWindowOnClose, writeDesktopPreferences } = require("./desktop-preferences.cjs");
 const { updateErrorDetails } = require("./update-errors.cjs");
 const { stopProcessTree } = require("./process-lifecycle.cjs");
 const { spawn } = require("node:child_process");
@@ -379,7 +379,12 @@ function createWindow(url) {
   mainWindow.on("maximize", () => sendWindowState(mainWindow));
   mainWindow.on("unmaximize", () => sendWindowState(mainWindow));
   mainWindow.on("close", (event) => {
-    if (app.isQuitting || installingUpdate || !getDesktopPreferences().closeToTray) return;
+    const shouldHide = shouldHideWindowOnClose({
+      isQuitting: app.isQuitting,
+      installingUpdate,
+      closeToTray: getDesktopPreferences().closeToTray
+    });
+    if (!shouldHide) return;
     event.preventDefault();
     mainWindow.hide();
     notifyTrayOnce();
