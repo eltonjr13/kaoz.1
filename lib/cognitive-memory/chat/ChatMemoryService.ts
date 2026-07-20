@@ -1,12 +1,28 @@
 import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { ChatMemoryCandidate } from './ChatMemoryExtractor';
-import type { ChatMemoryRecord, ChatMemoryKind, ChatMemoryScope } from '../types/memory';
+import type { ChatMemoryRecord, ChatMemoryKind, ChatMemoryScope, ChatMemoryStatus } from '../types/memory';
+
+export const LOCAL_MEMORY_USER_ID = 'local-user';
 
 export interface ChatMemoryContext {
   cortexEnabled?: boolean;
   userId?: string;
   avatarId?: string;
+  projectId?: string;
   sessionId?: string;
+}
+
+export interface ChatMemoryWriteResult {
+  saved: ChatMemoryRecord[];
+  reinforced: ChatMemoryRecord[];
+  superseded: ChatMemoryRecord[];
+  blockedSensitive: boolean;
+}
+
+export interface ChatMemoryPromptContext {
+  personalFacts: string;
+  contextualFacts: string;
+  records: ChatMemoryRecord[];
 }
 
 export class ChatMemoryService {
@@ -15,211 +31,259 @@ export class ChatMemoryService {
   public async saveChatMemoryCandidates(
     candidates: ChatMemoryCandidate[],
     context: ChatMemoryContext
-  ): Promise<void> {
-    if (context.cortexEnabled === false) {
-      return;
-    }
+  ): Promise<ChatMemoryWriteResult> {
+    const result: ChatMemoryWriteResult = { saved: [], reinforced: [], superseded: [], blockedSensitive: false };
+    if (context.cortexEnabled === false || !candidates.length) return result;
 
-    if (!candidates || candidates.length === 0) {
-      return;
-    }
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const userId = context.userId || LOCAL_MEMORY_USER_ID;
+      const now = new Date().toISOString();
 
-    const data = await this.storage.readMemory();
-    const chatMemories = data.chat?.memories || [];
-    let updated = false;
+      for (const candidate of candidates) {
+        if (candidate.kind === 'safety_boundary' || candidate.status === 'rejected') {
+          result.blockedSensitive = true;
+          continue;
+        }
 
-    const now = new Date().toISOString();
+        const duplicate = memories.find((memory) =>
+          memory.userId === userId &&
+          memory.scope === candidate.scope &&
+          memory.status === 'active' &&
+          normalize(memory.content) === normalize(candidate.content)
+        );
 
-    for (const candidate of candidates) {
-      const normalizedContent = this.normalizeContent(candidate.content);
-      
-      // Deduplicação: avatarId, scope, kind, conteúdo normalizado
-      const exactDuplicate = chatMemories.find(m => 
-        m.avatarId === context.avatarId &&
-        m.scope === candidate.scope &&
-        m.kind === candidate.kind &&
-        this.normalizeContent(m.content) === normalizedContent
-      );
+        if (duplicate) {
+          reinforce(duplicate, candidate, now);
+          result.reinforced.push(duplicate);
+          continue;
+        }
 
-      if (exactDuplicate) {
-        this.applyReinforcement(exactDuplicate, candidate, now);
-        updated = true;
-        continue;
+        const conflicts = memories.filter((memory) =>
+          memory.userId === userId &&
+          memory.status === 'active' &&
+          memory.scope === candidate.scope &&
+          isConflict(memory, candidate)
+        );
+        for (const conflict of conflicts) {
+          conflict.status = 'superseded';
+          conflict.updatedAt = now;
+          result.superseded.push(conflict);
+        }
+
+        const record: ChatMemoryRecord = {
+          id: crypto.randomUUID(),
+          userId,
+          avatarId: context.avatarId,
+          projectId: context.projectId,
+          sessionId: context.sessionId,
+          kind: candidate.kind,
+          scope: candidate.scope,
+          content: candidate.content,
+          evidence: candidate.evidence,
+          explicit: candidate.explicit,
+          canonicalKey: candidate.canonicalKey,
+          tags: candidate.tags,
+          supersedesId: conflicts[0]?.id,
+          confidenceScore: candidate.confidenceScore,
+          status: candidate.explicit ? 'active' : candidate.status,
+          occurrences: 1,
+          source: candidate.source,
+          createdAt: now,
+          updatedAt: now,
+          lastReinforcedAt: now
+        };
+        memories.push(record);
+        result.saved.push(record);
       }
 
-      // Se houver contradição simples, criar nova memória como pending_review
-      const hasConflict = chatMemories.some(m => 
-        m.avatarId === context.avatarId &&
-        m.scope === candidate.scope &&
-        m.kind === candidate.kind &&
-        m.status !== 'rejected'
-      );
-
-      const status = hasConflict ? 'pending_review' : candidate.status;
-
-      const newRecord: ChatMemoryRecord = {
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
-        userId: context.userId,
-        avatarId: context.avatarId,
-        kind: candidate.kind,
-        scope: candidate.scope,
-        content: candidate.content,
-        evidence: candidate.evidence,
-        confidenceScore: candidate.confidenceScore,
-        status: status,
-        occurrences: 1,
-        source: candidate.source,
-        createdAt: now,
-        updatedAt: now,
-        lastReinforcedAt: now
-      };
-
-      chatMemories.push(newRecord);
-      updated = true;
-    }
-
-    if (updated) {
-      data.chat = { memories: chatMemories };
-      await this.storage.writeMemory(data);
-    }
+      data.chat = { memories };
+      return result;
+    });
   }
 
   public async listActiveChatMemories(filters: {
+    userId?: string;
     avatarId?: string;
     scope?: ChatMemoryScope;
     kind?: ChatMemoryKind;
+    status?: ChatMemoryStatus;
+    includeHistory?: boolean;
   } = {}): Promise<ChatMemoryRecord[]> {
     const data = await this.storage.readMemory();
-    const chatMemories = data.chat?.memories || [];
+    const userId = filters.userId || LOCAL_MEMORY_USER_ID;
+    return (data.chat?.memories || [])
+      .filter((memory) => {
+        if (memory.userId !== userId) return false;
+        if (!filters.includeHistory && (memory.status === 'rejected' || memory.status === 'superseded')) return false;
+        if (filters.status && memory.status !== filters.status) return false;
+        if (filters.avatarId && memory.scope === 'avatar' && memory.avatarId !== filters.avatarId) return false;
+        if (filters.scope && memory.scope !== filters.scope) return false;
+        if (filters.kind && memory.kind !== filters.kind) return false;
+        return true;
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
 
-    return chatMemories.filter(m => {
-      // Retorna tanto active quanto pending_review, mas exclui rejected
-      if (m.status === 'rejected') return false;
-      if (filters.avatarId && m.avatarId !== filters.avatarId) return false;
-      if (filters.scope && m.scope !== filters.scope) return false;
-      if (filters.kind && m.kind !== filters.kind) return false;
+  public async forgetMemories(target: string, context: ChatMemoryContext = {}): Promise<number> {
+    if (context.cortexEnabled === false) return 0;
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const userId = context.userId || LOCAL_MEMORY_USER_ID;
+      const matches = rankMemories(memories.filter((memory) =>
+        memory.userId === userId && memory.status === 'active' && scopeMatches(memory, context)
+      ), target, true).filter(({ score }) => score >= 10);
+      const ids = new Set(matches.map(({ memory }) => memory.id));
+      if (!ids.size && /\b(?:tudo|todas|memorias)\b/.test(normalize(target))) {
+        for (const memory of memories) if (memory.userId === userId) ids.add(memory.id);
+      }
+      data.chat = { memories: memories.filter((memory) => !ids.has(memory.id)) };
+      return ids.size;
+    });
+  }
+
+  public async forgetMemoryById(memoryId: string, userId = LOCAL_MEMORY_USER_ID): Promise<boolean> {
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const index = memories.findIndex((memory) => memory.id === memoryId && memory.userId === userId);
+      if (index < 0) return false;
+      memories.splice(index, 1);
+      data.chat = { memories };
       return true;
     });
   }
 
-  public async rejectChatMemory(memoryId: string): Promise<void> {
+  public async editMemory(memoryId: string, content: string, userId = LOCAL_MEMORY_USER_ID): Promise<ChatMemoryRecord | null> {
+    const cleanContent = content.trim();
+    if (!cleanContent) return null;
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const previous = memories.find((memory) => memory.id === memoryId && memory.userId === userId);
+      if (!previous) return null;
+      const now = new Date().toISOString();
+      previous.status = 'superseded';
+      previous.updatedAt = now;
+      const replacement: ChatMemoryRecord = {
+        ...previous,
+        id: crypto.randomUUID(),
+        content: cleanContent,
+        evidence: [`Edicao manual da memoria ${memoryId}`],
+        explicit: true,
+        canonicalKey: previous.canonicalKey,
+        tags: inferTags(cleanContent, previous.tags),
+        supersedesId: previous.id,
+        confidenceScore: 1,
+        status: 'active',
+        occurrences: 1,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+        lastReinforcedAt: now
+      };
+      memories.push(replacement);
+      data.chat = { memories };
+      return replacement;
+    });
+  }
+
+  public async buildPromptContext(query: string, context: ChatMemoryContext = {}, limit = 12): Promise<ChatMemoryPromptContext> {
+    if (context.cortexEnabled === false) return { personalFacts: '', contextualFacts: '', records: [] };
     const data = await this.storage.readMemory();
-    const chatMemories = data.chat?.memories || [];
-    const memory = chatMemories.find(m => m.id === memoryId);
-
-    if (memory) {
-      memory.status = 'rejected';
-      memory.updatedAt = new Date().toISOString();
-      await this.storage.writeMemory(data);
-    }
+    const userId = context.userId || LOCAL_MEMORY_USER_ID;
+    const active = (data.chat?.memories || []).filter((memory) =>
+      memory.userId === userId && memory.status === 'active' && scopeMatches(memory, context)
+    );
+    const personal = active.filter((memory) => memory.scope === 'user' || memory.scope === 'global');
+    const contextual = active.filter((memory) => memory.scope !== 'user' && memory.scope !== 'global');
+    const recall = isRecallQuery(query);
+    const rankedPersonal = rankMemories(personal, query, recall);
+    const selectedPersonal = selectUnique([
+      ...rankedPersonal.filter(({ score }) => score > 0).map(({ memory }) => memory),
+      ...personal.filter((memory) => memory.explicit).sort(byImportance),
+      ...personal.sort(byImportance)
+    ]).slice(0, recall ? Math.max(limit, 24) : limit);
+    const selectedContextual = rankMemories(contextual, query, recall)
+      .filter(({ score }) => score > 0 || recall)
+      .map(({ memory }) => memory)
+      .slice(0, 6);
+    return {
+      personalFacts: formatMemories(selectedPersonal),
+      contextualFacts: formatMemories(selectedContextual),
+      records: [...selectedPersonal, ...selectedContextual]
+    };
   }
 
-  public async reinforceExistingMemory(memoryId: string, additionalConfidence: number = 0.05): Promise<void> {
-    const data = await this.storage.readMemory();
-    const chatMemories = data.chat?.memories || [];
-    const memory = chatMemories.find(m => m.id === memoryId);
-
-    if (memory) {
-      memory.occurrences += 1;
-      memory.lastReinforcedAt = new Date().toISOString();
-      memory.confidenceScore = Math.min(1, memory.confidenceScore + additionalConfidence);
-      memory.updatedAt = new Date().toISOString();
-      
-      // Promover para active se passar de um threshold razoável
-      if (memory.status === 'pending_review' && memory.confidenceScore > 0.8) {
-        memory.status = 'active';
-      }
-
-      await this.storage.writeMemory(data);
-    }
+  public async retrieveRelevantMemories(query: string, options: ChatMemoryContext & { limit?: number } = {}): Promise<string> {
+    const context = await this.buildPromptContext(query, options, options.limit || 12);
+    return [context.personalFacts, context.contextualFacts].filter(Boolean).join('\n');
   }
+}
 
-  private applyReinforcement(existing: ChatMemoryRecord, candidate: ChatMemoryCandidate, now: string) {
-    existing.occurrences += 1;
-    existing.lastReinforcedAt = now;
-    existing.updatedAt = now;
-    existing.confidenceScore = Math.min(1, Math.max(existing.confidenceScore, candidate.confidenceScore) + 0.05);
-    
-    for (const ev of candidate.evidence) {
-      if (!existing.evidence.includes(ev)) {
-        existing.evidence.push(ev);
-      }
-    }
+function isConflict(memory: ChatMemoryRecord, candidate: ChatMemoryCandidate): boolean {
+  if (memory.canonicalKey === candidate.canonicalKey && memory.content !== candidate.content) return true;
+  const normalizedContent = normalize(memory.content);
+  return candidate.supersedeHints.some((hint) => normalizedContent.includes(normalize(hint)));
+}
 
-    if (existing.status === 'pending_review' && existing.confidenceScore > 0.8) {
-        existing.status = 'active';
-    }
-  }
+function reinforce(memory: ChatMemoryRecord, candidate: ChatMemoryCandidate, now: string): void {
+  memory.occurrences += 1;
+  memory.lastReinforcedAt = now;
+  memory.updatedAt = now;
+  memory.explicit = memory.explicit || candidate.explicit;
+  memory.confidenceScore = Math.min(1, Math.max(memory.confidenceScore, candidate.confidenceScore) + 0.05);
+  memory.tags = [...new Set([...memory.tags, ...candidate.tags])];
+  memory.evidence = [...new Set([...memory.evidence, ...candidate.evidence])];
+  if (memory.status === 'pending_review' && memory.confidenceScore > 0.8) memory.status = 'active';
+}
 
-  public async retrieveRelevantMemories(
-    query: string,
-    options: { avatarId?: string; limit?: number } = {}
-  ): Promise<string> {
-    const data = await this.storage.readMemory();
-    const chatMemories = data.chat?.memories || [];
-    const limit = options.limit || 8;
+function scopeMatches(memory: ChatMemoryRecord, context: ChatMemoryContext): boolean {
+  if (memory.scope === 'user' || memory.scope === 'global') return true;
+  if (memory.scope === 'avatar') return Boolean(context.avatarId && memory.avatarId === context.avatarId);
+  if (memory.scope === 'project') return Boolean(context.projectId && memory.projectId === context.projectId);
+  if (memory.scope === 'session') return Boolean(context.sessionId && memory.sessionId === context.sessionId);
+  return false;
+}
 
-    if (!query || chatMemories.length === 0) {
-      return '';
-    }
+function rankMemories(memories: ChatMemoryRecord[], query: string, recall: boolean): Array<{ memory: ChatMemoryRecord; score: number }> {
+  const normalizedQuery = normalize(query);
+  const queryWords = normalizedQuery.split(/[^a-z0-9]+/).filter((word) => word.length > 3);
+  return memories.map((memory) => {
+    const haystack = normalize(`${memory.content} ${memory.tags.join(' ')} ${memory.kind}`);
+    let score = memory.confidenceScore * 3 + Math.min(memory.occurrences, 4);
+    if (normalizedQuery && haystack.includes(normalizedQuery)) score += 100;
+    for (const word of queryWords) if (haystack.includes(word)) score += 12;
+    if (memory.explicit) score += recall ? 12 : 4;
+    if (recall && (memory.kind === 'user_preference' || memory.kind === 'user_fact')) score += 8;
+    return { memory, score };
+  }).sort((a, b) => b.score - a.score || b.memory.updatedAt.localeCompare(a.memory.updatedAt));
+}
 
-    // Normalizar a query e extrair palavras com mais de 3 letras
-    const normalizedQuery = this.normalizeContent(query);
-    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 3);
+function isRecallQuery(query: string): boolean {
+  return /\b(?:lembra|lembrar|memoria|qual|quais|o que eu|quem eu|meu|minha|gosto|prefiro|favorit)\b/.test(normalize(query));
+}
 
-    if (queryWords.length === 0) {
-      return '';
-    }
+function byImportance(a: ChatMemoryRecord, b: ChatMemoryRecord): number {
+  return Number(b.explicit) - Number(a.explicit) || b.confidenceScore - a.confidenceScore || b.updatedAt.localeCompare(a.updatedAt);
+}
 
-    // Filtrar e pontuar memórias
-    const scoredMemories = chatMemories
-      .filter(m => {
-        // Apenas ativas
-        if (m.status !== 'active') return false;
-        // Correspondência de escopo
-        if (m.scope === 'global') return true;
-        if (m.scope === 'avatar' && options.avatarId && m.avatarId === options.avatarId) return true;
-        return false;
-      })
-      .map(m => {
-        const normalizedContent = this.normalizeContent(m.content);
-        let score = 0;
-        
-        // Match exato recebe um bônus enorme
-        if (normalizedContent.includes(normalizedQuery)) {
-          score += 100;
-        }
+function selectUnique(memories: ChatMemoryRecord[]): ChatMemoryRecord[] {
+  const seen = new Set<string>();
+  return memories.filter((memory) => {
+    if (seen.has(memory.id)) return false;
+    seen.add(memory.id);
+    return true;
+  });
+}
 
-        // Match por palavra
-        for (const word of queryWords) {
-          if (normalizedContent.includes(word)) {
-            score += 10;
-          }
-        }
+function formatMemories(memories: ChatMemoryRecord[]): string {
+  return memories.map((memory) => `- ${memory.content}`).join('\n');
+}
 
-        // Bônus para confiança alta e mais ocorrências
-        score += (m.confidenceScore || 0) * 5;
-        score += Math.min(5, m.occurrences || 1);
+function inferTags(content: string, existing: string[]): string[] {
+  const words = normalize(content).split(/[^a-z0-9]+/).filter((word) => word.length > 3);
+  return [...new Set([...existing, ...words])].slice(0, 24);
+}
 
-        return { memory: m, score };
-      })
-      .filter(sm => sm.score > 0)
-      .sort((a, b) => b.score - a.score);
-
-    const topMemories = scoredMemories.slice(0, limit).map(sm => sm.memory);
-
-    if (topMemories.length === 0) {
-      return '';
-    }
-
-    return topMemories.map(m => `- ${m.content}`).join('\n');
-  }
-
-  private normalizeContent(content: string): string {
-    return content
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim();
-  }
+function normalize(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }

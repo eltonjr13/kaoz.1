@@ -1,7 +1,8 @@
-export type MemoryHierarchy = 'session' | 'project' | 'avatar' | 'global';
+export type MemoryHierarchy = 'session' | 'project' | 'avatar' | 'user' | 'global';
 export type TaskType = 'image' | 'video' | 'project' | 'refine' | 'ad-creative';
 export type ChatMemoryKind =
   | 'user_preference'
+  | 'user_fact'
   | 'workflow_rule'
   | 'creative_preference'
   | 'avatar_style_signal'
@@ -9,7 +10,7 @@ export type ChatMemoryKind =
   | 'project_fact'
   | 'safety_boundary';
 export type ChatMemoryScope = MemoryHierarchy;
-export type ChatMemoryStatus = 'active' | 'pending_review' | 'rejected';
+export type ChatMemoryStatus = 'active' | 'pending_review' | 'rejected' | 'superseded';
 export type ChatMemorySource = 'flow_chat' | 'job_feedback' | 'cortex_review' | 'manual';
 
 export interface BaseMetadata {
@@ -48,12 +49,18 @@ export interface ProceduralRule extends BaseMetadata {
 
 export interface ChatMemoryRecord {
   id: string;
-  userId?: string;
+  userId: string;
   avatarId?: string;
+  projectId?: string;
+  sessionId?: string;
   kind: ChatMemoryKind;
   scope: ChatMemoryScope;
   content: string;
   evidence: string[];
+  explicit: boolean;
+  canonicalKey: string;
+  tags: string[];
+  supersedesId?: string;
   confidenceScore: number;
   status: ChatMemoryStatus;
   occurrences: number;

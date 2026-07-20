@@ -4,6 +4,7 @@ import type { AgentPersonalityProfileV1, PersonalityScale } from "./types.ts";
 const TONES = new Set(["calm", "direct", "playful", "professional"]);
 const MEMORY_KINDS = new Set([
   "user_preference",
+  "user_fact",
   "workflow_rule",
   "creative_preference",
   "avatar_style_signal",
