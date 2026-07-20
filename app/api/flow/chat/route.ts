@@ -22,6 +22,9 @@ import { materializeResponseArtifacts } from "@/services/artifacts/artifact.serv
 import { skillRegistry } from "@/services/skills/skill.registry";
 import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
 import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt";
+import { getConversationMemoryStore, LOCAL_PROFILE_ID as LOCAL_ARCHIVE_PROFILE_ID } from "@/services/conversation-memory/conversation-memory.store";
+import { recallArchivedConversations } from "@/services/conversation-memory/conversation-memory.recall";
+import { scheduleConversationConsolidation } from "@/services/conversation-memory/conversation-memory.consolidator";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -37,6 +40,12 @@ type FlowChatRequestBody = {
   stream?: boolean;
   voiceActive?: boolean;
   sessionId?: string;
+  archiveContext?: {
+    conversationId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    title?: string;
+  };
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
@@ -359,6 +368,7 @@ async function loadCortexChatContext(input: {
   avatarId?: string;
   sessionId?: string;
   immediateContextReference: boolean;
+  archiveConversationId?: string;
 }): Promise<{ relevantMemories?: string; activePersonalityMemories?: ChatMemoryRecord[] }> {
   if (!input.enabled || !input.latestUserText || input.immediateContextReference) return {};
 
@@ -370,9 +380,18 @@ async function loadCortexChatContext(input: {
       avatarId: input.avatarId,
       sessionId: input.sessionId
     });
+    const archiveConversationId = input.archiveConversationId
+      ? getConversationMemoryStore().resolveConversationId('flow', '', input.archiveConversationId)
+      : undefined;
+    const archiveRecall = recallArchivedConversations({
+      query: input.latestUserText,
+      profileId: LOCAL_ARCHIVE_PROFILE_ID,
+      excludeConversationId: archiveConversationId,
+    });
     const relevantMemories = [
       promptContext.personalFacts ? `[FATOS PESSOAIS CONFIRMADOS DO USUARIO]\n${promptContext.personalFacts}` : '',
-      promptContext.contextualFacts ? `[MEMORIAS DESTE CONTEXTO]\n${promptContext.contextualFacts}` : ''
+      promptContext.contextualFacts ? `[MEMORIAS DESTE CONTEXTO]\n${promptContext.contextualFacts}` : '',
+      archiveRecall.context,
     ].filter(Boolean).join('\n\n');
     return {
       relevantMemories: relevantMemories || undefined,
@@ -384,6 +403,26 @@ async function loadCortexChatContext(input: {
     console.warn("[API CHAT] Falha ao recuperar memorias relevantes do chat:", err);
     return {};
   }
+}
+
+function archiveFlowMessage(input: {
+  archiveContext?: FlowChatRequestBody['archiveContext'];
+  role: 'user' | 'assistant';
+  content: string;
+}): string | undefined {
+  if (!input.archiveContext || !input.content.trim()) return undefined;
+  const messageId = input.role === 'user' ? input.archiveContext.userMessageId : input.archiveContext.assistantMessageId;
+  const result = getConversationMemoryStore().upsertMessage({
+    channel: 'flow',
+    externalUserId: LOCAL_ARCHIVE_PROFILE_ID,
+    externalConversationId: input.archiveContext.conversationId,
+    conversationTitle: input.archiveContext.title,
+    messageId,
+    role: input.role,
+    content: input.content,
+  });
+  if (result.consolidationJobCreated) scheduleConversationConsolidation();
+  return result.message.id;
 }
 
 function saveReferenceImageIfPresent(referenceImage?: string): string | undefined {
@@ -409,7 +448,8 @@ async function processChatMemoryBeforeResponse(
   userText: string,
   avatarId: string | undefined,
   sessionId: string | undefined,
-  cortexMemoryEnabled: boolean
+  cortexMemoryEnabled: boolean,
+  evidenceRef?: { conversationId: string; messageId: string }
 ): Promise<{ receipt?: string }> {
   if (!userText) return {};
   const command = detectChatMemoryCommand(userText);
@@ -427,7 +467,10 @@ async function processChatMemoryBeforeResponse(
       });
       return { receipt: forgotten > 0 ? 'Esqueci essa informacao como voce pediu.' : 'Nao encontrei uma memoria correspondente para esquecer.' };
     }
-    const candidates = extractChatMemoryCandidates(userText, '', { avatarId, sessionId, source: 'flow_chat' });
+    const candidates = extractChatMemoryCandidates(userText, '', { avatarId, sessionId, source: 'flow_chat' }).map((candidate) => ({
+      ...candidate,
+      evidenceRefs: evidenceRef ? [evidenceRef] : undefined,
+    }));
     if (candidates.length > 0) {
       const result = await service.saveChatMemoryCandidates(candidates, {
         cortexEnabled: cortexMemoryEnabled,
@@ -570,6 +613,7 @@ export async function POST(request: Request) {
       stream,
       voiceActive,
       sessionId,
+      archiveContext,
     } = body;
     const cortexMemoryEnabled = useCortexMemory !== false;
     const modelName = resolveFlowChatModel(model);
@@ -582,24 +626,34 @@ export async function POST(request: Request) {
     const requestedMediaFlow = outputIntent.mediaFlow || ((allowsMediaAction(outputIntent) || actionContinuation) ? requestedFlow : undefined);
     const immediateContextReference = isImmediateContextReference(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
+    const archivedUserMessageId = cortexMemoryEnabled ? archiveFlowMessage({ archiveContext, role: 'user', content: latestUserText }) : undefined;
     const memoryOperation = await processChatMemoryBeforeResponse(
       latestUserText,
       avatarId,
       sessionId,
-      cortexMemoryEnabled
+      cortexMemoryEnabled,
+      archivedUserMessageId && archiveContext ? {
+        conversationId: getConversationMemoryStore().resolveConversationId('flow', '', archiveContext.conversationId),
+        messageId: archivedUserMessageId,
+      } : undefined
     );
 
     if (spotifyDirectCommand) {
       if (stream === true) {
         cleanupInPost = false;
         return createChatStreamResponse(
-          async () => attachMemoryReceipt(await runSpotifyDirectCommand(spotifyDirectCommand), memoryOperation.receipt),
+          async () => {
+            const response = attachMemoryReceipt(await runSpotifyDirectCommand(spotifyDirectCommand), memoryOperation.receipt);
+            if (cortexMemoryEnabled) archiveFlowMessage({ archiveContext, role: 'assistant', content: response.message });
+            return response;
+          },
           () => {},
           (response) => processPostChatLearning(latestUserText, response.message)
         );
       }
 
       const response = attachMemoryReceipt(await runSpotifyDirectCommand(spotifyDirectCommand), memoryOperation.receipt);
+      if (cortexMemoryEnabled) archiveFlowMessage({ archiveContext, role: 'assistant', content: response.message });
       processPostChatLearning(latestUserText, response.message);
       return NextResponse.json({
         success: true,
@@ -616,7 +670,8 @@ export async function POST(request: Request) {
         latestUserText,
         avatarId,
         sessionId,
-        immediateContextReference
+        immediateContextReference,
+        archiveConversationId: archiveContext?.conversationId
       })
     ]);
 
@@ -654,7 +709,9 @@ export async function POST(request: Request) {
       );
       const protectedResponse = protectOutputIntent(response, outputIntent, actionContinuation);
       const routedResponse = enforceRequestedFlow(protectedResponse, requestedMediaFlow);
-      return attachRequestedArtifacts(attachMemoryReceipt(routedResponse, memoryOperation.receipt), latestUserText, sessionId);
+      const finalResponse = await attachRequestedArtifacts(attachMemoryReceipt(routedResponse, memoryOperation.receipt), latestUserText, sessionId);
+      if (cortexMemoryEnabled) archiveFlowMessage({ archiveContext, role: 'assistant', content: finalResponse.message });
+      return finalResponse;
     };
 
     if (stream === true) {

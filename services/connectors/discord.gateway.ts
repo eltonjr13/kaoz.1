@@ -4,6 +4,7 @@ import path from "node:path";
 import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
 import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
+import { archiveConnectorReply, prepareConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
 import { connectorVault } from "./connector.vault.ts";
 import { executeDiscordCommand, parseDiscordCommand } from "./discord.commands.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
@@ -195,7 +196,7 @@ export class DiscordGatewayManager {
 
     const started = Date.now();
     const historyKey = `${message.channel_id}:${decision.userId}`;
-    const recent = this.conversations.get(historyKey) || [];
+    const archiveConversationId = `${message.channel_id}:${decision.userId}`;
     const audit: ConnectorInboundHistoryEntry = {
       id: crypto.randomUUID(), provider: "discord", accountId: this.account.id, messageId: message.id,
       channelId: message.channel_id, guildId: message.guild_id, userId: decision.userId, username: decision.username,
@@ -203,6 +204,12 @@ export class DiscordGatewayManager {
     };
     console.info(`[DiscordInbound] status=received messageId=${message.id} channelId=${message.channel_id} userId=${decision.userId}`);
     try {
+      const prepared = await prepareConnectorConversation({
+        channel: 'discord', accountId: this.account.id, externalUserId: decision.userId, username: decision.username,
+        externalConversationId: archiveConversationId, conversationTitle: decision.username,
+        messageId: message.id, prompt: decision.prompt,
+      });
+      const recent = prepared.recent;
       await fetch(`${API_ROOT}/channels/${message.channel_id}/typing`, { method: "POST", headers: authHeaders(this.token), signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
       let text: string;
       let reply: { id: string };
@@ -228,7 +235,7 @@ export class DiscordGatewayManager {
         const selectedSkill = skillRegistry.select(decision.prompt);
         const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
         const agentIdentity = await getConfiguredAgentIdentity();
-        const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent }), {
+        const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent, memoryContext: prepared.memoryContext }), {
           useExternalTools: useTools,
           toolIntentText: decision.prompt,
         });
@@ -241,6 +248,7 @@ export class DiscordGatewayManager {
         const updated: ConversationTurn[] = [...recent, { role: "user", content: decision.prompt }, { role: "assistant", content: text }];
         this.conversations.set(historyKey, updated.slice(-6));
       }
+      archiveConnectorReply({ channel: 'discord', accountId: this.account.id, externalUserId: decision.userId, username: decision.username, externalConversationId: archiveConversationId, conversationTitle: decision.username, messageId: reply.id, content: text });
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: reply.id });
       console.info(`[DiscordInbound] status=responded messageId=${message.id} remoteReplyId=${reply.id}`);
     } catch (error) {

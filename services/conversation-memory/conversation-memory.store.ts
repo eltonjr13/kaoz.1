@@ -307,6 +307,10 @@ export class ConversationMemoryStore {
     return { deleted: Number(result.changes) > 0, messageIds: ids };
   }
 
+  listMessageIdsForIdentity(identityId: string): string[] {
+    return (this.db.prepare("SELECT m.id FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.identity_id=?").all(identityId) as Row[]).map((row) => String(row.id));
+  }
+
   importFlowConversations(conversations: FlowConversationImport[]): { conversations: number; messages: number; alreadyImported: boolean } {
     const source = "flow-localstorage-v1";
     if (this.db.prepare("SELECT source FROM import_markers WHERE source=?").get(source)) {

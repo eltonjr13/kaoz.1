@@ -94,6 +94,7 @@ export function buildDiscordAgentPrompt(input: {
   username: string;
   agentIdentity: { provider: string; model: string };
   recent: Array<{ role: "user" | "assistant"; content: string }>;
+  memoryContext?: string;
 }): string {
   const context = input.recent.slice(-6).map((item) => `${item.role === "user" ? "USUARIO" : "MRCHICKEN"}: ${item.content.slice(0, 1_500)}`).join("\n");
   return `Você é o agente MrChicken respondendo a uma menção recebida no Discord.
@@ -106,6 +107,9 @@ PROVEDOR E MODELO EM USO: ${input.agentIdentity.provider} / ${input.agentIdentit
 Se perguntarem qual modelo ou provedor voce usa, responda somente com esses dados efetivamente configurados; nao invente outro nome.
 
 ${context || "Sem contexto anterior."}
+
+MEMORIA CORTEX:
+${input.memoryContext || "Sem memoria relevante."}
 
 USUÁRIO ATUAL: ${input.username}
 PEDIDO: ${input.prompt}

@@ -1502,6 +1502,56 @@ export default function FlowDashboardPage() {
       setChatMessages(activeConversation.messages);
       setHasLoadedConversations(true);
     });
+
+    const hydrateArchive = async () => {
+      try {
+        await fetch('/api/conversations/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversations: initialConversations.map((conversation) => ({
+            ...conversation,
+            messages: conversation.messages.map((message) => ({
+              id: message.id,
+              role: message.role,
+              content: message.content,
+              timestamp: message.timestamp,
+              metadata: { ...message, attachedImage: undefined }
+            }))
+          })) })
+        });
+        const listResponse = await fetch('/api/conversations?limit=200');
+        if (!listResponse.ok) return;
+        const list = await listResponse.json() as { conversations?: Array<{ id: string; externalConversationId: string; title: string; createdAt: string; updatedAt: string }> };
+        const loaded = await Promise.all((list.conversations || []).map(async (item) => {
+          const response = await fetch(`/api/conversations/${encodeURIComponent(item.id)}?limit=500`);
+          if (!response.ok) return null;
+          const detail = await response.json() as { messages?: Array<{ externalMessageId: string; role: 'user' | 'assistant'; content: string; createdAt: string; metadata?: Record<string, unknown> }> };
+          return {
+            id: item.externalConversationId,
+            title: item.title,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            messages: (detail.messages || []).map((message) => ({
+              ...(message.metadata || {}),
+              id: message.externalMessageId,
+              role: message.role,
+              content: message.content,
+              timestamp: message.createdAt,
+            } as ChatMessageState))
+          } satisfies ChatConversation;
+        }));
+        const archived = loaded.filter((item): item is ChatConversation => Boolean(item));
+        if (!archived.length) return;
+        const nextActiveId = archived.some((item) => item.id === savedActiveId) ? savedActiveId! : archived[0].id;
+        const active = archived.find((item) => item.id === nextActiveId)!;
+        setChatConversations(archived);
+        setActiveConversationId(active.id);
+        setChatMessages(active.messages);
+      } catch (error) {
+        console.warn('Falha ao carregar arquivo SQLite; mantendo fallback local:', error);
+      }
+    };
+    void hydrateArchive();
   }, []);
 
   useEffect(() => {
@@ -1618,7 +1668,6 @@ export default function FlowDashboardPage() {
           )
         );
       });
-      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(sanitizedMessages));
     } catch (e) {
       console.warn("Falha ao salvar o histórico de chat no LocalStorage:", e);
     }
@@ -1658,7 +1707,6 @@ export default function FlowDashboardPage() {
   useEffect(() => {
     if (chatConversations.length === 0) return;
     try {
-      localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(chatConversations));
     } catch (e) {
       console.warn("Falha ao salvar chatConversations no LocalStorage:", e);
     }
@@ -2327,7 +2375,13 @@ export default function FlowDashboardPage() {
           model: chatModel,
           stream: true,
           voiceActive: options.speakResponse === true,
-          sessionId: activeConversationId
+          sessionId: activeConversationId,
+          archiveContext: {
+            conversationId: activeConversationId,
+            userMessageId: userMsg.id,
+            assistantMessageId,
+            title: activeConversation?.title || getConversationTitle(chatMessages.concat(userMsg))
+          }
         })
       });
       if (!res.ok) {
@@ -3188,7 +3242,6 @@ export default function FlowDashboardPage() {
         }
         return conv;
       });
-      localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(updated));
       return updated;
     });
     try {

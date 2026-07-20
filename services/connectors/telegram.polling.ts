@@ -6,6 +6,7 @@ import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorInboundHistoryEntry, StoredConnectorAccount, TelegramPollingRuntimeStatus } from "./connector.types.ts";
 import { getTelegramImageAttachment, requestsTelegramImageGeneration, telegramImageOperation, telegramInboundEnabled, telegramMessagePrompt, type TelegramImageAttachment, type TelegramInboundMessage } from "./telegram.inbound.ts";
+import { archiveConnectorReply, prepareConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_CONVERSATION_TURNS = 6;
@@ -32,7 +33,7 @@ function normalizeAgentResponse(value: string) {
   return trimmed || "Não consegui gerar uma resposta agora.";
 }
 
-function buildTelegramAgentPrompt(input: { prompt: string; username?: string; identity: { provider: string; model: string }; recent: ConversationTurn[] }) {
+function buildTelegramAgentPrompt(input: { prompt: string; username?: string; identity: { provider: string; model: string }; recent: ConversationTurn[]; memoryContext?: string }) {
   const history = input.recent.length ? input.recent.map((turn) => `${turn.role === "user" ? "Usuário" : "Agente"}: ${turn.content}`).join("\n") : "(nova conversa)";
   return `Você é o agente MrChicken respondendo no Telegram.
 Responda diretamente, em português, de forma útil e natural. Não afirme ter executado uma ação que não foi executada. Não use a ferramenta social:telegram:publish, pois sua resposta já será enviada ao usuário.
@@ -40,6 +41,9 @@ Se perguntarem qual modelo ou provedor você usa, responda somente com: ${input.
 
 CONVERSA RECENTE:
 ${history}
+
+MEMORIA CORTEX:
+${input.memoryContext || "Sem memoria relevante."}
 
 USUÁRIO ${input.username ? `(${input.username})` : ""}:
 ${input.prompt}`;
@@ -140,8 +144,14 @@ export class TelegramPollingManager {
     }
     const started = Date.now();
     const historyKey = `${chatId}:${userId}`;
-    const recent = this.conversations.get(historyKey) || [];
+    const archiveConversationId = `${chatId}:${userId}`;
     try {
+      const prepared = await prepareConnectorConversation({
+        channel: 'telegram', accountId: this.account.id, externalUserId: userId, username: audit.username,
+        externalConversationId: archiveConversationId, conversationTitle: message.chat?.title || audit.username,
+        messageId: String(message.message_id), prompt,
+      });
+      const recent = prepared.recent;
       let text: string;
       let replyId: string;
       if (requestsTelegramImageGeneration(prompt) || imageAttachment) {
@@ -153,13 +163,14 @@ export class TelegramPollingManager {
       } else {
         await this.sendChatAction(chatId, "typing");
         const identity = await getConfiguredAgentIdentity();
-        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent }), { toolIntentText: prompt });
+        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent, memoryContext: prepared.memoryContext }), { toolIntentText: prompt });
         if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
         text = normalizeAgentResponse(response);
         replyId = await this.sendMessage(chatId, text, message.message_id);
       }
       const updated: ConversationTurn[] = [...recent, { role: "user" as const, content: prompt }, { role: "assistant" as const, content: text }];
       this.conversations.set(historyKey, updated.slice(-MAX_CONVERSATION_TURNS));
+      archiveConnectorReply({ channel: 'telegram', accountId: this.account.id, externalUserId: userId, username: audit.username, externalConversationId: archiveConversationId, conversationTitle: message.chat?.title || audit.username, messageId: replyId, content: text });
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: replyId });
       console.info(`[TelegramInbound] status=responded messageId=${message.message_id} chatId=${chatId}`);
     } catch (error) {
