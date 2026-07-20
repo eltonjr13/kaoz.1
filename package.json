@@ -1,6 +1,6 @@
 {
   "name": "ai-ugc-reaction-studio",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "MrChicken AI content creation studio for Windows",
   "author": "MrChicken",
   "private": true,
@@ -16,6 +16,7 @@
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis",
     "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish always",
+    "desktop:verify-release": "node scripts/verify-update-artifacts.mjs",
     "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
@@ -29,6 +30,7 @@
     "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts",
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
     "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts"
+    ,"test:updates": "node --test tests/electron-update-errors.test.cjs"
   },
   "dependencies": {
     "@cartesia/cartesia-js": "^3.2.0",

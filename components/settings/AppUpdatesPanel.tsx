@@ -90,7 +90,13 @@ export function AppUpdatesPanel() {
       {(status.state === "not-available" || status.state === "downloaded" || hasError) && (
         <div className={`mt-5 flex items-center gap-2 border-t border-white/[0.05] pt-4 text-[10px] ${hasError ? "text-rose-400" : "text-emerald-400"}`}>
           {hasError ? <AlertCircle size={13} /> : <CheckCircle size={13} />}
-          <span>{hasError ? "Tente novamente quando a conexão estiver disponível." : status.state === "downloaded" ? "A instalação acontecerá após reiniciar o MrChicken." : "Nenhuma ação é necessária."}</span>
+          <span>{hasError
+            ? status.errorCode === "release-metadata-missing"
+              ? "O canal de atualização está online, mas a release ainda não possui todos os arquivos necessários."
+              : "Tente novamente quando a conexão estiver disponível."
+            : status.state === "downloaded"
+              ? "A instalação acontecerá após reiniciar o MrChicken."
+              : "Nenhuma ação é necessária."}</span>
         </div>
       )}
       {!bridge && <p className="mt-5 border-t border-white/[0.05] pt-4 text-[10px] text-zinc-600">Este controle funciona no aplicativo MrChicken para Windows.</p>}

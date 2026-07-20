@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { updateErrorDetails } = require("./update-errors.cjs");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -35,14 +36,14 @@ function configureAutoUpdater() {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", error: undefined, progress: undefined }));
-  autoUpdater.on("update-available", (info) => setUpdateStatus({ state: "available", version: info.version, releaseDate: info.releaseDate, error: undefined }));
-  autoUpdater.on("update-not-available", () => setUpdateStatus({ state: "not-available", version: undefined, progress: undefined, error: undefined }));
+  autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", error: undefined, errorCode: undefined, progress: undefined }));
+  autoUpdater.on("update-available", (info) => setUpdateStatus({ state: "available", version: info.version, releaseDate: info.releaseDate, error: undefined, errorCode: undefined }));
+  autoUpdater.on("update-not-available", () => setUpdateStatus({ state: "not-available", version: undefined, progress: undefined, error: undefined, errorCode: undefined }));
   autoUpdater.on("download-progress", (progress) => setUpdateStatus({ state: "downloading", progress: Math.round(progress.percent) }));
-  autoUpdater.on("update-downloaded", (info) => setUpdateStatus({ state: "downloaded", version: info.version, progress: 100, error: undefined }));
+  autoUpdater.on("update-downloaded", (info) => setUpdateStatus({ state: "downloaded", version: info.version, progress: 100, error: undefined, errorCode: undefined }));
   autoUpdater.on("error", (error) => {
     console.error("[AutoUpdater]", error);
-    setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error), progress: undefined });
+    setUpdateStatus({ state: "error", ...updateErrorDetails(error), progress: undefined });
   });
 }
 
@@ -56,7 +57,7 @@ ipcMain.handle("mrchicken-update:check", async (event) => {
   if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
   if (!updateCheckPromise) {
     updateCheckPromise = autoUpdater.checkForUpdates().catch((error) => {
-      setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error) });
+      setUpdateStatus({ state: "error", ...updateErrorDetails(error) });
       return null;
     }).finally(() => {
       updateCheckPromise = undefined;
@@ -71,10 +72,10 @@ ipcMain.handle("mrchicken-update:download", async (event) => {
   if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
   if (updateStatus.state !== "available") return updateStatus;
   try {
-    setUpdateStatus({ state: "downloading", progress: 0, error: undefined });
+    setUpdateStatus({ state: "downloading", progress: 0, error: undefined, errorCode: undefined });
     await autoUpdater.downloadUpdate();
   } catch (error) {
-    setUpdateStatus({ state: "error", error: error instanceof Error ? error.message : String(error), progress: undefined });
+    setUpdateStatus({ state: "error", ...updateErrorDetails(error), progress: undefined });
   }
   return updateStatus;
 });

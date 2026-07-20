@@ -9,6 +9,7 @@ declare global {
     releaseDate?: string;
     progress?: number;
     error?: string;
+    errorCode?: "release-metadata-missing" | "network" | "unknown";
   }
 
   interface Window {
