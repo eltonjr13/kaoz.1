@@ -47,7 +47,11 @@ export async function POST(request: Request) {
             confidenceScore: 0.8,
             status: 'active',
             source: 'job_feedback',
-            matchedPhrase: 'feedback_good'
+            matchedPhrase: 'feedback_good',
+            explicit: false,
+            canonicalKey: `job-feedback:${jobId}`,
+            tags: ['job-feedback', 'good'],
+            supersedeHints: []
           }], candidateContext);
         } else if (feedback === 'bad') {
           // Rejeita o tópico / resultado, gera uma correção
@@ -59,7 +63,11 @@ export async function POST(request: Request) {
             confidenceScore: 0.7,
             status: 'pending_review',
             source: 'job_feedback',
-            matchedPhrase: 'feedback_bad'
+            matchedPhrase: 'feedback_bad',
+            explicit: false,
+            canonicalKey: `job-feedback:${jobId}`,
+            tags: ['job-feedback', 'bad'],
+            supersedeHints: []
           }], candidateContext);
         }
       } catch (memErr) {
