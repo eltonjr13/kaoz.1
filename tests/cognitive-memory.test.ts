@@ -152,3 +152,36 @@ test('conteudo sensivel e bloqueado e gravacoes concorrentes nao se sobrescrevem
     await rm(store.root, { recursive: true, force: true });
   }
 });
+
+test('orcamento quente nao ultrapassa 1500 tokens estimados nem corta registros', async () => {
+  const store = testStore();
+  try {
+    const candidates = Array.from({ length: 40 }, (_, index) => ({
+      ...extractChatMemoryCandidates(`salve na memória; eu gosto de preferencia-${index}`, '', {})[0],
+      content: `Preferencia ${index}: ${'detalhe '.repeat(35)}`,
+      canonicalKey: `preference:${index}`,
+    }));
+    await store.service.saveChatMemoryCandidates(candidates, { userId: LOCAL_MEMORY_USER_ID });
+    const context = await store.service.buildPromptContext('o que eu gosto?', { userId: LOCAL_MEMORY_USER_ID }, 100);
+    const estimated = Math.ceil((context.personalFacts.length + context.contextualFacts.length) / 3.5);
+    assert.ok(estimated <= 1500);
+    assert.ok(context.records.every((record) => context.personalFacts.includes(record.content) || context.contextualFacts.includes(record.content)));
+  } finally { await rm(store.root, { recursive: true, force: true }); }
+});
+
+test('chave de consolidacao impede reforco duplicado depois de retry', async () => {
+  const store = testStore();
+  try {
+    const candidate = {
+      ...extractChatMemoryCandidates('eu gosto de abacate', '', { source: 'archive_consolidation' })[0],
+      evidenceRefs: [{ conversationId: 'conversation-a', messageId: 'message-a' }],
+      consolidationKey: 'job-message-preference',
+    };
+    await store.service.saveChatMemoryCandidates([candidate], { userId: LOCAL_MEMORY_USER_ID });
+    await store.service.saveChatMemoryCandidates([candidate], { userId: LOCAL_MEMORY_USER_ID });
+    const memories = await store.service.listActiveChatMemories({ userId: LOCAL_MEMORY_USER_ID });
+    assert.equal(memories.length, 1);
+    assert.equal(memories[0].occurrences, 1);
+    assert.deepEqual(memories[0].evidenceRefs, candidate.evidenceRefs);
+  } finally { await rm(store.root, { recursive: true, force: true }); }
+});

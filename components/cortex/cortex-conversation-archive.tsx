@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type Conversation = { id: string; channel: string; title: string; updatedAt: string; messageCount: number };
 type SearchHit = { id: string; conversationId: string; channel: string; conversationTitle: string; content: string; createdAt: string };
 type Identity = { id: string; channel: string; externalUserId: string; username?: string; linkedProfileId?: string };
-type Stats = { conversations: number; messages: number; identities: number; pendingJobs: number; databaseBytes: number };
+type Stats = { conversations: number; messages: number; identities: number; pendingJobs: number; databaseBytes: number; hotBudgetTokens: number; hotBudgetLimit: number };
 
 export function CortexConversationArchive() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -44,6 +44,14 @@ export function CortexConversationArchive() {
     if (response.ok) setOpened(await response.json());
   };
 
+  const loadMore = async () => {
+    if (!opened) return;
+    const response = await fetch(`/api/conversations/${encodeURIComponent(opened.conversation.id)}?limit=100&offset=${opened.messages.length}`);
+    if (!response.ok) return;
+    const detail = await response.json() as { messages?: Array<{ id: string; role: string; content: string; createdAt: string }> };
+    setOpened({ ...opened, messages: [...opened.messages, ...(detail.messages || [])] });
+  };
+
   const removeConversation = async (conversation: Conversation) => {
     const forgetDerived = window.confirm('Tambem esquecer memorias quentes derivadas desta conversa?');
     if (!window.confirm(`Excluir permanentemente "${conversation.title}"?`)) return;
@@ -61,7 +69,7 @@ export function CortexConversationArchive() {
   return <section className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5 text-white">
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="text-lg font-semibold">Arquivo de conversas</h2><p className="text-sm text-white/50">Histórico local pesquisável do Flow, Telegram e Discord.</p></div>
-      {stats && <div className="text-xs text-white/50">{stats.conversations} conversas · {stats.messages} mensagens · {stats.pendingJobs} jobs · {(stats.databaseBytes / 1024 / 1024).toFixed(1)} MB</div>}
+      {stats && <div className="text-xs text-white/50">{stats.conversations} conversas · {stats.messages} mensagens · {stats.pendingJobs} jobs · quente {stats.hotBudgetTokens}/{stats.hotBudgetLimit} tokens · {(stats.databaseBytes / 1024 / 1024).toFixed(1)} MB</div>}
     </div>
     <div className="grid gap-2 md:grid-cols-[1fr_140px_150px_150px_auto]">
       <input className="rounded-lg border border-white/10 bg-white/5 px-3 py-2" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void search()} placeholder="Pesquisar no histórico" />
@@ -72,7 +80,7 @@ export function CortexConversationArchive() {
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
       <div className="space-y-2">{(results.length ? results : conversations).map((item) => <button key={item.id} onClick={() => void openConversation('conversationId' in item ? item.conversationId : item.id)} className="block w-full rounded-xl border border-white/10 p-3 text-left hover:bg-white/5"><div className="flex justify-between gap-3"><span className="font-medium">{'conversationTitle' in item ? item.conversationTitle : item.title}</span><span className="text-xs uppercase text-violet-300">{item.channel}</span></div>{'content' in item ? <p className="mt-1 line-clamp-2 text-sm text-white/60">{item.content}</p> : <p className="mt-1 text-xs text-white/45">{item.messageCount} mensagens · {new Date(item.updatedAt).toLocaleString()}</p>}</button>)}</div>
-      {opened && <div className="rounded-xl border border-white/10 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold">{opened.conversation.title}</h3><button className="text-sm text-red-300" onClick={() => void removeConversation(opened.conversation)}>Excluir</button></div><div className="max-h-96 space-y-2 overflow-auto">{opened.messages.map((message) => <div key={message.id} className={`rounded-lg p-2 text-sm ${message.role === 'user' ? 'bg-violet-500/10' : 'bg-white/5'}`}><span className="text-xs uppercase text-white/40">{message.role}</span><p className="whitespace-pre-wrap">{message.content}</p></div>)}</div></div>}
+      {opened && <div className="rounded-xl border border-white/10 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold">{opened.conversation.title}</h3><button className="text-sm text-red-300" onClick={() => void removeConversation(opened.conversation)}>Excluir</button></div><div className="max-h-96 space-y-2 overflow-auto">{opened.messages.map((message) => <div key={message.id} className={`rounded-lg p-2 text-sm ${message.role === 'user' ? 'bg-violet-500/10' : 'bg-white/5'}`}><span className="text-xs uppercase text-white/40">{message.role}</span><p className="whitespace-pre-wrap">{message.content}</p></div>)}{opened.messages.length < opened.conversation.messageCount && <button className="w-full rounded-lg border border-white/10 py-2 text-sm" onClick={() => void loadMore()}>Carregar mais</button>}</div></div>}
     </div>
     <div className="mt-6"><h3 className="mb-2 font-semibold">Identidades observadas</h3><div className="space-y-2">{identities.map((identity) => <div key={identity.id} className="flex items-center justify-between rounded-lg border border-white/10 p-3 text-sm"><span>{identity.channel} · {identity.username || identity.externalUserId}</span><button className="rounded-md border border-white/15 px-3 py-1" onClick={() => void updateIdentity(identity, identity.linkedProfileId ? 'unlink' : 'link')}>{identity.linkedProfileId ? 'Desvincular' : 'Vincular ao usuário local'}</button></div>)}</div></div>
   </section>;

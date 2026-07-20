@@ -50,12 +50,12 @@ export class ChatMemoryService {
           continue;
         }
 
-        if (candidate.consolidationKey && memories.some((memory) => memory.consolidationKey === candidate.consolidationKey)) continue;
+        if (candidate.consolidationKey && memories.some((memory) => memory.consolidationKey === candidate.consolidationKey || memory.consolidationKeys?.includes(candidate.consolidationKey!))) continue;
 
         const duplicate = memories.find((memory) =>
           memory.userId === userId &&
           memory.scope === candidate.scope &&
-          memory.status === 'active' &&
+          (memory.status === 'active' || memory.status === 'pending_review') &&
           normalize(memory.content) === normalize(candidate.content)
         );
 
@@ -89,6 +89,7 @@ export class ChatMemoryService {
           evidence: candidate.evidence,
           evidenceRefs: candidate.evidenceRefs,
           consolidationKey: candidate.consolidationKey,
+          consolidationKeys: candidate.consolidationKey ? [candidate.consolidationKey] : undefined,
           explicit: candidate.explicit,
           canonicalKey: candidate.canonicalKey,
           tags: candidate.tags,
@@ -270,7 +271,22 @@ function reinforce(memory: ChatMemoryRecord, candidate: ChatMemoryCandidate, now
   memory.confidenceScore = Math.min(1, Math.max(memory.confidenceScore, candidate.confidenceScore) + 0.05);
   memory.tags = [...new Set([...memory.tags, ...candidate.tags])];
   memory.evidence = [...new Set([...memory.evidence, ...candidate.evidence])];
-  if (memory.status === 'pending_review' && memory.confidenceScore > 0.8) memory.status = 'active';
+  memory.evidenceRefs = uniqueEvidenceRefs([...(memory.evidenceRefs || []), ...(candidate.evidenceRefs || [])]);
+  if (candidate.consolidationKey) {
+    memory.consolidationKey = candidate.consolidationKey;
+    memory.consolidationKeys = [...new Set([...(memory.consolidationKeys || []), candidate.consolidationKey])];
+  }
+  if (memory.status === 'pending_review' && (candidate.explicit || memory.confidenceScore > 0.8)) memory.status = 'active';
+}
+
+function uniqueEvidenceRefs(refs: Array<{ conversationId: string; messageId: string }>): Array<{ conversationId: string; messageId: string }> {
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = `${ref.conversationId}\u001f${ref.messageId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function scopeMatches(memory: ChatMemoryRecord, context: ChatMemoryContext): boolean {

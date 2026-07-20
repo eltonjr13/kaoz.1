@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": ["types/**/*.d.ts", "services/conversation-memory/**/*.ts", "services/connectors/telegram.polling.ts", "services/connectors/discord.gateway.ts", "services/connectors/discord.inbound.ts", "lib/cognitive-memory/**/*.ts", "app/api/conversations/**/*.ts", "app/api/cortex/identities/**/*.ts", "app/api/flow/chat/route.ts", "components/cortex/cortex-conversation-archive.tsx", "app/(dashboard)/cortex/page.tsx", "app/(dashboard)/flow/page.tsx", "tests/conversation-memory.test.ts", "tests/cognitive-memory.test.ts"],
+  "exclude": ["node_modules", ".next", "dist", "release"]
+}

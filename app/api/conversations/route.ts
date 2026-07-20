@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getConversationMemoryStore, LOCAL_PROFILE_ID } from "@/services/conversation-memory/conversation-memory.store";
 import type { ConversationChannel } from "@/services/conversation-memory/conversation-memory.types";
+import { ChatMemoryService } from "@/lib/cognitive-memory/chat/ChatMemoryService";
+import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +15,9 @@ export async function GET(request: Request) {
     limit: Number(url.searchParams.get("limit") || 50),
     offset: Number(url.searchParams.get("offset") || 0),
   });
-  return NextResponse.json({ conversations, stats: getConversationMemoryStore().stats() });
+  const hotMemories = await new ChatMemoryService(new JsonStorageProvider()).listActiveChatMemories({ userId: LOCAL_PROFILE_ID });
+  const hotBudgetTokens = Math.min(1500, hotMemories.reduce((total, memory) => total + Math.ceil((memory.content.length + 3) / 3.5), 0));
+  return NextResponse.json({ conversations, stats: { ...getConversationMemoryStore().stats(), hotBudgetTokens, hotBudgetLimit: 1500 } });
 }
 
 export async function PATCH(request: Request) {

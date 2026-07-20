@@ -64,6 +64,7 @@ export interface ChatMemoryRecord {
   evidence: string[];
   evidenceRefs?: ChatMemoryEvidenceRef[];
   consolidationKey?: string;
+  consolidationKeys?: string[];
   explicit: boolean;
   canonicalKey: string;
   tags: string[];
