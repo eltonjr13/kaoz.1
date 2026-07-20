@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -10,6 +10,43 @@ let nextServer;
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
 
 app.setName("MrChicken");
+
+function getMainWindowForEvent(event) {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  return senderWindow && senderWindow === mainWindow ? senderWindow : null;
+}
+
+function sendWindowState(target) {
+  if (!target || target.isDestroyed()) return;
+  target.webContents.send("mrchicken-window:maximized-changed", target.isMaximized());
+}
+
+ipcMain.handle("mrchicken-window:minimize", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return false;
+  target.minimize();
+  return true;
+});
+
+ipcMain.handle("mrchicken-window:toggle-maximize", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return false;
+  if (target.isMaximized()) target.unmaximize();
+  else target.maximize();
+  return true;
+});
+
+ipcMain.handle("mrchicken-window:close", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return false;
+  target.close();
+  return true;
+});
+
+ipcMain.handle("mrchicken-window:is-maximized", (event) => {
+  const target = getMainWindowForEvent(event);
+  return Boolean(target && target.isMaximized());
+});
 
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
@@ -152,9 +189,11 @@ function createWindow(url) {
     minWidth: 1024,
     minHeight: 700,
     show: false,
+    frame: false,
     backgroundColor: "#09090b",
     icon: path.join(__dirname, "..", "build", "icon.png"),
     webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
@@ -162,7 +201,12 @@ function createWindow(url) {
   });
 
   mainWindow.removeMenu();
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.on("maximize", () => sendWindowState(mainWindow));
+  mainWindow.on("unmaximize", () => sendWindowState(mainWindow));
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+    sendWindowState(mainWindow);
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
     shell.openExternal(target);
     return { action: "deny" };

@@ -160,10 +160,10 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-screen bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="mrchicken-app-shell min-h-screen bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Mobile top bar */}
       <div
-        className="fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
+        className="mrchicken-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
         style={{
           borderBottom: "1px solid rgba(255,255,255,0.07)",
           background: "rgba(8,8,8,0.9)",
@@ -193,7 +193,7 @@ export function AppShell({
       {sidebarOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 md:hidden"
+          className="mrchicken-mobile-menu-overlay fixed inset-0 z-40 md:hidden"
           style={{ background: "rgba(0,0,0,0.65)" }}
           aria-label="Fechar menu"
           onClick={() => setSidebarOpen(false)}
@@ -202,7 +202,7 @@ export function AppShell({
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:z-10 md:translate-x-0 ${
+        className={`mrchicken-sidebar-dock fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:z-10 md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

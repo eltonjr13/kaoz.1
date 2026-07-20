@@ -70,6 +70,94 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html[data-mrchicken-desktop="true"] {
+  --mrchicken-titlebar-height: 36px;
+}
+
+html[data-mrchicken-desktop="true"] body {
+  padding-top: var(--mrchicken-titlebar-height);
+}
+
+.mrchicken-desktop-titlebar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  display: flex;
+  height: var(--mrchicken-titlebar-height);
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+  background: rgba(9, 9, 12, 0.92);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: #a6a6b0;
+  user-select: none;
+}
+
+.mrchicken-desktop-titlebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 168px;
+  padding-left: 14px;
+  color: #c9c3df;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  -webkit-app-region: drag;
+}
+
+.mrchicken-desktop-titlebar__brand svg {
+  color: #9d7cff;
+}
+
+.mrchicken-desktop-titlebar__drag-region {
+  align-self: stretch;
+  flex: 1;
+  -webkit-app-region: drag;
+}
+
+.mrchicken-desktop-titlebar__controls {
+  display: flex;
+  align-self: stretch;
+  -webkit-app-region: no-drag;
+}
+
+.mrchicken-desktop-titlebar__controls button {
+  display: grid;
+  width: 46px;
+  place-items: center;
+  border: 0;
+  color: #aaaab4;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.mrchicken-desktop-titlebar__controls button:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.mrchicken-desktop-titlebar__controls .mrchicken-desktop-titlebar__close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.mrchicken-desktop-titlebar__controls button:focus-visible {
+  outline: 1px solid #9d7cff;
+  outline-offset: -3px;
+}
+
+html[data-mrchicken-desktop="true"] .mrchicken-sidebar-dock {
+  top: var(--mrchicken-titlebar-height);
+}
+
+html[data-mrchicken-desktop="true"] .mrchicken-mobile-nav {
+  top: var(--mrchicken-titlebar-height);
+}
+
+html[data-mrchicken-desktop="true"] .mrchicken-mobile-menu-overlay {
+  top: var(--mrchicken-titlebar-height);
+}
+
 ::selection {
   background: rgba(157, 124, 255, 0.32);
   color: #ffffff;

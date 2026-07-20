@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { DesktopTitlebar } from "@/components/layout/desktop-titlebar";
 import "./globals.css";
 
 const inter = Inter({
@@ -20,6 +21,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
+        <DesktopTitlebar />
         <div className="flow-cinematic-background" aria-hidden="true">
           <div className="flow-cinematic-background__art" />
           <div className="flow-cinematic-background__overlay" />
