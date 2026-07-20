@@ -1,4 +1,4 @@
-import { getConversationMemoryStore } from "./conversation-memory.store.ts";
+import { ConversationMemoryStore, getConversationMemoryStore } from "./conversation-memory.store.ts";
 import type { ArchiveSearchHit, ConversationChannel } from "./conversation-memory.types.ts";
 
 const RECALL_PATTERN = /\b(?:lembra|lembramos|recorda|memoria|historico|antes|outra conversa|conversas|falamos|decidimos|combinamos|procure|pesquise|o que eu disse)\b/i;
@@ -13,9 +13,10 @@ export function recallArchivedConversations(input: {
   channel?: ConversationChannel;
   excludeConversationId?: string;
   maxTokens?: number;
+  store?: ConversationMemoryStore;
 }): { context: string; hits: ArchiveSearchHit[] } {
   if (!isArchiveRecallIntent(input.query)) return { context: "", hits: [] };
-  const hits = getConversationMemoryStore().search({
+  const hits = (input.store || getConversationMemoryStore()).search({
     query: removeRecallBoilerplate(input.query),
     profileId: input.profileId,
     channel: input.channel,

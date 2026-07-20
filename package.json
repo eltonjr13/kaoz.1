@@ -25,6 +25,7 @@
     "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs",
     "test:personality": "node --experimental-strip-types --no-warnings --test tests/agent-personality.test.ts",
     "test:memory": "node --experimental-strip-types --no-warnings --test tests/cognitive-memory.test.ts",
+    "test:memory-archive": "node --experimental-strip-types --no-warnings --test tests/conversation-memory.test.ts",
     "test:voice-expression": "node --experimental-strip-types --no-warnings --test tests/agent-voice-expression.test.ts",
     "test:orchestrator": "node --experimental-strip-types --no-warnings --test tests/orchestrator-core.test.ts",
     "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts tests/telegram-inbound.test.ts tests/telegram-polling-offset.test.ts",
