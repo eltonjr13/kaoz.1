@@ -11,7 +11,12 @@ export type ChatMemoryKind =
   | 'safety_boundary';
 export type ChatMemoryScope = MemoryHierarchy;
 export type ChatMemoryStatus = 'active' | 'pending_review' | 'rejected' | 'superseded';
-export type ChatMemorySource = 'flow_chat' | 'job_feedback' | 'cortex_review' | 'manual';
+export type ChatMemorySource = 'flow_chat' | 'telegram_chat' | 'discord_chat' | 'archive_consolidation' | 'job_feedback' | 'cortex_review' | 'manual';
+
+export interface ChatMemoryEvidenceRef {
+  conversationId: string;
+  messageId: string;
+}
 
 export interface BaseMetadata {
   avatarId: string;
@@ -57,6 +62,8 @@ export interface ChatMemoryRecord {
   scope: ChatMemoryScope;
   content: string;
   evidence: string[];
+  evidenceRefs?: ChatMemoryEvidenceRef[];
+  consolidationKey?: string;
   explicit: boolean;
   canonicalKey: string;
   tags: string[];

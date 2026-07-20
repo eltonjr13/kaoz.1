@@ -50,6 +50,8 @@ export class ChatMemoryService {
           continue;
         }
 
+        if (candidate.consolidationKey && memories.some((memory) => memory.consolidationKey === candidate.consolidationKey)) continue;
+
         const duplicate = memories.find((memory) =>
           memory.userId === userId &&
           memory.scope === candidate.scope &&
@@ -85,6 +87,8 @@ export class ChatMemoryService {
           scope: candidate.scope,
           content: candidate.content,
           evidence: candidate.evidence,
+          evidenceRefs: candidate.evidenceRefs,
+          consolidationKey: candidate.consolidationKey,
           explicit: candidate.explicit,
           canonicalKey: candidate.canonicalKey,
           tags: candidate.tags,
@@ -157,6 +161,38 @@ export class ChatMemoryService {
     });
   }
 
+  public async forgetMemoriesByEvidence(messageIds: string[], userId = LOCAL_MEMORY_USER_ID): Promise<number> {
+    const ids = new Set(messageIds);
+    if (!ids.size) return 0;
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const kept = memories.filter((memory) => memory.userId !== userId || !(memory.evidenceRefs || []).some((ref) => ids.has(ref.messageId)));
+      const removed = memories.length - kept.length;
+      data.chat = { memories: kept };
+      return removed;
+    });
+  }
+
+  public async reassignUserMemories(fromUserId: string, toUserId: string): Promise<{ moved: number; conflicts: number }> {
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      let moved = 0;
+      let conflicts = 0;
+      for (const memory of memories.filter((item) => item.userId === fromUserId)) {
+        const conflict = memories.find((item) => item.userId === toUserId && item.status === 'active' && item.canonicalKey === memory.canonicalKey && normalize(item.content) !== normalize(memory.content));
+        memory.userId = toUserId;
+        memory.updatedAt = new Date().toISOString();
+        if (conflict && memory.status === 'active') {
+          memory.status = 'pending_review';
+          conflicts += 1;
+        }
+        moved += 1;
+      }
+      data.chat = { memories };
+      return { moved, conflicts };
+    });
+  }
+
   public async editMemory(memoryId: string, content: string, userId = LOCAL_MEMORY_USER_ID): Promise<ChatMemoryRecord | null> {
     const cleanContent = content.trim();
     if (!cleanContent) return null;
@@ -210,11 +246,8 @@ export class ChatMemoryService {
       .filter(({ score }) => score > 0 || recall)
       .map(({ memory }) => memory)
       .slice(0, 6);
-    return {
-      personalFacts: formatMemories(selectedPersonal),
-      contextualFacts: formatMemories(selectedContextual),
-      records: [...selectedPersonal, ...selectedContextual]
-    };
+    const budgeted = fitMemoryBudget(selectedPersonal, selectedContextual, 1500);
+    return { personalFacts: formatMemories(budgeted.personal), contextualFacts: formatMemories(budgeted.contextual), records: [...budgeted.personal, ...budgeted.contextual] };
   }
 
   public async retrieveRelevantMemories(query: string, options: ChatMemoryContext & { limit?: number } = {}): Promise<string> {
@@ -281,6 +314,20 @@ function selectUnique(memories: ChatMemoryRecord[]): ChatMemoryRecord[] {
 
 function formatMemories(memories: ChatMemoryRecord[]): string {
   return memories.map((memory) => `- ${memory.content}`).join('\n');
+}
+
+function fitMemoryBudget(personal: ChatMemoryRecord[], contextual: ChatMemoryRecord[], maxTokens: number): { personal: ChatMemoryRecord[]; contextual: ChatMemoryRecord[] } {
+  const result = { personal: [] as ChatMemoryRecord[], contextual: [] as ChatMemoryRecord[] };
+  let used = 0;
+  for (const [bucket, records] of [[result.personal, personal], [result.contextual, contextual]] as const) {
+    for (const record of records) {
+      const cost = Math.ceil((record.content.length + 3) / 3.5);
+      if (used + cost > maxTokens) continue;
+      bucket.push(record);
+      used += cost;
+    }
+  }
+  return result;
 }
 
 function inferTags(content: string, existing: string[]): string[] {

@@ -18,6 +18,8 @@ export interface ChatMemoryCandidate {
   scope: ChatMemoryScope;
   content: string;
   evidence: string[];
+  evidenceRefs?: Array<{ conversationId: string; messageId: string }>;
+  consolidationKey?: string;
   confidenceScore: number;
   status: ChatMemoryStatus;
   source: ChatMemorySource;
