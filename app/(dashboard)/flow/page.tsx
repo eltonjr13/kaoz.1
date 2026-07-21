@@ -1070,27 +1070,6 @@ export default function FlowDashboardPage() {
       clearInterval(interval);
     };
   }, [isBrowserOpen]);
-  
-  useEffect(() => {
-    if (hasAppliedModeFromUrlRef.current) return;
-    const mode = searchParams.get("mode");
-    if (mode !== "image" && mode !== "video" && mode !== "project" && mode !== "ad-creative") {
-      return;
-    }
-
-    setAgentType(mode);
-    if (mode === "ad-creative") {
-      setFlyModeActive(searchParams.get("fly") === "1");
-    }
-    hasAppliedModeFromUrlRef.current = true;
-  }, [searchParams]);
-
-  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
-  const chatMessagesRef = useRef<ChatMessageState[]>([]);
-  const shouldAutoScrollRef = useRef(true);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const settingsMenuRef = useRef<HTMLDivElement>(null);
-  const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceMicrophoneReleaseRef = useRef<(() => void) | null>(null);
   const voiceEnabledRef = useRef(false);
   const voiceAwaitingCommandRef = useRef(false);
