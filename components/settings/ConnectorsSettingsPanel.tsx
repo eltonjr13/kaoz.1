@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Bot, CheckCircle2, Clock3, Link2, Loader2, MessageCircle, PlugZap, Save, Send, ShieldCheck, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus, TelegramPollingRuntimeStatus } from "@/services/connectors/connector.types";
+import { isConnectorInboundEnabled } from "@/services/connectors/connector.catalog";
 
 interface StatusMessage { text: string; type: "success" | "error" | "info"; }
 interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; inboundHistory: ConnectorInboundHistoryEntry[]; discordGateway: DiscordGatewayRuntimeStatus; telegramPolling: TelegramPollingRuntimeStatus; }
@@ -375,9 +376,10 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
 function DiscordInboundSettings({ config, status, onChange }: { config: Record<string, string>; status: DiscordGatewayRuntimeStatus; onChange: (next: Record<string, string>) => void }) {
   const update = (key: string, value: string) => onChange({ ...config, [key]: value });
   const statusColor = status.state === "connected" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/[0.05]" : status.state === "error" ? "text-rose-400 border-rose-500/20 bg-rose-500/[0.05]" : "text-amber-400 border-amber-500/20 bg-amber-500/[0.05]";
+  const inboundEnabled = isConnectorInboundEnabled("discord", config);
   return <div className="space-y-3 rounded-xl border border-indigo-500/15 bg-indigo-500/[0.035] p-3.5">
-    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde somente quando for mencionado em canais permitidos.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={config.inboundEnabled === "true"} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Ativar</label></div>
-    {config.inboundEnabled === "true" && <>
+    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde somente quando for mencionado em canais permitidos.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={inboundEnabled} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Bidirecional</label></div>
+    {inboundEnabled && <>
       <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Gateway: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>
       <ConfigField label="IDs de canais permitidos" value={config.allowedChannelIds || config.channelId || ""} placeholder="Um ou mais IDs separados por vírgula" onChange={(value) => update("allowedChannelIds", value)} />
       <ConfigField label="IDs de servidores permitidos (opcional)" value={config.allowedGuildIds || config.guildId || ""} placeholder="Vazio usa apenas a allowlist de canais" onChange={(value) => update("allowedGuildIds", value)} />
@@ -391,9 +393,10 @@ function DiscordInboundSettings({ config, status, onChange }: { config: Record<s
 function TelegramInboundSettings({ config, status, onChange }: { config: Record<string, string>; status: TelegramPollingRuntimeStatus; onChange: (next: Record<string, string>) => void }) {
   const update = (key: string, value: string) => onChange({ ...config, [key]: value });
   const statusColor = status.state === "connected" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/[0.05]" : status.state === "error" ? "text-rose-400 border-rose-500/20 bg-rose-500/[0.05]" : "text-amber-400 border-amber-500/20 bg-amber-500/[0.05]";
+  const inboundEnabled = isConnectorInboundEnabled("telegram", config);
   return <div className="space-y-3 rounded-xl border border-sky-500/15 bg-sky-500/[0.035] p-3.5">
-    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde no chat configurado usando polling seguro, sem webhook público.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={config.inboundEnabled === "true"} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Ativar</label></div>
-    {config.inboundEnabled === "true" && <>
+    <div className="flex items-center justify-between gap-3"><div><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300"><Bot size={12} /> Bot bidirecional</p><p className="mt-1 text-[10px] leading-relaxed text-zinc-500">Responde no chat configurado usando polling seguro, sem webhook público.</p></div><label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={inboundEnabled} onChange={(event) => update("inboundEnabled", String(event.target.checked))} /> Bidirecional</label></div>
+    {inboundEnabled && <>
       <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Polling: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>
       <ConfigField label="IDs de chats permitidos" value={config.allowedChatIds || config.chatId || ""} placeholder="Usa o chat configurado por padrão" onChange={(value) => update("allowedChatIds", value)} />
       <ConfigField label="IDs de usuários permitidos (opcional)" value={config.allowedUserIds || ""} placeholder="Vazio permite usuários do chat autorizado" onChange={(value) => update("allowedUserIds", value)} />

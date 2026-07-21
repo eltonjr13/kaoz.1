@@ -1,4 +1,5 @@
 import type { StoredConnectorAccount } from "./connector.types.ts";
+import { isConnectorInboundEnabled } from "./connector.catalog.ts";
 
 export interface DiscordInboundMessage {
   id: string;
@@ -57,7 +58,7 @@ export function discordImageOperation(prompt: string, hasReference: boolean): "s
 }
 
 export function discordInboundEnabled(account: StoredConnectorAccount): boolean {
-  return account.enabled && account.provider === "discord" && account.publicConfig.inboundEnabled === "true";
+  return account.enabled && account.provider === "discord" && isConnectorInboundEnabled(account.provider, account.publicConfig);
 }
 
 export function evaluateDiscordInbound(

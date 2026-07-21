@@ -1,4 +1,5 @@
 import type { StoredConnectorAccount } from "./connector.types.ts";
+import { isConnectorInboundEnabled } from "./connector.catalog.ts";
 
 export type TelegramImageMimeType = "image/png" | "image/jpeg" | "image/webp";
 
@@ -61,5 +62,5 @@ export function telegramMessagePrompt(message: TelegramInboundMessage, hasImage:
 }
 
 export function telegramInboundEnabled(account: StoredConnectorAccount): boolean {
-  return account.enabled && account.provider === "telegram" && account.publicConfig.inboundEnabled === "true";
+  return account.enabled && account.provider === "telegram" && isConnectorInboundEnabled(account.provider, account.publicConfig);
 }

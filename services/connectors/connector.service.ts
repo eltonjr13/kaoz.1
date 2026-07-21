@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { CONNECTOR_CATALOG, getConnectorDefinition } from "./connector.catalog.ts";
+import { CONNECTOR_CATALOG, connectorPublicConfigDefaults, getConnectorDefinition } from "./connector.catalog.ts";
 import { connectorStore } from "./connector.store.ts";
 import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorAccount, ConnectorAdapter, ConnectorProvider, ConnectorPublishInput, StoredConnectorAccount } from "./connector.types.ts";
@@ -93,9 +93,13 @@ export class ConnectorService {
       displayName: input.displayName?.trim() || existing?.displayName || definition.name,
       enabled: input.enabled ?? existing?.enabled ?? true,
       health: existing?.health || "untested",
-      publicConfig: input.publicConfig && typeof input.publicConfig === "object" && !Array.isArray(input.publicConfig)
-        ? Object.fromEntries(Object.entries(input.publicConfig).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
-        : existing?.publicConfig || {},
+      publicConfig: {
+        ...connectorPublicConfigDefaults(provider),
+        ...(existing?.publicConfig || {}),
+        ...(input.publicConfig && typeof input.publicConfig === "object" && !Array.isArray(input.publicConfig)
+          ? Object.fromEntries(Object.entries(input.publicConfig).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+          : {}),
+      },
       createdAt: existing?.createdAt || now,
       updatedAt: now,
       lastCheckedAt: existing?.lastCheckedAt,

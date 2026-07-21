@@ -44,3 +44,11 @@ export const CONNECTOR_CATALOG: ConnectorDefinition[] = [
 export function getConnectorDefinition(provider: ConnectorProvider) {
   return CONNECTOR_CATALOG.find((item) => item.provider === provider);
 }
+
+export function connectorPublicConfigDefaults(provider: ConnectorProvider): Record<string, string> {
+  return provider === "discord" || provider === "telegram" ? { inboundEnabled: "true" } : {};
+}
+
+export function isConnectorInboundEnabled(provider: ConnectorProvider, publicConfig: Record<string, string>): boolean {
+  return (provider === "discord" || provider === "telegram") && publicConfig.inboundEnabled !== "false";
+}
