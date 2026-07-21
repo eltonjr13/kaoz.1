@@ -1,3 +1,4 @@
+import type { ImageGenerationOptions, VideoGenerationOptions } from "@/src/providers/flow/FlowTypes";
 import type { ToolHandler } from "../../tools/tool.types";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import path from "node:path";
@@ -25,8 +26,8 @@ export const contentHandlers: Record<string, ToolHandler> = {
     const quantity = typeof args.quantity === "number" ? args.quantity : undefined;
 
     const result = await flowProvider.generateImage(prompt, {
-      aspectRatio: aspectRatio as any,
-      quantity: quantity as any
+      aspectRatio: aspectRatio as ImageGenerationOptions["aspectRatio"],
+      quantity: quantity as ImageGenerationOptions["quantity"]
     });
 
     if (!result.success) {
@@ -65,7 +66,7 @@ export const contentHandlers: Record<string, ToolHandler> = {
     const referenceImage = typeof args.referenceImage === "string" ? args.referenceImage : undefined;
 
     const result = await flowProvider.generateVideo(prompt, {
-      aspectRatio: aspectRatio as any,
+      aspectRatio: aspectRatio as VideoGenerationOptions["aspectRatio"],
       referenceImage
     });
 
