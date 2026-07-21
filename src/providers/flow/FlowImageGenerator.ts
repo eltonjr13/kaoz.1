@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { Locator, Page } from 'playwright';
 import { ImageGenerationResult, FlowConfig, ImageGenerationOptions } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl } from './FlowUtils';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, generateFilename, normalizeFlowProjectUrl, clickFlowAssetItem } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { convertImageToPdf } from './FlowPdfHelper';
 import { getFlowGeneratedDir } from '@/lib/runtime-paths';
@@ -194,7 +194,7 @@ export class FlowImageGenerator {
       : await this.findVisibleReferenceAsset(dialog, referenceImage, allowFirstThumbnailFallback);
     if (namedAsset) {
       logger.info(`Recurso de referencia localizado no Flow pelo nome: ${namedAsset.fragment}`);
-      await namedAsset.item.click();
+      await clickFlowAssetItem(namedAsset.item);
       return;
     }
 
@@ -209,7 +209,7 @@ export class FlowImageGenerator {
     logger.warn('Nao encontrei o recurso de referencia pelo nome no Flow. Selecionando o primeiro thumbnail visivel como fallback.');
     const thumbnail = dialog.locator('img').filter({ visible: true }).first();
     await thumbnail.waitFor({ state: 'visible', timeout: 15000 });
-    await thumbnail.click();
+    await clickFlowAssetItem(thumbnail);
   }
 
   private async clearPromptDraft(page: Page): Promise<void> {

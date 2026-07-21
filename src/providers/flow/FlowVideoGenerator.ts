@@ -1,6 +1,6 @@
 import { Page } from 'playwright';
 import { VideoGenerationResult, FlowConfig, VideoGenerationOptions } from './FlowTypes';
-import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists } from './FlowUtils';
+import { logger, findSmartElement, ElementQuery, pollCondition, getSavedProjectUrl, saveProjectUrl, ensureDirExists, clickFlowAssetItem } from './FlowUtils';
 import { FlowDownloader } from './FlowDownloader';
 import { probeMediaInfo } from '@/lib/videos/render';
 import path from 'node:path';
@@ -81,7 +81,7 @@ export class FlowVideoGenerator {
       logger.info('Selecionando o recurso mais recente na lista...');
       const item = dialog.locator('text=ref_image_').filter({ visible: true }).first();
       await item.waitFor({ state: 'visible', timeout: 15000 });
-      await item.click();
+      await clickFlowAssetItem(item);
       await page.waitForTimeout(1000);
 
       logger.info('Confirmando inclusão da imagem no comando...');

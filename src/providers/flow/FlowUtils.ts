@@ -41,6 +41,26 @@ export const logger = {
 };
 
 /**
+ * Clicks the selectable container for an asset in Flow's virtualized media list.
+ * The filename is rendered inside the row, but clicking that inner node can be
+ * blocked by the row itself because it owns the pointer events.
+ */
+export async function clickFlowAssetItem(item: Locator): Promise<void> {
+  const selectableContainer = item.locator(
+    'xpath=ancestor-or-self::*[@data-item-index or @data-index or @role="option" or @role="listitem" or self::button][1]'
+  );
+  const clickTarget = await selectableContainer.count() > 0 ? selectableContainer : item;
+
+  await clickTarget.waitFor({ state: 'visible', timeout: 15000 });
+  try {
+    await clickTarget.click({ timeout: 15000 });
+  } catch (error) {
+    logger.warn('Clique normal no recurso do Flow foi interceptado. Tentando clique direto no container.', error);
+    await clickTarget.evaluate((element) => (element as HTMLElement).click());
+  }
+}
+
+/**
  * Ensures that the directory exists, creating nested folders if necessary.
  */
 export function ensureDirExists(dirPath: string): void {
