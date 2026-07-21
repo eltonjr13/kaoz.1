@@ -25,6 +25,7 @@ const account: StoredConnectorAccount = {
 
 test("ativa inbound somente para conta Discord habilitada", () => {
   assert.equal(discordInboundEnabled(account), true);
+  assert.equal(discordInboundEnabled({ ...account, publicConfig: {} }), true);
   assert.equal(discordInboundEnabled({ ...account, enabled: false }), false);
   assert.equal(discordInboundEnabled({ ...account, publicConfig: { ...account.publicConfig, inboundEnabled: "false" } }), false);
 });

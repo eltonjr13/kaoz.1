@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { CONNECTOR_CATALOG } from "../services/connectors/connector.catalog.ts";
+import { CONNECTOR_CATALOG, connectorPublicConfigDefaults, isConnectorInboundEnabled } from "../services/connectors/connector.catalog.ts";
 import { ConnectorVault } from "../services/connectors/connector.vault.ts";
 import { discordConnector } from "../services/connectors/adapters/discord.connector.ts";
 import { blueskyConnector } from "../services/connectors/adapters/bluesky.connector.ts";
@@ -22,6 +22,16 @@ test("catálogo libera Discord, Bluesky e Telegram e mantém integrações futur
   assert.deepEqual(available, ["discord", "bluesky", "telegram"]);
   assert.ok(CONNECTOR_CATALOG.some((item) => item.provider === "x" && item.availability === "planned"));
   assert.ok(CONNECTOR_CATALOG.some((item) => item.provider === "linkedin" && item.availability === "planned"));
+});
+
+test("Discord e Telegram são bidirecionais por padrão e aceitam desligamento explícito", () => {
+  assert.deepEqual(connectorPublicConfigDefaults("discord"), { inboundEnabled: "true" });
+  assert.deepEqual(connectorPublicConfigDefaults("telegram"), { inboundEnabled: "true" });
+  assert.deepEqual(connectorPublicConfigDefaults("bluesky"), {});
+  assert.equal(isConnectorInboundEnabled("discord", {}), true);
+  assert.equal(isConnectorInboundEnabled("telegram", {}), true);
+  assert.equal(isConnectorInboundEnabled("discord", { inboundEnabled: "false" }), false);
+  assert.equal(isConnectorInboundEnabled("telegram", { inboundEnabled: "false" }), false);
 });
 
 test("cofre cifra credenciais e recupera somente com a chave local", async () => {

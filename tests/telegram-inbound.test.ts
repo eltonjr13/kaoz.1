@@ -17,6 +17,7 @@ const account: StoredConnectorAccount = {
 
 test("mantém o inbound Telegram condicionado à conta habilitada", () => {
   assert.equal(telegramInboundEnabled(account), true);
+  assert.equal(telegramInboundEnabled({ ...account, publicConfig: {} }), true);
   assert.equal(telegramInboundEnabled({ ...account, enabled: false }), false);
   assert.equal(telegramInboundEnabled({ ...account, publicConfig: { inboundEnabled: "false" } }), false);
 });
