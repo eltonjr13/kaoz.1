@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
 import type { AgentLLMProvider, AgentLLMSettings } from "./agent-llm.types";
 
 const DATA_DIR = getLocalDataDir();

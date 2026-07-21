@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
 
 export const API_PROVIDER_IDS = ["gemini", "openai", "deepseek", "anthropic", "cerebras", "zenmux", "iamhc"] as const;
 export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];

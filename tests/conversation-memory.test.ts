@@ -12,6 +12,22 @@ async function fixture() {
   return { root, file: path.join(root, "conversation-memory.sqlite3") };
 }
 
+test("reset de conector apaga a conversa e todos os turnos persistidos", async () => {
+  const { root, file } = await fixture();
+  const store = new ConversationMemoryStore(file);
+  try {
+    const input = { channel: "telegram" as const, accountId: "bot", externalUserId: "100", externalConversationId: "chat:100" };
+    store.upsertMessage({ ...input, messageId: "1", role: "user", content: "Contexto antigo" });
+    store.upsertMessage({ ...input, messageId: "2", role: "assistant", content: "Resposta antiga" });
+    const conversationId = store.resolveConversationId(input.channel, input.accountId, input.externalConversationId);
+    assert.equal(store.getRecentTurns(conversationId).length, 2);
+    const result = store.deleteConversation(conversationId);
+    assert.equal(result.deleted, true);
+    assert.deepEqual(new Set(result.messageIds).size, 2);
+    assert.equal(store.getConversation(conversationId), null);
+  } finally { store.close(); await rm(root, { recursive: true, force: true }); }
+});
+
 test("importacao do Flow e idempotente e persiste apos reinicio", async () => {
   const { root, file } = await fixture();
   let store: ConversationMemoryStore | undefined;
