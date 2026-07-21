@@ -1070,6 +1070,19 @@ export default function FlowDashboardPage() {
       clearInterval(interval);
     };
   }, [isBrowserOpen]);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }, []);
+
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+  const chatMessagesRef = useRef<any[]>([]);
+  const shouldAutoScrollRef = useRef(true);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const voiceRecognitionRef = useRef<any>(null);
   const voiceMicrophoneReleaseRef = useRef<(() => void) | null>(null);
   const voiceEnabledRef = useRef(false);
   const voiceAwaitingCommandRef = useRef(false);
@@ -1829,7 +1842,7 @@ export default function FlowDashboardPage() {
           if (msgIndex < 0) continue;
 
           const currentLogs = nextMessages[msgIndex].jobLogs || [];
-          const newEvents = events.filter((e: any) => !currentLogs.some(log => log.includes(e.id)));
+          const newEvents = events.filter((e: any) => !currentLogs.some((log: string) => log.includes(e.id)));
           
           if (newEvents.length > 0) {
             updated = true;
