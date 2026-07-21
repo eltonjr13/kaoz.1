@@ -54,13 +54,18 @@ html.dark {
   }
 }
 
-
 * {
   box-sizing: border-box;
 }
 
+html, body {
+  height: 100%;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
 body {
-  min-height: 100vh;
+  height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--text);
@@ -205,12 +210,18 @@ html[data-mrchicken-desktop="true"] .mrchicken-mobile-menu-overlay {
 /* The desktop titlebar occupies visual viewport space, so Flow must not add it
    back through a 100dvh child inside the padded document. */
 .flow-page-shell {
-  height: calc(100dvh - 3.5rem);
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 
 @media (min-width: 768px) {
   .flow-page-shell {
-    height: calc(100dvh - var(--mrchicken-titlebar-height, 0px));
+    height: 100%;
+    width: 100%;
+    min-height: 0;
+    flex: 1;
   }
 }
 

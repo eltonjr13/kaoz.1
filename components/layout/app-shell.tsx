@@ -160,7 +160,7 @@ export function AppShell({
   );
 
   return (
-    <div className="mrchicken-app-shell min-h-screen bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="mrchicken-app-shell h-full min-h-screen max-h-screen overflow-hidden flex flex-col md:flex-row bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Mobile top bar */}
       <div
         className="mrchicken-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
@@ -209,7 +209,7 @@ export function AppShell({
         {sidebar}
       </div>
 
-      <main className={`min-h-screen pt-14 transition-[margin] duration-200 ease-out md:pt-0 ${sidebarCollapsed ? "md:ml-[76px]" : "md:ml-[248px]"}`}>{children}</main>
+      <main className={`h-full min-h-0 flex-1 overflow-hidden flex flex-col pt-14 transition-[margin] duration-200 ease-out md:pt-0 ${sidebarCollapsed ? "md:ml-[76px]" : "md:ml-[248px]"}`}>{children}</main>
     </div>
   );
 }
