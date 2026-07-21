@@ -10,6 +10,7 @@ import { telegramConnector } from "../services/connectors/adapters/telegram.conn
 import { skillRegistry } from "../services/skills/skill.registry.ts";
 import { connectorHandlers } from "../services/orchestrator/adapters/connector.adapter.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
+import { formatDiscordMessage, formatTelegramMessage } from "../services/connectors/message-format.ts";
 
 function account(provider: "discord" | "bluesky" | "telegram"): StoredConnectorAccount {
   const now = new Date().toISOString();
@@ -100,9 +101,29 @@ test("Telegram envia texto e devolve o id remoto", async () => {
     const result = await telegramConnector.publish(account("telegram"), { chatId: "@meucanal", botToken: "bot-secret" }, { text: "Olá Telegram" });
     assert.equal(observedUrl, "https://api.telegram.org/botbot-secret/sendMessage");
     assert.match(observedBody, /Olá Telegram/);
+    assert.match(observedBody, /"parse_mode":"HTML"/);
     assert.equal(result.remoteId, "99");
     assert.equal(result.url, "https://t.me/meucanal/99");
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("formata Markdown do agente para o HTML seguro do Telegram", () => {
+  const formatted = formatTelegramMessage("### **Título**\nTexto com **negrito**, *itálico* e `código`.\n\n| Cena | Texto |\n| --- | --- |\n| 01 | Olá <mundo> |");
+  assert.match(formatted, /^<b><b>Título<\/b><\/b>/);
+  assert.match(formatted, /<b>negrito<\/b>/);
+  assert.match(formatted, /<i>itálico<\/i>/);
+  assert.match(formatted, /<code>código<\/code>/);
+  assert.match(formatted, /<b>Cena<\/b> · <b>Texto<\/b>/);
+  assert.match(formatted, /Olá &lt;mundo&gt;/);
+  assert.doesNotMatch(formatted, /\| --- \|/);
+});
+
+test("mantém Markdown nativo e torna tabelas legíveis no Discord", () => {
+  const formatted = formatDiscordMessage("**Roteiro**\n\n| Cena | Texto |\n| --- | --- |\n| 01 | Olá |");
+  assert.match(formatted, /^\*\*Roteiro\*\*/);
+  assert.match(formatted, /\*\*Cena\*\* · \*\*Texto\*\*/);
+  assert.match(formatted, /• 01 — Olá/);
+  assert.doesNotMatch(formatted, /\| --- \|/);
 });
 
 test("Discord publica texto e devolve link da mensagem", async () => {

@@ -9,6 +9,7 @@ import { connectorVault } from "./connector.vault.ts";
 import { executeDiscordCommand, parseDiscordCommand } from "./discord.commands.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, requestsDiscordImageGeneration, type DiscordImageAttachment, type DiscordInboundMessage } from "./discord.inbound.ts";
+import { formatDiscordMessage } from "./message-format.ts";
 
 const DEFAULT_GATEWAY = "wss://gateway.discord.gg";
 const GATEWAY_VERSION = 10;
@@ -260,10 +261,11 @@ export class DiscordGatewayManager {
   }
 
   private async postReply(channelId: string, messageId: string, content: string): Promise<{ id: string }> {
+    const formattedContent = formatDiscordMessage(content).slice(0, 1_900);
     const response = await fetch(`${API_ROOT}/channels/${channelId}/messages`, {
       method: "POST",
       headers: authHeaders(this.token),
-      body: JSON.stringify({ content: content.slice(0, 1_900), allowed_mentions: { parse: [] }, message_reference: { message_id: messageId, fail_if_not_exists: false } }),
+      body: JSON.stringify({ content: formattedContent, allowed_mentions: { parse: [] }, message_reference: { message_id: messageId, fail_if_not_exists: false } }),
       signal: AbortSignal.timeout(15_000),
     });
     const body = await response.json().catch(() => ({})) as { id?: string; message?: string };
@@ -277,7 +279,7 @@ export class DiscordGatewayManager {
     const extension = path.extname(filename).toLowerCase();
     const mimeType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : extension === ".webp" ? "image/webp" : "image/png";
     const form = new FormData();
-    form.set("payload_json", JSON.stringify({ content, allowed_mentions: { parse: [] }, message_reference: { message_id: messageId, fail_if_not_exists: false } }));
+    form.set("payload_json", JSON.stringify({ content: formatDiscordMessage(content), allowed_mentions: { parse: [] }, message_reference: { message_id: messageId, fail_if_not_exists: false } }));
     form.set("files[0]", new Blob([new Uint8Array(bytes)], { type: mimeType }), filename);
     const response = await fetch(`${API_ROOT}/channels/${channelId}/messages`, {
       method: "POST",

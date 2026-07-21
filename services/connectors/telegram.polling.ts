@@ -7,6 +7,7 @@ import { connectorVault } from "./connector.vault.ts";
 import type { ConnectorInboundHistoryEntry, StoredConnectorAccount, TelegramPollingRuntimeStatus } from "./connector.types.ts";
 import { getTelegramImageAttachment, requestsTelegramImageGeneration, telegramImageOperation, telegramInboundEnabled, telegramMessagePrompt, type TelegramImageAttachment, type TelegramInboundMessage } from "./telegram.inbound.ts";
 import { archiveConnectorReply, prepareConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
+import { formatTelegramMessage } from "./message-format.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_CONVERSATION_TURNS = 6;
@@ -182,9 +183,10 @@ export class TelegramPollingManager {
   }
 
   private async sendMessage(chatId: string, text: string, replyToMessageId: number) {
+    const formattedText = formatTelegramMessage(text.slice(0, 4_096));
     const response = await fetch(apiUrl(this.token, "sendMessage"), {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4_096), reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }, disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text: formattedText, parse_mode: "HTML", reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }, disable_web_page_preview: true }),
       signal: AbortSignal.timeout(30_000),
     });
     const body = await response.json().catch(() => ({})) as { ok?: boolean; result?: { message_id?: number }; description?: string };

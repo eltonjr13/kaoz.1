@@ -1,5 +1,6 @@
 import type { ConnectorAdapter } from "../connector.types.ts";
 import { loadConnectorMedia } from "../connector.media.ts";
+import { formatDiscordMessage } from "../message-format.ts";
 
 const API_ROOT = "https://discord.com/api/v10";
 
@@ -39,7 +40,7 @@ export const discordConnector: ConnectorAdapter = {
   async publish(_account, credentials, input, signal) {
     const { botToken, channelId } = botCredentials(credentials);
     const url = `${API_ROOT}/channels/${channelId}/messages`;
-    const text = input.text.trim();
+    const text = formatDiscordMessage(input.text.trim());
     if (!text && !input.media?.length) throw new Error("A publicação precisa de texto ou mídia.");
     if (text.length > 2_000) throw new Error("Mensagens do Discord aceitam até 2.000 caracteres.");
     if ((input.media?.length || 0) > 10) throw new Error("Envie no máximo 10 arquivos por mensagem no Discord.");

@@ -1,5 +1,6 @@
 import type { ConnectorAdapter, ConnectorMedia } from "../connector.types.ts";
 import { loadConnectorMedia } from "../connector.media.ts";
+import { formatTelegramMessage } from "../message-format.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_TEXT_LENGTH = 4_096;
@@ -31,7 +32,10 @@ async function sendMedia(botToken: string, chatId: string, media: ConnectorMedia
   const field = method === "sendPhoto" ? "photo" : method === "sendVideo" ? "video" : "document";
   const form = new FormData();
   form.set("chat_id", chatId);
-  if (caption) form.set("caption", caption);
+  if (caption) {
+    form.set("caption", formatTelegramMessage(caption));
+    form.set("parse_mode", "HTML");
+  }
   form.set(field, new Blob([new Uint8Array(loaded.bytes)], { type: loaded.mimeType }), loaded.filename);
   const response = await fetch(endpoint(botToken, method), { method: "POST", body: form, signal });
   const body = await responseBody(response);
@@ -62,13 +66,13 @@ export const telegramConnector: ConnectorAdapter = {
     if (media.length > 10) throw new Error("Envie no máximo 10 arquivos por publicação no Telegram.");
     let result: Record<string, unknown> = {};
     if (!media.length) {
-      const response = await fetch(endpoint(botToken, "sendMessage"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }), signal });
+      const response = await fetch(endpoint(botToken, "sendMessage"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text: formatTelegramMessage(text), parse_mode: "HTML", disable_web_page_preview: true }), signal });
       const body = await responseBody(response);
       if (!response.ok || body.ok === false) throw new Error(`Telegram retornou HTTP ${response.status}: ${errorMessage(body)}`);
       result = body.result && typeof body.result === "object" ? body.result as Record<string, unknown> : {};
     } else {
       if (text.length > MAX_CAPTION_LENGTH) {
-        const response = await fetch(endpoint(botToken, "sendMessage"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }), signal });
+        const response = await fetch(endpoint(botToken, "sendMessage"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text: formatTelegramMessage(text), parse_mode: "HTML", disable_web_page_preview: true }), signal });
         const body = await responseBody(response);
         if (!response.ok || body.ok === false) throw new Error(`Telegram retornou HTTP ${response.status}: ${errorMessage(body)}`);
       }
