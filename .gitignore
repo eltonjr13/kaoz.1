@@ -1,5 +1,6 @@
 # dependencies
 node_modules
+/.pnpm-store/
 
 # next
 .next
@@ -50,6 +51,7 @@ output
 /.codex/
 /.hermes/
 /cache/
+/tmp/
 
 # local binaries/backups
 /yt-dlp.exe

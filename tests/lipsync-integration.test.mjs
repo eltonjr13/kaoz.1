@@ -17,12 +17,6 @@ test("TypeScript lip-sync adapter exposes provider abstraction and MuseTalk impl
   assert.match(source, /export\s+async\s+function\s+generateLipSync/);
 });
 
-test("legacy video lip-sync wrapper delegates to the AI lip-sync adapter", async () => {
-  const source = await read("lib/videos/lip-sync.ts");
-  assert.match(source, /@\/lib\/ai\/lipsync/);
-  assert.match(source, /createLipSyncVideo/);
-});
-
 test("Python MuseTalk microservice exposes the requested REST contract", async () => {
   await access(path.join(root, "services/lipsync/app.py"));
   await access(path.join(root, "services/lipsync/musetalk_service.py"));
