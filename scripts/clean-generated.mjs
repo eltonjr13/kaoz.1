@@ -19,25 +19,11 @@ function resolveWorkspaceTarget(relativePath) {
   return absolutePath;
 }
 
-async function directorySize(directory) {
-  const entries = await import("node:fs/promises").then(({ readdir }) =>
-    readdir(directory, { withFileTypes: true }),
-  );
-  let bytes = 0;
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) bytes += await directorySize(entryPath);
-    else if (entry.isFile()) bytes += (await stat(entryPath)).size;
-  }
-  return bytes;
-}
-
-let totalBytes = 0;
+let processed = 0;
 for (const relativePath of targets) {
   const absolutePath = resolveWorkspaceTarget(relativePath);
-  let bytes;
   try {
-    bytes = await directorySize(absolutePath);
+    await stat(absolutePath);
   } catch (error) {
     if (error?.code === "ENOENT") {
       console.log(`[ausente] ${relativePath}`);
@@ -46,9 +32,9 @@ for (const relativePath of targets) {
     throw error;
   }
 
-  totalBytes += bytes;
-  console.log(`[${apply ? "removendo" : "simulacao"}] ${relativePath} (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
+  processed += 1;
+  console.log(`[${apply ? "removendo" : "simulacao"}] ${relativePath}`);
   if (apply) await rm(absolutePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 });
 }
 
-console.log(`${apply ? "Espaco liberado" : "Espaco recuperavel"}: ${(totalBytes / 1024 / 1024 / 1024).toFixed(2)} GB`);
+console.log(`${processed} diretorio(s) ${apply ? "removido(s)" : "pronto(s) para limpeza"}.`);
