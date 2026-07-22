@@ -15,7 +15,7 @@ const eslintConfig = [
       "@next/next/no-img-element": "off",
       // The legacy application predates these rules. Keep its lint runnable and
       // enforce the stricter profile below on the new orchestration boundary.
-      complexity: ["error", 10],
+      complexity: "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-require-imports": "off",
