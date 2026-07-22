@@ -31,6 +31,9 @@ const nextConfig: NextConfig = {
   // The desktop build embeds Next's self-contained production server.
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
+  // Next uses these filters directly on non-Windows builds. The build wrapper
+  // also prunes runtime data because Next 16.2.6 does not normalize glob paths
+  // before matching them on Windows.
   outputFileTracingExcludes: {
     "next-server": desktopTraceExcludes,
     "/*": desktopTraceExcludes
