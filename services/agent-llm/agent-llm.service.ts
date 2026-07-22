@@ -6,6 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
+import { assertToolArguments } from "../tools/tool.validation";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
@@ -856,12 +857,17 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       const toolId = call.toolId || (call.serverId && call.toolName ? require("../mcp/mcp-tool-id").mcpToolId(call.serverId, call.toolName) : null);
       if (!toolId) throw new Error("Formato de chamada invalido. Use toolId.");
       if (!allowedToolIds.has(toolId)) throw new Error(`Ferramenta '${toolId}' não está autorizada para este pedido.`);
-      
+
+      const tool = relevantTools.find((candidate) => candidate.id === toolId);
+      if (!tool) throw new Error(`Ferramenta '${toolId}' não encontrada.`);
+      const args = call.args || {};
+      assertToolArguments(tool.inputSchema, args);
+
       const handler = toolRegistry.handler(toolId);
       if (!handler) throw new Error(`Ferramenta '${toolId}' nao encontrada.`);
-      
+
       const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
-      const result = await handler(call.args || {}, context);
+      const result = await handler(args, context);
       if (connectorProvider) return connectorToolResultResponse(connectorProvider, result);
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {

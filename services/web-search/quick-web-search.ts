@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths";
-import type { ChatAgentResponse } from "@/lib/ai/gemini";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
+import type { ChatAgentResponse } from "../../lib/ai/gemini.ts";
 
 type SearchResult = {
   title: string;

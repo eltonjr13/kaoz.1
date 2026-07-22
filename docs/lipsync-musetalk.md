@@ -10,7 +10,6 @@ generateScript() -> generateVoice() -> generateLipSync() -> renderVideo()
 
 ```txt
 lib/ai/lipsync.ts              # contrato LipSyncProvider + MuseTalkProvider
-lib/videos/lip-sync.ts         # wrapper de compatibilidade do pipeline antigo
 services/lipsync/app.py        # API REST FastAPI
 services/lipsync/musetalk_service.py
 services/lipsync/models/       # checkpoints/modelos quando gerenciados localmente
