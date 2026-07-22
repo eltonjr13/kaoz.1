@@ -1,21 +1,39 @@
 import type { NextConfig } from "next";
 
+const desktopTraceExcludes = [
+  "./.agents/**/*",
+  "./.codex/**/*",
+  "./.generated/**/*",
+  "./.git/**/*",
+  "./.github/**/*",
+  "./.hermes/**/*",
+  "./.next/**/*",
+  "./.pnpm-store/**/*",
+  "./build/**/*",
+  "./cache/**/*",
+  "./dist/**/*",
+  "./docs/**/*",
+  "./electron/**/*",
+  "./notebooks/**/*",
+  "./output/**/*",
+  "./public/uploads/**/*",
+  "./python/**/*",
+  "./release/**/*",
+  "./scratch/**/*",
+  "./scripts/**/*",
+  "./skills/**/*",
+  "./storage/**/*",
+  "./tests/**/*",
+  "./tmp/**/*"
+];
+
 const nextConfig: NextConfig = {
   // The desktop build embeds Next's self-contained production server.
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
   outputFileTracingExcludes: {
-    "/*": [
-      "./.generated/**/*",
-      "./.next/**/*",
-      "./.pnpm-store/**/*",
-      "./build/runtime/**/*",
-      "./dist/**/*",
-      "./output/**/*",
-      "./public/uploads/**/*",
-      "./release/**/*",
-      "./storage/**/*"
-    ]
+    "next-server": desktopTraceExcludes,
+    "/*": desktopTraceExcludes
   },
   allowedDevOrigins: [
     "192.169.0.101",
