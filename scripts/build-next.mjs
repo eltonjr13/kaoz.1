@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pruneNextStandalone } from "./prune-next-standalone.mjs";
 
 const root = process.cwd();
 const buildHome = path.join(root, ".generated", "build-home");
@@ -31,4 +32,10 @@ const result = spawnSync(
   }
 );
 
-process.exit(result.status ?? 1);
+const status = result.status ?? 1;
+if (status === 0) {
+  const removed = pruneNextStandalone(root);
+  if (removed.length) console.log(`Dados locais removidos do standalone: ${removed.join(", ")}`);
+}
+
+process.exit(status);
