@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { copyStandaloneManifest, ensureRuntimePackage } from "./desktop-runtime-validation.mjs";
+
 const root = process.cwd();
 const standaloneSource = path.join(root, ".next", "standalone");
 const output = path.join(root, "dist", "standalone");
@@ -20,6 +22,7 @@ fs.cpSync(standaloneSource, output, {
     return !runtimeRoots.has(topLevel);
   }
 });
+copyStandaloneManifest(standaloneSource, output);
 fs.cpSync(path.join(root, ".next", "static"), path.join(output, ".next", "static"), { recursive: true });
 const publicSource = path.join(root, "public");
 fs.cpSync(publicSource, path.join(output, "public"), {
@@ -30,6 +33,10 @@ fs.cpSync(publicSource, path.join(output, "public"), {
   }
 });
 fs.mkdirSync(path.join(output, "public", "uploads"), { recursive: true });
+
+// Next 16 can leave an incomplete next package in the Windows standalone trace.
+// Copy its complete runtime and verify resolution before electron-builder packages it.
+ensureRuntimePackage(root, output, "next");
 
 // These build-only packages can be pulled into the trace through package metadata,
 // but the Next server never loads them at runtime.
