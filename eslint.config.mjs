@@ -3,7 +3,24 @@ import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
   {
-    ignores: ["storage/**", ".generated/**", ".next/**", "public/**/*.ipynb", "notebooks/**"]
+    ignores: [
+      ".agents/**",
+      ".codex/**",
+      ".generated/**",
+      ".hermes/**",
+      ".next/**",
+      ".pnpm-store/**",
+      "build/runtime/**",
+      "cache/**",
+      "dist/**",
+      "notebooks/**",
+      "output/**",
+      "public/uploads/**",
+      "public/**/*.ipynb",
+      "release/**",
+      "storage/**",
+      "tmp/**"
+    ]
   },
   ...nextCoreWebVitals,
   ...nextTypescript,

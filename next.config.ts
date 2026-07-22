@@ -4,6 +4,19 @@ const nextConfig: NextConfig = {
   // The desktop build embeds Next's self-contained production server.
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
+  outputFileTracingExcludes: {
+    "/*": [
+      "./.generated/**/*",
+      "./.next/**/*",
+      "./.pnpm-store/**/*",
+      "./build/runtime/**/*",
+      "./dist/**/*",
+      "./output/**/*",
+      "./public/uploads/**/*",
+      "./release/**/*",
+      "./storage/**/*"
+    ]
+  },
   allowedDevOrigins: [
     "192.169.0.101",
     "192.169.0.101:3000",
