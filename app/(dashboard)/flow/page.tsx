@@ -3376,6 +3376,9 @@ export default function FlowDashboardPage() {
         <div className="flow-cinematic-background__grain" />
       </div>
 
+      {/* ── Top Backdrop Overlay ── */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-40 h-20 bg-gradient-to-b from-[#080808]/90 via-[#080808]/40 to-transparent backdrop-blur-[2px]" />
+
       {/* ── Header ── */}
       <header
         ref={headerRef}

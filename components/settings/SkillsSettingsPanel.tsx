@@ -164,7 +164,7 @@ export function SkillsSettingsPanel() {
 
   if (loading && skills.length === 0) return <div className="flex h-64 items-center justify-center text-white/50"><Loader2 className="mr-2 animate-spin" size={20}/>Carregando skills...</div>;
 
-  return <div className="flex min-h-[560px] w-full gap-4 lg:h-[calc(100vh-160px)]">
+  return <div className="flex h-full min-h-[520px] w-full gap-4 flex-1 min-h-0">
     <aside className="flex w-72 shrink-0 flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-3 backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between px-2">
         <div>

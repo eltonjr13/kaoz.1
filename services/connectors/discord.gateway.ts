@@ -6,10 +6,12 @@ import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { archiveConnectorReply, prepareConnectorConversation, resetConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
 import { connectorVault } from "./connector.vault.ts";
-import { DISCORD_APPLICATION_COMMANDS, executeDiscordCommand, parseDiscordCommand } from "./discord.commands.ts";
+import { DISCORD_APPLICATION_COMMANDS, executeDiscordCommand, getDiscordModelAutocomplete, parseDiscordCommand } from "./discord.commands.ts";
+import { connectorModelSelectionStore } from "./connector-model-selection.ts";
 import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredConnectorAccount } from "./connector.types.ts";
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration, type DiscordImageAttachment, type DiscordInboundMessage } from "./discord.inbound.ts";
 import { formatDiscordMessage } from "./message-format.ts";
+import { optimizeConnectorImagePrompt } from "./image-prompt.ts";
 
 const DEFAULT_GATEWAY = "wss://gateway.discord.gg";
 const GATEWAY_VERSION = 10;
@@ -20,8 +22,8 @@ const MAX_SEEN_MESSAGES = 500;
 type GatewayPayload = { op: number; d?: unknown; s?: number | null; t?: string | null };
 type ConversationTurn = { role: "user" | "assistant"; content: string };
 type DiscordInteraction = {
-  id: string; token: string; type: number; guild_id?: string; channel_id?: string;
-  data?: { name?: string; options?: Array<{ name: string; value?: string | number }> };
+  id: string; application_id?: string; token: string; type: number; guild_id?: string; channel_id?: string;
+  data?: { name?: string; options?: Array<{ name: string; value?: string | number; focused?: boolean }> };
   member?: { user?: { id?: string; username?: string; global_name?: string } };
   user?: { id?: string; username?: string; global_name?: string };
 };
@@ -203,8 +205,61 @@ export class DiscordGatewayManager {
     }
   }
 
+  private async respondToAutocomplete(interaction: DiscordInteraction, choices: Array<{ name: string; value: string }>): Promise<void> {
+    const response = await fetch(API_ROOT + "/interactions/" + interaction.id + "/" + interaction.token + "/callback", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: 8, data: { choices } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Discord autocomplete failed with HTTP " + response.status + ".");
+  }
+
+  private async deferInteraction(interaction: DiscordInteraction): Promise<void> {
+    const response = await fetch(API_ROOT + "/interactions/" + interaction.id + "/" + interaction.token + "/callback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: 5, data: { allowed_mentions: { parse: [] } } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error("Discord respondeu HTTP " + response.status + ": " + (body.message || "falha ao confirmar o comando"));
+    }
+  }
+
+  private async editInteractionResponse(interaction: DiscordInteraction, content: string, imagePath?: string): Promise<void> {
+    if (!interaction.application_id) throw new Error("O Discord não informou o ID da aplicação para concluir o comando.");
+    const url = API_ROOT + "/webhooks/" + interaction.application_id + "/" + interaction.token + "/messages/@original";
+    let response: Response;
+    if (imagePath) {
+      const bytes = await readFile(imagePath);
+      const filename = path.basename(imagePath);
+      const extension = path.extname(filename).toLowerCase();
+      const mimeType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : extension === ".webp" ? "image/webp" : "image/png";
+      const form = new FormData();
+      form.set("payload_json", JSON.stringify({
+        content: formatDiscordMessage(content).slice(0, 1_900),
+        allowed_mentions: { parse: [] },
+        attachments: [{ id: 0, filename }],
+      }));
+      form.set("files[0]", new Blob([new Uint8Array(bytes)], { type: mimeType }), filename);
+      response = await fetch(url, { method: "PATCH", body: form, signal: AbortSignal.timeout(120_000) });
+    } else {
+      response = await fetch(url, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: formatDiscordMessage(content).slice(0, 1_900), allowed_mentions: { parse: [] } }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error("Discord respondeu HTTP " + response.status + ": " + (body.message || "falha ao concluir o comando"));
+    }
+  }
+
   private async handleInteraction(interaction: DiscordInteraction): Promise<void> {
-    if (!this.account || interaction.type !== 2 || !interaction.data?.name) return;
+    if (!this.account || ![2, 4].includes(interaction.type) || !interaction.data?.name) return;
     const user = interaction.member?.user || interaction.user;
     const userId = user?.id || "";
     const channelId = interaction.channel_id || "";
@@ -214,6 +269,25 @@ export class DiscordGatewayManager {
     const allowed = Boolean(userId && channelId && channels.has(channelId))
       && (guilds.size === 0 || Boolean(interaction.guild_id && guilds.has(interaction.guild_id)))
       && (users.size === 0 || users.has(userId));
+    if (interaction.type === 4) {
+      if (!allowed) {
+        await this.respondToAutocomplete(interaction, []).catch(() => undefined);
+        return;
+      }
+      const focused = interaction.data.options?.find((option) => option.focused);
+      const providerValue = interaction.data.options?.find((option) => option.name === "provider")?.value;
+      if (!focused || (focused.name !== "provider" && focused.name !== "model")) {
+        await this.respondToAutocomplete(interaction, []);
+        return;
+      }
+      const choices = await getDiscordModelAutocomplete(
+        typeof providerValue === "string" ? providerValue : undefined,
+        focused.name,
+        typeof focused.value === "string" ? focused.value : "",
+      );
+      await this.respondToAutocomplete(interaction, choices);
+      return;
+    }
     if (!allowed) {
       await this.respondToInteraction(interaction, "Você não tem permissão para usar este comando neste canal.", true).catch(() => undefined);
       return;
@@ -224,11 +298,15 @@ export class DiscordGatewayManager {
     }
     const provider = interaction.data.options?.find((option) => option.name === "provider")?.value;
     const model = interaction.data.options?.find((option) => option.name === "model")?.value;
+    const imagePrompt = interaction.data.options?.find((option) => option.name === "prompt")?.value;
     if (model && !provider) {
       await this.respondToInteraction(interaction, "Selecione também o provedor ao informar um modelo.", true);
       return;
     }
-    const raw = "/" + interaction.data.name + (provider ? " " + provider : "") + (model ? " " + model : "");
+    const raw = "/" + interaction.data.name
+      + (interaction.data.name === "imagine" && imagePrompt ? " " + imagePrompt : "")
+      + (provider ? " " + provider : "")
+      + (model ? " " + model : "");
     const command = parseDiscordCommand(raw);
     if (!command) return;
     const started = Date.now();
@@ -238,19 +316,37 @@ export class DiscordGatewayManager {
       channelId, guildId: interaction.guild_id, userId, username: user?.global_name || user?.username,
       receivedAt: new Date(started).toISOString(), status: "received", requestPreview: raw.slice(0, 200),
     };
+    let deferred = false;
     try {
       let text: string;
       if (command.kind === "reset") {
         this.conversations.delete(historyKey);
         resetConnectorConversation({ channel: "discord", accountId: this.account.id, externalConversationId: historyKey });
         text = "Contexto desta conversa apagado. A próxima mensagem começará uma conversa nova.";
-      } else text = await executeDiscordCommand(command);
-      await this.respondToInteraction(interaction, text);
+        await this.respondToInteraction(interaction, text);
+      } else if (command.kind === "imagine") {
+        if (!command.prompt) {
+          text = "Informe o prompt da imagem. Exemplo: `/imagine um frango astronauta em Marte`.";
+          await this.respondToInteraction(interaction, text, true);
+        } else {
+          await this.deferInteraction(interaction);
+          deferred = true;
+          const optimizedPrompt = await optimizeConnectorImagePrompt({ prompt: command.prompt, operation: "simple" });
+          const imagePath = await generateDiscordImage(optimizedPrompt);
+          text = "Aqui está a imagem que você pediu.";
+          await this.editInteractionResponse(interaction, text, imagePath);
+        }
+      } else {
+        text = await executeDiscordCommand(command, { channel: "discord", accountId: this.account.id, externalConversationId: historyKey });
+        await this.respondToInteraction(interaction, text);
+      }
       await connectorStore.appendInboundHistory({ ...audit, status: "responded", completedAt: new Date().toISOString(), durationMs: Date.now() - started, responsePreview: text.slice(0, 200), remoteReplyId: interaction.id });
     } catch (error) {
       const detail = errorMessage(error);
       await connectorStore.appendInboundHistory({ ...audit, status: "failed", completedAt: new Date().toISOString(), durationMs: Date.now() - started, error: detail });
-      await this.respondToInteraction(interaction, "Não consegui executar o comando: " + detail.slice(0, 1_500), true).catch(() => undefined);
+      const failure = "Não consegui executar o comando: " + detail.slice(0, 1_500);
+      if (deferred) await this.editInteractionResponse(interaction, failure).catch(() => undefined);
+      else await this.respondToInteraction(interaction, failure, true).catch(() => undefined);
     }
   }
 
@@ -307,24 +403,40 @@ export class DiscordGatewayManager {
           resetConnectorConversation({ channel: "discord", accountId: this.account.id, externalConversationId: archiveConversationId });
           resetConversation = true;
           text = "Contexto desta conversa apagado. A próxima mensagem começará uma conversa nova.";
+          reply = await this.postReply(message.channel_id, message.id, text);
+        } else if (command.kind === "imagine") {
+          if (!command.prompt) {
+            text = "Use `/imagine <prompt>`. Exemplo: `/imagine um frango astronauta em Marte`.";
+            reply = await this.postReply(message.channel_id, message.id, text);
+          } else {
+            const optimizedPrompt = await optimizeConnectorImagePrompt({ prompt: command.prompt, operation: "simple", recent });
+            const imagePath = await generateDiscordImage(optimizedPrompt);
+            text = "Aqui está a imagem que você pediu.";
+            reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
+          }
         } else {
-          text = await executeDiscordCommand(command);
+          text = await executeDiscordCommand(command, { channel: "discord", accountId: this.account.id, externalConversationId: archiveConversationId });
+          reply = await this.postReply(message.channel_id, message.id, text);
         }
-        reply = await this.postReply(message.channel_id, message.id, text);
       } else {
         const imageAttachment = getDiscordImageAttachment(message);
         if (requestsDiscordImageGeneration(decision.prompt) || imageAttachment) {
           const referenceImage = imageAttachment ? await downloadDiscordImageReference(imageAttachment) : undefined;
-          const imagePath = await generateDiscordImage(decision.prompt, referenceImage, discordImageOperation(decision.prompt, Boolean(referenceImage)));
+          const operation = discordImageOperation(decision.prompt, Boolean(referenceImage));
+          const optimizedPrompt = await optimizeConnectorImagePrompt({ prompt: decision.prompt, operation, recent });
+          console.info(`[DiscordInbound] image_prompt=optimized originalChars=${decision.prompt.length} optimizedChars=${optimizedPrompt.length}`);
+          const imagePath = await generateDiscordImage(optimizedPrompt, referenceImage, operation);
           text = "Aqui está a imagem que você pediu.";
           reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
         } else {
         const selectedSkill = skillRegistry.select(decision.prompt);
         const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
-        const agentIdentity = await getConfiguredAgentIdentity();
+        const selectedAgent = await connectorModelSelectionStore.get({ channel: "discord", accountId: this.account.id, externalConversationId: archiveConversationId });
+        const agentIdentity = await getConfiguredAgentIdentity(selectedAgent || undefined);
         const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent, memoryContext: prepared.memoryContext }), {
           useExternalTools: useTools,
           toolIntentText: decision.prompt,
+          agent: selectedAgent || undefined,
         });
         if (!response) throw new Error("O provedor Browser não pode atender mensagens do Discord em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
         text = normalizeDiscordAgentResponse(response);

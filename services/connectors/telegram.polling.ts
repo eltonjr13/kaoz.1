@@ -8,14 +8,24 @@ import type { ConnectorInboundHistoryEntry, StoredConnectorAccount, TelegramPoll
 import { getTelegramImageAttachment, requestsTelegramImageGeneration, telegramImageOperation, telegramInboundEnabled, telegramMessagePrompt, type TelegramImageAttachment, type TelegramInboundMessage } from "./telegram.inbound.ts";
 import { archiveConnectorReply, prepareConnectorConversation, resetConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
 import { formatTelegramMessage } from "./message-format.ts";
-import { executeDiscordCommand, parseDiscordCommand } from "./discord.commands.ts";
+import { executeDiscordCommand, parseDiscordCommand, TELEGRAM_BOT_COMMANDS } from "./discord.commands.ts";
+import { optimizeConnectorImagePrompt } from "./image-prompt.ts";
+import { getConfigurableAgentCatalog, type ConfigurableAgentProvider } from "./connector-model-catalog.ts";
+import { connectorModelSelectionStore } from "./connector-model-selection.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_CONVERSATION_TURNS = 6;
 const MAX_TELEGRAM_REFERENCE_BYTES = 10 * 1024 * 1024;
 
-type TelegramUpdate = { update_id?: number; message?: TelegramInboundMessage };
+type TelegramCallbackQuery = {
+  id: string;
+  data?: string;
+  from: { id: number; username?: string; first_name?: string; is_bot?: boolean };
+  message?: { message_id: number; chat?: { id?: number | string } };
+};
+type TelegramUpdate = { update_id?: number; message?: TelegramInboundMessage; callback_query?: TelegramCallbackQuery };
 type ConversationTurn = { role: "user" | "assistant"; content: string };
+type ModelMenuSession = { chatId: string; userId: string; accountId: string; catalog: ConfigurableAgentProvider[]; provider?: ConfigurableAgentProvider; expiresAt: number };
 
 function globalManager() {
   return globalThis as typeof globalThis & { __mrChickenTelegramPolling?: TelegramPollingManager };
@@ -59,6 +69,7 @@ export class TelegramPollingManager {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private conversations = new Map<string, ConversationTurn[]>();
   private rateLimits = new Map<string, number[]>();
+  private modelMenus = new Map<string, ModelMenuSession>();
   private status: TelegramPollingRuntimeStatus = { state: "stopped", reconnectCount: 0 };
 
   getStatus() { return structuredClone(this.status); }
@@ -77,6 +88,7 @@ export class TelegramPollingManager {
     if (identityChanged) {
       this.offset = await connectorStore.getTelegramPollingOffset(offsetKey(account.id, token));
       this.conversations.clear();
+      this.modelMenus.clear();
       this.status = { state: "connecting", accountId: account.id, reconnectCount: 0 };
       void this.registerBotCommands();
     }
@@ -90,6 +102,7 @@ export class TelegramPollingManager {
     this.account = null;
     this.token = "";
     this.offset = 0;
+    this.modelMenus.clear();
     this.status = { state: "stopped", reconnectCount: 0 };
   }
 
@@ -97,12 +110,7 @@ export class TelegramPollingManager {
     try {
       const response = await fetch(apiUrl(this.token, "setMyCommands"), {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ commands: [
-          { command: "help", description: "Mostra os comandos disponíveis" },
-          { command: "status", description: "Mostra o provedor e modelo ativos" },
-          { command: "model", description: "Consulta ou altera o modelo" },
-          { command: "reset", description: "Apaga o contexto desta conversa" },
-        ] }), signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ commands: TELEGRAM_BOT_COMMANDS }), signal: AbortSignal.timeout(10_000),
       });
       const body = await response.json().catch(() => ({})) as { ok?: boolean; description?: string };
       if (!response.ok || !body.ok) throw new Error("HTTP " + response.status + ": " + (body.description || "falha desconhecida"));
@@ -120,7 +128,7 @@ export class TelegramPollingManager {
         const response = await fetch(apiUrl(this.token, "getUpdates"), {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ offset: this.offset || undefined, timeout: 25, allowed_updates: ["message"] }),
+          body: JSON.stringify({ offset: this.offset || undefined, timeout: 25, allowed_updates: ["message", "callback_query"] }),
           signal: AbortSignal.timeout(35_000),
         });
         const body = await response.json().catch(() => ({})) as { ok?: boolean; result?: TelegramUpdate[]; description?: string };
@@ -128,6 +136,7 @@ export class TelegramPollingManager {
         this.status = { ...this.status, state: "connected", connectedAt: this.status.connectedAt || new Date().toISOString(), lastError: undefined };
         for (const update of body.result) {
           if (update.message) await this.handleMessage(update.message);
+          if (update.callback_query) await this.handleModelCallback(update.callback_query);
           if (typeof update.update_id === "number") {
             this.offset = await connectorStore.saveTelegramPollingOffset(offsetKey(this.account.id, this.token), update.update_id + 1);
           }
@@ -139,6 +148,93 @@ export class TelegramPollingManager {
         this.scheduleReconnect();
       }
     } finally { this.running = false; }
+  }
+
+  private createModelMenu(chatId: string, userId: string, accountId: string, catalog: ConfigurableAgentProvider[]) {
+    for (const [key, session] of this.modelMenus) if (session.expiresAt < Date.now()) this.modelMenus.delete(key);
+    const token = crypto.randomBytes(6).toString("base64url");
+    this.modelMenus.set(token, { chatId, userId, accountId, catalog, expiresAt: Date.now() + 10 * 60_000 });
+    return token;
+  }
+
+  private providerKeyboard(token: string, catalog: ConfigurableAgentProvider[]) {
+    return { inline_keyboard: catalog.map((provider, index) => [{ text: provider.label, callback_data: `mcmod:${token}:p:${index}` }]) };
+  }
+
+  private modelKeyboard(token: string, provider: ConfigurableAgentProvider, page = 0) {
+    const pageSize = 12;
+    const pageCount = Math.max(1, Math.ceil(provider.models.length / pageSize));
+    const safePage = Math.max(0, Math.min(page, pageCount - 1));
+    const start = safePage * pageSize;
+    const rows = provider.models.slice(start, start + pageSize).map((model, offset) => [
+      { text: model.slice(0, 60), callback_data: `mcmod:${token}:m:${start + offset}` },
+    ]);
+    if (pageCount > 1) {
+      rows.push([
+        ...(safePage > 0 ? [{ text: "← Anterior", callback_data: `mcmod:${token}:g:${safePage - 1}` }] : []),
+        { text: `${safePage + 1}/${pageCount}`, callback_data: `mcmod:${token}:g:${safePage}` },
+        ...(safePage + 1 < pageCount ? [{ text: "Próxima →", callback_data: `mcmod:${token}:g:${safePage + 1}` }] : []),
+      ]);
+    }
+    return { inline_keyboard: rows };
+  }
+
+  private async answerCallbackQuery(id: string, text?: string) {
+    await fetch(apiUrl(this.token, "answerCallbackQuery"), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callback_query_id: id, text }), signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined);
+  }
+
+  private async editMessage(chatId: string, messageId: number, text: string, replyMarkup?: unknown) {
+    const response = await fetch(apiUrl(this.token, "editMessageText"), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, text: formatTelegramMessage(text), parse_mode: "HTML", reply_markup: replyMarkup }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await response.json().catch(() => ({})) as { ok?: boolean; description?: string };
+    if (!response.ok || !body.ok) throw new Error(`Telegram retornou HTTP ${response.status}: ${body.description || "falha ao atualizar menu"}`);
+  }
+
+  private async handleModelCallback(callback: TelegramCallbackQuery) {
+    if (!this.account || callback.from.is_bot || !callback.data?.startsWith("mcmod:") || !callback.message?.chat?.id || !callback.message.message_id) return;
+    const [, token, action, rawIndex] = callback.data.split(":");
+    const session = this.modelMenus.get(token);
+    const chatId = String(callback.message.chat.id);
+    const userId = String(callback.from.id);
+    if (!session || session.expiresAt < Date.now() || session.chatId !== chatId || session.userId !== userId || session.accountId !== this.account.id) {
+      this.modelMenus.delete(token);
+      await this.answerCallbackQuery(callback.id, "Este menu expirou. Use /model novamente.");
+      return;
+    }
+    const index = Number(rawIndex);
+    if (!Number.isSafeInteger(index) || index < 0) return this.answerCallbackQuery(callback.id, "Opção inválida.");
+    if (action === "p") {
+      const provider = session.catalog[index];
+      if (!provider) return this.answerCallbackQuery(callback.id, "Provedor indisponível.");
+      session.provider = provider;
+      session.expiresAt = Date.now() + 10 * 60_000;
+      await this.editMessage(chatId, callback.message.message_id, `Escolha o modelo de **${provider.label}**:`, this.modelKeyboard(token, provider));
+      await this.answerCallbackQuery(callback.id);
+      return;
+    }
+    if (!session.provider) return this.answerCallbackQuery(callback.id, "Escolha primeiro o provedor.");
+    if (action === "g") {
+      await this.editMessage(chatId, callback.message.message_id, `Escolha o modelo de **${session.provider.label}**:`, this.modelKeyboard(token, session.provider, index));
+      await this.answerCallbackQuery(callback.id);
+      return;
+    }
+    if (action === "m") {
+      const model = session.provider.models[index];
+      if (!model) return this.answerCallbackQuery(callback.id, "Modelo indisponível.");
+      const text = await executeDiscordCommand(
+        { kind: "model", provider: session.provider.commandName, model },
+        { channel: "telegram", accountId: this.account.id, externalConversationId: `${chatId}:${userId}` },
+      );
+      this.modelMenus.delete(token);
+      await this.editMessage(chatId, callback.message.message_id, text);
+      await this.answerCallbackQuery(callback.id, "Modelo selecionado.");
+    }
   }
 
   private async handleMessage(message: TelegramInboundMessage) {
@@ -184,20 +280,46 @@ export class TelegramPollingManager {
           resetConnectorConversation({ channel: "telegram", accountId: this.account.id, externalConversationId: archiveConversationId });
           resetConversation = true;
           text = "Contexto desta conversa apagado. A próxima mensagem começará uma conversa nova.";
+          replyId = await this.sendMessage(chatId, text, message.message_id);
+        } else if (command.kind === "imagine") {
+          if (!command.prompt) {
+            text = "Use `/imagine <prompt>`. Exemplo: `/imagine um frango astronauta em Marte`.";
+            replyId = await this.sendMessage(chatId, text, message.message_id);
+          } else {
+            await this.sendChatAction(chatId, "upload_photo");
+            const optimizedPrompt = await optimizeConnectorImagePrompt({ prompt: command.prompt, operation: "simple", recent });
+            const imagePath = await this.generateImage(optimizedPrompt);
+            text = "Aqui está a imagem que você pediu.";
+            replyId = await this.sendPhoto(chatId, text, imagePath, message.message_id);
+          }
+        } else if (command.kind === "model" && !command.provider) {
+          const catalog = await getConfigurableAgentCatalog();
+          text = await executeDiscordCommand(command, { channel: "telegram", accountId: this.account.id, externalConversationId: archiveConversationId });
+          if (!catalog.length) {
+            text += "\nNenhum provedor de segundo plano está configurado e disponível.";
+            replyId = await this.sendMessage(chatId, text, message.message_id);
+          } else {
+            const token = this.createModelMenu(chatId, userId, this.account.id, catalog);
+            replyId = await this.sendMessage(chatId, text, message.message_id, this.providerKeyboard(token, catalog));
+          }
         } else {
-          text = await executeDiscordCommand(command);
+          text = await executeDiscordCommand(command, { channel: "telegram", accountId: this.account.id, externalConversationId: archiveConversationId });
+          replyId = await this.sendMessage(chatId, text, message.message_id);
         }
-        replyId = await this.sendMessage(chatId, text, message.message_id);
       } else if (requestsTelegramImageGeneration(prompt) || imageAttachment) {
         await this.sendChatAction(chatId, "upload_photo");
         const referenceImage = imageAttachment ? await this.downloadImageReference(imageAttachment) : undefined;
-        const imagePath = await this.generateImage(prompt, referenceImage, telegramImageOperation(prompt, Boolean(referenceImage)));
+        const operation = telegramImageOperation(prompt, Boolean(referenceImage));
+        const optimizedPrompt = await optimizeConnectorImagePrompt({ prompt, operation, recent });
+        console.info(`[TelegramInbound] image_prompt=optimized originalChars=${prompt.length} optimizedChars=${optimizedPrompt.length}`);
+        const imagePath = await this.generateImage(optimizedPrompt, referenceImage, operation);
         text = "Aqui está a imagem que você pediu.";
         replyId = await this.sendPhoto(chatId, text, imagePath, message.message_id);
       } else {
         await this.sendChatAction(chatId, "typing");
-        const identity = await getConfiguredAgentIdentity();
-        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent, memoryContext: prepared.memoryContext }), { toolIntentText: prompt });
+        const selectedAgent = await connectorModelSelectionStore.get({ channel: "telegram", accountId: this.account.id, externalConversationId: archiveConversationId });
+        const identity = await getConfiguredAgentIdentity(selectedAgent || undefined);
+        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent, memoryContext: prepared.memoryContext }), { toolIntentText: prompt, agent: selectedAgent || undefined });
         if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
         text = normalizeAgentResponse(response);
         replyId = await this.sendMessage(chatId, text, message.message_id);
@@ -217,11 +339,11 @@ export class TelegramPollingManager {
     }
   }
 
-  private async sendMessage(chatId: string, text: string, replyToMessageId: number) {
+  private async sendMessage(chatId: string, text: string, replyToMessageId: number, replyMarkup?: unknown) {
     const formattedText = formatTelegramMessage(text.slice(0, 4_096));
     const response = await fetch(apiUrl(this.token, "sendMessage"), {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: formattedText, parse_mode: "HTML", reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }, disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text: formattedText, parse_mode: "HTML", reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }, disable_web_page_preview: true, reply_markup: replyMarkup }),
       signal: AbortSignal.timeout(30_000),
     });
     const body = await response.json().catch(() => ({})) as { ok?: boolean; result?: { message_id?: number }; description?: string };

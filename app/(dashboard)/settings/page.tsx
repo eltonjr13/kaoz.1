@@ -1792,159 +1792,164 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 w-full min-h-full flex flex-col justify-start px-4 py-6 pb-20 sm:px-6 lg:px-8 lg:py-8 select-none overflow-y-auto" style={{ backgroundColor: 'transparent', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="h-full w-full flex flex-col min-h-0 select-none overflow-hidden" style={{ backgroundColor: 'transparent', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.07] pb-6 mb-6 gap-4">
-        <div className="space-y-1">
-          <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-            <Settings size={20} className="text-zinc-400" />
-            <span className="uppercase tracking-widest text-[13px]">Configurações do Sistema</span>
-          </h1>
-          <p className="text-[11px] text-zinc-500 leading-relaxed max-w-xl">Centralize contas, APIs, modelos, voz e integrações usadas pelo agente.</p>
-        </div>
-
-        {activeTab === "geral" && <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            onClick={checkAllStatuses}
-            disabled={isCheckingAll || !!loadingPortal}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md"
-          >
-            {isCheckingAll ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <RefreshCw size={12} />
-            )}
-            <span>Verificar Status</span>
-          </button>
-          
-          <button
-            onClick={handleForceCloseAll}
-            disabled={!!loadingPortal || isCheckingAll}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-rose-500 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer"
-          >
-            <XCircle size={12} />
-            <span>Encerrar Navegadores</span>
-          </button>
-        </div>}
-      </div>
-
-      {/* Tabs Navigation */}
-      <div className="sticky top-0 z-20 -mx-4 mb-6 flex items-center gap-1 overflow-x-auto border-y border-white/[0.06] bg-[#0a0a0a]/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <button
-          onClick={() => setActiveTab("geral")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "geral"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Contas de IA
-        </button>
-        <button
-          onClick={() => setActiveTab("agente")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "agente"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Agente LLM
-        </button>
-        <button
-          onClick={() => setActiveTab("voz")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "voz"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          Voz & Transcrição
-        </button>
-        <button
-          onClick={() => setActiveTab("omnivoice")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
-            activeTab === "omnivoice"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          OmniVoice
-        </button>
-        <button
-          onClick={() => setActiveTab("connectors")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-            activeTab === "connectors"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          <PlugZap size={14} className={activeTab === "connectors" ? "text-emerald-400" : "text-zinc-500"} />
-          Conectores
-        </button>
-        <button
-          onClick={() => setActiveTab("mcp")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-            activeTab === "mcp"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          <Server size={14} className={activeTab === "mcp" ? "text-emerald-400" : "text-zinc-500"} />
-          MCP
-        </button>
-        <button
-          onClick={() => setActiveTab("skills")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-            activeTab === "skills"
-              ? "border-[#9D7CFF] text-[#9D7CFF]"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          <Sparkles size={14} className={activeTab === "skills" ? "text-[#9D7CFF]" : "text-zinc-500"} />
-          Skills
-        </button>
-        <button
-          onClick={() => setActiveTab("updates")}
-          className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-            activeTab === "updates"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-          }`}
-        >
-          <Download size={14} className={activeTab === "updates" ? "text-emerald-400" : "text-zinc-500"} />
-          Aplicativo
-        </button>
-      </div>
-
-      {/* Info Status Board */}
-      {statusMessage && (
-        <div
-          className={`p-4 rounded-[12px] border flex items-start gap-3 text-[11px] leading-relaxed transition-all mb-6 ${
-            statusMessage.type === "success"
-              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"
-              : statusMessage.type === "error"
-              ? "bg-rose-500/5 border-rose-500/20 text-rose-300"
-              : "bg-blue-500/5 border-blue-500/20 text-blue-300"
-          }`}
-        >
-          {statusMessage.type === "success" && <CheckCircle size={14} className="shrink-0 text-emerald-500 mt-0.5" />}
-          {statusMessage.type === "error" && <AlertCircle size={14} className="shrink-0 text-rose-500 mt-0.5" />}
-          {statusMessage.type === "info" && <Loader2 size={14} className="shrink-0 text-blue-500 animate-spin mt-0.5" />}
-          
-          <div className="flex-1">
-            <span className="font-bold block mb-0.5">
-              {statusMessage.type === "success" && "Sucesso!"}
-              {statusMessage.type === "error" && "Erro no Processo!"}
-              {statusMessage.type === "info" && "Ação Requerida (Sessão Ativa)"}
-            </span>
-            <span>{statusMessage.text}</span>
+      {/* Fixed Top Header + Tabs Section */}
+      <div className="shrink-0 w-full px-4 pt-6 sm:px-6 lg:px-8 border-b border-white/[0.07] bg-[#080808]/90 backdrop-blur-xl z-20">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4">
+          <div className="space-y-1">
+            <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+              <Settings size={20} className="text-zinc-400" />
+              <span className="uppercase tracking-widest text-[13px]">Configurações do Sistema</span>
+            </h1>
+            <p className="text-[11px] text-zinc-500 leading-relaxed max-w-xl">Centralize contas, APIs, modelos, voz e integrações usadas pelo agente.</p>
           </div>
-        </div>
-      )}
 
-      {/* Tab Content Areas */}
-      <div className="space-y-6">
+          {activeTab === "geral" && <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={checkAllStatuses}
+              disabled={isCheckingAll || !!loadingPortal}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md"
+            >
+              {isCheckingAll ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <RefreshCw size={12} />
+              )}
+              <span>Verificar Status</span>
+            </button>
+            
+            <button
+              onClick={handleForceCloseAll}
+              disabled={!!loadingPortal || isCheckingAll}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-rose-500 rounded-full text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <XCircle size={12} />
+              <span>Encerrar Navegadores</span>
+            </button>
+          </div>}
+        </div>
+
+        {/* Tabs Navigation */}
+        <div className="-mx-4 flex items-center gap-1 overflow-x-auto px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <button
+            onClick={() => setActiveTab("geral")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === "geral"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            Contas de IA
+          </button>
+          <button
+            onClick={() => setActiveTab("agente")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === "agente"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            Agente LLM
+          </button>
+          <button
+            onClick={() => setActiveTab("voz")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === "voz"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            Voz & Transcrição
+          </button>
+          <button
+            onClick={() => setActiveTab("omnivoice")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 ${
+              activeTab === "omnivoice"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            OmniVoice
+          </button>
+          <button
+            onClick={() => setActiveTab("connectors")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === "connectors"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            <PlugZap size={14} className={activeTab === "connectors" ? "text-emerald-400" : "text-zinc-500"} />
+            Conectores
+          </button>
+          <button
+            onClick={() => setActiveTab("mcp")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === "mcp"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            <Server size={14} className={activeTab === "mcp" ? "text-emerald-400" : "text-zinc-500"} />
+            MCP
+          </button>
+          <button
+            onClick={() => setActiveTab("skills")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === "skills"
+                ? "border-[#9D7CFF] text-[#9D7CFF]"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            <Sparkles size={14} className={activeTab === "skills" ? "text-[#9D7CFF]" : "text-zinc-500"} />
+            Skills
+          </button>
+          <button
+            onClick={() => setActiveTab("updates")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === "updates"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            <Download size={14} className={activeTab === "updates" ? "text-emerald-400" : "text-zinc-500"} />
+            Aplicativo
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Tab Content Container */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 pb-16 sm:px-6 lg:px-8">
+        {/* Info Status Board */}
+        {statusMessage && (
+          <div
+            className={`p-4 rounded-[12px] border flex items-start gap-3 text-[11px] leading-relaxed transition-all mb-6 ${
+              statusMessage.type === "success"
+                ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"
+                : statusMessage.type === "error"
+                ? "bg-rose-500/5 border-rose-500/20 text-rose-300"
+                : "bg-blue-500/5 border-blue-500/20 text-blue-300"
+            }`}
+          >
+            {statusMessage.type === "success" && <CheckCircle size={14} className="shrink-0 text-emerald-500 mt-0.5" />}
+            {statusMessage.type === "error" && <AlertCircle size={14} className="shrink-0 text-rose-500 mt-0.5" />}
+            {statusMessage.type === "info" && <Loader2 size={14} className="shrink-0 text-blue-500 animate-spin mt-0.5" />}
+            
+            <div className="flex-1">
+              <span className="font-bold block mb-0.5">
+                {statusMessage.type === "success" && "Sucesso!"}
+                {statusMessage.type === "error" && "Erro no Processo!"}
+                {statusMessage.type === "info" && "Ação Requerida (Sessão Ativa)"}
+              </span>
+              <span>{statusMessage.text}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content Areas */}
+        <div className="space-y-6">
         {activeTab === "connectors" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <ConnectorsSettingsPanel onStatusMessage={setStatusMessage} />
@@ -2122,5 +2127,6 @@ export default function SettingsPage() {
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }

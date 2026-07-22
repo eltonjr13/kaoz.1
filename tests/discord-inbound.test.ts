@@ -6,6 +6,7 @@ import path from "node:path";
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration } from "../services/connectors/discord.inbound.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
 import { DISCORD_APPLICATION_COMMANDS, executeDiscordCommand, parseDiscordCommand } from "../services/connectors/discord.commands.ts";
+import { ConnectorModelSelectionStore } from "../services/connectors/connector-model-selection.ts";
 
 const account: StoredConnectorAccount = {
   id: "account-1",
@@ -31,15 +32,38 @@ test("ativa inbound somente para conta Discord habilitada", () => {
 });
 
 test("expõe os comandos slash nativos do Discord", () => {
-  assert.deepEqual(DISCORD_APPLICATION_COMMANDS.map((command) => command.name), ["help", "status", "model", "reset"]);
+  assert.deepEqual(DISCORD_APPLICATION_COMMANDS.map((command) => command.name), ["help", "status", "imagine", "model", "reset"]);
   const model = DISCORD_APPLICATION_COMMANDS.find((command) => command.name === "model");
   assert.ok(model && "options" in model);
+  if (model && "options" in model) assert.ok(model.options.every((option) => option.autocomplete === true));
+  const imagine = DISCORD_APPLICATION_COMMANDS.find((command) => command.name === "imagine");
+  assert.ok(imagine && "options" in imagine && imagine.options[0]?.required);
+});
+
+test("persiste a escolha de modelo isolada por conversa", async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "mrchicken-model-selection-"));
+  try {
+    const file = path.join(dataDir, "connector-model-selections.json");
+    const store = new ConnectorModelSelectionStore(file);
+    const first = { channel: "discord" as const, accountId: "bot-1", externalConversationId: "canal-1:usuario-1" };
+    const second = { ...first, externalConversationId: "canal-2:usuario-1" };
+    await store.set(first, { provider: "codex-cli", model: "gpt-5.6" });
+    await store.set(second, { provider: "iamhc", model: "DeepSeek-V4-Flash" });
+
+    const restarted = new ConnectorModelSelectionStore(file);
+    assert.deepEqual(await restarted.get(first), { provider: "codex-cli", model: "gpt-5.6", updatedAt: (await store.get(first))!.updatedAt });
+    assert.equal((await restarted.get(second))?.provider, "iamhc");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
 });
 
 test("interpreta comandos do Discord sem delegar ao LLM", () => {
   assert.deepEqual(parseDiscordCommand("/help"), { kind: "help" });
   assert.deepEqual(parseDiscordCommand("/status@MrChickenBot"), { kind: "status" });
   assert.deepEqual(parseDiscordCommand("/model iamhc DeepSeek-V4-Flash"), { kind: "model", provider: "iamhc", model: "DeepSeek-V4-Flash" });
+  assert.deepEqual(parseDiscordCommand("/imagine um frango astronauta em Marte"), { kind: "imagine", prompt: "um frango astronauta em Marte" });
+  assert.deepEqual(parseDiscordCommand("/imagem"), { kind: "imagine", prompt: undefined });
   assert.deepEqual(parseDiscordCommand("/reset"), { kind: "reset" });
   assert.deepEqual(parseDiscordCommand("explique /model"), null);
 });
@@ -49,11 +73,11 @@ test("altera e persiste o provedor e modelo sem chamar o LLM", async () => {
   const previousDataDir = process.env.MRCHICKEN_DATA_DIR;
   process.env.MRCHICKEN_DATA_DIR = dataDir;
   try {
-    const response = await executeDiscordCommand({ kind: "model", provider: "codex", model: "gpt-command-test" });
-    assert.match(response, /codex-cli/);
-    assert.match(response, /gpt-command-test/);
+    const response = await executeDiscordCommand({ kind: "model", provider: "codex", model: "gpt-5.6" });
+    assert.match(response, /Codex/);
+    assert.match(response, /gpt-5\.6/);
     const saved = JSON.parse(await readFile(path.join(dataDir, "local-data", "agent-llm-settings.json"), "utf8")) as { provider?: string; codexModel?: string };
-    assert.deepEqual({ provider: saved.provider, model: saved.codexModel }, { provider: "codex-cli", model: "gpt-command-test" });
+    assert.deepEqual({ provider: saved.provider, model: saved.codexModel }, { provider: "codex-cli", model: "gpt-5.6" });
   } finally {
     if (previousDataDir === undefined) delete process.env.MRCHICKEN_DATA_DIR;
     else process.env.MRCHICKEN_DATA_DIR = previousDataDir;

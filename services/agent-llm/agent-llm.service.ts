@@ -2,11 +2,11 @@ import { spawn } from "node:child_process";
 import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readAgentLLMSettings } from "./agent-llm.settings";
-import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types";
-import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
-import { formatSpotifyToolResponse } from "../spotify/spotify-response-format";
-import { assertToolArguments } from "../tools/tool.validation";
+import { readAgentLLMSettings } from "./agent-llm.settings.ts";
+import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
+import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
+import { formatSpotifyToolResponse } from "../spotify/spotify-response-format.ts";
+import { assertToolArguments } from "../tools/tool.validation.ts";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
@@ -15,12 +15,13 @@ type ProcessResult = {
   exitCode: number | null;
 };
 
-type QueryOptions = {
+export type QueryOptions = {
   cwd?: string;
   referenceImagePath?: string;
   onTextChunk?: (chunk: string) => void;
   useExternalTools?: boolean;
   toolIntentText?: string;
+  agent?: { provider: AgentLLMProvider; model: string };
 };
 
 /** Models exposed by the Flow chat model selector. */
@@ -767,7 +768,12 @@ export async function runAgentCli(settings: AgentLLMSettings, prompt: string, op
 }
 
 export async function queryConfiguredAgentCli(prompt: string, options: QueryOptions = {}): Promise<string | null> {
-  const settings = await readAgentLLMSettings();
+  const configured = await readAgentLLMSettings();
+  const settings = options.agent ? { ...configured, provider: options.agent.provider } : configured;
+  if (options.agent?.provider === "codex-cli") settings.codexModel = options.agent.model;
+  if (options.agent?.provider === "grok-cli") settings.grokModel = options.agent.model;
+  if (options.agent?.provider === "antigravity-cli") settings.antigravityModel = options.agent.model;
+  if (options.agent?.provider === "iamhc") settings.iamhcModel = options.agent.model;
   if (settings.provider === "browser") return null;
 
   if (settings.provider === "grok-cli" && options.referenceImagePath) {
@@ -785,7 +791,8 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   return runAgentCli(settings, prompt, options);
 }
 
-export async function getConfiguredAgentIdentity(): Promise<{ provider: string; model: string }> {
+export async function getConfiguredAgentIdentity(agent?: QueryOptions["agent"]): Promise<{ provider: string; model: string }> {
+  if (agent) return { provider: agent.provider, model: agent.model };
   const settings = await readAgentLLMSettings();
   if (settings.provider === "codex-cli") return { provider: settings.provider, model: settings.codexModel };
   if (settings.provider === "grok-cli") return { provider: settings.provider, model: settings.grokModel };
@@ -925,7 +932,7 @@ export async function runFastInferenceApi(
     const { OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
     const response = await client.chat.completions.create({
-      model: config.model,
+      model: options.agent?.model || config.model,
       messages: [{ role: "user", content: currentPrompt }],
       temperature: 0.7,
     });
