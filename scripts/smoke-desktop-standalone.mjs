@@ -85,18 +85,23 @@ try {
   child.stderr.on("data", appendOutput);
 
   const status = await waitForHttp(`http://127.0.0.1:${port}`, child, () => output);
-  const flowAuthResponse = await fetch(`http://127.0.0.1:${port}/api/flow/auth`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action: "desktop-runtime-smoke" }),
-  });
-  if (flowAuthResponse.status !== 400) {
-    const responseBody = await flowAuthResponse.text();
-    throw new Error(
-      `Rota Flow falhou no runtime desktop com HTTP ${flowAuthResponse.status}: ${responseBody}\n${output}`,
-    );
+  for (const route of [
+    { path: "/api/flow/auth", body: { action: "desktop-runtime-smoke" } },
+    { path: "/api/flow/chat", body: {} },
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${port}${route.path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(route.body),
+    });
+    if (response.status !== 400) {
+      const responseBody = await response.text();
+      throw new Error(
+        `Rota ${route.path} falhou no runtime desktop com HTTP ${response.status}: ${responseBody}\n${output}`,
+      );
+    }
   }
-  console.log(`Standalone desktop iniciou isolado com HTTP ${status} e carregou a rota Flow.`);
+  console.log(`Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas Flow auth/chat.`);
 } finally {
   if (child && child.exitCode === null) child.kill();
   const relative = path.relative(os.tmpdir(), tempRoot);
