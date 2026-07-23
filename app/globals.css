@@ -80,15 +80,17 @@ html[data-mrchicken-desktop="true"] {
 }
 
 html[data-mrchicken-desktop="true"] body {
+  height: 100dvh;
   padding-top: var(--mrchicken-titlebar-height);
 }
 
-/* The body is border-box sized to the viewport. Keep the application inside
-   its remaining content box after the desktop titlebar consumes 36px. */
+/* Keep the application inside the visual area left below the custom titlebar.
+   The explicit viewport calculation avoids Electron treating the padded body
+   as a full-height containing block and clipping bottom-anchored controls. */
 html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
-  height: 100%;
+  height: calc(100dvh - var(--mrchicken-titlebar-height));
   min-height: 0;
-  max-height: 100%;
+  max-height: calc(100dvh - var(--mrchicken-titlebar-height));
 }
 
 .mrchicken-desktop-titlebar {

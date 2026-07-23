@@ -16,6 +16,6 @@ test("desktop shell stays inside the viewport area below the titlebar", () => {
   assert.doesNotMatch(appShell, /mrchicken-app-shell[^\n]*min-h-screen/);
   assert.match(
     globalCss,
-    /html\[data-mrchicken-desktop="true"\] \.mrchicken-app-shell\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*\}/s,
+    /html\[data-mrchicken-desktop="true"\] \.mrchicken-app-shell\s*\{[^}]*height:\s*calc\(100dvh - var\(--mrchicken-titlebar-height\)\);[^}]*min-height:\s*0;[^}]*max-height:\s*calc\(100dvh - var\(--mrchicken-titlebar-height\)\);[^}]*\}/s,
   );
 });

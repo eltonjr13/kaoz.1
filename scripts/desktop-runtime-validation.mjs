@@ -4,9 +4,19 @@ import { createRequire } from "node:module";
 
 export const requiredDesktopRuntimePackages = Object.freeze([
   "@modelcontextprotocol/sdk",
+  "cross-spawn",
   "next",
   "playwright",
+  "sharp",
 ]);
+
+const desktopRuntimeEntryPoints = Object.freeze({
+  "@modelcontextprotocol/sdk": Object.freeze([
+    "@modelcontextprotocol/sdk/client/index.js",
+    "@modelcontextprotocol/sdk/client/stdio.js",
+    "@modelcontextprotocol/sdk/client/sse.js",
+  ]),
+});
 
 function assertPathInside(root, candidate, label) {
   const relative = path.relative(root, candidate);
@@ -24,45 +34,75 @@ export function copyStandaloneManifest(sourceRoot, standaloneRoot) {
   JSON.parse(fs.readFileSync(destination, "utf8"));
 }
 
-export function resolveRuntimePackage(standaloneRoot, packageName) {
+export function resolveRuntimePackage(
+  standaloneRoot,
+  packageName,
+  specifier = desktopRuntimeEntryPoints[packageName]?.[0] ?? packageName,
+) {
   const requireFromServer = createRequire(path.join(standaloneRoot, "server.js"));
-  const resolved = requireFromServer.resolve(packageName);
-  assertPathInside(standaloneRoot, resolved, `Pacote ${packageName}`);
+  const resolved = requireFromServer.resolve(specifier);
+  assertPathInside(standaloneRoot, resolved, `Pacote ${specifier}`);
   return resolved;
 }
 
 export function ensureRuntimePackage(root, standaloneRoot, packageName) {
-  const pending = [packageName];
+  const sourceNodeModules = path.join(root, "node_modules");
+  const pending = [path.join(sourceNodeModules, packageName)];
   const copied = new Set();
 
   while (pending.length > 0) {
-    const currentPackage = pending.shift();
-    if (copied.has(currentPackage)) continue;
+    const sourceRoot = pending.shift();
+    const sourceKey = path.normalize(sourceRoot).toLowerCase();
+    if (copied.has(sourceKey)) continue;
 
-    const sourceRoot = path.join(root, "node_modules", currentPackage);
     const sourceManifest = path.join(sourceRoot, "package.json");
-    const packageRoot = path.join(standaloneRoot, "node_modules", currentPackage);
+    const relativePackageRoot = path.relative(sourceNodeModules, sourceRoot);
+    if (!relativePackageRoot || relativePackageRoot.startsWith("..") || path.isAbsolute(relativePackageRoot)) {
+      throw new Error(`Dependencia de runtime resolvida fora de node_modules: ${sourceRoot}`);
+    }
+    const packageRoot = path.join(standaloneRoot, "node_modules", relativePackageRoot);
     const destinationManifest = path.join(packageRoot, "package.json");
     if (!fs.existsSync(sourceManifest)) {
-      throw new Error(`Metadados do pacote ${currentPackage} nao encontrados em ${sourceManifest}.`);
+      throw new Error(`Metadados do pacote ${relativePackageRoot} nao encontrados em ${sourceManifest}.`);
     }
 
-    assertPathInside(standaloneRoot, packageRoot, `Destino do pacote ${currentPackage}`);
+    assertPathInside(standaloneRoot, packageRoot, `Destino do pacote ${relativePackageRoot}`);
     fs.rmSync(packageRoot, { recursive: true, force: true });
     fs.cpSync(sourceRoot, packageRoot, { recursive: true });
     fs.copyFileSync(sourceManifest, destinationManifest);
 
     const manifest = JSON.parse(fs.readFileSync(sourceManifest, "utf8"));
-    pending.push(...Object.keys(manifest.dependencies ?? {}));
+    const requiredDependencies = new Set(Object.keys(manifest.dependencies ?? {}));
     for (const peerPackage of Object.keys(manifest.peerDependencies ?? {})) {
       if (manifest.peerDependenciesMeta?.[peerPackage]?.optional !== true) {
-        pending.push(peerPackage);
+        requiredDependencies.add(peerPackage);
       }
     }
-    copied.add(currentPackage);
+    const dependencies = new Set([
+      ...requiredDependencies,
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+    ]);
+    const requireFromPackage = createRequire(sourceManifest);
+    for (const dependency of dependencies) {
+      const dependencyRoot = (requireFromPackage.resolve.paths(dependency) ?? [])
+        .map((searchPath) => path.join(searchPath, dependency))
+        .find((candidate) => fs.existsSync(path.join(candidate, "package.json")));
+      if (!dependencyRoot) {
+        if (!requiredDependencies.has(dependency)) continue;
+        throw new Error(
+          `Dependencia ${dependency} de ${manifest.name ?? relativePackageRoot} nao foi encontrada.`,
+        );
+      }
+      pending.push(dependencyRoot);
+    }
+    copied.add(sourceKey);
   }
 
-  return resolveRuntimePackage(standaloneRoot, packageName);
+  const entryPoints = desktopRuntimeEntryPoints[packageName] ?? [packageName];
+  const resolved = entryPoints.map((specifier) =>
+    resolveRuntimePackage(standaloneRoot, packageName, specifier)
+  );
+  return resolved[0];
 }
 
 export function ensureDesktopRuntimePackages(root, standaloneRoot) {
@@ -71,5 +111,17 @@ export function ensureDesktopRuntimePackages(root, standaloneRoot) {
       packageName,
       ensureRuntimePackage(root, standaloneRoot, packageName),
     ]),
+  );
+}
+
+export function validateDesktopRuntimePackages(standaloneRoot) {
+  return Object.fromEntries(
+    requiredDesktopRuntimePackages.map((packageName) => {
+      const entryPoints = desktopRuntimeEntryPoints[packageName] ?? [packageName];
+      const resolved = entryPoints.map((specifier) =>
+        resolveRuntimePackage(standaloneRoot, packageName, specifier)
+      );
+      return [packageName, resolved[0]];
+    }),
   );
 }

@@ -114,8 +114,27 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
       [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "package.json"), JSON.stringify({
         name: "@modelcontextprotocol/sdk",
         main: "index.js",
+        dependencies: { ajv: "8.0.0" },
       })],
-      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "client", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "client", "stdio.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "client", "sse.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "node_modules", "ajv", "package.json"), JSON.stringify({
+        name: "ajv",
+        main: "index.js",
+        dependencies: { "fast-uri": "3.0.0" },
+      })],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "node_modules", "ajv", "index.js"), "require('fast-uri')\n"],
+      [path.join(root, "node_modules", "fast-uri", "package.json"), JSON.stringify({
+        name: "fast-uri",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "fast-uri", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "cross-spawn", "package.json"), JSON.stringify({
+        name: "cross-spawn",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "cross-spawn", "index.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "next", "package.json"), JSON.stringify({ name: "next", main: "index.js" })],
       [path.join(root, "node_modules", "next", "index.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "playwright", "package.json"), JSON.stringify({
@@ -129,6 +148,17 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
         main: "index.js",
       })],
       [path.join(root, "node_modules", "playwright-core", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "sharp", "package.json"), JSON.stringify({
+        name: "sharp",
+        main: "index.js",
+        optionalDependencies: { "@img/sharp-win32-x64": "1.0.0" },
+      })],
+      [path.join(root, "node_modules", "sharp", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@img", "sharp-win32-x64", "package.json"), JSON.stringify({
+        name: "@img/sharp-win32-x64",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "@img", "sharp-win32-x64", "index.js"), "module.exports = {}\n"],
     ];
     for (const [file, contents] of fixtures) {
       await mkdir(path.dirname(file), { recursive: true });
@@ -138,9 +168,17 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
     const resolved = ensureDesktopRuntimePackages(root, standalone);
     assert.equal(
       resolved["@modelcontextprotocol/sdk"],
-      path.join(standalone, "node_modules", "@modelcontextprotocol", "sdk", "index.js"),
+      path.join(standalone, "node_modules", "@modelcontextprotocol", "sdk", "client", "index.js"),
     );
     assert.equal(resolved.playwright, path.join(standalone, "node_modules", "playwright", "index.js"));
+    assert.equal(
+      createRequire(serverFile).resolve("fast-uri"),
+      path.join(standalone, "node_modules", "fast-uri", "index.js"),
+    );
+    assert.equal(
+      createRequire(serverFile).resolve("@img/sharp-win32-x64"),
+      path.join(standalone, "node_modules", "@img", "sharp-win32-x64", "index.js"),
+    );
     assert.equal(
       createRequire(serverFile).resolve("playwright-core"),
       path.join(standalone, "node_modules", "playwright-core", "index.js"),

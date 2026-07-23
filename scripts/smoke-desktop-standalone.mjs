@@ -5,8 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 import {
-  requiredDesktopRuntimePackages,
-  resolveRuntimePackage,
+  validateDesktopRuntimePackages,
 } from "./desktop-runtime-validation.mjs";
 
 function reservePort() {
@@ -54,9 +53,7 @@ const source = process.argv[2]
 if (!fs.existsSync(path.join(source, "server.js"))) {
   throw new Error("Runtime desktop nao encontrado. Execute `npm run desktop:prepare` primeiro.");
 }
-for (const packageName of requiredDesktopRuntimePackages) {
-  resolveRuntimePackage(source, packageName);
-}
+validateDesktopRuntimePackages(source);
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mrchicken-desktop-smoke-"));
 const runtime = path.join(tempRoot, "server");
@@ -65,6 +62,7 @@ let output = "";
 
 try {
   fs.cpSync(source, runtime, { recursive: true });
+  console.log("Runtime desktop copiado para o smoke isolado.");
   const port = await reservePort();
   child = spawn(process.execPath, [path.join(runtime, "server.js")], {
     cwd: runtime,
@@ -85,7 +83,9 @@ try {
   child.stderr.on("data", appendOutput);
 
   const status = await waitForHttp(`http://127.0.0.1:${port}`, child, () => output);
-  const mcpResponse = await fetch(`http://127.0.0.1:${port}/api/mcp/config`);
+  const mcpResponse = await fetch(`http://127.0.0.1:${port}/api/mcp/config`, {
+    signal: AbortSignal.timeout(30_000),
+  });
   if (mcpResponse.status !== 200) {
     const responseBody = await mcpResponse.text();
     throw new Error(
@@ -100,6 +100,7 @@ try {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(route.body),
+      signal: AbortSignal.timeout(30_000),
     });
     if (response.status !== 400) {
       const responseBody = await response.text();
