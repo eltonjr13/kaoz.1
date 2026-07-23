@@ -635,10 +635,9 @@ Modo agente autonomo:
 - Nunca misture image e video quando o usuario pediu apenas um tipo.
 - Para "image", nao planeje nenhuma etapa de video.
 - Para "video", nao planeje nenhuma etapa de imagem final.
-- Para "project", planeje tambem estrutura de roteiro/reacao do avatar.
 - Para "ad-creative", planeje criativos de imagem para anuncios. Identifique se o usuario pediu uma quantidade de imagens (ex: 20 ou 30). Se nao especificar, use 20 por padrao. Planeje o numero de conceitos criativos baseado em 4 imagens por rodada. Cada conceito deve ter um nome de conceito, uma copy (publicidade/texto) que deve ser desenhada na imagem, e um prompt visual detalhado em ingles que detalha a copy, o posicionamento dos elementos, a tipografia e o estilo para o ImageFX do Google Flow.
   - REGRAS CRÍTICAS PARA OS PROMPTS VISUAIS DE "ad-creative":
-    1. EVITE DUPLA IDENTIDADE / MISTURA DE ESTILOS: Se houver um avatar de referência (geralmente um personagem 3D/desenho), o próprio avatar deve ser o protagonista do cenário de forma única (ex: o próprio personagem 3D codando ou apresentando). Não descreva um programador humano real em um lado e um avatar 3D no outro. Descreva apenas uma única pessoa/personagem na cena que execute a ação.
+    1. EVITE DUPLA IDENTIDADE / MISTURA DE ESTILOS: Se houver uma imagem de referência, use um único sujeito principal coerente. Não misture duas identidades ou estilos incompatíveis na mesma cena.
     2. COMPOSIÇÃO ÚNICA E COESA: A imagem deve representar um único cenário unificado. Nunca use divisores, colagens, "split-screen", "diptych", "before/after" ou comparações lado a lado.
     3. DESIGN E COMPOSIÇÃO PREMIUM: Descreva um enquadramento publicitário profissional (ex: "depth of field", "cinematic lighting", "studio product photography"). O texto (copyText) deve ser integrado de forma limpa na imagem, especificando a tipografia e posição (ex: "with a clean, bold sans-serif text overlay in the top-third area reading '...'").
 - Para image/video, escreva optimizedPrompt em ingles e pronto para o Google Flow.
@@ -646,31 +645,29 @@ Modo agente autonomo:
 - Imagem anexada é referência visual, personagem ou estilo. Ela não autoriza transformar o pedido em UGC, selfie ou anúncio.
 - Só use "ad-creative" quando o usuário pedir claramente anúncio, criativo comercial, campanha, copy, oferta, conversão ou vendas.
 - Se o usuario pedir mais de 4 imagens comuns (nao anuncios), mantenha flow como "image" e retorne requestedImageCount com a quantidade numerica solicitada.
-- Para project/refine/ad-creative, escreva optimizedPrompt como briefing operacional em portugues.
-- Inclua tambem os campos JSON strategy, scriptOutline, creativeSteps e visualReferenceInstructions (se houver avatar selecionado, defina brevemente como integrar o avatar ao vídeo, caso contrário defina como null).
+- Para ad-creative, escreva optimizedPrompt como briefing operacional em portugues.
+- Inclua tambem os campos JSON strategy, creativeSteps e visualReferenceInstructions quando forem relevantes.
 `;
 
   const prompt = `
 ${agentPlannerInstructions}
 Você é o classificador central de intenções do agente autônomo do Kaoz.1.
-Kaoz.1 é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares, e agora também de criativos de anúncio de imagem em escala.
+Kaoz.1 é um agente criativo para geração de imagens, vídeos e criativos de anúncio em escala.
 Sua tarefa é analisar o pedido/intenção do usuário e decidir qual é o melhor fluxo para atendê-lo.
 
 Os fluxos possíveis são:
 1. "image": Se o usuário quer gerar apenas uma imagem estática ou ilustrações comuns (ex: "Gere uma imagem de...", "Crie uma foto de...").
 2. "video": Se o usuário quer gerar apenas um vídeo estático/background (ex: "Gere um clipe de...", "Faça um vídeo curto de...").
-3. "project": Se o usuário quer criar um projeto completo de vídeo react do zero (ex: "Crie um react sobre...", "Faça um vídeo do zero sobre...").
-4. "refine": Se o usuário quer refinar, corrigir ou alterar algum projeto, mídia ou roteiro que já foi criado ou está em andamento (ex: "Ajuste o roteiro de X...").
-5. "ad-creative": Se o usuário quer gerar criativos de imagem para anúncios, em lote ou escala, otimizando a copy e o posicionamento de elementos (ex: "Crie criativos de anúncios para o produto X", "gere 20 imagens de anúncios de Y", "campanha de criativos de imagem").
+3. "ad-creative": Se o usuário quer gerar criativos de imagem para anúncios, em lote ou escala, otimizando a copy e o posicionamento de elementos (ex: "Crie criativos de anúncios para o produto X", "gere 20 imagens de anúncios de Y", "campanha de criativos de imagem").
 
 Pedido do usuário: "${intention}"
 
 Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
 {
-  "flow": "image" | "video" | "project" | "refine" | "ad-creative",
+  "flow": "image" | "video" | "ad-creative",
   "explanation": "Breve justificativa em português sobre a decisão de fluxo.",
-  "optimizedPrompt": "O prompt otimizado (em inglês se for para image ou video, ou em português/instruções se for para project, refine ou ad-creative).",
-  "targetJobId": "ID do job a ser refinado se o fluxo for 'refine' e o usuário mencionou um ID, ou 'latest' ou null",
+  "optimizedPrompt": "O prompt otimizado em inglês para image/video ou o briefing operacional em português para ad-creative.",
+  "targetJobId": null,
   "requestedImageCount": número de imagens solicitado se aplicável (especialmente para ad-creative, ex: 20 ou 30), senão null,
   "adCreativePlan": se flow for "ad-creative", retorne um objeto no formato { "concepts": [ { "conceptName": "...", "copyText": "...", "visualPrompt": "..." } ] } contendo as variações planejadas. Caso contrário, retorne null.
 }
@@ -680,14 +677,14 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
     const cliResponse = await queryConfiguredAgentCli(prompt);
     if (cliResponse) {
       const parsed = parseGeminiResponse<FlowDecision>(cliResponse, {
-        flow: "project",
+        flow: "image",
         explanation: "Fallback por falha de parser",
         optimizedPrompt: intention,
         targetJobId: null,
         strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
         scriptOutline: null,
         creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
-        visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel.",
+        visualReferenceInstructions: undefined,
         adCreativePlan: null
       });
       return preservePromptFidelity(parsed, intention);
@@ -715,28 +712,28 @@ Sua resposta deve ser estritamente em formato JSON com a seguinte estrutura:
 
     const responseText = response.text || "{}";
     const parsed = parseGeminiResponse<FlowDecision>(responseText, {
-      flow: "project",
+      flow: "image",
       explanation: "Fallback por falha de parser",
       optimizedPrompt: intention,
       targetJobId: null,
       strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
       scriptOutline: null,
       creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
-      visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel.",
+      visualReferenceInstructions: undefined,
       adCreativePlan: null
     });
     return preservePromptFidelity(parsed, intention);
   } catch (err) {
     console.error("Falha ao classificar intenção do usuário:", err);
     return {
-      flow: "project",
+      flow: "image",
       explanation: "Fallback por erro de execução",
       optimizedPrompt: intention,
       targetJobId: null,
       strategy: "Usar o pedido original como briefing e preservar o fluxo atual.",
       scriptOutline: null,
       creativeSteps: ["Classificar intencao", "Preparar prompt", "Executar somente a midia decidida"],
-      visualReferenceInstructions: "Usar o avatar selecionado como referencia visual quando disponivel.",
+      visualReferenceInstructions: undefined,
       adCreativePlan: null
     };
   }
@@ -1019,20 +1016,20 @@ ${options?.voiceInstruction ? `\n[Modo de voz ativa]:\n${options.voiceInstructio
 ${options?.requestedFlow ? `\n[Modo escolhido na interface]: ${options.requestedFlow}. Se houver uma acao criativa neste turno, preserve esse fluxo; pedidos de edicao com imagem no modo image continuam sendo flow image.\n` : ""}
 Sua resposta DEVE ser estritamente em formato JSON contendo as duas chaves a seguir:
 1. "message": Sua resposta textual (sua fala) direcionada ao usuário. Use formatação em markdown se necessário.
-2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo, iniciar um projeto/react ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
+2. "action": Se o usuário solicitou de forma clara a criação, geração ou alteração de algo (como gerar uma imagem, criar um vídeo ou gerar criativos de anúncios em escala), retorne um objeto "action" com o plano. Caso seja apenas uma conversa ou dúvida, retorne null.
 - "action" é um contrato interno que o aplicativo executará depois da sua resposta; não é uma ferramenta externa. Para pedidos de imagem/vídeo, nunca diga que não consegue gerar por falta de ferramentas: preencha "action" corretamente.
 - PDF, Markdown, texto, documento, JSON, CSV, HTML e TXT não são fluxos de mídia. Se o pedido for apenas documental, retorne obrigatoriamente "action": null, mesmo que use verbos como criar, gerar, fazer ou produzir.
 
 A estrutura de "action" (se aplicável) deve ser:
 {
-  "flow": "image" | "video" | "project" | "refine" | "ad-creative",
-  "optimizedPrompt": "O prompt otimizado em inglês (se flow for image/video) ou instruções detalhadas em português (se project/refine/ad-creative).",
+  "flow": "image" | "video" | "ad-creative",
+  "optimizedPrompt": "O prompt otimizado em inglês (se flow for image/video) ou instruções detalhadas em português (se ad-creative).",
   "explanation": "Breve justificativa do plano de ação em português.",
-  "targetJobId": "ID do job alvo se for refine, 'latest' se pedir o último, ou null",
+  "targetJobId": null,
   "requestedImageCount": número de imagens para ad-creative (ex: 20 ou 30), senão null,
   "adCreativePlan": se flow for "ad-creative", retorne um objeto no formato { "concepts": [ { "conceptName": "...", "copyText": "...", "visualPrompt": "..." } ] }, senão null,
-  "strategy": "Estratégia criativa se for project/refine/ad-creative, senão omita",
-  "scriptOutline": "Esboço curto de roteiro se for project, senão null",
+  "strategy": "Estratégia criativa se for ad-creative, senão omita",
+  "scriptOutline": null,
   "creativeSteps": ["Passo 1", "Passo 2"]
 }
 

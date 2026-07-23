@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { Page, Locator } from 'playwright';
+import { getFlowStorageRoot } from '@/lib/runtime-paths';
 
 function formatLogMeta(meta?: unknown): string {
   if (meta === undefined || meta === null) {
@@ -184,7 +186,7 @@ export function normalizeFlowProjectUrl(url: string): string | null {
  * Gets the saved project URL if it exists.
  */
 export function getSavedProjectUrl(): string | null {
-  const filePath = 'storage/flow_project_url.txt';
+  const filePath = path.join(getFlowStorageRoot(), 'flow_project_url.txt');
   if (fs.existsSync(filePath)) {
     try {
       const url = fs.readFileSync(filePath, 'utf-8').trim();
@@ -200,10 +202,10 @@ export function getSavedProjectUrl(): string | null {
  * Saves the project URL to disk.
  */
 export function saveProjectUrl(url: string): void {
-  const filePath = 'storage/flow_project_url.txt';
+  const filePath = path.join(getFlowStorageRoot(), 'flow_project_url.txt');
   try {
     const normalizedUrl = normalizeFlowProjectUrl(url) || url;
-    ensureDirExists('storage/');
+    ensureDirExists(path.dirname(filePath));
     fs.writeFileSync(filePath, normalizedUrl, 'utf-8');
     logger.info(`Workspace URL salvo: ${normalizedUrl}`);
   } catch (err) {

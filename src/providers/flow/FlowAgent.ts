@@ -1288,17 +1288,20 @@ Retorne estritamente um JSON no formato:
 
     let personality: unknown = null;
     let avatarReferenceImage: string | undefined;
-    try {
-      const avatar = await this.findAvatar(options.avatarId);
-      personality = options.useAvatarPersonality === false ? null : avatar.personality;
-      if ((options.imageOperation || 'simple') !== 'simple' && options.useAvatarVisualReference === true && !options.inputReferenceImage) {
-        avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
-        if (avatarReferenceImage) {
-          await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
+    const needsLegacyAvatar = options.useAvatarPersonality !== false || options.useAvatarVisualReference === true;
+    if (needsLegacyAvatar) {
+      try {
+        const avatar = await this.findAvatar(options.avatarId);
+        personality = options.useAvatarPersonality === false ? null : avatar.personality;
+        if ((options.imageOperation || 'simple') !== 'simple' && options.useAvatarVisualReference === true && !options.inputReferenceImage) {
+          avatarReferenceImage = await this.resolveAvatarReferenceImage(avatar, jobId);
+          if (avatarReferenceImage) {
+            await this.logAgentEvent(jobId, "planning", `Avatar "${avatar.name}" anexado como referencia visual da geracao.`);
+          }
         }
+      } catch (err) {
+        logger.warn(`[FlowAgent] Falha ao carregar contexto visual legado ${options.avatarId}. Usando dados genericos.`, err);
       }
-    } catch (err) {
-      logger.warn(`[FlowAgent] Falha ao carregar avatar ${options.avatarId}. Usando dados genéricos.`, err);
     }
 
     const executionOptions = {

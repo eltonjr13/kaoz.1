@@ -129,9 +129,10 @@ interface SelectedElementReference {
   label?: string;
 }
 
-type AgentType = 'image' | 'video' | 'project' | 'ad-creative';
+type AgentType = 'image' | 'video' | 'ad-creative';
+type PlannedKind = AgentType | 'project';
 type AgentModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
-type PlannedFlow = AgentType | 'refine';
+type PlannedFlow = PlannedKind | 'refine';
 type ImagePackageMode = 'turnaround3d';
 type TurnaroundView = 'front' | 'left' | 'right' | 'back' | 'top' | 'bottom';
 const TURNAROUND_IMAGE_LABELS = ["Base", "Lateral esquerda", "Lateral direita", "Costas", "Topo", "Inferior"];
@@ -146,7 +147,7 @@ const AGENT_MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
 ];
 
 interface PendingPlan {
-  kind: AgentType;
+  kind: PlannedKind;
   flow: PlannedFlow;
   originalPrompt: string;
   prompt: string;
@@ -1187,7 +1188,7 @@ export default function FlowDashboardPage() {
       >
         <div className="flex flex-col gap-2">
           <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Tipo preferido</div>
-          <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:grid-cols-4">
+          <div className="grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
             {[
               { id: "image", label: "Imagem", icon: <ImageIcon size={13} /> },
               { id: "video", label: "Vídeo", icon: <Film size={13} /> },
@@ -3728,13 +3729,13 @@ export default function FlowDashboardPage() {
                     )}
 
                     {/* Job failed error */}
-                    {msg.jobId && (msg.jobStatus === 'failed' || (msg.projectResult && !msg.projectResult.success)) && (
+                    {(msg.jobStatus === 'failed' || (msg.projectResult && !msg.projectResult.success)) && (
                        <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-red-500/5 border border-red-500/20 flex flex-col gap-2">
                          <div className="flex items-center gap-1.5 text-[11px] text-red-400 font-semibold">
                            <AlertCircle size={13} /> Falha no processamento.
                          </div>
                          <p className="text-[11px] text-white/50 leading-relaxed select-text">
-                           {msg.projectResult?.error || "Ocorreu um erro no pipeline do Kaoz.1. Verifique os logs detalhados para entender a causa."}
+                           {msg.projectResult?.error || msg.jobLogs?.at(-1)?.replace(/^\[[^\]]+\]\s*/, "") || "Ocorreu um erro no pipeline do Kaoz.1."}
                          </p>
                          {msg.jobLogs && msg.jobLogs.length > 0 && (
                            <div className="mt-2 max-h-28 overflow-y-auto rounded-xl bg-black/60 p-3 font-mono text-[9px] text-red-400/90 border border-red-500/10 leading-normal flex flex-col gap-0.5 select-text">

@@ -17,7 +17,7 @@ const TURNAROUND_VIEWS = new Set<TurnaroundView>(["front", "left", "right", "bac
 const DEFAULT_3D_REFERENCE_PROMPT = "Generate a multi-image 3D character reference package from the attached image.";
 const MAX_SCALE_IMAGE_COUNT = 40;
 const IMAGE_OPERATIONS = new Set<ImageGenerationOperation>(["simple", "reference", "turnaround3d", "edit"]);
-const REFERENCE_SOURCES = new Set<ImageReferenceSource>(["none", "upload", "generated", "avatar", "selected-element"]);
+const REFERENCE_SOURCES = new Set<ImageReferenceSource>(["none", "upload", "generated", "selected-element"]);
 
 const globalForAgentRequests = globalThis as unknown as {
   flowAgentRequestJobs?: Map<string, string>;

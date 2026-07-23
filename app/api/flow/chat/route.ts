@@ -5,7 +5,6 @@ import {
   isImmediateContextReference,
 } from "@/lib/ai/gemini";
 import type { ChatAgentResponse, ChatMessage } from "@/lib/ai/gemini";
-import { findLocalAvatar } from "@/lib/local-store";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import {
   cleanupTemporaryReference,
@@ -33,13 +32,11 @@ export const maxDuration = 300; // Allow long-running agent tasks
 
 type FlowChatRequestBody = {
   messages: ChatMessage[];
-  avatarId?: string;
   model?: string;
   referenceImage?: string;
   requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
   imageOperation?: ImageGenerationOperation;
   imageAspectRatio?: FlowImageAspectRatio;
-  useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   stream?: boolean;
   voiceActive?: boolean;
@@ -361,17 +358,9 @@ async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<C
   };
 }
 
-async function loadChatPersonality(avatarId?: string, useAvatarPersonality?: boolean): Promise<Record<string, unknown> | null> {
-  if (!avatarId || useAvatarPersonality === false) return null;
-
-  const avatar = await findLocalAvatar(avatarId);
-  return avatar?.personality ? (avatar.personality as Record<string, unknown>) : null;
-}
-
 async function loadCortexChatContext(input: {
   enabled: boolean;
   latestUserText: string;
-  avatarId?: string;
   sessionId?: string;
   immediateContextReference: boolean;
   archiveConversationId?: string;
@@ -383,7 +372,6 @@ async function loadCortexChatContext(input: {
     const service = new ChatMemoryService(storage);
     const promptContext = await service.buildPromptContext(input.latestUserText, {
       userId: LOCAL_MEMORY_USER_ID,
-      avatarId: input.avatarId,
       sessionId: input.sessionId
     });
     const archiveConversationId = input.archiveConversationId
@@ -402,7 +390,7 @@ async function loadCortexChatContext(input: {
     return {
       relevantMemories: relevantMemories || undefined,
       activePersonalityMemories: promptContext.records.filter((memory) =>
-        memory.kind === 'creative_preference' || memory.kind === 'avatar_style_signal' || memory.kind === 'correction'
+        memory.kind === 'creative_preference' || memory.kind === 'correction'
       )
     };
   } catch (err) {
@@ -452,7 +440,6 @@ function cleanupReferenceImage(filePath?: string): void {
 
 async function processChatMemoryBeforeResponse(
   userText: string,
-  avatarId: string | undefined,
   sessionId: string | undefined,
   cortexMemoryEnabled: boolean,
   evidenceRef?: { conversationId: string; messageId: string }
@@ -468,12 +455,11 @@ async function processChatMemoryBeforeResponse(
       const forgotten = await service.forgetMemories(command.target, {
         cortexEnabled: true,
         userId: LOCAL_MEMORY_USER_ID,
-        avatarId,
         sessionId
       });
       return { receipt: forgotten > 0 ? 'Esqueci essa informacao como voce pediu.' : 'Nao encontrei uma memoria correspondente para esquecer.' };
     }
-    const candidates = extractChatMemoryCandidates(userText, '', { avatarId, sessionId, source: 'flow_chat' }).map((candidate) => ({
+    const candidates = extractChatMemoryCandidates(userText, '', { sessionId, source: 'flow_chat' }).map((candidate) => ({
       ...candidate,
       evidenceRefs: evidenceRef ? [evidenceRef] : undefined,
     }));
@@ -481,7 +467,6 @@ async function processChatMemoryBeforeResponse(
       const result = await service.saveChatMemoryCandidates(candidates, {
         cortexEnabled: cortexMemoryEnabled,
         userId: LOCAL_MEMORY_USER_ID,
-        avatarId,
         sessionId
       });
       if (command.explicit && result.blockedSensitive) return { receipt: 'Nao salvei esse conteudo porque ele parece conter informacao sensivel ou uma credencial.' };
@@ -610,13 +595,11 @@ export async function POST(request: Request) {
 
     const {
       messages,
-      avatarId,
       model,
       referenceImage,
       requestedFlow,
       imageOperation,
       imageAspectRatio,
-      useAvatarPersonality,
       useCortexMemory,
       stream,
       voiceActive,
@@ -645,7 +628,6 @@ export async function POST(request: Request) {
     const archivedUserMessageId = cortexMemoryEnabled ? archiveFlowMessage({ archiveContext, role: 'user', content: latestUserText }) : undefined;
     const memoryOperation = await processChatMemoryBeforeResponse(
       latestUserText,
-      avatarId,
       sessionId,
       cortexMemoryEnabled,
       archivedUserMessageId && archiveContext ? {
@@ -678,18 +660,17 @@ export async function POST(request: Request) {
       });
     }
 
-    const [personality, characterRuntime, cortexContext] = await Promise.all([
-      loadChatPersonality(avatarId, useAvatarPersonality),
+    const [characterRuntime, cortexContext] = await Promise.all([
       prepareCharacterRuntime({ userMessage: latestUserText, sessionId }),
       loadCortexChatContext({
         enabled: cortexMemoryEnabled,
         latestUserText,
-        avatarId,
         sessionId,
         immediateContextReference,
         archiveConversationId: archiveContext?.conversationId
       })
     ]);
+    const personality = null;
 
 
     referenceImagePath = saveReferenceImageIfPresent(referenceImage);
