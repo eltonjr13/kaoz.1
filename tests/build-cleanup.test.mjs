@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { copyStandaloneManifest, ensureRuntimePackage } from "../scripts/desktop-runtime-validation.mjs";
+import {
+  copyStandaloneManifest,
+  ensureDesktopRuntimePackages,
+  ensureRuntimePackage,
+} from "../scripts/desktop-runtime-validation.mjs";
 import { pruneNextStandalone } from "../scripts/prune-next-standalone.mjs";
 
 test("remove dados runtime copiados sem apagar código ou dados originais", async () => {
@@ -92,6 +96,46 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
       path.join(standalone, "node_modules", "react", "index.js"),
     );
     await assert.rejects(() => readFile(path.join(standalone, "node_modules", "sass", "package.json")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("inclui Playwright e suas dependencias no runtime desktop", async () => {
+  const testRootParent = path.join(process.cwd(), ".generated", "build-cleanup-tests");
+  await mkdir(testRootParent, { recursive: true });
+  const root = await mkdtemp(path.join(testRootParent, "playwright-case-"));
+
+  try {
+    const standalone = path.join(root, "dist", "standalone");
+    const serverFile = path.join(standalone, "server.js");
+    const fixtures = [
+      [serverFile, "module.exports = {}\n"],
+      [path.join(root, "node_modules", "next", "package.json"), JSON.stringify({ name: "next", main: "index.js" })],
+      [path.join(root, "node_modules", "next", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "playwright", "package.json"), JSON.stringify({
+        name: "playwright",
+        main: "index.js",
+        dependencies: { "playwright-core": "1.0.0" },
+      })],
+      [path.join(root, "node_modules", "playwright", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "playwright-core", "package.json"), JSON.stringify({
+        name: "playwright-core",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "playwright-core", "index.js"), "module.exports = {}\n"],
+    ];
+    for (const [file, contents] of fixtures) {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, contents, "utf8");
+    }
+
+    const resolved = ensureDesktopRuntimePackages(root, standalone);
+    assert.equal(resolved.playwright, path.join(standalone, "node_modules", "playwright", "index.js"));
+    assert.equal(
+      createRequire(serverFile).resolve("playwright-core"),
+      path.join(standalone, "node_modules", "playwright-core", "index.js"),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

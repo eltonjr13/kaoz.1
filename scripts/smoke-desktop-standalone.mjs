@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+import {
+  requiredDesktopRuntimePackages,
+  resolveRuntimePackage,
+} from "./desktop-runtime-validation.mjs";
+
 function reservePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -48,6 +53,9 @@ const source = process.argv[2]
   : path.join(process.cwd(), "dist", "standalone");
 if (!fs.existsSync(path.join(source, "server.js"))) {
   throw new Error("Runtime desktop nao encontrado. Execute `npm run desktop:prepare` primeiro.");
+}
+for (const packageName of requiredDesktopRuntimePackages) {
+  resolveRuntimePackage(source, packageName);
 }
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mrchicken-desktop-smoke-"));

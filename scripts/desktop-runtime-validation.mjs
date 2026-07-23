@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
+export const requiredDesktopRuntimePackages = Object.freeze(["next", "playwright"]);
+
 function assertPathInside(root, candidate, label) {
   const relative = path.relative(root, candidate);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -16,6 +18,13 @@ export function copyStandaloneManifest(sourceRoot, standaloneRoot) {
   JSON.parse(contents);
   fs.copyFileSync(source, destination);
   JSON.parse(fs.readFileSync(destination, "utf8"));
+}
+
+export function resolveRuntimePackage(standaloneRoot, packageName) {
+  const requireFromServer = createRequire(path.join(standaloneRoot, "server.js"));
+  const resolved = requireFromServer.resolve(packageName);
+  assertPathInside(standaloneRoot, resolved, `Pacote ${packageName}`);
+  return resolved;
 }
 
 export function ensureRuntimePackage(root, standaloneRoot, packageName) {
@@ -49,8 +58,14 @@ export function ensureRuntimePackage(root, standaloneRoot, packageName) {
     copied.add(currentPackage);
   }
 
-  const requireFromServer = createRequire(path.join(standaloneRoot, "server.js"));
-  const resolved = requireFromServer.resolve(packageName);
-  assertPathInside(standaloneRoot, resolved, `Pacote ${packageName}`);
-  return resolved;
+  return resolveRuntimePackage(standaloneRoot, packageName);
+}
+
+export function ensureDesktopRuntimePackages(root, standaloneRoot) {
+  return Object.fromEntries(
+    requiredDesktopRuntimePackages.map((packageName) => [
+      packageName,
+      ensureRuntimePackage(root, standaloneRoot, packageName),
+    ]),
+  );
 }
