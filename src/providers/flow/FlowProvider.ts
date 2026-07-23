@@ -9,6 +9,7 @@ import { hunyuan3DBrowserGenerator } from './Hunyuan3DBrowserGenerator';
 import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 import { getFlowGeneratedDir } from '@/lib/runtime-paths';
+import { prepareFlowImagePrompt } from '@/lib/ai/image-prompt-engineering';
 
 export class FlowProvider {
   private config: FlowConfig;
@@ -89,7 +90,19 @@ export class FlowProvider {
     try {
       return await this.runBrowserTaskExclusive(async () => {
         const page = await this.session.getPage();
-        return await this.imageGenerator.generate(page, prompt, this.config.timeout, options);
+        const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
+        const preparedPrompt = prepareFlowImagePrompt({
+          prompt,
+          operation,
+          aspectRatio: options?.aspectRatio,
+        });
+        logger.info('Prompt de imagem preparado para o Google Flow.', {
+          operation,
+          aspectRatio: options?.aspectRatio || '1:1',
+          originalChars: prompt.length,
+          preparedChars: preparedPrompt.length,
+        });
+        return await this.imageGenerator.generate(page, preparedPrompt, this.config.timeout, options);
       });
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);

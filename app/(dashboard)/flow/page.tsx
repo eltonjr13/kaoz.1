@@ -2373,6 +2373,15 @@ export default function FlowDashboardPage() {
         });
       };
 
+      const requestedImageOperation: ImageGenerationOperation =
+        referenceImageBase64 && !image3dMode && isImageEditIntent(message)
+          ? "edit"
+          : resolveImageGenerationOperation({
+              imagePackageMode: image3dMode ? "turnaround3d" : undefined,
+              referenceImage: referenceImageBase64,
+              useAvatarVisualReference,
+            });
+
       const res = await fetch("/api/flow/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2382,6 +2391,8 @@ export default function FlowDashboardPage() {
           useAvatarPersonality,
           referenceImage: referenceImageBase64,
           requestedFlow: agentType,
+          imageOperation: requestedImageOperation,
+          imageAspectRatio: imageRatio,
           useCortexMemory,
           model: chatModel,
           stream: true,
@@ -2493,13 +2504,7 @@ export default function FlowDashboardPage() {
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
           avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
-          imageOperation: plannedKind === 'image' && referenceImageBase64 && !image3dMode && isImageEditIntent(message)
-            ? 'edit'
-            : resolveImageGenerationOperation({
-                imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
-                referenceImage: referenceImageBase64,
-                useAvatarVisualReference,
-              }),
+          imageOperation: requestedImageOperation,
           referenceSource: referenceImageBase64 ? referenceSource : useAvatarVisualReference ? 'avatar' : 'none',
           referenceXPath,
           useAvatarVisualReference,

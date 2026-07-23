@@ -5,6 +5,12 @@ import { FlowConfig } from './FlowTypes';
 import { FlowSession } from './FlowSession';
 import { logger, findSmartElement, ElementQuery, pollCondition } from './FlowUtils';
 import { runFastInferenceApi, runSelectedChatModelCli } from '@/services/agent-llm/agent-llm.service';
+import {
+  buildFlowImagePromptRewriteRequest,
+  buildFlowReferencePlanningNotice,
+  buildLocalFlowImagePrompt,
+  prepareFlowImagePrompt,
+} from '@/lib/ai/image-prompt-engineering';
 
 type LLMModel = 'deepseek' | 'claude' | 'chatgpt' | 'gemini' | 'cerebras' | 'zenmux' | 'iamhc';
 type QueryWebLLMOptions = {
@@ -268,28 +274,30 @@ export class FlowLLMAutomation {
     rawPrompt: string,
     type: 'image' | 'video'
   ): Promise<string> {
-
-    const promptTemplate = `Melhore o seguinte prompt de geração de ${
-      type === 'video' ? 'vídeo' : 'imagem'
-    } para torná-lo profissional, ultra-detalhado e de alto impacto visual. Retorne apenas o prompt melhorado em inglês, sem comentários adicionais, sem aspas e sem explicações: '${rawPrompt}'`;
+    const promptTemplate = type === 'image'
+      ? buildFlowImagePromptRewriteRequest({ prompt: rawPrompt })
+      : `Melhore o seguinte prompt de geração de vídeo para torná-lo profissional, detalhado e visualmente coerente. Preserve a intenção do usuário e retorne apenas o prompt melhorado em inglês, sem comentários, aspas ou explicações: '${rawPrompt}'`;
+    const finalizePrompt = (value: string) => type === 'image'
+      ? prepareFlowImagePrompt({ prompt: this.cleanLLMResponse(value) })
+      : this.cleanLLMResponse(value);
 
     logger.info(`[Kaoz.1] Iniciando otimização com modelo: ${model} para ${type}.`);
 
     if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
-      return this.cleanLLMResponse(await runSelectedChatModelCli(model, promptTemplate));
+      return finalizePrompt(await runSelectedChatModelCli(model, promptTemplate));
     }
 
     const apiResult = await this.optimizeWithApi(model, promptTemplate);
     if (apiResult) {
       logger.info(`[Kaoz.1] Prompt otimizado via API do modelo: ${model}.`);
-      return apiResult;
+      return finalizePrompt(apiResult);
     }
 
     if (this.shouldSkipWebAutomation(model)) {
       logger.warn(
         `[Kaoz.1] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
       );
-      return this.localPromptOptimizer(rawPrompt, type);
+      return finalizePrompt(this.localPromptOptimizer(rawPrompt, type));
     }
 
     try {
@@ -297,19 +305,19 @@ export class FlowLLMAutomation {
       
       switch (model as LLMModel) {
         case 'gemini':
-          return await this.automateGemini(page, promptTemplate);
+          return finalizePrompt(await this.automateGemini(page, promptTemplate));
         case 'chatgpt':
-          return await this.automateChatGPT(page, promptTemplate);
+          return finalizePrompt(await this.automateChatGPT(page, promptTemplate));
         case 'deepseek':
-          return await this.automateDeepSeek(page, promptTemplate);
+          return finalizePrompt(await this.automateDeepSeek(page, promptTemplate));
         case 'claude':
-          return await this.automateClaude(page, promptTemplate);
+          return finalizePrompt(await this.automateClaude(page, promptTemplate));
         default:
           throw new Error(`Modelo ${model} não suportado.`);
       }
     } catch (err) {
       logger.warn(`[Kaoz.1] Automação do ${model} indisponível ou bloqueada. Ativando Engenharia de Prompt local...`, err);
-      return this.localPromptOptimizer(rawPrompt, type);
+      return finalizePrompt(this.localPromptOptimizer(rawPrompt, type));
     }
   }
 
@@ -327,7 +335,7 @@ export class FlowLLMAutomation {
     // the image generator, so it must not be passed to a text-only CLI.
     if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
       const promptForReferencedGeneration = referenceImagePath
-        ? `${prompt}\n\n[IMAGEM DE REFERENCIA]\nA imagem anexada sera enviada diretamente ao gerador de imagem. Nao tente analisar, descrever ou gerar a imagem aqui. Retorne apenas a acao JSON com um optimizedPrompt para transformar fielmente a referencia em um objeto/personagem 3D, preservando identidade, proporcoes, materiais e detalhes visuais.`
+        ? `${prompt}\n\n${buildFlowReferencePlanningNotice()}`
         : prompt;
       return this.cleanLLMResponse(await runSelectedChatModelCli(model, promptForReferencedGeneration, {
         referenceImagePath: undefined,
@@ -756,24 +764,12 @@ export class FlowLLMAutomation {
    * Heuristic/Rule-based prompt optimizer when LLM portals are offline.
    */
   private localPromptOptimizer(rawPrompt: string, type: 'image' | 'video'): string {
-    const cleaned = rawPrompt.replace(/[\'\"]/g, '').trim();
-    
-    // Core prompt enhancements
-    const imageStyle = "cinematic photograph, detailed textures, soft studio volumetric lighting, depth of field, 8k resolution, shot on 85mm lens, photorealistic";
+    const cleaned = rawPrompt.trim();
     const videoStyle = "4k cinematic video, smooth camera movement, highly detailed, slow motion, dynamic shadows, volumetric lighting, photorealistic, professional grade";
 
-    const suffix = type === 'video' ? videoStyle : imageStyle;
-
-    // Detect language and translate simple nouns to English fallbacks if possible
-    let processedPrompt = cleaned;
-    if (processedPrompt.toLowerCase().includes('pintinho')) {
-      processedPrompt = processedPrompt.toLowerCase()
-        .replace('pintinho amarelo', 'vibrant baby yellow chick')
-        .replace('pintinho', 'vibrant baby chick')
-        .replace('comendo milho', 'eating golden corn kernels on a rustic wooden floor');
-    }
-
-    return `${processedPrompt}, ${suffix}`;
+    return type === 'image'
+      ? buildLocalFlowImagePrompt(cleaned)
+      : `${cleaned}, ${videoStyle}`;
   }
 
   /**

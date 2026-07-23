@@ -25,6 +25,8 @@ import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt"
 import { getConversationMemoryStore, LOCAL_PROFILE_ID as LOCAL_ARCHIVE_PROFILE_ID } from "@/services/conversation-memory/conversation-memory.store";
 import { recallArchivedConversations } from "@/services/conversation-memory/conversation-memory.recall";
 import { scheduleConversationConsolidation } from "@/services/conversation-memory/conversation-memory.consolidator";
+import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
+import type { FlowImageAspectRatio } from "@/lib/ai/image-prompt-engineering";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -35,6 +37,8 @@ type FlowChatRequestBody = {
   model?: string;
   referenceImage?: string;
   requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
+  imageOperation?: ImageGenerationOperation;
+  imageAspectRatio?: FlowImageAspectRatio;
   useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   stream?: boolean;
@@ -58,6 +62,8 @@ type SpotifyDirectCommand = {
 
 const CHAT_STREAM_STATUS_DELAY_MS = 50;
 const FLOW_CHAT_MODELS = new Set(["gemini", "chatgpt", "claude", "deepseek", "cerebras", "zenmux", "iamhc"]);
+const IMAGE_OPERATIONS = new Set<ImageGenerationOperation>(["simple", "reference", "turnaround3d", "edit"]);
+const IMAGE_ASPECT_RATIOS = new Set<FlowImageAspectRatio>(["16:9", "4:3", "1:1", "3:4", "9:16"]);
 const EXTERNAL_TOOL_INTENT_PATTERN = /\b(internet|web|google|site|pesquisa|pesquisar|pesquise|buscar|busque|procure|procurar|naveg|acessar|acesse|url|link|noticia|noticias|hoje|agora|atual|cotacao|dolar|spotify|musica|playlist|tocando|volume|fila)\b/;
 
 function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
@@ -608,6 +614,8 @@ export async function POST(request: Request) {
       model,
       referenceImage,
       requestedFlow,
+      imageOperation,
+      imageAspectRatio,
       useAvatarPersonality,
       useCortexMemory,
       stream,
@@ -617,6 +625,14 @@ export async function POST(request: Request) {
     } = body;
     const cortexMemoryEnabled = useCortexMemory !== false;
     const modelName = resolveFlowChatModel(model);
+    const resolvedImageOperation = typeof imageOperation === "string" && IMAGE_OPERATIONS.has(imageOperation)
+      ? imageOperation
+      : referenceImage
+        ? "reference"
+        : "simple";
+    const resolvedImageAspectRatio = typeof imageAspectRatio === "string" && IMAGE_ASPECT_RATIOS.has(imageAspectRatio)
+      ? imageAspectRatio
+      : undefined;
     const wantsExternalTools = needsExternalTools(messages);
     const hasExternalTools = wantsExternalTools;
     const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
@@ -704,6 +720,8 @@ export async function POST(request: Request) {
           activeMemories: activePersonalityMemories,
           voiceInstruction: getAgentVoiceInstruction(voiceContext),
           requestedFlow: requestedMediaFlow,
+          imageOperation: resolvedImageOperation,
+          imageAspectRatio: resolvedImageAspectRatio,
           characterRuntime,
         }
       );

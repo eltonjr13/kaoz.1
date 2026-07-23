@@ -8,6 +8,13 @@ import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import type { CharacterRuntimeSnapshot } from "@/lib/agent-personality/types";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 import { allowsMediaAction, classifyOutputIntent } from "@/services/artifacts/artifact.intent";
+import {
+  buildFlowImagePromptInstructions,
+  prepareFlowImagePrompt,
+  sanitizeUnrequestedCreativeFormats,
+  type FlowImageAspectRatio,
+} from "@/lib/ai/image-prompt-engineering";
+import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -461,21 +468,6 @@ export interface FlowDecision {
   adCreativePlan?: AdCreativePlan | null;
 }
 
-const UNREQUESTED_CREATIVE_FORMAT_TERMS = [
-  "ugc",
-  "user-generated content",
-  "user generated content",
-  "selfie",
-  "influencer",
-  "tiktok",
-  "instagram reel",
-  "testimonial",
-  "phone camera",
-  "smartphone camera",
-  "handheld phone",
-  "ad creative"
-];
-
 const AD_CREATIVE_INTENT_TERMS = [
   "anuncio",
   "anuncios",
@@ -503,16 +495,6 @@ function hasAnyTerm(value: string, terms: string[]) {
   return terms.some((term) => normalized.includes(normalizeIntentText(term)));
 }
 
-function hasUnrequestedCreativeFormat(sourcePrompt: string, optimizedPrompt: string) {
-  const source = normalizeIntentText(sourcePrompt);
-  const optimized = normalizeIntentText(optimizedPrompt);
-
-  return UNREQUESTED_CREATIVE_FORMAT_TERMS.some((term) => {
-    const normalizedTerm = normalizeIntentText(term);
-    return optimized.includes(normalizedTerm) && !source.includes(normalizedTerm);
-  });
-}
-
 function preservePromptFidelity(decision: FlowDecision, sourcePrompt: string): FlowDecision {
   if (decision.flow === "ad-creative" && !hasAnyTerm(sourcePrompt, AD_CREATIVE_INTENT_TERMS)) {
     return {
@@ -525,14 +507,14 @@ function preservePromptFidelity(decision: FlowDecision, sourcePrompt: string): F
     };
   }
 
-  if (
-    (decision.flow === "image" || decision.flow === "video") &&
-    hasUnrequestedCreativeFormat(sourcePrompt, decision.optimizedPrompt)
-  ) {
+  if (decision.flow === "image" || decision.flow === "video") {
+    const sanitizedPrompt = sanitizeUnrequestedCreativeFormats(sourcePrompt, decision.optimizedPrompt);
+    if (sanitizedPrompt === decision.optimizedPrompt) return decision;
+
     return {
       ...decision,
-      optimizedPrompt: sourcePrompt,
-      explanation: `${decision.explanation} Mantive o prompt original porque a otimizacao adicionou formato criativo nao solicitado.`
+      optimizedPrompt: sanitizedPrompt,
+      explanation: `${decision.explanation} Removi da otimizacao formatos criativos que nao foram solicitados.`
     };
   }
 
@@ -592,17 +574,62 @@ function getImmediateChatResponse(messages: ChatMessage[], referenceImagePath?: 
   return null;
 }
 
-function preserveChatResponseAction(response: ChatAgentResponse, messages: ChatMessage[]): ChatAgentResponse {
+function prepareImageDecisionPrompts(
+  decision: FlowDecision,
+  options?: Pick<ChatWithAgentOptions, "imageOperation" | "imageAspectRatio">
+): FlowDecision {
+  const operation = options?.imageOperation || "simple";
+  const aspectRatio = options?.imageAspectRatio;
+
+  if (decision.flow === "image") {
+    return {
+      ...decision,
+      optimizedPrompt: prepareFlowImagePrompt({
+        prompt: decision.optimizedPrompt,
+        operation,
+        aspectRatio,
+      }),
+    };
+  }
+
+  if (decision.flow === "ad-creative" && decision.adCreativePlan?.concepts?.length) {
+    return {
+      ...decision,
+      adCreativePlan: {
+        concepts: decision.adCreativePlan.concepts.map((concept) => ({
+          ...concept,
+          visualPrompt: prepareFlowImagePrompt({
+            prompt: concept.visualPrompt,
+            operation,
+            aspectRatio,
+          }),
+        })),
+      },
+    };
+  }
+
+  return decision;
+}
+
+function preserveChatResponseAction(
+  response: ChatAgentResponse,
+  messages: ChatMessage[],
+  options?: ChatWithAgentOptions
+): ChatAgentResponse {
   if (!response.action) return response;
 
+  const faithfulDecision = preservePromptFidelity(response.action, getLatestUserText(messages));
   return {
     ...response,
-    action: preservePromptFidelity(response.action, getLatestUserText(messages))
+    action: prepareImageDecisionPrompts(faithfulDecision, options)
   };
 }
 
 export async function classifyIntention(intention: string): Promise<FlowDecision> {
+  const imagePromptInstructions = buildFlowImagePromptInstructions();
   const agentPlannerInstructions = `
+${imagePromptInstructions}
+
 Modo agente autonomo:
 - Interprete o pedido, decida o fluxo, monte estrategia criativa e defina passos antes da execucao.
 - Nunca misture image e video quando o usuario pediu apenas um tipo.
@@ -739,6 +766,8 @@ type ChatWithAgentOptions = {
   activeMemories?: ChatMemoryRecord[];
   voiceInstruction?: string;
   requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
+  imageOperation?: ImageGenerationOperation;
+  imageAspectRatio?: FlowImageAspectRatio;
   characterRuntime?: CharacterRuntimeSnapshot;
 };
 
@@ -907,13 +936,18 @@ Nao diga "vou analisar", "vou procurar" ou "consultando". Entregue a melhor resp
   return buildChatPrompt(promptMessages, plainSystemInstruction, plainFinalInstruction);
 }
 
-function parseChatModelResponse(responseText: string, messages: ChatMessage[], requiresStructuredResponse: boolean): ChatAgentResponse {
+function parseChatModelResponse(
+  responseText: string,
+  messages: ChatMessage[],
+  requiresStructuredResponse: boolean,
+  options?: ChatWithAgentOptions
+): ChatAgentResponse {
   if (requiresStructuredResponse) {
     const parsed = parseGeminiResponse<ChatAgentResponse>(responseText, {
       message: "Desculpe, ocorreu um erro ao formatar minha resposta.",
       action: null
     });
-    return preserveChatResponseAction(parsed, messages);
+    return preserveChatResponseAction(parsed, messages, options);
   }
 
   const trimmedResponse = responseText.trim();
@@ -923,7 +957,7 @@ function parseChatModelResponse(responseText: string, messages: ChatMessage[], r
       action: null
     });
     if (maybeStructured.action || maybeStructured.message !== trimmedResponse) {
-      return preserveChatResponseAction(maybeStructured, messages);
+      return preserveChatResponseAction(maybeStructured, messages, options);
     }
   }
 
@@ -968,8 +1002,14 @@ export async function chatWithAgent(
     ? `\n[Memórias relevantes do usuário/projeto]:\n${options.relevantMemories}\n`
     : "";
 
+  const imagePromptInstructions = buildFlowImagePromptInstructions({
+    operation: options?.imageOperation,
+    aspectRatio: options?.imageAspectRatio,
+  });
+
   const systemInstruction = `
 ${personalityContext}
+${imagePromptInstructions}
 
 Modo Cortex: ${options?.useCortexMemory === false ? "desligado" : "ligado"}.
 Se o modo Cortex estiver desligado, nao use memoria cognitiva, aprendizados persistentes ou historico externo; responda somente com o historico desta conversa e o pedido atual.
@@ -1074,7 +1114,7 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
       toolIntentText: getLatestUserText(messages),
     });
 
-    return parseChatModelResponse(responseText, messages, requiresStructuredResponse);
+    return parseChatModelResponse(responseText, messages, requiresStructuredResponse, options);
   } catch (err) {
     console.error("Falha na interacao com o chat via modelo de IA:", err);
     return {
