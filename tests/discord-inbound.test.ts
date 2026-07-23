@@ -41,7 +41,7 @@ test("expõe os comandos slash nativos do Discord", () => {
 });
 
 test("persiste a escolha de modelo isolada por conversa", async () => {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "mrchicken-model-selection-"));
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "kaoz1-model-selection-"));
   try {
     const file = path.join(dataDir, "connector-model-selections.json");
     const store = new ConnectorModelSelectionStore(file);
@@ -60,7 +60,7 @@ test("persiste a escolha de modelo isolada por conversa", async () => {
 
 test("interpreta comandos do Discord sem delegar ao LLM", () => {
   assert.deepEqual(parseDiscordCommand("/help"), { kind: "help" });
-  assert.deepEqual(parseDiscordCommand("/status@MrChickenBot"), { kind: "status" });
+  assert.deepEqual(parseDiscordCommand("/status@Kaoz1Bot"), { kind: "status" });
   assert.deepEqual(parseDiscordCommand("/model iamhc DeepSeek-V4-Flash"), { kind: "model", provider: "iamhc", model: "DeepSeek-V4-Flash" });
   assert.deepEqual(parseDiscordCommand("/imagine um frango astronauta em Marte"), { kind: "imagine", prompt: "um frango astronauta em Marte" });
   assert.deepEqual(parseDiscordCommand("/imagem"), { kind: "imagine", prompt: undefined });
@@ -69,9 +69,9 @@ test("interpreta comandos do Discord sem delegar ao LLM", () => {
 });
 
 test("altera e persiste o provedor e modelo sem chamar o LLM", async () => {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), "mrchicken-command-model-"));
-  const previousDataDir = process.env.MRCHICKEN_DATA_DIR;
-  process.env.MRCHICKEN_DATA_DIR = dataDir;
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "kaoz1-command-model-"));
+  const previousDataDir = process.env.KAOZ1_DATA_DIR;
+  process.env.KAOZ1_DATA_DIR = dataDir;
   try {
     const response = await executeDiscordCommand({ kind: "model", provider: "codex", model: "gpt-5.6" });
     assert.match(response, /Codex/);
@@ -79,8 +79,8 @@ test("altera e persiste o provedor e modelo sem chamar o LLM", async () => {
     const saved = JSON.parse(await readFile(path.join(dataDir, "local-data", "agent-llm-settings.json"), "utf8")) as { provider?: string; codexModel?: string };
     assert.deepEqual({ provider: saved.provider, model: saved.codexModel }, { provider: "codex-cli", model: "gpt-5.6" });
   } finally {
-    if (previousDataDir === undefined) delete process.env.MRCHICKEN_DATA_DIR;
-    else process.env.MRCHICKEN_DATA_DIR = previousDataDir;
+    if (previousDataDir === undefined) delete process.env.KAOZ1_DATA_DIR;
+    else process.env.KAOZ1_DATA_DIR = previousDataDir;
     await rm(dataDir, { recursive: true, force: true });
   }
 });

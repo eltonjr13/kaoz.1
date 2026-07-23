@@ -19,7 +19,7 @@ Integrações de inspeção visual ou extensões podem entregar uma captura e se
 do Flow por meio do evento abaixo:
 
 ```js
-window.dispatchEvent(new CustomEvent('mrchicken:flow-reference-selected', {
+window.dispatchEvent(new CustomEvent('kaoz1:flow-reference-selected', {
   detail: {
     imageData: 'data:image/png;base64,...',
     xpath: '/html/body/main/...',

@@ -7,7 +7,7 @@ import { ConversationMemoryStore, LOCAL_PROFILE_ID } from "../services/conversat
 import { isArchiveRecallIntent, recallArchivedConversations } from "../services/conversation-memory/conversation-memory.recall.ts";
 
 async function fixture() {
-  const root = path.join(os.tmpdir(), `mrchicken-archive-${crypto.randomUUID()}`);
+  const root = path.join(os.tmpdir(), `kaoz1-archive-${crypto.randomUUID()}`);
   await mkdir(root, { recursive: true });
   return { root, file: path.join(root, "conversation-memory.sqlite3") };
 }

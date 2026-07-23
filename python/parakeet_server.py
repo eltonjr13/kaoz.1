@@ -13,7 +13,7 @@ import soundfile as sf
 
 HOST = os.getenv("STT_HOST", "127.0.0.1")
 PORT = int(os.getenv("STT_PORT", "8011"))
-MODEL_DIR = Path(os.getenv("PARAKEET_MODEL_DIR", Path.home() / ".cache" / "mrchicken" / "parakeet"))
+MODEL_DIR = Path(os.getenv("PARAKEET_MODEL_DIR", Path.home() / ".cache" / "kaoz1" / "parakeet"))
 FFMPEG_PATH = os.getenv("FFMPEG_PATH", "ffmpeg")
 MODEL = None
 STATE = {"state": "downloading", "message": "Preparando o modelo local Parakeet..."}

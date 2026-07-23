@@ -1,7 +1,7 @@
 export {};
 
 declare global {
-  interface MrChickenUpdateStatus {
+  interface Kaoz1UpdateStatus {
     state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "installing" | "not-available" | "unsupported" | "error";
     currentVersion?: string;
     supported?: boolean;
@@ -13,7 +13,7 @@ declare global {
   }
 
   interface Window {
-    mrChickenDesktop?: {
+    kaoz1Desktop?: {
       minimize: () => Promise<boolean>;
       toggleMaximize: () => Promise<boolean>;
       close: () => Promise<boolean>;
@@ -21,11 +21,11 @@ declare global {
       getDesktopPreferences: () => Promise<{ closeToTray: boolean } | null>;
       setCloseToTray: (enabled: boolean) => Promise<{ closeToTray: boolean } | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
-      getUpdateStatus: () => Promise<MrChickenUpdateStatus>;
-      checkForUpdates: () => Promise<MrChickenUpdateStatus>;
-      downloadUpdate: () => Promise<MrChickenUpdateStatus>;
+      getUpdateStatus: () => Promise<Kaoz1UpdateStatus>;
+      checkForUpdates: () => Promise<Kaoz1UpdateStatus>;
+      downloadUpdate: () => Promise<Kaoz1UpdateStatus>;
       installUpdate: () => Promise<boolean>;
-      onUpdateStatus: (listener: (status: MrChickenUpdateStatus) => void) => () => void;
+      onUpdateStatus: (listener: (status: Kaoz1UpdateStatus) => void) => () => void;
     };
   }
 }

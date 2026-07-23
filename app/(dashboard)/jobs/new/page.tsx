@@ -108,7 +108,7 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
             <aside className="flex flex-col gap-4">
               <section className="rounded-lg border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">Agente MrChicken</span>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">Kaoz.1</span>
                   <h2 className="mt-1 text-lg font-semibold text-white">Outros modos de geracao</h2>
                   <p className="mt-2 text-sm leading-6 text-white/50">
                     Estes modos usam o `/flow` existente, mantendo memoria Cortex, aprovacao de plano e automacao do Flow no mesmo lugar.

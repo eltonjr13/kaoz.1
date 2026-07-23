@@ -1,4 +1,4 @@
-# Contrato de skills do MrChicken
+# Contrato de skills do Kaoz.1
 
 Use este contrato ao gerar uma skill destinada ao projeto.
 

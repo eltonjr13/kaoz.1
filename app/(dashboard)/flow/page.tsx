@@ -319,20 +319,39 @@ interface FlowJobSnapshot {
   updated_at?: string;
 }
 
-const CHAT_HISTORY_KEY = "mrchicken:flow:chat_history";
-const CHAT_CONVERSATIONS_KEY = "mrchicken:flow:chat_conversations";
-const ACTIVE_CHAT_KEY = "mrchicken:flow:active_chat";
-const USE_AVATAR_PERSONALITY_KEY = "mrchicken:flow:use_avatar_personality";
-const USE_AVATAR_VISUAL_REFERENCE_KEY = "mrchicken:flow:use_avatar_visual_reference";
+const CHAT_HISTORY_KEY = "kaoz1:flow:chat_history";
+const CHAT_CONVERSATIONS_KEY = "kaoz1:flow:chat_conversations";
+const ACTIVE_CHAT_KEY = "kaoz1:flow:active_chat";
+const USE_AVATAR_PERSONALITY_KEY = "kaoz1:flow:use_avatar_personality";
+const USE_AVATAR_VISUAL_REFERENCE_KEY = "kaoz1:flow:use_avatar_visual_reference";
 const CHAT_AUTO_SCROLL_THRESHOLD = 96;
-const USE_CORTEX_MEMORY_KEY = "mrchicken:flow:use_cortex_memory";
-const AGENT_MODEL_KEY = "mrchicken:flow:agent_model";
+const USE_CORTEX_MEMORY_KEY = "kaoz1:flow:use_cortex_memory";
+const AGENT_MODEL_KEY = "kaoz1:flow:agent_model";
+const LEGACY_FLOW_STORAGE_KEYS: Record<string, string> = {
+  [CHAT_HISTORY_KEY]: "mrchicken:flow:chat_history",
+  [CHAT_CONVERSATIONS_KEY]: "mrchicken:flow:chat_conversations",
+  [ACTIVE_CHAT_KEY]: "mrchicken:flow:active_chat",
+  [USE_AVATAR_PERSONALITY_KEY]: "mrchicken:flow:use_avatar_personality",
+  [USE_AVATAR_VISUAL_REFERENCE_KEY]: "mrchicken:flow:use_avatar_visual_reference",
+  [USE_CORTEX_MEMORY_KEY]: "mrchicken:flow:use_cortex_memory",
+  [AGENT_MODEL_KEY]: "mrchicken:flow:agent_model",
+};
 const BRANCH_TITLE_PREFIX = "Ramificação - ";
 const MAX_SCALE_IMAGE_COUNT = 40;
 const WAKE_COMMAND_PATTERNS = [
-  /(?:^|\b)(?:hello|helo|ol[aá]|oi|ei)\s+(?:mr\.?|mister|senhor|seu)?\s*chicken\b[,.!?\s-]*(.*)$/i,
-  /(?:^|\b)(?:mr\.?|mister|senhor|seu)\s*chicken\b[,.!?\s-]*(.*)$/i
+  /(?:^|\b)(?:hello|helo|ol[aá]|oi|ei)\s+kaoz(?:\.?1)?\b[,.!?\s-]*(.*)$/i,
+  /(?:^|\b)kaoz(?:\.?1)?\b[,.!?\s-]*(.*)$/i
 ];
+
+const readFlowStorage = (key: string): string | null => {
+  const current = localStorage.getItem(key);
+  if (current !== null) return current;
+  const legacyKey = LEGACY_FLOW_STORAGE_KEYS[key];
+  if (!legacyKey) return null;
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy !== null) localStorage.setItem(key, legacy);
+  return legacy;
+};
 
 const createChatId = (prefix: string) => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -620,7 +639,7 @@ const formatChatExport = (conversation: ChatConversation, messages: ChatMessageS
   ];
 
   messages.forEach((msg) => {
-    const author = msg.role === "user" ? "Usuario" : "MrChicken";
+    const author = msg.role === "user" ? "Usuario" : "Kaoz.1";
     lines.push(`## ${author} - ${formatExportDate(msg.timestamp)}`, "", msg.content, "");
     if (msg.plan) {
       lines.push("### Plano", "", `Tipo: ${msg.plan.kind}`, `Modelo: ${msg.plan.model}`, `Prompt: ${msg.plan.prompt}`, "");
@@ -963,7 +982,7 @@ export default function FlowDashboardPage() {
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
   const [agentModel, setAgentModel] = useState<AgentModel>(() => {
     if (typeof window === "undefined") return "gemini";
-    const savedModel = localStorage.getItem(AGENT_MODEL_KEY);
+    const savedModel = readFlowStorage(AGENT_MODEL_KEY);
     return isAgentModel(savedModel) ? savedModel : "gemini";
   });
   const [agentType, setAgentType] = useState<AgentType>('image');
@@ -972,13 +991,13 @@ export default function FlowDashboardPage() {
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState("");
   const [useAvatarPersonality, setUseAvatarPersonality] = useState(() =>
-    typeof window === "undefined" ? true : localStorage.getItem(USE_AVATAR_PERSONALITY_KEY) !== "false"
+    typeof window === "undefined" ? true : readFlowStorage(USE_AVATAR_PERSONALITY_KEY) !== "false"
   );
   const [useAvatarVisualReference, setUseAvatarVisualReference] = useState(() =>
-    typeof window === "undefined" ? false : localStorage.getItem(USE_AVATAR_VISUAL_REFERENCE_KEY) === "true"
+    typeof window === "undefined" ? false : readFlowStorage(USE_AVATAR_VISUAL_REFERENCE_KEY) === "true"
   );
   const [useCortexMemory, setUseCortexMemory] = useState(() =>
-    typeof window === "undefined" ? true : localStorage.getItem(USE_CORTEX_MEMORY_KEY) !== "false"
+    typeof window === "undefined" ? true : readFlowStorage(USE_CORTEX_MEMORY_KEY) !== "false"
   );
   const [imageRatio, setImageRatio] = useState("16:9");
   const [imageQty, setImageQty] = useState("x2");
@@ -1142,8 +1161,8 @@ export default function FlowDashboardPage() {
         label: typeof detail.label === 'string' ? detail.label : undefined,
       });
     };
-    window.addEventListener('mrchicken:flow-reference-selected', handleSelectedReference);
-    return () => window.removeEventListener('mrchicken:flow-reference-selected', handleSelectedReference);
+    window.addEventListener('kaoz1:flow-reference-selected', handleSelectedReference);
+    return () => window.removeEventListener('kaoz1:flow-reference-selected', handleSelectedReference);
   }, []);
 
   const activeJobPollingKey = chatMessages
@@ -1186,7 +1205,7 @@ export default function FlowDashboardPage() {
     return (
       <motion.div
         ref={settingsMenuRef}
-        className={`absolute bottom-full z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] max-h-[calc(100dvh-var(--mrchicken-titlebar-height,0px)-9rem)] flex-col gap-5 overflow-y-auto rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto ${isFloatingRight ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'}`}
+        className={`absolute bottom-full z-50 mb-3 flex w-[360px] max-w-[calc(100vw-32px)] max-h-[calc(100dvh-var(--kaoz1-titlebar-height,0px)-9rem)] flex-col gap-5 overflow-y-auto rounded-2xl border border-white/10 bg-[#0d0d12]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl pointer-events-auto ${isFloatingRight ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'}`}
         initial={{ opacity: 0, y: 10, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -1475,12 +1494,12 @@ export default function FlowDashboardPage() {
       if (list.length > 0) setSelectedAvatarId(list[0].id);
     });
 
-    const savedConversations = readJsonArray<ChatConversation>(localStorage.getItem(CHAT_CONVERSATIONS_KEY));
-    const legacyMessages = readJsonArray<ChatMessageState>(localStorage.getItem(CHAT_HISTORY_KEY));
+    const savedConversations = readJsonArray<ChatConversation>(readFlowStorage(CHAT_CONVERSATIONS_KEY));
+    const legacyMessages = readJsonArray<ChatMessageState>(readFlowStorage(CHAT_HISTORY_KEY));
     const initialConversations = savedConversations.length > 0
       ? savedConversations
       : (legacyMessages.length > 0 ? [createChatConversation(legacyMessages)] : [createChatConversation()]);
-    const savedActiveId = localStorage.getItem(ACTIVE_CHAT_KEY);
+    const savedActiveId = readFlowStorage(ACTIVE_CHAT_KEY);
     const activeConversation = initialConversations.find((conversation) => conversation.id === savedActiveId) || initialConversations[0];
     autoDownloaded3dModelsRef.current = new Set(
       initialConversations.flatMap((conversation) =>
@@ -1938,7 +1957,7 @@ export default function FlowDashboardPage() {
     activeAssistantSpeechRef.current = text;
     voiceSpeakingRef.current = true;
     setVoiceSpeaking(true);
-    setVoiceStatus("MrChicken esta falando...");
+    setVoiceStatus("Kaoz.1 esta falando...");
     setVoiceError("");
 
     try {
@@ -1983,7 +2002,7 @@ export default function FlowDashboardPage() {
         });
         const data = await res.json() as { audioPath?: string; error?: string };
         if (!res.ok || !data.audioPath) {
-          throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+          throw new Error(data.error || "Nao foi possivel gerar a voz do Kaoz.1.");
         }
 
         const audio = new Audio(data.audioPath);
@@ -2213,7 +2232,7 @@ export default function FlowDashboardPage() {
 
         voiceSpeakingRef.current = true;
         setVoiceSpeaking(true);
-        setVoiceStatus("MrChicken esta falando...");
+        setVoiceStatus("Kaoz.1 esta falando...");
 
         try {
           cartesiaStream = playCartesiaVoiceStream(
@@ -2276,7 +2295,7 @@ export default function FlowDashboardPage() {
           }).then(async (res) => {
             const data = await res.json() as { audioPath?: string; error?: string };
             if (!res.ok || !data.audioPath) {
-              throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+              throw new Error(data.error || "Nao foi possivel gerar a voz do Kaoz.1.");
             }
             return data.audioPath;
           });
@@ -2287,7 +2306,7 @@ export default function FlowDashboardPage() {
           if (ttsConfig?.provider === "browser") {
             voiceSpeakingRef.current = true;
             setVoiceSpeaking(true);
-            setVoiceStatus("MrChicken esta falando...");
+            setVoiceStatus("Kaoz.1 esta falando...");
             
             let utterance: SpeechSynthesisUtterance | null = null;
             const promise = new Promise<void>((resolve, reject) => {
@@ -2306,7 +2325,7 @@ export default function FlowDashboardPage() {
             // Fallback to OmniVoice
             voiceSpeakingRef.current = true;
             setVoiceSpeaking(true);
-            setVoiceStatus("MrChicken esta falando...");
+            setVoiceStatus("Kaoz.1 esta falando...");
             let audio: HTMLAudioElement | null = null;
             let isCancelled = false;
 
@@ -2320,7 +2339,7 @@ export default function FlowDashboardPage() {
                   }).then(async (res) => {
                     const data = await res.json() as { audioPath?: string; error?: string };
                     if (!res.ok || !data.audioPath) {
-                      throw new Error(data.error || "Nao foi possivel gerar a voz do MrChicken.");
+                      throw new Error(data.error || "Nao foi possivel gerar a voz do Kaoz.1.");
                     }
                     return data.audioPath;
                   });
@@ -2525,7 +2544,7 @@ export default function FlowDashboardPage() {
     const cleanCommand = normalizeVoiceText(command);
     if (!cleanCommand || isLoading) return;
 
-    setVoiceStatus("MrChicken esta pensando...");
+    setVoiceStatus("Kaoz.1 esta pensando...");
     setVoiceError("");
     setDraftMessage("");
 
@@ -3286,7 +3305,7 @@ export default function FlowDashboardPage() {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "")
       .slice(0, 48) || "chat";
-    downloadTextFile(formatChatExport(exportConversation, messages), `mrchicken-${slug}.md`);
+    downloadTextFile(formatChatExport(exportConversation, messages), `kaoz1-${slug}.md`);
   };
 
   const handleDeleteConversation = () => {
@@ -3348,7 +3367,7 @@ export default function FlowDashboardPage() {
       .replace(/(^-|-$)/g, "")
       .slice(0, 48) || "chat";
       
-    downloadTextFile(formatChatExport(exportConversation, sanitized), `mrchicken-${slug}.md`);
+    downloadTextFile(formatChatExport(exportConversation, sanitized), `kaoz1-${slug}.md`);
   };
 
   const handleRightClickConversation = (e: React.MouseEvent, conversationId: string) => {
@@ -3427,7 +3446,7 @@ export default function FlowDashboardPage() {
             }}
             className="flex flex-col"
           >
-            <h1 className="text-sm font-semibold tracking-wide text-white/95 whitespace-nowrap">MrChicken Chatbot</h1>
+            <h1 className="text-sm font-semibold tracking-wide text-white/95 whitespace-nowrap">Kaoz.1 Chatbot</h1>
             <div 
               style={{
                 transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
@@ -3525,7 +3544,7 @@ export default function FlowDashboardPage() {
             {chatMessages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
                 <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
-                <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Agente MrChicken.</h2>
+                <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Kaoz.1.</h2>
                 <p className="text-sm text-white/60 max-w-sm leading-relaxed">
                   Posso te ajudar a criar imagens, vídeos de react ou planejar projetos completos. O que vamos criar hoje?
                 </p>
@@ -3846,7 +3865,7 @@ export default function FlowDashboardPage() {
                            <AlertCircle size={13} /> Falha no processamento.
                          </div>
                          <p className="text-[11px] text-white/50 leading-relaxed select-text">
-                           {msg.projectResult?.error || "Ocorreu um erro no pipeline do MrChicken. Verifique os logs detalhados para entender a causa."}
+                           {msg.projectResult?.error || "Ocorreu um erro no pipeline do Kaoz.1. Verifique os logs detalhados para entender a causa."}
                          </p>
                          {msg.jobLogs && msg.jobLogs.length > 0 && (
                            <div className="mt-2 max-h-28 overflow-y-auto rounded-xl bg-black/60 p-3 font-mono text-[9px] text-red-400/90 border border-red-500/10 leading-normal flex flex-col gap-0.5 select-text">
@@ -3898,7 +3917,7 @@ export default function FlowDashboardPage() {
                 </div>
                 <div className="px-4 py-3 text-[13px] rounded-2xl bg-white/5 border border-white/10 rounded-tl-sm text-white/60 flex items-center gap-2">
                    <Loader2 size={14} className="animate-spin text-[#9D7CFF]/70" />
-                   MrChicken está pensando...
+                   Kaoz.1 está pensando...
                 </div>
               </div>
             )}

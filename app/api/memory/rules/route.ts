@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     const rule: ProceduralRule = {
       id: targetId,
-      avatarId: avatarId || 'mrchicken-system',
+      avatarId: avatarId || 'kaoz1-system',
       projectId: projectId || undefined,
       timestamp: now,
       scope: scope || 'general',

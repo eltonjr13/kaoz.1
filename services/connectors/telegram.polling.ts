@@ -28,7 +28,7 @@ type ConversationTurn = { role: "user" | "assistant"; content: string };
 type ModelMenuSession = { chatId: string; userId: string; accountId: string; catalog: ConfigurableAgentProvider[]; provider?: ConfigurableAgentProvider; expiresAt: number };
 
 function globalManager() {
-  return globalThis as typeof globalThis & { __mrChickenTelegramPolling?: TelegramPollingManager };
+  return globalThis as typeof globalThis & { __kaoz1TelegramPolling?: TelegramPollingManager };
 }
 
 function apiUrl(token: string, method: string) { return `${API_ROOT}/bot${token}/${method}`; }
@@ -47,7 +47,7 @@ function normalizeAgentResponse(value: string) {
 
 function buildTelegramAgentPrompt(input: { prompt: string; username?: string; identity: { provider: string; model: string }; recent: ConversationTurn[]; memoryContext?: string }) {
   const history = input.recent.length ? input.recent.map((turn) => `${turn.role === "user" ? "Usuário" : "Agente"}: ${turn.content}`).join("\n") : "(nova conversa)";
-  return `Você é o agente MrChicken respondendo no Telegram.
+  return `Você é o agente Kaoz.1 respondendo no Telegram.
 Responda diretamente, em português, de forma útil e natural. Não afirme ter executado uma ação que não foi executada. Não use a ferramenta social:telegram:publish, pois sua resposta já será enviada ao usuário.
 Se perguntarem qual modelo ou provedor você usa, responda somente com: ${input.identity.provider} / ${input.identity.model}.
 
@@ -428,4 +428,4 @@ export class TelegramPollingManager {
   }
 }
 
-export const telegramPollingManager = globalManager().__mrChickenTelegramPolling ||= new TelegramPollingManager();
+export const telegramPollingManager = globalManager().__kaoz1TelegramPolling ||= new TelegramPollingManager();

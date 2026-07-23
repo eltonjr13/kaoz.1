@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const model = parseFlyAiModel(body.model);
 
     const prompt = `
-Voce e o Piloto Automatico do MrChicken, um estrategista digital avancado.
+Voce e o Piloto Automatico do Kaoz.1, um estrategista digital avancado.
 O usuario quer criar uma campanha de anuncios/criativos com o seguinte objetivo: "${campaignGoal}".
 
 Para coordenar as melhores decisoes e gerar o plano estrategico definitivo para esta campanha, formule exatamente 3 perguntas diagnosticas curtas, diretas e de alto impacto sobre o produto, publico-alvo ou diferencial competitivo. Elas devem ajudar a calibrar os prompts de anuncios e os roteiros dos videos de reacao.

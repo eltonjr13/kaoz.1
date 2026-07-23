@@ -1,8 +1,8 @@
 {
   "name": "ai-ugc-reaction-studio",
   "version": "0.2.11",
-  "description": "MrChicken AI content creation studio for Windows",
-  "author": "MrChicken",
+  "description": "Kaoz.1 AI content creation studio for Windows",
+  "author": "Kaoz.1",
   "private": true,
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
     "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts",
     "test:updates": "node --test tests/electron-update-errors.test.cjs",
-    "test:desktop": "node --test tests/desktop-layout.test.cjs tests/desktop-preferences.test.cjs tests/electron-process-lifecycle.test.cjs",
+    "test:desktop": "node --test tests/desktop-layout.test.cjs tests/desktop-preferences.test.cjs tests/electron-process-lifecycle.test.cjs tests/user-data-migration.test.cjs",
     "test:speech": "node --experimental-strip-types --no-warnings --test tests/microphone-session.test.ts",
     "test:lipsync": "node --no-warnings --test tests/lipsync-integration.test.mjs",
     "test:build-cleanup": "node --no-warnings --test tests/build-cleanup.test.mjs"
@@ -79,8 +79,8 @@
     "wait-on": "^9.0.10"
   },
   "build": {
-    "appId": "com.mrchicken.desktop",
-    "productName": "MrChicken",
+    "appId": "com.kaoz1.desktop",
+    "productName": "Kaoz.1",
     "asar": true,
     "directories": {
       "output": "release"
@@ -117,7 +117,7 @@
     ],
     "win": {
       "icon": "build/icon.png",
-      "artifactName": "MrChicken-Setup-${version}.${ext}",
+      "artifactName": "Kaoz.1-Setup-${version}.${ext}",
       "target": [
         "nsis"
       ]
@@ -130,6 +130,7 @@
       }
     ],
     "nsis": {
+      "guid": "e2d776a6-addb-51d9-a59f-3f9eb3027011",
       "oneClick": false,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
@@ -137,7 +138,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MrChicken"
+      "shortcutName": "Kaoz.1"
     }
   },
   "overrides": {

@@ -1,6 +1,6 @@
 # Guia: Executando MuseTalk 1.5 Oficial no Kaggle / Colab
 
-Este guia detalha como executar o **MuseTalk 1.5 Oficial** (sincronização labial de última geração da Tencent Music Lyra Lab) como um microserviço REST externo no **Kaggle** ou **Google Colab**, integrado ao pipeline do MrChicken.
+Este guia detalha como executar o **MuseTalk 1.5 Oficial** (sincronização labial de última geração da Tencent Music Lyra Lab) como um microserviço REST externo no **Kaggle** ou **Google Colab**, integrado ao pipeline do Kaoz.1.
 
 Como o ambiente do Kaggle/Colab e a sua máquina de desenvolvimento local não compartilham o mesmo sistema de arquivos, utilizamos o modo **upload**:
 
@@ -8,7 +8,7 @@ Como o ambiente do Kaggle/Colab e a sua máquina de desenvolvimento local não c
 2. O microserviço processa a inferência usando o repositório oficial da TMElyralab.
 3. O microserviço responde com o `videoUrl` público temporário gerado pelo túnel.
 4. O Next.js baixa o arquivo MP4 para o caminho local `.generated/jobs/<jobId>/lipsync/musetalk-v15-output.mp4`.
-5. O renderizador local do MrChicken (FFmpeg) consome esse arquivo local no pipeline final.
+5. O renderizador local do Kaoz.1 (FFmpeg) consome esse arquivo local no pipeline final.
 
 ---
 
@@ -36,7 +36,7 @@ Execute todas as células em ordem. O processo de setup fará o seguinte automat
 - Exporá a porta local (`8010`) via túnel público temporário da Cloudflare.
 
 ### Passo 3: Copiar o bloco `.env` gerado
-A última célula do notebook imprimirá o bloco de configuração que você deve copiar e colar no seu arquivo `.env.local` do MrChicken. Exemplo de saída:
+A última célula do notebook imprimirá o bloco de configuração que você deve copiar e colar no seu arquivo `.env.local` do Kaoz.1. Exemplo de saída:
 
 ```env
 LIPSYNC_ENGINE=musetalk-v15
@@ -51,9 +51,9 @@ LIPSYNC_TIMEOUT_MS=1800000
 
 ---
 
-## 2. Configurando o MrChicken local
+## 2. Configurando o Kaoz.1 local
 
-Edite o arquivo `D:\apps\mrchicken\.env.local` no seu ambiente local e cole o bloco gerado acima. Em seguida, reinicie o Next.js:
+Edite o arquivo `.env.local` na raiz do seu checkout do Kaoz.1 e cole o bloco gerado acima. Em seguida, reinicie o Next.js:
 
 ```bash
 npm run dev
@@ -77,7 +77,7 @@ A resposta JSON esperada deve conter:
   "engine": "musetalk-v15",
   "gpuAvailable": true,
   "repoPath": "/kaggle/working/MuseTalk",
-  "outputsPath": "/kaggle/working/mrchicken_lipsync_outputs",
+  "outputsPath": "/kaggle/working/kaoz1_lipsync_outputs",
   "config": {
     "musetalk_version": "v15",
     "unet_model_path": "models/musetalkV15/unet.pth",

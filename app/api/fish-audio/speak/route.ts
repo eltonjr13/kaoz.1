@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       apiKey: stringOrEmpty(body.apiKey) || config.fishAudioApiKey || "",
       referenceId: stringOrEmpty(body.referenceId) || config.fishAudioReferenceId || "",
       model: stringOrEmpty(body.model) || config.fishAudioModel || "s2.1-pro-free",
-      jobId: `mrchicken-fish-audio-${randomUUID()}`,
+      jobId: `kaoz1-fish-audio-${randomUUID()}`,
     });
 
     return NextResponse.json({

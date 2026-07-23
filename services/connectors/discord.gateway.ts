@@ -29,7 +29,7 @@ type DiscordInteraction = {
 };
 
 function globalManager() {
-  return globalThis as typeof globalThis & { __mrChickenDiscordGateway?: DiscordGatewayManager };
+  return globalThis as typeof globalThis & { __kaoz1DiscordGateway?: DiscordGatewayManager };
 }
 
 function publicStatus(status: DiscordGatewayRuntimeStatus): DiscordGatewayRuntimeStatus {
@@ -358,7 +358,7 @@ export class DiscordGatewayManager {
     if (this.sessionId && this.sequence !== null) {
       this.send({ op: 6, d: { token: this.token, session_id: this.sessionId, seq: this.sequence } });
     } else {
-      this.send({ op: 2, d: { token: this.token, intents: GATEWAY_INTENTS, properties: { os: process.platform, browser: "mrchicken", device: "mrchicken" } } });
+      this.send({ op: 2, d: { token: this.token, intents: GATEWAY_INTENTS, properties: { os: process.platform, browser: "kaoz1", device: "kaoz1" } } });
     }
   }
 
@@ -563,4 +563,4 @@ export class DiscordGatewayManager {
   }
 }
 
-export const discordGatewayManager = globalManager().__mrChickenDiscordGateway ||= new DiscordGatewayManager();
+export const discordGatewayManager = globalManager().__kaoz1DiscordGateway ||= new DiscordGatewayManager();

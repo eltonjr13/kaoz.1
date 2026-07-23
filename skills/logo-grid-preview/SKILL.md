@@ -53,7 +53,7 @@ Após a geração bem-sucedida das 9 imagens, execute a ferramenta `skill:logo-g
 - **output_path:** O caminho final para salvar o grid (ex: `<caminho_da_conversa>/grid_marca_3x3.jpg`).
 
 ### Passo 4: Apresentação da Entrega
-1. Mostre o grid final utilizando a marcação de imagem do Markdown do MrChicken:
+1. Mostre o grid final utilizando a marcação de imagem do Markdown do Kaoz.1:
    `![Grid de Aplicação da Marca 3x3](file:///caminho/para/grid_marca_3x3.jpg)`
 2. Forneça uma análise minimalista contendo:
    - **Legibilidade:** Como o logotipo se comportou em tamanhos muito pequenos (como favicon ou caneta) vs formatos maiores (letreiro de fachada).

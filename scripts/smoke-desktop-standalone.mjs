@@ -55,7 +55,7 @@ if (!fs.existsSync(path.join(source, "server.js"))) {
 }
 validateDesktopRuntimePackages(source);
 
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mrchicken-desktop-smoke-"));
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kaoz1-desktop-smoke-"));
 const runtime = path.join(tempRoot, "server");
 let child;
 let output = "";
@@ -71,7 +71,7 @@ try {
       HOSTNAME: "127.0.0.1",
       PORT: String(port),
       NODE_ENV: "production",
-      MRCHICKEN_DATA_DIR: path.join(tempRoot, "data"),
+      KAOZ1_DATA_DIR: path.join(tempRoot, "data"),
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,

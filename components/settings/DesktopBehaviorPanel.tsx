@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AppWindow, Loader2 } from "lucide-react";
 
 export function DesktopBehaviorPanel() {
-  const bridge = typeof window === "undefined" ? undefined : window.mrChickenDesktop;
+  const bridge = typeof window === "undefined" ? undefined : window.kaoz1Desktop;
   const [closeToTray, setCloseToTray] = useState(true);
   const [loading, setLoading] = useState(Boolean(bridge));
   const [saving, setSaving] = useState(false);
@@ -44,7 +44,7 @@ export function DesktopBehaviorPanel() {
           <div>
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-200">Comportamento do aplicativo</h2>
             <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-zinc-500">
-              Ao fechar a janela, mantenha o MrChicken e seus conectores funcionando em segundo plano nos ícones ocultos do Windows.
+              Ao fechar a janela, mantenha o Kaoz.1 e seus conectores funcionando em segundo plano nos ícones ocultos do Windows.
             </p>
           </div>
         </div>

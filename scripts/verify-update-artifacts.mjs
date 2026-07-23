@@ -6,7 +6,7 @@ const root = process.cwd();
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const version = packageJson.version;
 const releaseDir = path.join(root, "release");
-const installerName = `MrChicken-Setup-${version}.exe`;
+const installerName = `Kaoz.1-Setup-${version}.exe`;
 const required = [installerName, `${installerName}.blockmap`, "latest.yml"];
 
 for (const name of required) {

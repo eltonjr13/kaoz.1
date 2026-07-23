@@ -8,10 +8,10 @@ export function DesktopTitlebar() {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    const bridge = window.mrChickenDesktop;
+    const bridge = window.kaoz1Desktop;
     if (!bridge) return;
 
-    document.documentElement.dataset.mrchickenDesktop = "true";
+    document.documentElement.dataset.kaoz1Desktop = "true";
     setDesktop(true);
     void bridge.isMaximized().then(setMaximized);
     return bridge.onMaximizedChanged(setMaximized);
@@ -19,21 +19,21 @@ export function DesktopTitlebar() {
 
   if (!desktop) return null;
 
-  const bridge = window.mrChickenDesktop;
+  const bridge = window.kaoz1Desktop;
   if (!bridge) return null;
 
   return (
-    <header className="mrchicken-desktop-titlebar" aria-label="Controles da janela do MrChicken">
-      <div className="mrchicken-desktop-titlebar__brand">
+    <header className="kaoz1-desktop-titlebar" aria-label="Controles da janela do Kaoz.1">
+      <div className="kaoz1-desktop-titlebar__brand">
         <Sparkles size={13} aria-hidden="true" />
-        <span>MrChicken</span>
+        <span>Kaoz.1</span>
       </div>
       <div
-        className="mrchicken-desktop-titlebar__drag-region"
+        className="kaoz1-desktop-titlebar__drag-region"
         aria-hidden="true"
         onDoubleClick={() => void bridge.toggleMaximize()}
       />
-      <div className="mrchicken-desktop-titlebar__controls">
+      <div className="kaoz1-desktop-titlebar__controls">
         <button type="button" aria-label="Minimizar" title="Minimizar" onClick={() => void bridge.minimize()}>
           <Minus size={15} aria-hidden="true" />
         </button>
@@ -45,7 +45,7 @@ export function DesktopTitlebar() {
         >
           {maximized ? <Copy size={13} aria-hidden="true" /> : <Square size={13} aria-hidden="true" />}
         </button>
-        <button type="button" className="mrchicken-desktop-titlebar__close" aria-label="Fechar" title="Fechar" onClick={() => void bridge.close()}>
+        <button type="button" className="kaoz1-desktop-titlebar__close" aria-label="Fechar" title="Fechar" onClick={() => void bridge.close()}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>

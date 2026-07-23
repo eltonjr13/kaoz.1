@@ -1008,7 +1008,7 @@ export class FlowAgent {
       : "Personalidade textual desativada pelo usuario. Use um tom neutro de assistente.";
 
     const refinePrompt = `
-Você é o módulo de refinamento de projetos do MrChicken.
+Você é o módulo de refinamento de projetos do Kaoz.1.
 Temos um projeto de react existente com os seguintes detalhes:
 - ID: ${targetJob.id}
 - Assunto/Tema original: ${targetJob.topic}

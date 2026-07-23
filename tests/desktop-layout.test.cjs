@@ -12,10 +12,10 @@ test("desktop shell stays inside the viewport area below the titlebar", () => {
   );
   const globalCss = fs.readFileSync(path.join(projectRoot, "app", "globals.css"), "utf8");
 
-  assert.match(appShell, /mrchicken-app-shell h-full min-h-0 max-h-full/);
-  assert.doesNotMatch(appShell, /mrchicken-app-shell[^\n]*min-h-screen/);
+  assert.match(appShell, /kaoz1-app-shell h-full min-h-0 max-h-full/);
+  assert.doesNotMatch(appShell, /kaoz1-app-shell[^\n]*min-h-screen/);
   assert.match(
     globalCss,
-    /html\[data-mrchicken-desktop="true"\] \.mrchicken-app-shell\s*\{[^}]*height:\s*calc\(100dvh - var\(--mrchicken-titlebar-height\)\);[^}]*min-height:\s*0;[^}]*max-height:\s*calc\(100dvh - var\(--mrchicken-titlebar-height\)\);[^}]*\}/s,
+    /html\[data-kaoz1-desktop="true"\] \.kaoz1-app-shell\s*\{[^}]*height:\s*calc\(100dvh - var\(--kaoz1-titlebar-height\)\);[^}]*min-height:\s*0;[^}]*max-height:\s*calc\(100dvh - var\(--kaoz1-titlebar-height\)\);[^}]*\}/s,
   );
 });

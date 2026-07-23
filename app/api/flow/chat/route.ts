@@ -290,7 +290,7 @@ async function runSpotifyDirectCommand(command: SpotifyDirectCommand): Promise<C
 
   if (!tool) {
     return {
-      message: `A ferramenta Spotify '${command.toolName}' nao esta carregada. Reinicie o servidor do MrChicken para recarregar o MCP do Spotify.`,
+      message: `A ferramenta Spotify '${command.toolName}' nao esta carregada. Reinicie o servidor do Kaoz.1 para recarregar o MCP do Spotify.`,
       action: null,
     };
   }

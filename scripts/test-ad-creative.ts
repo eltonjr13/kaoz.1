@@ -29,7 +29,7 @@ async function test() {
     console.error("ERRO: GEMINI_API_KEY não encontrada no .env.local.");
     process.exit(1);
   }
-  const prompt = "Gere 20 imagens criativas de anúncio para o produto Mr. Chicken, focado em alta conversão e inteligência artificial para o público de programadores.";
+  const prompt = "Gere 20 imagens criativas de anúncio para o produto Kaoz.1, focado em alta conversão e inteligência artificial para o público de programadores.";
   console.log(`\nTestando classificação com o prompt: "${prompt}"\n`);
   try {
     const decision = await classifyIntention(prompt);

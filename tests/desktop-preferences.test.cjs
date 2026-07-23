@@ -25,7 +25,7 @@ test("ignora valores inválidos sem perder preferências válidas", () => {
 });
 
 test("persiste e recupera as preferências do desktop", (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mrchicken-desktop-preferences-"));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kaoz1-desktop-preferences-"));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const filePath = path.join(directory, "desktop-preferences.json");
 

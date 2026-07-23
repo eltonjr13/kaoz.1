@@ -26,9 +26,9 @@ test("mantém o inbound Telegram condicionado à conta habilitada", () => {
 test("interpreta comandos do Telegram sem delegar ao LLM", () => {
   assert.deepEqual(TELEGRAM_BOT_COMMANDS.map((command) => command.command), ["help", "status", "model", "imagine", "reset"]);
   assert.deepEqual(parseDiscordCommand("/start"), { kind: "help" });
-  assert.deepEqual(parseDiscordCommand("/status@MrChickenBot"), { kind: "status" });
+  assert.deepEqual(parseDiscordCommand("/status@Kaoz1Bot"), { kind: "status" });
   assert.deepEqual(parseDiscordCommand("/modelo codex gpt-5.6"), { kind: "model", provider: "codex", model: "gpt-5.6" });
-  assert.deepEqual(parseDiscordCommand("/imagine@MrChickenBot arte exata para a capa"), { kind: "imagine", prompt: "arte exata para a capa" });
+  assert.deepEqual(parseDiscordCommand("/imagine@Kaoz1Bot arte exata para a capa"), { kind: "imagine", prompt: "arte exata para a capa" });
   assert.deepEqual(parseDiscordCommand("/limpar"), { kind: "reset" });
 });
 

@@ -101,7 +101,7 @@ export class SpeechService {
 
   async transcribe(audio: File): Promise<SpeechTranscriptionResult> {
     const settings = await readSpeechSettings();
-    const isDesktop = process.env.MRCHICKEN_DESKTOP === "1";
+    const isDesktop = process.env.KAOZ1_DESKTOP === "1" || process.env.MRCHICKEN_DESKTOP === "1";
 
     // Electron cannot depend on Chrome's hosted Web Speech service. Reuse the
     // single MediaRecorder capture and transcribe with an already configured API.

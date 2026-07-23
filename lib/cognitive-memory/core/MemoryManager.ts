@@ -129,8 +129,8 @@ export class MemoryManager {
 
     return [
       {
-        id: 'concept:mrchicken-agent',
-        label: 'Agente MrChicken',
+        id: 'concept:kaoz1-agent',
+        label: 'Kaoz.1',
         type: 'concept',
         description: 'Nucleo autonomo que registra execucoes, resultados e aprendizados operacionais.',
         confidenceScore: 1,
@@ -141,7 +141,7 @@ export class MemoryManager {
         id: this.getAvatarNodeId(episode.avatarId),
         label: `Avatar ${episode.avatarId.slice(0, 8)}`,
         type: 'entity',
-        description: 'Avatar usado pelo Agente MrChicken nesta execucao.',
+        description: 'Avatar usado pelo Kaoz.1 nesta execucao.',
         confidenceScore: 0.9,
         lastObserved: now,
         metadata: { avatarId: episode.avatarId }
@@ -225,7 +225,7 @@ export class MemoryManager {
     const resultRelation = episode.status === 'success' ? 'improves_quality' : 'fails_with';
 
     return [
-      this.createGraphEdge('concept:mrchicken-agent', avatarNodeId, 'uses_avatar', 0.7, now),
+      this.createGraphEdge('concept:kaoz1-agent', avatarNodeId, 'uses_avatar', 0.7, now),
       this.createGraphEdge(avatarNodeId, taskNodeId, 'performs_task', 0.7, now),
       this.createGraphEdge(taskNodeId, modelNodeId, 'uses_model', 0.75, now),
       this.createGraphEdge(modelNodeId, topicNodeId, resultRelation, episode.status === 'success' ? 0.72 : 0.82, now),

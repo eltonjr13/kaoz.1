@@ -1,6 +1,6 @@
 ---
 name: "Build Skills"
-description: "Projeta, cria, revisa e evolui skills completas e prontas para uso no MrChicken. Use quando o usuário pedir para criar, montar, gerar, projetar, melhorar, revisar ou atualizar uma skill, inclusive com /build-skills, exemplos de referência ou padrões de qualidade externos."
+description: "Projeta, cria, revisa e evolui skills completas e prontas para uso no Kaoz.1. Use quando o usuário pedir para criar, montar, gerar, projetar, melhorar, revisar ou atualizar uma skill, inclusive com /build-skills, exemplos de referência ou padrões de qualidade externos."
 version: "2.0.0"
 preferredTools: ["native:file-read","native:file-write"]
 requiredCapabilities: []
@@ -10,7 +10,7 @@ tools: []
 ---
 # Build Skills
 
-Crie skills de produção para o ecossistema MrChicken. Trate uma skill como um pacote especializado completo, não como um prompt curto.
+Crie skills de produção para o ecossistema Kaoz.1. Trate uma skill como um pacote especializado completo, não como um prompt curto.
 
 ## Objetivo de qualidade
 
@@ -24,7 +24,7 @@ Entregue uma skill capaz de executar o trabalho do início ao fim com:
 - referências, scripts e ferramentas quando agregarem capacidade real;
 - integração correta com o registro, o Supercomputer e as ferramentas existentes.
 
-Use [references/quality-standard.md](references/quality-standard.md) para avaliar profundidade e completude. Use [references/project-contract.md](references/project-contract.md) para gerar arquivos compatíveis com o MrChicken.
+Use [references/quality-standard.md](references/quality-standard.md) para avaliar profundidade e completude. Use [references/project-contract.md](references/project-contract.md) para gerar arquivos compatíveis com o Kaoz.1.
 
 ## Fluxo obrigatório
 

@@ -27,8 +27,8 @@ export async function POST(request: Request) {
 
     const voice = await generateOmniVoice({
       script: text,
-      voiceId: "mrchicken",
-      jobId: `mrchicken-voice-${randomUUID()}`,
+      voiceId: "kaoz1",
+      jobId: `kaoz1-voice-${randomUUID()}`,
       refAudioPath: null,
       settings: {
         inference_steps: 24,

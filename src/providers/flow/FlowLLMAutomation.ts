@@ -174,7 +174,7 @@ export class FlowLLMAutomation {
           ]
         });
       } catch (err) {
-        logger.error('[Agente MrChicken] Falha ao ler imagem de referencia para Cerebras:', err);
+        logger.error('[Kaoz.1] Falha ao ler imagem de referencia para Cerebras:', err);
         messages.push({ role: 'user', content: prompt });
       }
     } else {
@@ -254,7 +254,7 @@ export class FlowLLMAutomation {
           }));
       }
     } catch (err) {
-      logger.warn(`[Agente MrChicken] API do modelo ${model} indisponivel.`, err);
+      logger.warn(`[Kaoz.1] API do modelo ${model} indisponivel.`, err);
       return null;
     }
   }
@@ -273,7 +273,7 @@ export class FlowLLMAutomation {
       type === 'video' ? 'vídeo' : 'imagem'
     } para torná-lo profissional, ultra-detalhado e de alto impacto visual. Retorne apenas o prompt melhorado em inglês, sem comentários adicionais, sem aspas e sem explicações: '${rawPrompt}'`;
 
-    logger.info(`[Agente MrChicken] Iniciando otimização com modelo: ${model} para ${type}.`);
+    logger.info(`[Kaoz.1] Iniciando otimização com modelo: ${model} para ${type}.`);
 
     if (model === 'gemini' || model === 'chatgpt' || model === 'deepseek' || model === 'claude') {
       return this.cleanLLMResponse(await runSelectedChatModelCli(model, promptTemplate));
@@ -281,13 +281,13 @@ export class FlowLLMAutomation {
 
     const apiResult = await this.optimizeWithApi(model, promptTemplate);
     if (apiResult) {
-      logger.info(`[Agente MrChicken] Prompt otimizado via API do modelo: ${model}.`);
+      logger.info(`[Kaoz.1] Prompt otimizado via API do modelo: ${model}.`);
       return apiResult;
     }
 
     if (this.shouldSkipWebAutomation(model)) {
       logger.warn(
-        `[Agente MrChicken] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
+        `[Kaoz.1] Automacao web do ${model} desativada para evitar loop de Cloudflare/Turnstile. Usando fallback local.`
       );
       return this.localPromptOptimizer(rawPrompt, type);
     }
@@ -308,7 +308,7 @@ export class FlowLLMAutomation {
           throw new Error(`Modelo ${model} não suportado.`);
       }
     } catch (err) {
-      logger.warn(`[Agente MrChicken] Automação do ${model} indisponível ou bloqueada. Ativando Engenharia de Prompt local...`, err);
+      logger.warn(`[Kaoz.1] Automação do ${model} indisponível ou bloqueada. Ativando Engenharia de Prompt local...`, err);
       return this.localPromptOptimizer(rawPrompt, type);
     }
   }
@@ -341,7 +341,7 @@ export class FlowLLMAutomation {
     if (!referenceImagePath || model === 'cerebras' || model === 'zenmux' || model === 'iamhc') {
       const apiResult = await this.optimizeWithApi(model, prompt, options, referenceImagePath);
       if (apiResult) {
-        logger.info(`[Agente MrChicken] Resposta obtida via API rápida do modelo: ${model}.`);
+        logger.info(`[Kaoz.1] Resposta obtida via API rápida do modelo: ${model}.`);
         // Cerebras e ZenMux já entregam cada fragmento por runFastInferenceApi.
         // Reenviar apiResult aqui faz o cliente falar a resposta uma segunda vez.
         if (model !== 'cerebras' && model !== 'zenmux' && model !== 'iamhc' && options.onTextChunk) {
@@ -358,10 +358,10 @@ export class FlowLLMAutomation {
 
     throw new Error(`Modelo ${model} nao possui um executor LLM configurado.`);
 
-    logger.info(`[Agente MrChicken] Iniciando Web Automation forcada com modelo: ${model}.`);
+    logger.info(`[Kaoz.1] Iniciando Web Automation forcada com modelo: ${model}.`);
 
     if (this.shouldSkipWebAutomation(model)) {
-      logger.warn(`[Agente MrChicken] Automacao web do ${model} esta restrita. Certifique-se de que FLOW_ALLOW_PROTECTED_LLM_WEB=true.`);
+      logger.warn(`[Kaoz.1] Automacao web do ${model} esta restrita. Certifique-se de que FLOW_ALLOW_PROTECTED_LLM_WEB=true.`);
     }
 
     try {
@@ -381,7 +381,7 @@ export class FlowLLMAutomation {
           throw new Error(`Modelo ${model} não suportado.`);
       }
     } catch (err) {
-      logger.error(`[Agente MrChicken] Falha ao consultar ${model} via Playwright.`, err);
+      logger.error(`[Kaoz.1] Falha ao consultar ${model} via Playwright.`, err);
       throw err;
     }
   }
@@ -392,13 +392,13 @@ export class FlowLLMAutomation {
    */
   private async automateGemini(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://gemini.google.com';
-    logger.info(`[Agente MrChicken] Navegando para Gemini: ${url}`);
+    logger.info(`[Kaoz.1] Navegando para Gemini: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'gemini');
 
     if (referenceImagePath) {
-      logger.info(`[Agente MrChicken] Enviando imagem de referência no Gemini: ${referenceImagePath}`);
+      logger.info(`[Kaoz.1] Enviando imagem de referência no Gemini: ${referenceImagePath}`);
       try {
         const fileInput = page.locator('input[type="file"]').first();
         await fileInput.setInputFiles(referenceImagePath);
@@ -423,7 +423,7 @@ export class FlowLLMAutomation {
       { placeholder: 'Enter a prompt' }
     ];
 
-    logger.info('[Agente MrChicken] Inserindo prompt no Gemini...');
+    logger.info('[Kaoz.1] Inserindo prompt no Gemini...');
     const input = await findSmartElement(page, queries, 10000);
     try {
       await input.focus();
@@ -445,12 +445,12 @@ export class FlowLLMAutomation {
       { selector: 'button[type="submit"]' }
     ];
 
-    logger.info('[Agente MrChicken] Enviando solicitação...');
+    logger.info('[Kaoz.1] Enviando solicitação...');
     const sendBtn = await findSmartElement(page, sendBtnQueries, 5000);
     await sendBtn.click();
 
     // Wait for the response bubble to complete loading
-    logger.info('[Agente MrChicken] Aguardando resposta do Gemini...');
+    logger.info('[Kaoz.1] Aguardando resposta do Gemini...');
     await page.waitForTimeout(6000);
 
     let lastText = '';
@@ -509,13 +509,13 @@ export class FlowLLMAutomation {
    */
   private async automateChatGPT(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://chatgpt.com';
-    logger.info(`[Agente MrChicken] Navegando para ChatGPT: ${url}`);
+    logger.info(`[Kaoz.1] Navegando para ChatGPT: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'chatgpt');
 
     if (referenceImagePath) {
-      logger.info(`[Agente MrChicken] Enviando imagem de referência no ChatGPT: ${referenceImagePath}`);
+      logger.info(`[Kaoz.1] Enviando imagem de referência no ChatGPT: ${referenceImagePath}`);
       try {
         const fileInput = page.locator('input[type="file"]').first();
         await fileInput.setInputFiles(referenceImagePath);
@@ -542,7 +542,7 @@ export class FlowLLMAutomation {
       { selector: 'div[contenteditable="true"]' }
     ];
 
-    logger.info('[Agente MrChicken] Inserindo prompt no ChatGPT...');
+    logger.info('[Kaoz.1] Inserindo prompt no ChatGPT...');
     const input = await findSmartElement(page, queries, 10000);
     try {
       await input.focus();
@@ -562,11 +562,11 @@ export class FlowLLMAutomation {
       { selector: 'button[type="submit"]' }
     ];
 
-    logger.info('[Agente MrChicken] Enviando solicitação...');
+    logger.info('[Kaoz.1] Enviando solicitação...');
     const sendBtn = await findSmartElement(page, sendBtnQueries, 5000);
     await sendBtn.click();
 
-    logger.info('[Agente MrChicken] Aguardando resposta do ChatGPT...');
+    logger.info('[Kaoz.1] Aguardando resposta do ChatGPT...');
     await page.waitForTimeout(5000);
 
     // Locate the ChatGPT response blocks
@@ -594,13 +594,13 @@ export class FlowLLMAutomation {
    */
   private async automateDeepSeek(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://chat.deepseek.com';
-    logger.info(`[Agente MrChicken] Navegando para DeepSeek: ${url}`);
+    logger.info(`[Kaoz.1] Navegando para DeepSeek: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'deepseek');
 
     if (referenceImagePath) {
-      logger.info(`[Agente MrChicken] Enviando imagem de referência no DeepSeek: ${referenceImagePath}`);
+      logger.info(`[Kaoz.1] Enviando imagem de referência no DeepSeek: ${referenceImagePath}`);
       try {
         const fileInput = page.locator('input[type="file"]').first();
         await fileInput.setInputFiles(referenceImagePath);
@@ -629,7 +629,7 @@ export class FlowLLMAutomation {
       { selector: 'div[contenteditable="true"]' }
     ];
 
-    logger.info('[Agente MrChicken] Inserindo prompt no DeepSeek...');
+    logger.info('[Kaoz.1] Inserindo prompt no DeepSeek...');
     const input = await findSmartElement(page, queries, 10000);
     try {
       await input.focus();
@@ -649,11 +649,11 @@ export class FlowLLMAutomation {
       { selector: '.send-btn' }
     ];
 
-    logger.info('[Agente MrChicken] Enviando solicitação...');
+    logger.info('[Kaoz.1] Enviando solicitação...');
     const sendBtn = await findSmartElement(page, sendBtnQueries, 5000);
     await sendBtn.click();
 
-    logger.info('[Agente MrChicken] Aguardando resposta do DeepSeek...');
+    logger.info('[Kaoz.1] Aguardando resposta do DeepSeek...');
     await page.waitForTimeout(5000);
 
     const bubbles = page.locator('.ds-markdown, .assistant-msg, .chat-message');
@@ -679,13 +679,13 @@ export class FlowLLMAutomation {
    */
   private async automateClaude(page: Page, prompt: string, referenceImagePath?: string): Promise<string> {
     const url = 'https://claude.ai';
-    logger.info(`[Agente MrChicken] Navegando para Claude: ${url}`);
+    logger.info(`[Kaoz.1] Navegando para Claude: ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(2000);
     await this.assertNoCloudflareChallenge(page, 'claude');
 
     if (referenceImagePath) {
-      logger.info(`[Agente MrChicken] Enviando imagem de referência no Claude: ${referenceImagePath}`);
+      logger.info(`[Kaoz.1] Enviando imagem de referência no Claude: ${referenceImagePath}`);
       try {
         const fileInput = page.locator('input[type="file"]').first();
         await fileInput.setInputFiles(referenceImagePath);
@@ -707,7 +707,7 @@ export class FlowLLMAutomation {
       { selector: 'textarea' }
     ];
 
-    logger.info('[Agente MrChicken] Inserindo prompt no Claude...');
+    logger.info('[Kaoz.1] Inserindo prompt no Claude...');
     const input = await findSmartElement(page, queries, 10000);
     try {
       await input.focus();
@@ -727,11 +727,11 @@ export class FlowLLMAutomation {
       { selector: 'button:has(svg)' }
     ];
 
-    logger.info('[Agente MrChicken] Enviando solicitação...');
+    logger.info('[Kaoz.1] Enviando solicitação...');
     const sendBtn = await findSmartElement(page, sendBtnQueries, 5000);
     await sendBtn.click();
 
-    logger.info('[Agente MrChicken] Aguardando resposta do Claude...');
+    logger.info('[Kaoz.1] Aguardando resposta do Claude...');
     await page.waitForTimeout(5000);
 
     const bubbles = page.locator('.font-claude-message, .assistant, article');

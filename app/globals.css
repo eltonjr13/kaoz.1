@@ -75,30 +75,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-html[data-mrchicken-desktop="true"] {
-  --mrchicken-titlebar-height: 36px;
+html[data-kaoz1-desktop="true"] {
+  --kaoz1-titlebar-height: 36px;
 }
 
-html[data-mrchicken-desktop="true"] body {
+html[data-kaoz1-desktop="true"] body {
   height: 100dvh;
-  padding-top: var(--mrchicken-titlebar-height);
+  padding-top: var(--kaoz1-titlebar-height);
 }
 
 /* Keep the application inside the visual area left below the custom titlebar.
    The explicit viewport calculation avoids Electron treating the padded body
    as a full-height containing block and clipping bottom-anchored controls. */
-html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
-  height: calc(100dvh - var(--mrchicken-titlebar-height));
+html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
+  height: calc(100dvh - var(--kaoz1-titlebar-height));
   min-height: 0;
-  max-height: calc(100dvh - var(--mrchicken-titlebar-height));
+  max-height: calc(100dvh - var(--kaoz1-titlebar-height));
 }
 
-.mrchicken-desktop-titlebar {
+.kaoz1-desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;
   z-index: 100;
   display: flex;
-  height: var(--mrchicken-titlebar-height);
+  height: var(--kaoz1-titlebar-height);
   align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.065);
   background: rgba(9, 9, 12, 0.92);
@@ -108,7 +108,7 @@ html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
   user-select: none;
 }
 
-.mrchicken-desktop-titlebar__brand {
+.kaoz1-desktop-titlebar__brand {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -121,23 +121,23 @@ html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
   -webkit-app-region: drag;
 }
 
-.mrchicken-desktop-titlebar__brand svg {
+.kaoz1-desktop-titlebar__brand svg {
   color: #9d7cff;
 }
 
-.mrchicken-desktop-titlebar__drag-region {
+.kaoz1-desktop-titlebar__drag-region {
   align-self: stretch;
   flex: 1;
   -webkit-app-region: drag;
 }
 
-.mrchicken-desktop-titlebar__controls {
+.kaoz1-desktop-titlebar__controls {
   display: flex;
   align-self: stretch;
   -webkit-app-region: no-drag;
 }
 
-.mrchicken-desktop-titlebar__controls button {
+.kaoz1-desktop-titlebar__controls button {
   display: grid;
   width: 46px;
   place-items: center;
@@ -146,31 +146,31 @@ html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
   transition: background 140ms ease, color 140ms ease;
 }
 
-.mrchicken-desktop-titlebar__controls button:hover {
+.kaoz1-desktop-titlebar__controls button:hover {
   background: rgba(255, 255, 255, 0.07);
   color: #fff;
 }
 
-.mrchicken-desktop-titlebar__controls .mrchicken-desktop-titlebar__close:hover {
+.kaoz1-desktop-titlebar__controls .kaoz1-desktop-titlebar__close:hover {
   background: #c42b1c;
   color: #fff;
 }
 
-.mrchicken-desktop-titlebar__controls button:focus-visible {
+.kaoz1-desktop-titlebar__controls button:focus-visible {
   outline: 1px solid #9d7cff;
   outline-offset: -3px;
 }
 
-html[data-mrchicken-desktop="true"] .mrchicken-sidebar-dock {
-  top: var(--mrchicken-titlebar-height);
+html[data-kaoz1-desktop="true"] .kaoz1-sidebar-dock {
+  top: var(--kaoz1-titlebar-height);
 }
 
-html[data-mrchicken-desktop="true"] .mrchicken-mobile-nav {
-  top: var(--mrchicken-titlebar-height);
+html[data-kaoz1-desktop="true"] .kaoz1-mobile-nav {
+  top: var(--kaoz1-titlebar-height);
 }
 
-html[data-mrchicken-desktop="true"] .mrchicken-mobile-menu-overlay {
-  top: var(--mrchicken-titlebar-height);
+html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
+  top: var(--kaoz1-titlebar-height);
 }
 
 ::selection {
@@ -191,7 +191,7 @@ html[data-mrchicken-desktop="true"] .mrchicken-mobile-menu-overlay {
 .flow-cinematic-background__art {
   position: absolute;
   inset: -12px;
-  background-image: url('/mrchicken-cyberpunk-bg.jpeg');
+  background-image: url('/kaoz1-cyberpunk-bg.jpeg');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -1122,7 +1122,7 @@ select option {
 }
 
 /* ============================================================
-   PREMIUM DESIGN SYSTEM — Liquid Glass & MrChicken Identity
+   PREMIUM DESIGN SYSTEM — Liquid Glass & Kaoz.1 Identity
    ============================================================ */
 
 /* Glass surface — base for cards, panels, sidebar */
@@ -1183,7 +1183,7 @@ select option {
   width: 100%;
   pointer-events: none;
   z-index: 0;
-  background-image: url('/mrchicken-anime-bg.jpeg');
+  background-image: url('/kaoz1-anime-bg.jpeg');
   background-size: cover;
   background-position: center;
   opacity: 0.05;

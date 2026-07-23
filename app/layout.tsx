@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AgenteMrChicken — AI Workspace",
+  title: "Kaoz.1 — AI Workspace",
   description: "Ambiente de criação e automação inteligente com IA de próxima geração.",
 };
 

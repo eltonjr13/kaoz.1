@@ -42,12 +42,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$env:RELEASE_TAG" `
-            "release/MrChicken-Setup-$env:RELEASE_VERSION.exe" `
-            "release/MrChicken-Setup-$env:RELEASE_VERSION.exe.blockmap" `
+            "release/Kaoz.1-Setup-$env:RELEASE_VERSION.exe" `
+            "release/Kaoz.1-Setup-$env:RELEASE_VERSION.exe.blockmap" `
             "release/latest.yml" `
             --repo "$env:GITHUB_REPOSITORY" `
             --target "$env:GITHUB_SHA" `
-            --title "MrChicken $env:RELEASE_TAG" `
+            --title "Kaoz.1 $env:RELEASE_TAG" `
             --generate-notes `
             --draft
 

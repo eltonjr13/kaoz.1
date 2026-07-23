@@ -9,7 +9,7 @@ export type DiscordCommand =
   | { kind: "unknown"; name: string };
 
 export const DISCORD_APPLICATION_COMMANDS = [
-  { name: "help", description: "Mostra os comandos disponíveis do MrChicken" },
+  { name: "help", description: "Mostra os comandos disponíveis do Kaoz.1" },
   { name: "status", description: "Mostra o provedor e o modelo ativos nesta conversa" },
   { name: "imagine", description: "Gera uma imagem no Flow", options: [
     { name: "prompt", description: "Descreva a imagem", type: 3, required: true },
@@ -59,7 +59,7 @@ async function helpText(): Promise<string> {
   const catalog = await getConfigurableAgentCatalog();
   const providers = catalog.length ? catalog.map((provider) => `\`${provider.commandName}\``).join(", ") : "nenhum configurado";
   return [
-    "**Comandos do MrChicken**",
+    "**Comandos do Kaoz.1**",
     "`/status` — mostra o provedor e modelo desta conversa.",
     "`/model` — abre a escolha guiada.",
     "`/model <provedor> <modelo>` — mantém a troca direta pelo nome.",

@@ -1214,7 +1214,7 @@ function TTSSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: Stat
     try {
       if (action === "test") {
         if (actionProvider === "cartesia") {
-          const testAudio = playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema MrChicken.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
+          const testAudio = playCartesiaVoiceWebSocket(cartesiaApiKey, cartesiaVoiceId, "Olá! Esta é uma mensagem de teste do sistema Kaoz.1.", cartesiaModel, cartesiaSpeed, cartesiaEmotion);
           await testAudio.promise;
           onStatusMessage({ text: "Teste de voz finalizado.", type: "success" });
         } else if (actionProvider === "fish-audio") {
@@ -2007,7 +2007,7 @@ export default function SettingsPage() {
                 <span>Contas & Login das IAs (Perfis do Playwright)</span>
               </h2>
               <p className="text-[11px] text-zinc-500 leading-relaxed max-w-3xl">
-                Como os agentes rodam via automação de navegador em segundo plano, você só precisa fazer o login nas suas contas uma vez. O Playwright guardará a sua sessão de cookies permanentemente. Ao clicar em <strong>Fazer Login</strong>, uma janela de navegador visível será aberta para você logar na respectiva conta. O MrChicken fechará a janela automaticamente após detectar o sucesso da conexão.
+                Como os agentes rodam via automação de navegador em segundo plano, você só precisa fazer o login nas suas contas uma vez. O Playwright guardará a sua sessão de cookies permanentemente. Ao clicar em <strong>Fazer Login</strong>, uma janela de navegador visível será aberta para você logar na respectiva conta. O Kaoz.1 fechará a janela automaticamente após detectar o sucesso da conexão.
               </p>
             </div>
 

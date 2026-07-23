@@ -518,7 +518,7 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                   <a 
                     className="button secondary" 
                     style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                    href="/mrchicken_lipsync_colab.ipynb"
+                    href="/kaoz1_lipsync_colab.ipynb"
                     download
                   >
                     <Download size={14} /> Baixar Notebook (.ipynb)
@@ -608,7 +608,7 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                   <a 
                     className="button secondary" 
                     style={{ fontSize: "0.8rem", minHeight: "36px", padding: "0 12px", flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-                    href="/mrchicken_lipsync_colab.ipynb"
+                    href="/kaoz1_lipsync_colab.ipynb"
                     download
                   >
                     <Download size={14} /> Baixar Notebook (.ipynb)
@@ -624,7 +624,7 @@ export function JobList({ jobs }: { jobs: JobListItem[] }) {
                   </a>
                 </div>
                 <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                  Dica: No Google Colab, vá em &quot;Fazer Upload&quot; e envie o arquivo <code>mrchicken_lipsync_colab.ipynb</code> que você acabou de baixar.
+                  Dica: No Google Colab, vá em &quot;Fazer Upload&quot; e envie o arquivo <code>kaoz1_lipsync_colab.ipynb</code> que você acabou de baixar.
                 </span>
               </div>
 

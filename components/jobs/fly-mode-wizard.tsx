@@ -1175,7 +1175,7 @@ export function FlyModeWizard({
                                   className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-[#9D7CFF] hover:text-black transition-all cursor-pointer"
                                 >
                                   <Zap size={11} />
-                                  <span>Gerar com MrChicken</span>
+                                  <span>Gerar com Kaoz.1</span>
                                 </button>
                               )}
 

@@ -710,7 +710,7 @@ export class FlowImageGenerator {
 
       const imageCardSelector = 'img:not([role="dialog"] img):not(aside img)';
       const imageCards = () => page.locator(imageCardSelector);
-      const initialImageMarker = 'data-mrchicken-initial-image';
+      const initialImageMarker = 'data-kaoz1-initial-image';
       const getImageIdentity = async (index: number): Promise<string> => {
         return await imageCards().nth(index).evaluate((el) => {
           const image = el as HTMLImageElement;

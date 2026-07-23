@@ -1,7 +1,7 @@
 """
-OmniVoice low-latency Gradio server with a public URL for MrChicken.
+OmniVoice low-latency Gradio server with a public URL for Kaoz.1.
 
-This preserves the current MrChicken contract:
+This preserves the current Kaoz.1 contract:
   - predict(0): Voice Clone
   - predict(1): Voice Design
 
@@ -9,7 +9,7 @@ Run in Kaggle/Jupyter after installing deps:
     import sys
     !{sys.executable} -m pip install -q "transformers>=5.3" omnivoice gradio==6.11.0 pydub numpy
 
-Then execute this file/cell. Copy the printed OMNIVOICE_API_URL into MrChicken.
+Then execute this file/cell. Copy the printed OMNIVOICE_API_URL into Kaoz.1.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ with gr.Blocks(title="OmniVoice Low Latency") as demo:
     gr.Markdown("# OmniVoice Low Latency")
 
     with gr.Tabs():
-        # Keep this tab first: MrChicken calls predict(0) for clone mode.
+        # Keep this tab first: Kaoz.1 calls predict(0) for clone mode.
         with gr.TabItem("Voice Clone"):
             vc_text = gr.Textbox(label="Text to Synthesize", lines=4)
             vc_lang = lang_dropdown()
@@ -233,7 +233,7 @@ with gr.Blocks(title="OmniVoice Low Latency") as demo:
                 outputs=[vc_audio, vc_status],
             )
 
-        # Keep this tab second: MrChicken calls predict(1) for design mode.
+        # Keep this tab second: Kaoz.1 calls predict(1) for design mode.
         with gr.TabItem("Voice Design"):
             vd_text = gr.Textbox(label="Text to Synthesize", lines=4)
             vd_lang = lang_dropdown()
@@ -269,4 +269,4 @@ launch_info = demo.queue(default_concurrency_limit=1).launch(
 public_url = getattr(launch_info, "share_url", None) or getattr(launch_info, "local_url", None)
 if public_url:
     print(f"OMNIVOICE_API_URL={public_url.rstrip('/')}")
-    print("Cole essa URL no MrChicken em Settings > OmniVoice ou no .env.local.")
+    print("Cole essa URL no Kaoz.1 em Settings > OmniVoice ou no .env.local.")

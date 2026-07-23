@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import os
@@ -21,9 +21,9 @@ from musetalk_service import (
 )
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s [LIPSYNC] %(message)s")
-logger = logging.getLogger("mrchicken.lipsync")
+logger = logging.getLogger("kaoz1.lipsync")
 
-app = FastAPI(title="MrChicken MuseTalk Lip-Sync Service", version="1.1.0")
+app = FastAPI(title="Kaoz.1 MuseTalk Lip-Sync Service", version="1.1.0")
 service = MuseTalkService(
     models_dir=Path(os.getenv("MUSETALK_MODELS_DIR", Path(__file__).parent / "models")),
     outputs_dir=Path(os.getenv("MUSETALK_OUTPUTS_DIR", Path(__file__).parent / "outputs")),

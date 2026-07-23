@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       .join("\n")
       .slice(0, MAX_INSTALLED_SKILLS_CHARS);
     const availableTools = await availableToolsContext();
-    const prompt = `Você está executando a skill Build Skills do MrChicken. Siga integralmente as instruções e referências abaixo.
+    const prompt = `Você está executando a skill Build Skills do Kaoz.1. Siga integralmente as instruções e referências abaixo.
 
 [BUILD SKILLS]
 ${builderContext()}

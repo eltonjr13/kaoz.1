@@ -111,7 +111,7 @@ export class McpManager {
 
   private createClientAndTransport(config: McpServerConfig) {
     const client = new Client({
-      name: "mrchicken-agent",
+      name: "kaoz1-agent",
       version: "1.0.0"
     }, {
       capabilities: {}

@@ -1,4 +1,4 @@
-# Project: Mr. Chicken Skills Tab Expansion
+# Project: Kaoz.1 Skills Tab Expansion
 
 ## Architecture
 - **Skills Directory (`skills/`)**: Contains self-contained subfolders for each skill.

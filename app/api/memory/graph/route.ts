@@ -15,9 +15,9 @@ export async function GET() {
       nodes = [
         {
           id: 'concept:react-ugc-studio',
-          label: 'Mr. Chicken UGC Studio',
+          label: 'Kaoz.1 UGC Studio',
           type: 'concept',
-          description: 'Núcleo central de criação autônoma de vídeo e criativos de imagem do Mr. Chicken.',
+          description: 'Núcleo central de criação autônoma de vídeo e criativos de imagem do Kaoz.1.',
           confidenceScore: 1.0,
           lastObserved: new Date().toISOString(),
           metadata: { system: true }

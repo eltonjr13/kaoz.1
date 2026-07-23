@@ -57,7 +57,7 @@ export function playCartesiaVoiceWebSocket(
 
       activeWs.onopen = () => {
         if (isCancelled) return;
-        const contextId = "mrchicken-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 8);
+        const contextId = "kaoz1-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 8);
         
         const controls: Record<string, any> = {};
         if (speed && speed !== "auto") {
@@ -196,7 +196,7 @@ export function playCartesiaVoiceStream(
   let isFirstChunk = true;
   let nextStartTime = 0;
   const JITTER_BUFFER_SEC = 0.15;
-  const contextId = "mrchicken-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 8);
+  const contextId = "kaoz1-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 8);
   
   let resolvePromise: () => void = () => {};
   let rejectPromise: (err: Error) => void = () => {};

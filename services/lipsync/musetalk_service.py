@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from string import Template
 
-logger = logging.getLogger("mrchicken.lipsync")
+logger = logging.getLogger("kaoz1.lipsync")
 
 
 class GPUUnavailableError(RuntimeError):

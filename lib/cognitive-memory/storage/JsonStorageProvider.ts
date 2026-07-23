@@ -4,6 +4,28 @@ import type { IStorageProvider, CognitiveMemoryData } from './IStorageProvider';
 import { getFlowStorageRoot } from '../../runtime-paths.ts';
 
 const DEFAULT_USER_ID = 'local-user';
+const LEGACY_AGENT_NODE_ID = 'concept:mrchicken-agent';
+const KAOZ_AGENT_NODE_ID = 'concept:kaoz1-agent';
+
+function migrateSemanticBrand(data: Partial<CognitiveMemoryData> | undefined) {
+  const sourceNodes = data?.semantic?.nodes || [];
+  const hasCurrentAgentNode = sourceNodes.some((node) => node.id === KAOZ_AGENT_NODE_ID);
+  const nodes = sourceNodes
+    .filter((node) => node.id !== LEGACY_AGENT_NODE_ID || !hasCurrentAgentNode)
+    .map((node) => node.id === LEGACY_AGENT_NODE_ID ? {
+      ...node,
+      id: KAOZ_AGENT_NODE_ID,
+      label: 'Kaoz.1',
+      description: node.description?.replace(/Mr\s*Chicken/gi, 'Kaoz.1')
+    } : node);
+  const edges = (data?.semantic?.edges || []).map((edge) => ({
+    ...edge,
+    id: edge.id.replaceAll(LEGACY_AGENT_NODE_ID, KAOZ_AGENT_NODE_ID),
+    source: edge.source === LEGACY_AGENT_NODE_ID ? KAOZ_AGENT_NODE_ID : edge.source,
+    target: edge.target === LEGACY_AGENT_NODE_ID ? KAOZ_AGENT_NODE_ID : edge.target
+  }));
+  return { nodes, edges };
+}
 
 function emptyMemory(): CognitiveMemoryData {
   return {
@@ -15,12 +37,13 @@ function emptyMemory(): CognitiveMemoryData {
 }
 
 function normalizeMemory(data: Partial<CognitiveMemoryData> | undefined): CognitiveMemoryData {
+  const semantic = migrateSemanticBrand(data);
   return {
     episodic: { nodes: data?.episodic?.nodes || [] },
     procedural: { rules: data?.procedural?.rules || [] },
     semantic: {
-      nodes: data?.semantic?.nodes || [],
-      edges: data?.semantic?.edges || []
+      nodes: semantic.nodes,
+      edges: semantic.edges
     },
     chat: {
       memories: (data?.chat?.memories || []).map((memory) => ({

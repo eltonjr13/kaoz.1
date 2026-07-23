@@ -8,11 +8,12 @@ import { ChatMemoryService, LOCAL_MEMORY_USER_ID } from '../lib/cognitive-memory
 import { JsonStorageProvider } from '../lib/cognitive-memory/storage/JsonStorageProvider.ts';
 
 function testStore() {
-  const root = path.join(os.tmpdir(), `mrchicken-memory-${crypto.randomUUID()}`);
+  const root = path.join(os.tmpdir(), `kaoz1-memory-${crypto.randomUUID()}`);
+  const file = path.join(root, 'cognitive-memory.json');
   return {
     root,
-    file: path.join(root, 'cognitive-memory.json'),
-    service: new ChatMemoryService(new JsonStorageProvider(path.join(root, 'cognitive-memory.json')))
+    file,
+    service: new ChatMemoryService(new JsonStorageProvider(file, file))
   };
 }
 
@@ -47,7 +48,7 @@ test('preferencia explicita atravessa conversas e avatares por significado', asy
 });
 
 test('armazenamento migra o arquivo legado para o destino persistente', async () => {
-  const root = path.join(os.tmpdir(), `mrchicken-memory-migration-${crypto.randomUUID()}`);
+  const root = path.join(os.tmpdir(), `kaoz1-memory-migration-${crypto.randomUUID()}`);
   const legacyFile = path.join(root, 'legacy', 'cognitive-memory.json');
   const targetFile = path.join(root, 'persistent', 'cognitive-memory.json');
   try {
@@ -62,6 +63,47 @@ test('armazenamento migra o arquivo legado para o destino persistente', async ()
     await provider.readMemory();
     const migrated = JSON.parse(await readFile(targetFile, 'utf8'));
     assert.deepEqual(migrated.chat.memories, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('normaliza a identidade anterior no grafo sem perder relacionamentos', async () => {
+  const root = path.join(os.tmpdir(), `kaoz1-brand-migration-${crypto.randomUUID()}`);
+  const file = path.join(root, 'cognitive-memory.json');
+  try {
+    await mkdir(root, { recursive: true });
+    await writeFile(file, JSON.stringify({
+      episodic: { nodes: [] },
+      procedural: { rules: [] },
+      semantic: {
+        nodes: [{
+          id: 'concept:mrchicken-agent',
+          label: 'Agente MrChicken',
+          type: 'concept',
+          description: 'Nucleo do MrChicken',
+          confidenceScore: 1,
+          lastObserved: '2026-01-01T00:00:00.000Z'
+        }],
+        edges: [{
+          id: 'edge:concept:mrchicken-agent->avatar:a:uses_avatar',
+          source: 'concept:mrchicken-agent',
+          target: 'avatar:a',
+          relation: 'uses_avatar',
+          weight: 1,
+          confidenceScore: 1,
+          occurrences: 1,
+          lastReinforced: '2026-01-01T00:00:00.000Z'
+        }]
+      },
+      chat: { memories: [] }
+    }), 'utf8');
+
+    const memory = await new JsonStorageProvider(file).readMemory();
+    assert.equal(memory.semantic.nodes[0].id, 'concept:kaoz1-agent');
+    assert.equal(memory.semantic.nodes[0].label, 'Kaoz.1');
+    assert.equal(memory.semantic.edges[0].source, 'concept:kaoz1-agent');
+    assert.match(memory.semantic.edges[0].id, /concept:kaoz1-agent/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

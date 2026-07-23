@@ -71,7 +71,7 @@ export function extractLatestUserPrompt(prompt: string): string {
   const afterUserMarker = prompt.slice(lastUserMarker.index + lastUserMarker[0].length);
   // Stop at any prompt section emitted after the user message. Restricting this
   // to [INSTRU...] allowed [RESTRIÇÃO DE GROUNDING] to leak into tool intent.
-  const nextSectionIndex = afterUserMarker.search(/\n\n(?:MR CHICKEN|USU[^\n]*:|\[[^\n]+\])/);
+  const nextSectionIndex = afterUserMarker.search(/\n\n(?:KAOZ.1|USU[^\n]*:|\[[^\n]+\])/);
   const latestUserPrompt = nextSectionIndex >= 0
     ? afterUserMarker.slice(0, nextSectionIndex)
     : afterUserMarker;
@@ -114,7 +114,7 @@ function isSpotifyTool(serverId: string, toolName: string): boolean {
 function formatMissingSpotifyToolsMessage(missingToolName?: string): string {
   const suffix = missingToolName ? ` A ferramenta '${missingToolName}' tambem nao foi encontrada.` : "";
   return JSON.stringify({
-    message: `Nao consegui executar no Spotify porque o MCP do Spotify nao esta carregado.${suffix} Reinicie o servidor do MrChicken e verifique a configuracao do MCP Spotify.`,
+    message: `Nao consegui executar no Spotify porque o MCP do Spotify nao esta carregado.${suffix} Reinicie o servidor do Kaoz.1 e verifique a configuracao do MCP Spotify.`,
     action: null
   });
 }
@@ -428,7 +428,7 @@ async function checkCommandStatus(command: string): Promise<AgentLLMCommandStatu
 }
 
 async function writeTempFile(prefix: string, contents = ""): Promise<string> {
-  const tempDir = path.join(os.tmpdir(), "mrchicken-agent-cli");
+  const tempDir = path.join(os.tmpdir(), "kaoz1-agent-cli");
   await mkdir(tempDir, { recursive: true });
   const filePath = path.join(tempDir, `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`);
   await writeFile(filePath, contents, "utf8");
@@ -436,7 +436,7 @@ async function writeTempFile(prefix: string, contents = ""): Promise<string> {
 }
 
 async function writeTempCommandFile(prefix: string, contents: string): Promise<string> {
-  const tempDir = path.join(os.tmpdir(), "mrchicken-agent-cli");
+  const tempDir = path.join(os.tmpdir(), "kaoz1-agent-cli");
   await mkdir(tempDir, { recursive: true });
   const filePath = path.join(tempDir, `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.cmd`);
   await writeFile(filePath, contents, "utf8");
@@ -711,7 +711,7 @@ export async function runSelectedChatModelCli(
       : currentPrompt;
 
     if (model === "gemini") {
-      // In MrChicken, Gemini is provided by Antigravity (`agy`), which is
+      // In Kaoz.1, Gemini is provided by Antigravity (`agy`), which is
       // already configured and authenticated in the Agent LLM settings. Do not
       // invoke Google's unrelated `gemini` CLI here.
       if (options.referenceImagePath) {

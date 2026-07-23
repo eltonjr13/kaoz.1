@@ -32,7 +32,7 @@ async function main() {
   console.log(`CEREBRAS_MODEL: ${process.env.CEREBRAS_MODEL || 'gemma-4-31b'}`);
   // Teste 1: Geração de JSON estruturado
   console.log('\n[TESTE 1] Testando generateFlyJson (JSON estruturado)...');
-  const jsonPrompt = `Retorne um objeto JSON representando um roteiro de vídeo de 15 segundos sobre o MrChicken. O objeto deve ter as chaves: "titulo", "roteiro" (string) e "tags" (array de strings).`;
+  const jsonPrompt = `Retorne um objeto JSON representando um roteiro de vídeo de 15 segundos sobre o Kaoz.1. O objeto deve ter as chaves: "titulo", "roteiro" (string) e "tags" (array de strings).`;
   try {
     const jsonResult = await generateFlyJson('cerebras', jsonPrompt);
     console.log('Resultado do JSON:', jsonResult);
@@ -65,7 +65,7 @@ async function main() {
   console.log('\n[TESTE 3] Testando queryWebLLM com Streaming...');
   try {
     let chunkCount = 0;
-    const queryPrompt = 'Escreva um parágrafo curto parabenizando o time de desenvolvimento do MrChicken.';
+    const queryPrompt = 'Escreva um parágrafo curto parabenizando o time de desenvolvimento do Kaoz.1.';
     console.log(`Prompt: "${queryPrompt}"`);
     console.log('Chunks recebidos em tempo real:');
     const result = await provider.queryWebLLM('cerebras', queryPrompt, undefined, {

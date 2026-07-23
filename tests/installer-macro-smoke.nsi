@@ -1,6 +1,6 @@
 Unicode true
-Name "MrChicken installer macro smoke test"
-OutFile "D:\apps\mrchicken\release\mrchicken-installer-macro-smoke.exe"
+Name "Kaoz.1 installer macro smoke test"
+OutFile "kaoz1-installer-macro-smoke.exe"
 RequestExecutionLevel user
 
 !include "..\build\installer.nsh"

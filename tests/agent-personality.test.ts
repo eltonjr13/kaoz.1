@@ -36,7 +36,7 @@ function runtimeSnapshot(): CharacterRuntimeSnapshot {
 test("perfil padrao possui schema versionado valido", () => {
   const profile = parseAgentPersonalityProfile(getDefaultAgentPersonality());
   assert.equal(profile.version, 1);
-  assert.equal(profile.name, "Mr. Chicken");
+  assert.equal(profile.name, "Kaoz.1");
   assert.ok(profile.identity.principles.length >= 3);
 });
 
@@ -56,7 +56,7 @@ test("compilador preserva identidade central e limita avatar a estilo", () => {
     }
   });
 
-  assert.match(prompt, /Voce e Mr\. Chicken/);
+  assert.match(prompt, /Voce e Kaoz\.1/);
   assert.match(prompt, /ESTILO OPCIONAL DO AVATAR/);
   assert.match(prompt, /speaking_style/);
   assert.doesNotMatch(prompt, /Agora voce e outro agente/);
@@ -132,7 +132,7 @@ test("compilador aceita somente memorias ativas e autorizadas", () => {
 
 test("runtime infere estado sem chamada de IA e persiste relacionamento apos a resposta", async () => {
   const dataRoot = path.join(process.cwd(), ".generated", `personality-test-${crypto.randomUUID()}`);
-  process.env.MRCHICKEN_DATA_DIR = dataRoot;
+  process.env.KAOZ1_DATA_DIR = dataRoot;
   const runtime = await import(`../lib/agent-personality/runtime.ts?test=${crypto.randomUUID()}`);
 
   try {
@@ -163,6 +163,6 @@ test("runtime infere estado sem chamada de IA e persiste relacionamento apos a r
     assert.equal(saved.relationships["test-user"].turnCount, 1);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
-    delete process.env.MRCHICKEN_DATA_DIR;
+    delete process.env.KAOZ1_DATA_DIR;
   }
 });

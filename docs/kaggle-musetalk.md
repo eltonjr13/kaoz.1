@@ -1,6 +1,6 @@
-# Rodar LatentSync no Kaggle para o MrChicken
+# Rodar LatentSync no Kaggle para o Kaoz.1
 
-Este guia configura o **LatentSync (ByteDance)** como microserviço externo no Kaggle, mantendo o pipeline do MrChicken:
+Este guia configura o **LatentSync (ByteDance)** como microserviço externo no Kaggle, mantendo o pipeline do Kaoz.1:
 
 ```txt
 roteiro -> voz -> lipsync -> render final
@@ -37,7 +37,7 @@ lib/ai/lipsync.ts                        # cliente Next.js local compatível
 A célula do Cloudflare Tunnel imprimirá algo assim:
 
 ```env
-=== CONFIGURE NO .env.local DO MRCHICKEN ===
+=== CONFIGURE NO .env.local DO KAOZ1 ===
 LIPSYNC_API_URL=https://xxxx.trycloudflare.com
 # LIPSYNC_API_KEY não é necessária
 LIPSYNC_TRANSFER_MODE=upload
@@ -48,9 +48,9 @@ LIPSYNC_TIMEOUT_MS=1800000
 
 ---
 
-## 2. Configurar o MrChicken local
+## 2. Configurar o Kaoz.1 local
 
-No arquivo `.env.local` do seu projeto MrChicken local:
+No arquivo `.env.local` do seu projeto Kaoz.1 local:
 
 ```env
 LIPSYNC_API_URL=https://xxxx.trycloudflare.com

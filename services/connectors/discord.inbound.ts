@@ -97,8 +97,8 @@ export function buildDiscordAgentPrompt(input: {
   recent: Array<{ role: "user" | "assistant"; content: string }>;
   memoryContext?: string;
 }): string {
-  const context = input.recent.slice(-6).map((item) => `${item.role === "user" ? "USUARIO" : "MRCHICKEN"}: ${item.content.slice(0, 1_500)}`).join("\n");
-  return `Você é o agente MrChicken respondendo a uma menção recebida no Discord.
+  const context = input.recent.slice(-6).map((item) => `${item.role === "user" ? "USUARIO" : "KAOZ1"}: ${item.content.slice(0, 1_500)}`).join("\n");
+  return `Você é o agente Kaoz.1 respondendo a uma menção recebida no Discord.
 Responda em português do Brasil, de forma direta e útil, com no máximo 1.800 caracteres.
 Você pode usar Markdown compatível com Discord. Não use @everyone, @here ou menções a usuários/cargos.
 Não diga que executou ações que não foram realmente executadas. A resposta será enviada automaticamente como reply; não use a ferramenta social:discord:publish.

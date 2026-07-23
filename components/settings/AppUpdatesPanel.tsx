@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle, Download, Loader2, RefreshCw, RotateCw } from "lucide-react";
 
-type UpdateStatus = MrChickenUpdateStatus;
+type UpdateStatus = Kaoz1UpdateStatus;
 
 const INITIAL_STATUS: UpdateStatus = { state: "idle" };
 
@@ -15,7 +15,7 @@ function messageFor(status: UpdateStatus) {
     case "downloading": return `Baixando atualização${typeof status.progress === "number" ? `: ${status.progress}%` : "..."}`;
     case "downloaded": return `A versão ${status.version || "nova"} está pronta para instalar.`;
     case "not-available": return "Você já está usando a versão mais recente.";
-    case "unsupported": return status.error || "Abra o MrChicken instalado no Windows para verificar atualizações.";
+    case "unsupported": return status.error || "Abra o Kaoz.1 instalado no Windows para verificar atualizações.";
     case "error": return status.error || "Não foi possível verificar a atualização agora.";
     default: return "Verifique novas versões sem reinstalar o aplicativo.";
   }
@@ -23,7 +23,7 @@ function messageFor(status: UpdateStatus) {
 
 export function AppUpdatesPanel() {
   const [status, setStatus] = useState<UpdateStatus>(INITIAL_STATUS);
-  const bridge = typeof window === "undefined" ? undefined : window.mrChickenDesktop;
+  const bridge = typeof window === "undefined" ? undefined : window.kaoz1Desktop;
 
   useEffect(() => {
     if (!bridge) return;
@@ -96,11 +96,11 @@ export function AppUpdatesPanel() {
               ? "O canal de atualização está online, mas a release ainda não possui todos os arquivos necessários."
               : "Tente novamente quando a conexão estiver disponível."
             : status.state === "downloaded"
-              ? "A instalação acontecerá após reiniciar o MrChicken."
+              ? "A instalação acontecerá após reiniciar o Kaoz.1."
               : "Nenhuma ação é necessária."}</span>
         </div>
       )}
-      {!bridge && <p className="mt-5 border-t border-white/[0.05] pt-4 text-[10px] text-zinc-600">Este controle funciona no aplicativo MrChicken para Windows.</p>}
+      {!bridge && <p className="mt-5 border-t border-white/[0.05] pt-4 text-[10px] text-zinc-600">Este controle funciona no aplicativo Kaoz.1 para Windows.</p>}
     </section>
   );
 }

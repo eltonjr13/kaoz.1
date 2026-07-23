@@ -15,7 +15,7 @@ test("valida argumentos da ferramenta", () => {
     additionalProperties: false,
   };
 
-  assert.doesNotThrow(() => assertToolArguments(schema, { query: "MrChicken" }));
+  assert.doesNotThrow(() => assertToolArguments(schema, { query: "Kaoz.1" }));
   assert.throws(() => assertToolArguments(schema, {}), /obrigatório/);
   assert.throws(() => assertToolArguments(schema, { query: 42 }), /inválido/);
   assert.throws(() => assertToolArguments(schema, { query: "ok", extra: true }), /não permitido/);

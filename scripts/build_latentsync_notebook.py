@@ -28,9 +28,9 @@ def build_notebook():
     
     # 1. Introduction
     cells.append(make_markdown_cell(
-        "# Mr. Chicken + LatentSync (ByteDance) no Kaggle\n"
+        "# Kaoz.1 + LatentSync (ByteDance) no Kaggle\n"
         "\n"
-        "Este notebook executa o **LatentSync** (sincronização labial baseada em difusão de última geração da ByteDance) como um microserviço REST, compatível com o Mr. Chicken local."
+        "Este notebook executa o **LatentSync** (sincronização labial baseada em difusão de última geração da ByteDance) como um microserviço REST, compatível com o Kaoz.1 local."
     ))
     
     # 2. Setup Variables
@@ -40,8 +40,8 @@ def build_notebook():
         "\n"
         "WORK_DIR = Path('/kaggle/working')\n"
         "REPO_DIR = WORK_DIR / 'LatentSync'\n"
-        "SERVICE_FILE = WORK_DIR / 'mrchicken_lipsync_service.py'\n"
-        "OUTPUTS_DIR = WORK_DIR / 'mrchicken_lipsync_outputs'\n"
+        "SERVICE_FILE = WORK_DIR / 'kaoz1_lipsync_service.py'\n"
+        "OUTPUTS_DIR = WORK_DIR / 'kaoz1_lipsync_outputs'\n"
         "PORT = int(os.environ.get('LIPSYNC_PORT', '8010'))\n"
         "\n"
         "PYTHON_EXE = '/opt/conda/bin/python' if os.path.exists('/opt/conda/bin/python') else sys.executable\n"
@@ -171,11 +171,11 @@ def build_notebook():
         "from fastapi.responses import FileResponse\n"
         "from pydantic import BaseModel, ConfigDict, Field\n"
         "\n"
-        "app = FastAPI(title=\"MrChicken LatentSync Service\", version=\"1.0.0\")\n"
+        "app = FastAPI(title=\"Kaoz.1 LatentSync Service\", version=\"1.0.0\")\n"
         "\n"
         "WORK_DIR = Path('/kaggle/working')\n"
         "REPO_DIR = WORK_DIR / 'LatentSync'\n"
-        "OUTPUTS_DIR = WORK_DIR / 'mrchicken_lipsync_outputs'\n"
+        "OUTPUTS_DIR = WORK_DIR / 'kaoz1_lipsync_outputs'\n"
         "OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)\n"
         "\n"
         "class GenerateResponse(BaseModel):\n"
@@ -366,7 +366,7 @@ def build_notebook():
         "        except Exception:\n"
         "            proc.kill()\n"
         "\n"
-        "server_proc = subprocess.Popen([PYTHON_EXE, '-m', 'uvicorn', 'mrchicken_lipsync_service:app', '--host', '0.0.0.0', '--port', str(PORT), '--proxy-headers'], cwd=str(WORK_DIR), env=os.environ.copy(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+        "server_proc = subprocess.Popen([PYTHON_EXE, '-m', 'uvicorn', 'kaoz1_lipsync_service:app', '--host', '0.0.0.0', '--port', str(PORT), '--proxy-headers'], cwd=str(WORK_DIR), env=os.environ.copy(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
         "\n"
         "def stream_logs(prefix, proc):\n"
         "    for line in proc.stdout:\n"
@@ -398,7 +398,7 @@ def build_notebook():
         "if not PUBLIC_URL:\n"
         "    raise RuntimeError('Não consegui obter URL pública do cloudflared.')\n"
         "\n"
-        "print('\\n=== CONFIGURE NO .env.local DO MRCHICKEN ===')\n"
+        "print('\\n=== CONFIGURE NO .env.local DO KAOZ1 ===')\n"
         "print(f'LIPSYNC_API_URL={PUBLIC_URL}')\n"
         "print('# LIPSYNC_API_KEY não é necessária')\n"
         "print('LIPSYNC_TRANSFER_MODE=upload')\n"
@@ -427,7 +427,7 @@ def build_notebook():
     }
     
     # Save the notebook to the destination path
-    dest_path = Path("d:/apps/mrchicken/notebooks/musetalk-kaggle-service.ipynb")
+    dest_path = Path(__file__).resolve().parents[1] / "notebooks" / "musetalk-kaggle-service.ipynb"
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as f:
         json.dump(nb_dict, f, indent=1, ensure_ascii=False)

@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     }).join("\n\n");
 
     const prompt = `
-Voce e o Piloto Automatico do MrChicken, um diretor de criacao e estrategista de marketing digital avancado.
+Voce e o Piloto Automatico do Kaoz.1, um diretor de criacao e estrategista de marketing digital avancado.
 O usuario deseja planejar uma campanha otimizada de criativos e videos com base nos seguintes dados:
 
 Briefing Inicial da Campanha: "${campaignGoal}"

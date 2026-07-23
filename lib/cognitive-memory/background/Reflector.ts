@@ -52,7 +52,7 @@ export class Reflector {
     const reason = fromUserFeedback ? 'O usuário avaliou o resultado como RUIM (feedback negativo)' : `Erro de execução: "${episode.errorMessage || 'Falha desconhecida'}"`;
 
     const prompt = `
-Você é o Reflector Engine do sistema de memória cognitiva do MrChicken.
+Você é o Reflector Engine do sistema de memória cognitiva do Kaoz.1.
 Sua tarefa é analisar uma falha e extrair conhecimentos preventivos estruturados em JSON para evitar que o agente repita esse erro.
 
 [DADOS DO EPISÓDIO]:
@@ -243,7 +243,7 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
     try {
       const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
       const prompt = `
-Você é o Reflector Engine do sistema de memória cognitiva do MrChicken.
+Você é o Reflector Engine do sistema de memória cognitiva do Kaoz.1.
 O usuário avaliou um resultado como EXCELENTE (feedback positivo).
 Extraia um aprendizado reutilizável deste episódio de sucesso.
 

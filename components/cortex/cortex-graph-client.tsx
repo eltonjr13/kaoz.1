@@ -1618,7 +1618,7 @@ export function CortexGraphClient() {
                   <button
                     onClick={() => {
                       setEditingRule({
-                        avatarId: selectedNode.metadata?.avatarId || 'mrchicken-system',
+                        avatarId: selectedNode.metadata?.avatarId || 'kaoz1-system',
                         scope: selectedNode.metadata?.taskType || 'general',
                         triggerPattern: selectedNode.metadata?.taskType || 'general',
                         confidenceScore: 0.8,
@@ -1956,7 +1956,7 @@ export function CortexGraphClient() {
                 <input
                   value={editingRule.avatarId || ""}
                   onChange={(e) => setEditingRule((prev) => ({ ...prev, avatarId: e.target.value }))}
-                  placeholder="ex: mrchicken-system"
+                  placeholder="ex: kaoz1-system"
                   style={{
                     background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
                     borderRadius: "8px", padding: "8px 10px", color: "#fff", fontSize: "12px", outline: "none"

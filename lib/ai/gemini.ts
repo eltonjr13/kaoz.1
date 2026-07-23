@@ -575,7 +575,7 @@ function getImmediateChatResponse(messages: ChatMessage[], referenceImagePath?: 
 
   if (hasAnyTerm(normalized, actionTerms)) return null;
 
-  if (/^(oi|ola|hello|hey|salve|bom dia|boa tarde|boa noite)( mr chicken| senhor chicken| sr chicken| mister chicken)?$/.test(normalized)) {
+  if (/^(oi|ola|hello|hey|salve|bom dia|boa tarde|boa noite)( kaoz(?:\.?1)?)?$/.test(normalized)) {
     return {
       message: "Oi! Me diga o que voce quer criar ou ajustar.",
       action: null
@@ -625,8 +625,8 @@ Modo agente autonomo:
 
   const prompt = `
 ${agentPlannerInstructions}
-Você é o classificador central de intenções do agente autônomo do MrChicken.
-MrChicken é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares, e agora também de criativos de anúncio de imagem em escala.
+Você é o classificador central de intenções do agente autônomo do Kaoz.1.
+Kaoz.1 é uma plataforma de criação automatizada de vídeos e mídias de react com experts/avatares, e agora também de criativos de anúncio de imagem em escala.
 Sua tarefa é analisar o pedido/intenção do usuário e decidir qual é o melhor fluxo para atendê-lo.
 
 Os fluxos possíveis são:
@@ -854,7 +854,7 @@ function requiresActionContextClarification(
 function buildChatPrompt(messages: ChatMessage[], systemInstruction: string, finalInstruction: string): string {
   let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n[HISTORICO DA CONVERSA]:\n`;
   for (const m of messages) {
-    const roleName = m.role === 'user' ? 'USUARIO' : 'MR CHICKEN (VOCE)';
+    const roleName = m.role === 'user' ? 'USUARIO' : 'KAOZ.1 (VOCE)';
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
   }
   return `${compiledPrompt}${finalInstruction}`;
@@ -1004,11 +1004,11 @@ Regras de fidelidade do prompt:
 
 Hierarquia obrigatória para resolver o sujeito de uma ação:
 1. A última mensagem do usuário define a ação solicitada.
-2. As duas mensagens do CONTEXTO IMEDIATO, sobretudo a resposta imediatamente anterior do MR CHICKEN, definem exclusivamente o sujeito quando o pedido usar referência ambígua ou anafórica, como "isso", "sobre isso", "da história", "dela" ou terminar em "sobre".
+2. As duas mensagens do CONTEXTO IMEDIATO, sobretudo a resposta imediatamente anterior do KAOZ.1, definem exclusivamente o sujeito quando o pedido usar referência ambígua ou anafórica, como "isso", "sobre isso", "da história", "dela" ou terminar em "sobre".
 3. Histórico mais antigo só pode definir o sujeito quando o usuário o mencionar explicitamente (por exemplo, "o assunto do começo").
 4. Memórias do Cortex servem apenas como preferências ou restrições. Nunca use uma memória como tema, personagem ou sujeito do optimizedPrompt quando o pedido depender do contexto imediato.
 - Nesses pedidos referenciais, o optimizedPrompt deve representar os elementos concretos da resposta imediatamente anterior. Ignore completamente assuntos antigos ou memórias concorrentes.
-- Se a mensagem atual estiver respondendo a uma pergunta de esclarecimento após um pedido de ação, herde a ação e o estilo do pedido anterior do usuário. Procure na janela recente a mensagem mais nova do MR CHICKEN que realmente contém a piada/história/texto citado; não trate a própria pergunta de esclarecimento como conteúdo-alvo.
+- Se a mensagem atual estiver respondendo a uma pergunta de esclarecimento após um pedido de ação, herde a ação e o estilo do pedido anterior do usuário. Procure na janela recente a mensagem mais nova do KAOZ.1 que realmente contém a piada/história/texto citado; não trate a própria pergunta de esclarecimento como conteúdo-alvo.
 - Se o contexto permitido (imediato ou janela recente de recuperação) não identificar um sujeito concreto com segurança, pergunte qual é o tema em "message" e retorne "action": null. Nunca complete a lacuna escolhendo um assunto antigo.
 
 MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`json). Retorne apenas o JSON bruto validável e nada mais.
@@ -1029,7 +1029,7 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
 
   let compiledPrompt = `[SYSTEM INSTRUCTIONS]:\n${systemInstruction}\n\n${conversationSection}:\n`;
   for (const m of structuredMessages) {
-    const roleName = m.role === 'user' ? 'USUÁRIO' : 'MR CHICKEN (VOCÊ)';
+    const roleName = m.role === 'user' ? 'USUÁRIO' : 'KAOZ.1 (VOCÊ)';
     compiledPrompt += `${roleName}:\n${m.parts.map(p => p.text).join('\n')}\n\n`;
   }
   if (contextDependentActionRequest) {
@@ -1038,7 +1038,7 @@ MUITO IMPORTANTE: Não retorne marcações markdown de bloco de código (\`\`\`j
 Herde o pedido de geração e o estilo da penúltima mensagem do USUÁRIO. Resolva o sujeito buscando, da mensagem mais nova para a mais antiga, o conteúdo real citado pelo usuário. Ignore perguntas de esclarecimento como fonte do sujeito e não use memórias do Cortex.\n\n`
       : explicitRecentSearch
       ? `[RESTRIÇÃO DE GROUNDING PARA BUSCA RECENTE]:
-Use a ação e o estilo da última mensagem do USUÁRIO. Para localizar o sujeito mencionado como "último" ou "que foi contado", percorra apenas o CONTEXTO RECENTE da mensagem mais nova para a mais antiga e escolha a primeira mensagem do MR CHICKEN que realmente contém esse conteúdo. Ignore perguntas, recusas e memórias do Cortex como fonte do sujeito.\n\n`
+Use a ação e o estilo da última mensagem do USUÁRIO. Para localizar o sujeito mencionado como "último" ou "que foi contado", percorra apenas o CONTEXTO RECENTE da mensagem mais nova para a mais antiga e escolha a primeira mensagem do KAOZ.1 que realmente contém esse conteúdo. Ignore perguntas, recusas e memórias do Cortex como fonte do sujeito.\n\n`
       : `[RESTRIÇÃO DE GROUNDING]:
 Formule action.optimizedPrompt somente a partir do CONTEXTO IMEDIATO acima. Nenhum tópico anterior ou memória do Cortex está autorizado a definir o sujeito da imagem/vídeo.\n\n`;
   }
@@ -1049,7 +1049,7 @@ Se uma ferramenta retornar dados, use esses dados na propriedade "message". Se u
 Responda no final EXCLUSIVAMENTE com o objeto JSON valido esperado, baseado na ultima mensagem do historico. Nao escreva NENHUM texto fora do JSON.`
     : `[INSTRUÇÃO FINAL E CRÍTICA PARA A IA]:
 Você não possui ferramentas EXTERNAS de pesquisa, leitura de arquivos, terminal ou subagentes neste turno.
-Isso NÃO se aplica ao objeto interno "action": ele é o mecanismo pelo qual o MrChicken executa geração de imagem, vídeo ou projeto depois da sua resposta.
+Isso NÃO se aplica ao objeto interno "action": ele é o mecanismo pelo qual o Kaoz.1 executa geração de imagem, vídeo ou projeto depois da sua resposta.
 Quando o usuário pedir uma geração suportada, retorne "action" preenchida e nunca alegue falta de acesso a geradores de mídia.
 Não diga "vou analisar", "vou procurar" ou "consultando". Se uma pergunta realmente exigir dados externos indisponíveis, explique isso somente na propriedade "message".
 Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na última mensagem do histórico. Não escreva NENHUM texto fora do JSON.`;

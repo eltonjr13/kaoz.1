@@ -159,7 +159,7 @@ async function searchWithDuckDuckGo(query: string): Promise<SearchResult[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "Mozilla/5.0 MrChickenQuickSearch/1.0",
+      "User-Agent": "Mozilla/5.0 Kaoz1QuickSearch/1.0",
       Accept: "text/html",
     },
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
@@ -190,7 +190,7 @@ async function searchWithBingRss(query: string): Promise<SearchResult[]> {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "Mozilla/5.0 MrChickenQuickSearch/1.0",
+      "User-Agent": "Mozilla/5.0 Kaoz1QuickSearch/1.0",
       Accept: "application/rss+xml, application/xml, text/xml",
     },
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),

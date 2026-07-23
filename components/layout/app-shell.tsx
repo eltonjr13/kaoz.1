@@ -21,7 +21,7 @@ const navItems = [
   { href: "/jobs", label: "Projects", icon: Briefcase },
   { href: "/avatars", label: "Avatar", icon: UserRound },
   { href: "/jobs/new", label: "Generation", icon: Cpu },
-  { href: "/flow", label: "AgenteMrChicken", icon: Sparkles },
+  { href: "/flow", label: "Kaoz.1", icon: Sparkles },
   { href: "/cortex", label: "Córtex", icon: Brain },
   { href: "/patterns", label: "Estampas", icon: Shirt },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -51,7 +51,7 @@ export function AppShell({
           href="/flow"
           className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
           onClick={() => setSidebarOpen(false)}
-          title={sidebarCollapsed ? "AgenteMrChicken" : undefined}
+          title={sidebarCollapsed ? "Kaoz.1" : undefined}
         >
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px]"
@@ -68,7 +68,7 @@ export function AppShell({
             <span
               className="block text-[13px] font-semibold leading-tight text-white tracking-[-0.01em]"
             >
-              AgenteMrChicken
+              Kaoz.1
             </span>
             <span className="block truncate text-[11px] font-normal text-[#7B7B86] mt-0.5">
               {workspaceLabel}
@@ -160,10 +160,10 @@ export function AppShell({
   );
 
   return (
-    <div className="mrchicken-app-shell h-full min-h-0 max-h-full overflow-hidden flex flex-col md:flex-row bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="kaoz1-app-shell h-full min-h-0 max-h-full overflow-hidden flex flex-col md:flex-row bg-transparent text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Mobile top bar */}
       <div
-        className="mrchicken-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
+        className="kaoz1-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
         style={{
           borderBottom: "1px solid rgba(255,255,255,0.07)",
           background: "rgba(8,8,8,0.9)",
@@ -173,7 +173,7 @@ export function AppShell({
       >
         <Link href="/flow" className="flex items-center gap-2 text-sm font-semibold text-white no-underline">
           <Sparkles size={15} className="text-[#9D7CFF]" />
-          AgenteMrChicken
+          Kaoz.1
         </Link>
         <button
           type="button"
@@ -193,7 +193,7 @@ export function AppShell({
       {sidebarOpen && (
         <button
           type="button"
-          className="mrchicken-mobile-menu-overlay fixed inset-0 z-40 md:hidden"
+          className="kaoz1-mobile-menu-overlay fixed inset-0 z-40 md:hidden"
           style={{ background: "rgba(0,0,0,0.65)" }}
           aria-label="Fechar menu"
           onClick={() => setSidebarOpen(false)}
@@ -202,7 +202,7 @@ export function AppShell({
 
       {/* Sidebar */}
       <div
-        className={`mrchicken-sidebar-dock fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:z-10 md:translate-x-0 ${
+        className={`kaoz1-sidebar-dock fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:z-10 md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

@@ -177,19 +177,19 @@ Para gerar o instalador do Windows:
 npm run desktop:build
 ```
 
-O instalador será criado em `release/MrChicken-Setup-<versão>.exe`. A versão
+O instalador será criado em `release/Kaoz.1-Setup-<versão>.exe`. A versão
 desktop incorpora o servidor Next.js e, portanto, o computador de destino não
 precisa ter Node.js nem executar `npm install` ou `npx playwright install`.
 As automações usam o Google Chrome instalado no Windows.
 
 Configurações, sessões e arquivos gerados são mantidos em
-`%APPDATA%/MrChicken`. Na primeira execução, o aplicativo cria ali um
+`%APPDATA%/Kaoz.1`. Na primeira execução, o aplicativo cria ali um
 `.env.local` baseado no `.env.example`; as credenciais também podem ser
 configuradas pela tela de Configurações do próprio aplicativo.
 
 Nos campos **Endpoint**, informe preferencialmente a URL base do provedor. Se
 for colada uma rota completa como `/v1/chat/completions` ou `/v1/models`, o
-MrChicken remove automaticamente a parte final para evitar rotas duplicadas.
+Kaoz.1 remove automaticamente a parte final para evitar rotas duplicadas.
 
 ## 📝 Notas de Desenvolvimento e Automação
 

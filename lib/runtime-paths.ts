@@ -1,11 +1,11 @@
 import path from "node:path";
 
 /**
- * Writable runtime root. In Electron this points to `%APPDATA%/MrChicken/generated`;
+ * Writable runtime root. In Electron this points to `%APPDATA%/Kaoz.1/generated`;
  * in web development it preserves the existing `<project>/.generated` layout.
  */
 export function getRuntimeDataRoot(): string {
-  const configured = process.env.MRCHICKEN_DATA_DIR?.trim();
+  const configured = process.env.KAOZ1_DATA_DIR?.trim() || process.env.MRCHICKEN_DATA_DIR?.trim();
   return configured ? path.resolve(configured) : path.join(process.cwd(), ".generated");
 }
 
@@ -19,7 +19,7 @@ export function getRuntimeJobsDir(): string {
 
 /** Keep Flow media outside Electron's packaged resources so NSIS can replace it. */
 export function getFlowStorageRoot(): string {
-  const configured = process.env.MRCHICKEN_STORAGE_DIR?.trim();
+  const configured = process.env.KAOZ1_STORAGE_DIR?.trim() || process.env.MRCHICKEN_STORAGE_DIR?.trim();
   return configured ? path.resolve(configured) : path.resolve("storage");
 }
 

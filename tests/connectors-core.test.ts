@@ -86,7 +86,7 @@ test("Telegram valida bot e acesso ao chat configurado", async () => {
     const url = String(input);
     urls.push(url);
     const body = url.includes("getMe")
-      ? { ok: true, result: { id: 123, username: "mrchicken_bot" } }
+      ? { ok: true, result: { id: 123, username: "kaoz1_bot" } }
       : { ok: true, result: { id: -1001234567890, title: "Canal de testes" } };
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;

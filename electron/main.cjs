@@ -3,6 +3,7 @@ const { autoUpdater } = require("electron-updater");
 const { readDesktopPreferences, shouldHideWindowOnClose, writeDesktopPreferences } = require("./desktop-preferences.cjs");
 const { updateErrorDetails } = require("./update-errors.cjs");
 const { stopProcessTree } = require("./process-lifecycle.cjs");
+const { migrateLegacyUserData } = require("./user-data-migration.cjs");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -19,7 +20,7 @@ let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported:
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
 
-app.setName("MrChicken");
+app.setName("Kaoz.1");
 
 function getMainWindowForEvent(event) {
   const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -60,9 +61,9 @@ function createTray() {
   const iconPath = path.join(__dirname, "..", "build", "icon.png");
   const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   tray = new Tray(trayIcon);
-  tray.setToolTip("MrChicken");
+  tray.setToolTip("Kaoz.1");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Abrir MrChicken", click: showMainWindow },
+    { label: "Abrir Kaoz.1", click: showMainWindow },
     { type: "separator" },
     { label: "Sair", click: quitApplication }
   ]));
@@ -75,7 +76,7 @@ function notifyTrayOnce() {
   if (preferences.trayNoticeShown || !tray || process.platform !== "win32") return;
   tray.displayBalloon({
     iconType: "info",
-    title: "MrChicken continua ativo",
+    title: "Kaoz.1 continua ativo",
     content: "O aplicativo foi mantido nos ícones ocultos. Use o ícone para abrir ou sair."
   });
   saveDesktopPreferences({ ...preferences, trayNoticeShown: true });
@@ -87,7 +88,7 @@ function updaterIsSupported() {
 
 function setUpdateStatus(next) {
   updateStatus = { ...updateStatus, ...next, currentVersion: app.getVersion(), supported: updaterIsSupported() };
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mrchicken-update:status", updateStatus);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("kaoz1-update:status", updateStatus);
   return updateStatus;
 }
 
@@ -121,12 +122,12 @@ function configureAutoUpdater() {
   });
 }
 
-ipcMain.handle("mrchicken-update:get-status", (event) => {
+ipcMain.handle("kaoz1-update:get-status", (event) => {
   if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
   return { ...updateStatus, currentVersion: app.getVersion(), supported: updaterIsSupported() };
 });
 
-ipcMain.handle("mrchicken-update:check", async (event) => {
+ipcMain.handle("kaoz1-update:check", async (event) => {
   if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
   if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
   if (!updateCheckPromise) {
@@ -141,7 +142,7 @@ ipcMain.handle("mrchicken-update:check", async (event) => {
   return updateStatus;
 });
 
-ipcMain.handle("mrchicken-update:download", async (event) => {
+ipcMain.handle("kaoz1-update:download", async (event) => {
   if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
   if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
   if (updateStatus.state !== "available") return updateStatus;
@@ -154,7 +155,7 @@ ipcMain.handle("mrchicken-update:download", async (event) => {
   return updateStatus;
 });
 
-ipcMain.handle("mrchicken-update:install", async (event) => {
+ipcMain.handle("kaoz1-update:install", async (event) => {
   if (!getMainWindowForEvent(event) || updateStatus.state !== "downloaded") return false;
   if (installingUpdate) return true;
   installingUpdate = true;
@@ -172,17 +173,17 @@ ipcMain.handle("mrchicken-update:install", async (event) => {
 
 function sendWindowState(target) {
   if (!target || target.isDestroyed()) return;
-  target.webContents.send("mrchicken-window:maximized-changed", target.isMaximized());
+  target.webContents.send("kaoz1-window:maximized-changed", target.isMaximized());
 }
 
-ipcMain.handle("mrchicken-window:minimize", (event) => {
+ipcMain.handle("kaoz1-window:minimize", (event) => {
   const target = getMainWindowForEvent(event);
   if (!target) return false;
   target.minimize();
   return true;
 });
 
-ipcMain.handle("mrchicken-window:toggle-maximize", (event) => {
+ipcMain.handle("kaoz1-window:toggle-maximize", (event) => {
   const target = getMainWindowForEvent(event);
   if (!target) return false;
   if (target.isMaximized()) target.unmaximize();
@@ -190,25 +191,25 @@ ipcMain.handle("mrchicken-window:toggle-maximize", (event) => {
   return true;
 });
 
-ipcMain.handle("mrchicken-window:close", (event) => {
+ipcMain.handle("kaoz1-window:close", (event) => {
   const target = getMainWindowForEvent(event);
   if (!target) return false;
   target.close();
   return true;
 });
 
-ipcMain.handle("mrchicken-window:is-maximized", (event) => {
+ipcMain.handle("kaoz1-window:is-maximized", (event) => {
   const target = getMainWindowForEvent(event);
   return Boolean(target && target.isMaximized());
 });
 
-ipcMain.handle("mrchicken-desktop:get-preferences", (event) => {
+ipcMain.handle("kaoz1-desktop:get-preferences", (event) => {
   if (!getMainWindowForEvent(event)) return null;
   const { closeToTray } = getDesktopPreferences();
   return { closeToTray };
 });
 
-ipcMain.handle("mrchicken-desktop:set-close-to-tray", (event, enabled) => {
+ipcMain.handle("kaoz1-desktop:set-close-to-tray", (event, enabled) => {
   if (!getMainWindowForEvent(event) || typeof enabled !== "boolean") return null;
   const updated = saveDesktopPreferences({ ...getDesktopPreferences(), closeToTray: enabled });
   return { closeToTray: updated.closeToTray };
@@ -301,9 +302,9 @@ async function startProductionServer() {
     HOSTNAME: "127.0.0.1",
     PORT: String(port),
     APP_BASE_URL: `http://127.0.0.1:${port}`,
-    MRCHICKEN_DESKTOP: "1",
-    MRCHICKEN_DATA_DIR: path.join(dataRoot, "generated"),
-    MRCHICKEN_STORAGE_DIR: path.join(dataRoot, "storage"),
+    KAOZ1_DESKTOP: "1",
+    KAOZ1_DATA_DIR: path.join(dataRoot, "generated"),
+    KAOZ1_STORAGE_DIR: path.join(dataRoot, "storage"),
     FLOW_DOWNLOAD_PATH: path.join(dataRoot, "storage", "generated"),
     FLOW_PROFILE_PATH: path.join(dataRoot, "storage", "browser-profile"),
     // Use the user's installed Chrome so a separate `npx playwright install` is unnecessary.
@@ -322,7 +323,7 @@ async function startProductionServer() {
   nextServer.stdout.pipe(log);
   nextServer.stderr.pipe(log);
   nextServer.once("exit", (code) => {
-    if (code && !app.isQuitting) dialog.showErrorBox("MrChicken", `O servidor local encerrou com código ${code}. Consulte ${logPath}.`);
+    if (code && !app.isQuitting) dialog.showErrorBox("Kaoz.1", `O servidor local encerrou com código ${code}. Consulte ${logPath}.`);
   });
 
   const url = `http://127.0.0.1:${port}`;
@@ -413,12 +414,16 @@ app.on("second-instance", () => {
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
   try {
+    migrateLegacyUserData({
+      currentRoot: app.getPath("userData"),
+      legacyRoot: path.join(app.getPath("appData"), "MrChicken")
+    });
     configureAutoUpdater();
     getDesktopPreferences();
     createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
   } catch (error) {
-    dialog.showErrorBox("Falha ao iniciar o MrChicken", error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox("Falha ao iniciar o Kaoz.1", error instanceof Error ? error.message : String(error));
     app.quit();
   }
 });

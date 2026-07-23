@@ -13,7 +13,7 @@ export default function HomePage() {
         </Link>
         <div className="flex gap-2">
           <Link className="button secondary" href="/flow">
-            Agente MrChicken
+            Kaoz.1
           </Link>
         </div>
       </header>
