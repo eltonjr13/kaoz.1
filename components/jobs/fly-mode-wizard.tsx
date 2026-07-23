@@ -807,7 +807,7 @@ export function FlyModeWizard({
                             <option value="claude">Claude 3.5 Sonnet</option>
                             <option value="deepseek">DeepSeek R1</option>
                             <option value="cerebras">Cerebras (Inference Ultra-Rápida)</option>
-                            <option value="zenmux">ZenMux Grok (Free)</option>
+                            <option value="zenmux">ZenMux Grok 4.5</option>
                             <option value="iamhc">IAMHC (DeepSeek, Qwen, GLM, Kimi...)</option>
                           </select>
                           <span className="absolute left-12 top-2 text-[10px] font-medium text-[#A1A1AA] pointer-events-none">Modelo de IA</span>

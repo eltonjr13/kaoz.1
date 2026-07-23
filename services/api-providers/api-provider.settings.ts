@@ -17,7 +17,7 @@ const defaults: Record<ApiProviderId, { keyEnv: string; baseUrlEnv?: string; mod
   deepseek: { keyEnv: "DEEPSEEK_API_KEY", baseUrlEnv: "DEEPSEEK_BASE_URL", modelEnv: "DEEPSEEK_MODEL", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
   anthropic: { keyEnv: "ANTHROPIC_API_KEY", modelEnv: "ANTHROPIC_MODEL", baseUrl: "https://api.anthropic.com", model: "claude-3-5-haiku-latest" },
   cerebras: { keyEnv: "CEREBRAS_API_KEY", baseUrlEnv: "CEREBRAS_BASE_URL", modelEnv: "CEREBRAS_MODEL", baseUrl: "https://api.cerebras.ai/v1", model: "gemma-4-31b" },
-  zenmux: { keyEnv: "ZENMUX_API_KEY", baseUrlEnv: "ZENMUX_BASE_URL", modelEnv: "ZENMUX_MODEL", baseUrl: "https://zenmux.ai/api/v1", model: "x-ai/grok-4.5-free" },
+  zenmux: { keyEnv: "ZENMUX_API_KEY", baseUrlEnv: "ZENMUX_BASE_URL", modelEnv: "ZENMUX_MODEL", baseUrl: "https://zenmux.ai/api/v1", model: "x-ai/grok-4.5" },
   iamhc: { keyEnv: "IAMHC_API_KEY", baseUrlEnv: "IAMHC_BASE_URL", modelEnv: "IAMHC_MODEL", baseUrl: "https://api.iamhc.cn/v1", model: "DeepSeek-V4-Flash" },
 };
 
@@ -34,6 +34,11 @@ export function normalizeApiBaseUrl(value: string): string {
     .replace(/\/+$/, "");
 }
 
+export function normalizeApiProviderModel(id: ApiProviderId, value: string): string {
+  if (id === "zenmux" && value === "x-ai/grok-4.5-free") return "x-ai/grok-4.5";
+  return value;
+}
+
 export async function getApiProviderConfig(id: ApiProviderId): Promise<{ apiKey: string; baseUrl: string; model: string; source: ApiProviderPublicConfig["source"] }> {
   const stored = (await readStored())[id] || {};
   const fallback = defaults[id];
@@ -41,7 +46,7 @@ export async function getApiProviderConfig(id: ApiProviderId): Promise<{ apiKey:
   return {
     apiKey,
     baseUrl: normalizeApiBaseUrl(stored.baseUrl || (fallback.baseUrlEnv ? process.env[fallback.baseUrlEnv] : "") || fallback.baseUrl),
-    model: stored.model || process.env[fallback.modelEnv] || fallback.model,
+    model: normalizeApiProviderModel(id, stored.model || process.env[fallback.modelEnv] || fallback.model),
     source: stored.apiKey ? "settings" : process.env[fallback.keyEnv] ? "env" : "none",
   };
 }

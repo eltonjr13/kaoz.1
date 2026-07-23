@@ -235,7 +235,7 @@ const AGENT_LLM_OPTIONS: Array<{
   {
     id: "zenmux-grok",
     name: "ZenMux Grok API",
-    description: "Integração via ZenMux AI usando Grok 4.5 Free.",
+    description: "Integração via ZenMux AI usando Grok 4.5.",
     category: "api",
     icon: Zap
   },
