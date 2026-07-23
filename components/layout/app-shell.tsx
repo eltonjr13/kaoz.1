@@ -4,23 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  Briefcase,
   ChevronLeft,
   ChevronRight,
-  Cpu,
   Menu,
   Settings,
   Shirt,
   Sparkles,
-  UserRound,
   X,
   Brain,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/jobs", label: "Projects", icon: Briefcase },
-  { href: "/avatars", label: "Avatar", icon: UserRound },
-  { href: "/jobs/new", label: "Generation", icon: Cpu },
   { href: "/flow", label: "Kaoz.1", icon: Sparkles },
   { href: "/cortex", label: "Córtex", icon: Brain },
   { href: "/patterns", label: "Estampas", icon: Shirt },

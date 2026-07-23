@@ -24,12 +24,10 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  Settings,
   RefreshCw,
 } from "lucide-react";
 
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
-import { FlyModeWizard } from "@/components/jobs/fly-mode-wizard";
 import ReactMarkdown from "react-markdown";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
@@ -125,12 +123,6 @@ interface Model3DResult {
   createdAt: string;
 }
 
-interface Avatar {
-  id: string;
-  name: string;
-  image_path: string;
-}
-
 interface SelectedElementReference {
   imageData: string;
   xpath: string;
@@ -163,15 +155,12 @@ interface PendingPlan {
   aspectRatio: string;
   quantity?: string;
   mediaModel?: string;
-  avatarId?: string;
-  avatarName?: string;
   referenceImage?: string | null;
   referenceImagePath?: string | null;
   editSourceImagePath?: string | null;
   imageOperation?: ImageGenerationOperation;
   referenceSource?: ImageReferenceSource;
   referenceXPath?: string | null;
-  useAvatarVisualReference?: boolean;
   targetJobId?: string | null;
   strategy?: string;
   scriptOutline?: string | null;
@@ -181,7 +170,6 @@ interface PendingPlan {
   imagePackageMode?: ImagePackageMode;
   turnaroundViews?: TurnaroundView[];
   requires3dBasePreparation?: boolean;
-  useAvatarPersonality?: boolean;
   useCortexMemory?: boolean;
   adCreativePlan?: {
     concepts: {
@@ -322,8 +310,6 @@ interface FlowJobSnapshot {
 const CHAT_HISTORY_KEY = "kaoz1:flow:chat_history";
 const CHAT_CONVERSATIONS_KEY = "kaoz1:flow:chat_conversations";
 const ACTIVE_CHAT_KEY = "kaoz1:flow:active_chat";
-const USE_AVATAR_PERSONALITY_KEY = "kaoz1:flow:use_avatar_personality";
-const USE_AVATAR_VISUAL_REFERENCE_KEY = "kaoz1:flow:use_avatar_visual_reference";
 const CHAT_AUTO_SCROLL_THRESHOLD = 96;
 const USE_CORTEX_MEMORY_KEY = "kaoz1:flow:use_cortex_memory";
 const AGENT_MODEL_KEY = "kaoz1:flow:agent_model";
@@ -331,8 +317,6 @@ const LEGACY_FLOW_STORAGE_KEYS: Record<string, string> = {
   [CHAT_HISTORY_KEY]: "mrchicken:flow:chat_history",
   [CHAT_CONVERSATIONS_KEY]: "mrchicken:flow:chat_conversations",
   [ACTIVE_CHAT_KEY]: "mrchicken:flow:active_chat",
-  [USE_AVATAR_PERSONALITY_KEY]: "mrchicken:flow:use_avatar_personality",
-  [USE_AVATAR_VISUAL_REFERENCE_KEY]: "mrchicken:flow:use_avatar_visual_reference",
   [USE_CORTEX_MEMORY_KEY]: "mrchicken:flow:use_cortex_memory",
   [AGENT_MODEL_KEY]: "mrchicken:flow:agent_model",
 };
@@ -986,16 +970,6 @@ export default function FlowDashboardPage() {
     return isAgentModel(savedModel) ? savedModel : "gemini";
   });
   const [agentType, setAgentType] = useState<AgentType>('image');
-  const [flyModeActive, setFlyModeActive] = useState(false);
-  
-  const [avatars, setAvatars] = useState<Avatar[]>([]);
-  const [selectedAvatarId, setSelectedAvatarId] = useState("");
-  const [useAvatarPersonality, setUseAvatarPersonality] = useState(() =>
-    typeof window === "undefined" ? true : readFlowStorage(USE_AVATAR_PERSONALITY_KEY) !== "false"
-  );
-  const [useAvatarVisualReference, setUseAvatarVisualReference] = useState(() =>
-    typeof window === "undefined" ? false : readFlowStorage(USE_AVATAR_VISUAL_REFERENCE_KEY) === "true"
-  );
   const [useCortexMemory, setUseCortexMemory] = useState(() =>
     typeof window === "undefined" ? true : readFlowStorage(USE_CORTEX_MEMORY_KEY) !== "false"
   );
@@ -1217,7 +1191,6 @@ export default function FlowDashboardPage() {
             {[
               { id: "image", label: "Imagem", icon: <ImageIcon size={13} /> },
               { id: "video", label: "Vídeo", icon: <Film size={13} /> },
-              { id: "project", label: "React", icon: <Cpu size={13} /> },
               { id: "ad-creative", label: "Anúncio", icon: <Bot size={13} /> },
             ].map((t) => (
               <button
@@ -1307,67 +1280,6 @@ export default function FlowDashboardPage() {
             )}
           </div>
         )}
-
-        {/* Operation Mode for ad-creative */}
-        {agentType === "ad-creative" && (
-          <div className="flex flex-col gap-2">
-            <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-              Modo de Operação
-            </div>
-            <div className="grid grid-cols-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
-              {[
-                { id: "normal", label: "Normal" },
-                { id: "fly", label: "Modo Fly ✈️" },
-              ].map((mode) => {
-                const isActive = flyModeActive ? mode.id === "fly" : mode.id === "normal";
-                return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => {
-                      setFlyModeActive(mode.id === "fly");
-                    }}
-                    className="min-h-9 rounded-xl px-2 text-[12px] font-semibold transition-all cursor-pointer"
-                    style={{
-                      background: isActive ? "rgba(255,255,255,0.14)" : "transparent",
-                      color: isActive ? "#ffffff" : "rgba(255,255,255,0.42)",
-                    }}
-                  >
-                    {mode.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
-          <span className="flex flex-col gap-0.5">
-            <span className="text-[12px] font-semibold text-white/85">Personalidade do avatar</span>
-            <span className="text-[10px] leading-snug text-white/45">Usar o tom do avatar nas respostas e roteiros</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={useAvatarPersonality}
-            onChange={(e) => setUseAvatarPersonality(e.target.checked)}
-            className="peer sr-only"
-          />
-          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
-        </label>
-
-        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
-          <span className="flex flex-col gap-0.5">
-            <span className="text-[12px] font-semibold text-white/85">Avatar como referencia visual</span>
-            <span className="text-[10px] leading-snug text-white/45">Anexar a imagem do avatar somente quando esta opcao estiver ligada</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={useAvatarVisualReference}
-            onChange={(e) => setUseAvatarVisualReference(e.target.checked)}
-            className="peer sr-only"
-          />
-          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#9D7CFF]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
-        </label>
 
         <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:bg-white/[0.07]">
           <span className="flex flex-col gap-0.5">
@@ -1488,12 +1400,6 @@ export default function FlowDashboardPage() {
   };
 
   useEffect(() => {
-    fetch("/api/avatars").then(res => res.json()).then(data => {
-      const list = data.avatars || data;
-      setAvatars(list);
-      if (list.length > 0) setSelectedAvatarId(list[0].id);
-    });
-
     const savedConversations = readJsonArray<ChatConversation>(readFlowStorage(CHAT_CONVERSATIONS_KEY));
     const legacyMessages = readJsonArray<ChatMessageState>(readFlowStorage(CHAT_HISTORY_KEY));
     const initialConversations = savedConversations.length > 0
@@ -1643,14 +1549,6 @@ export default function FlowDashboardPage() {
       cancelled = true;
     };
   }, [hasLoadedConversations, chatMessages, searchParams]);
-
-  useEffect(() => {
-    localStorage.setItem(USE_AVATAR_PERSONALITY_KEY, String(useAvatarPersonality));
-  }, [useAvatarPersonality]);
-
-  useEffect(() => {
-    localStorage.setItem(USE_AVATAR_VISUAL_REFERENCE_KEY, String(useAvatarVisualReference));
-  }, [useAvatarVisualReference]);
 
   useEffect(() => {
     localStorage.setItem(USE_CORTEX_MEMORY_KEY, String(useCortexMemory));
@@ -2379,7 +2277,6 @@ export default function FlowDashboardPage() {
           : resolveImageGenerationOperation({
               imagePackageMode: image3dMode ? "turnaround3d" : undefined,
               referenceImage: referenceImageBase64,
-              useAvatarVisualReference,
             });
 
       const res = await fetch("/api/flow/chat", {
@@ -2387,8 +2284,6 @@ export default function FlowDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: geminiMessages,
-          avatarId: selectedAvatarId,
-          useAvatarPersonality,
           referenceImage: referenceImageBase64,
           requestedFlow: agentType,
           imageOperation: requestedImageOperation,
@@ -2502,12 +2397,10 @@ export default function FlowDashboardPage() {
           model: chatModel,
           aspectRatio: (plannedKind === 'image' || isAdCreative) ? imageRatio : videoRatio,
           mediaModel: (plannedKind === 'image' || isAdCreative) ? imageModel : videoModel,
-          avatarId: selectedAvatarId,
           referenceImage: referenceImageBase64,
           imageOperation: requestedImageOperation,
-          referenceSource: referenceImageBase64 ? referenceSource : useAvatarVisualReference ? 'avatar' : 'none',
+          referenceSource: referenceImageBase64 ? referenceSource : 'none',
           referenceXPath,
-          useAvatarVisualReference,
           targetJobId: data.action.targetJobId,
           strategy: data.action.strategy,
           scriptOutline: data.action.scriptOutline,
@@ -2516,7 +2409,6 @@ export default function FlowDashboardPage() {
           imagePackageMode: plannedKind === 'image' && image3dMode ? 'turnaround3d' : undefined,
           requires3dBasePreparation: plannedKind === 'image' && image3dMode && Boolean(referenceImageBase64) && !image3dReadyMode,
           quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
-          useAvatarPersonality,
           useCortexMemory,
           adCreativePlan: data.action.adCreativePlan
         };
@@ -2792,9 +2684,6 @@ export default function FlowDashboardPage() {
           action: "create-project",
           requestId: msg.id,
           prompt: msg.plan.originalPrompt,
-          avatarId: msg.plan.avatarId || selectedAvatarId,
-          useAvatarPersonality: msg.plan.useAvatarPersonality ?? useAvatarPersonality,
-          useAvatarVisualReference: msg.plan.useAvatarVisualReference === true,
           imageOperation: msg.plan.imageOperation,
           referenceSource: msg.plan.referenceSource,
           referenceXPath: msg.plan.referenceXPath,
@@ -3041,7 +2930,6 @@ export default function FlowDashboardPage() {
         imageOperation: 'turnaround3d',
         referenceSource: 'generated',
         referenceXPath: null,
-        useAvatarVisualReference: false
       };
 
       setChatMessages((previous) =>
@@ -3072,9 +2960,6 @@ export default function FlowDashboardPage() {
           action: "create-project",
           requestId: `${messageId}:edited:${editedImagePath}`,
           prompt: updatedPlan.originalPrompt,
-          avatarId: updatedPlan.avatarId || selectedAvatarId,
-          useAvatarPersonality: updatedPlan.useAvatarPersonality ?? useAvatarPersonality,
-          useAvatarVisualReference: false,
           imageOperation: updatedPlan.imageOperation,
           referenceSource: updatedPlan.referenceSource,
           useCortexMemory: updatedPlan.useCortexMemory ?? useCortexMemory,
@@ -3488,16 +3373,6 @@ export default function FlowDashboardPage() {
                   className="w-[160px] xs:w-[200px] sm:w-[240px] md:w-[280px]"
                 />
               )}
-              {avatars.length > 0 && (
-                <CustomDropdown
-                  value={selectedAvatarId}
-                  onChange={setSelectedAvatarId}
-                  options={avatars.map(a => ({ value: a.id, label: a.name }))}
-                  icon={<User size={12} />}
-                  title="Selecionar avatar"
-                  className="w-[120px] sm:w-[150px]"
-                />
-              )}
               <div className="flex items-center gap-1">
                 <button 
                   onClick={(e) => { e.stopPropagation(); setIsBrowserOpen(!isBrowserOpen); }} 
@@ -3535,23 +3410,12 @@ export default function FlowDashboardPage() {
 
       {/* ── Chat Area ── */}
       <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-24 pb-48 md:px-10 lg:px-32">
-        {agentType === "ad-creative" && flyModeActive ? (
-          <FlyModeWizard
-            avatars={avatars}
-            selectedAvatarId={selectedAvatarId}
-            setSelectedAvatarId={setSelectedAvatarId}
-            agentModel={agentModel}
-            setAgentModel={setAgentModel}
-            useCortexMemory={useCortexMemory}
-          />
-        ) : (
-          <>
             {chatMessages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
                 <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
                 <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Kaoz.1.</h2>
                 <p className="text-sm text-white/60 max-w-sm leading-relaxed">
-                  Posso te ajudar a criar imagens, vídeos de react ou planejar projetos completos. O que vamos criar hoje?
+                  Posso te ajudar a criar imagens, vídeos e criativos de anúncio. O que vamos criar hoje?
                 </p>
               </div>
             )}
@@ -3927,8 +3791,6 @@ export default function FlowDashboardPage() {
               </div>
             )}
 
-          </>
-        )}
       </div>
 
       <AnimatePresence>
@@ -4048,8 +3910,7 @@ export default function FlowDashboardPage() {
       </AnimatePresence>
 
       {/* ── Input Bar or Floating Settings Gear ── */}
-      {!(agentType === "ad-creative" && flyModeActive) ? (
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
             {selectedElementReference && (
               <div className="mb-2 flex items-center justify-between rounded-xl border border-[#9D7CFF]/30 bg-[#9D7CFF]/10 px-3 py-2 text-[11px] text-white/75">
@@ -4136,23 +3997,7 @@ export default function FlowDashboardPage() {
               {showSettings && renderSettingsMenu(false)}
             </AnimatePresence>
           </div>
-        </div>
-      ) : (
-        <div className="absolute bottom-6 right-6 z-40">
-          <div className="relative" ref={popoverRef}>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 transition-colors shadow-lg shadow-black/40 backdrop-blur-md cursor-pointer"
-              title="Configurações do Piloto"
-            >
-              <Settings size={18} />
-            </button>
-            <AnimatePresence>
-              {showSettings && renderSettingsMenu(true)}
-            </AnimatePresence>
-          </div>
-        </div>
-      )}
+      </div>
 
       {contextMenu && (
         <div

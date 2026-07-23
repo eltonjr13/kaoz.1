@@ -5,6 +5,7 @@ import {
   resolveGeneratedReferencePath,
   saveBase64ReferenceImage,
 } from "@/lib/flow/reference-files";
+import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import type { ImageGenerationOperation, ImageReferenceSource } from "@/src/providers/flow/ImageGenerationContract";
 
 export const dynamic = "force-dynamic";
@@ -101,7 +102,6 @@ export async function POST(request: Request) {
       model?: unknown;
       prompt?: unknown;
       type?: unknown;
-      avatarId?: unknown;
       aspectRatio?: unknown;
       videoModel?: unknown;
       videoQuantity?: unknown;
@@ -113,8 +113,6 @@ export async function POST(request: Request) {
       referenceImage?: unknown;
       referenceImagePath?: unknown;
       approvedPlan?: unknown;
-      useAvatarPersonality?: unknown;
-      useAvatarVisualReference?: unknown;
       imageOperation?: unknown;
       referenceSource?: unknown;
       referenceXPath?: unknown;
@@ -126,7 +124,6 @@ export async function POST(request: Request) {
     const model = typeof body?.model === "string" ? body.model.trim() : "";
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
     const type = typeof body?.type === "string" ? body.type.trim() : "";
-    const avatarId = typeof body?.avatarId === "string" ? body.avatarId.trim() : "";
     const aspectRatio = typeof body?.aspectRatio === "string" ? body.aspectRatio.trim() : "16:9";
     const videoModel = typeof body?.videoModel === "string" ? body.videoModel.trim() : "Veo 3.1";
     const videoQuantity = parseQuantity(body?.videoQuantity);
@@ -138,13 +135,11 @@ export async function POST(request: Request) {
     const referenceImageBase64 = typeof body?.referenceImage === "string" ? body.referenceImage : undefined;
     const referenceImagePathRaw = typeof body?.referenceImagePath === "string" ? body.referenceImagePath.trim() : "";
     const approvedPlan = parseApprovedPlan(body?.approvedPlan);
-    const useAvatarPersonality = body?.useAvatarPersonality !== false;
-    const useAvatarVisualReference = body?.useAvatarVisualReference === true;
     const imageOperation = typeof body?.imageOperation === "string" && IMAGE_OPERATIONS.has(body.imageOperation as ImageGenerationOperation)
       ? body.imageOperation as ImageGenerationOperation
       : imagePackageMode === "turnaround3d"
         ? "turnaround3d"
-        : referenceImageBase64 || referenceImagePathRaw || useAvatarVisualReference
+        : referenceImageBase64 || referenceImagePathRaw
           ? "reference"
           : "simple";
     const referenceSource = typeof body?.referenceSource === "string" && REFERENCE_SOURCES.has(body.referenceSource as ImageReferenceSource)
@@ -153,9 +148,7 @@ export async function POST(request: Request) {
         ? "upload"
         : referenceImagePathRaw
           ? "generated"
-          : useAvatarVisualReference
-            ? "avatar"
-            : "none";
+          : "none";
     const referenceXPath = typeof body?.referenceXPath === "string" && body.referenceXPath.trim()
       ? body.referenceXPath.trim()
       : undefined;
@@ -179,9 +172,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Plano aprovado invalido." }, { status: 400 });
     }
     if (action === "plan-agent" || action === "plan-project") {
-      if (!prompt || (action === "plan-project" && !avatarId)) {
+      if (!prompt) {
         return NextResponse.json(
-          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para planejar um projeto." },
+          { error: "Parametro 'prompt' (tema/ideia) e obrigatorio para planejar a execucao." },
           { status: 400 }
         );
       }
@@ -194,7 +187,6 @@ export async function POST(request: Request) {
         plan: {
           ...plan,
           originalPrompt: prompt,
-          avatarId,
           model,
           aspectRatio,
           videoModel
@@ -203,9 +195,9 @@ export async function POST(request: Request) {
     }
 
     if (action === "create-project") {
-      if (!taskPrompt || !avatarId) {
+      if (!taskPrompt) {
         return NextResponse.json(
-          { error: "Parametros 'prompt' (tema/ideia) e 'avatarId' sao obrigatorios para criar um projeto, exceto no modo 3D com imagem de referencia." },
+          { error: "Parametro 'prompt' (tema/ideia) e obrigatorio para criar a execucao." },
           { status: 400 }
         );
       }
@@ -234,16 +226,11 @@ export async function POST(request: Request) {
 
       try {
 
-      console.log(`[API AGENT] Iniciando criacao autonoma para: "${taskPrompt}" com o avatar: ${avatarId}...`);
+      console.log(`[API AGENT] Iniciando criacao autonoma para: "${taskPrompt}"...`);
 
       const requestUrl = new URL(request.url);
       const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
-      const { findLocalAvatar, createLocalJob, updateLocalJobStatus, createLocalJobEvent } = await import("@/lib/local-store");
-      const avatar = await findLocalAvatar(avatarId);
-
-      if (!avatar) {
-        return NextResponse.json({ error: "Avatar local nao encontrado." }, { status: 404 });
-      }
+      const { createLocalJob, updateLocalJobStatus, createLocalJobEvent } = await import("@/lib/local-store");
 
       const generatedReferencePath = referenceImagePathRaw
         ? resolveGeneratedReferencePath(referenceImagePathRaw) || undefined
@@ -254,7 +241,7 @@ export async function POST(request: Request) {
       const generatedReferenceImage = generatedReferencePath;
 
       const localJob = await createLocalJob({
-        avatarId,
+        avatarId: APP_WORKSPACE_ID,
         topic: taskPrompt,
         renderLayout: "balanced_split",
         expertBackgroundMode: "original",
@@ -285,7 +272,7 @@ export async function POST(request: Request) {
 
       void flowProvider.runAgentTask({
         topic: taskPrompt,
-        avatarId,
+        avatarId: APP_WORKSPACE_ID,
         model: model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras" | "zenmux" | "iamhc",
         imageModel,
         imageQuantity,
@@ -300,8 +287,8 @@ export async function POST(request: Request) {
         imageOperation,
         referenceSource,
         referenceXPath,
-        useAvatarVisualReference,
-        useAvatarPersonality,
+        useAvatarVisualReference: false,
+        useAvatarPersonality: false,
         useCortexMemory,
         jobId,
         baseUrl,
