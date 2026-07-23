@@ -139,7 +139,6 @@ function enforceRequestedFlow(
   requestedFlow?: FlowChatRequestBody['requestedFlow']
 ): ChatAgentResponse {
   if (!requestedFlow || !response.action) return response;
-  if (requestedFlow === 'project' && response.action.flow === 'refine') return response;
   if (response.action.flow === requestedFlow) return response;
 
   return {
@@ -150,6 +149,10 @@ function enforceRequestedFlow(
       explanation: `${response.action.explanation} O modo ${requestedFlow} selecionado na interface foi preservado.`,
     },
   };
+}
+
+function activeMediaFlow(flow?: OutputIntent['mediaFlow']): FlowChatRequestBody['requestedFlow'] {
+  return flow === 'image' || flow === 'video' || flow === 'ad-creative' ? flow : undefined;
 }
 
 function protectOutputIntent(response: ChatAgentResponse, intent: OutputIntent, allowContinuation: boolean): ChatAgentResponse {
@@ -622,7 +625,8 @@ export async function POST(request: Request) {
     const latestUserText = getLatestUserMessageText(messages);
     const outputIntent = classifyOutputIntent(latestUserText, getSkillArtifactHint(latestUserText));
     const actionContinuation = isActionContinuationRequest(messages);
-    const requestedMediaFlow = outputIntent.mediaFlow || ((allowsMediaAction(outputIntent) || actionContinuation) ? requestedFlow : undefined);
+    const requestedMediaFlow = activeMediaFlow(outputIntent.mediaFlow)
+      || ((allowsMediaAction(outputIntent) || actionContinuation) ? requestedFlow : undefined);
     const immediateContextReference = isImmediateContextReference(messages);
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
     const archivedUserMessageId = cortexMemoryEnabled ? archiveFlowMessage({ archiveContext, role: 'user', content: latestUserText }) : undefined;

@@ -1309,8 +1309,7 @@ export default function FlowDashboardPage() {
         </div>
 
         {/* Ratio + Quantity */}
-        {agentType !== "project" && (
-          <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <div className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Proporção</div>
               <div className="grid min-h-[116px] grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5">
@@ -1394,8 +1393,7 @@ export default function FlowDashboardPage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
+        </div>
       </motion.div>
     );
   };
