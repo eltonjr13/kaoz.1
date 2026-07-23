@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-export const requiredDesktopRuntimePackages = Object.freeze(["next", "playwright"]);
+export const requiredDesktopRuntimePackages = Object.freeze([
+  "@modelcontextprotocol/sdk",
+  "next",
+  "playwright",
+]);
 
 function assertPathInside(root, candidate, label) {
   const relative = path.relative(root, candidate);

@@ -101,7 +101,7 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
   }
 });
 
-test("inclui Playwright e suas dependencias no runtime desktop", async () => {
+test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async () => {
   const testRootParent = path.join(process.cwd(), ".generated", "build-cleanup-tests");
   await mkdir(testRootParent, { recursive: true });
   const root = await mkdtemp(path.join(testRootParent, "playwright-case-"));
@@ -111,6 +111,11 @@ test("inclui Playwright e suas dependencias no runtime desktop", async () => {
     const serverFile = path.join(standalone, "server.js");
     const fixtures = [
       [serverFile, "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "package.json"), JSON.stringify({
+        name: "@modelcontextprotocol/sdk",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "@modelcontextprotocol", "sdk", "index.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "next", "package.json"), JSON.stringify({ name: "next", main: "index.js" })],
       [path.join(root, "node_modules", "next", "index.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "playwright", "package.json"), JSON.stringify({
@@ -131,6 +136,10 @@ test("inclui Playwright e suas dependencias no runtime desktop", async () => {
     }
 
     const resolved = ensureDesktopRuntimePackages(root, standalone);
+    assert.equal(
+      resolved["@modelcontextprotocol/sdk"],
+      path.join(standalone, "node_modules", "@modelcontextprotocol", "sdk", "index.js"),
+    );
     assert.equal(resolved.playwright, path.join(standalone, "node_modules", "playwright", "index.js"));
     assert.equal(
       createRequire(serverFile).resolve("playwright-core"),

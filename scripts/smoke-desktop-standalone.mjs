@@ -85,6 +85,13 @@ try {
   child.stderr.on("data", appendOutput);
 
   const status = await waitForHttp(`http://127.0.0.1:${port}`, child, () => output);
+  const mcpResponse = await fetch(`http://127.0.0.1:${port}/api/mcp/config`);
+  if (mcpResponse.status !== 200) {
+    const responseBody = await mcpResponse.text();
+    throw new Error(
+      `Rota /api/mcp/config falhou no runtime desktop com HTTP ${mcpResponse.status}: ${responseBody}\n${output}`,
+    );
+  }
   for (const route of [
     { path: "/api/flow/auth", body: { action: "desktop-runtime-smoke" } },
     { path: "/api/flow/chat", body: {} },
@@ -101,7 +108,9 @@ try {
       );
     }
   }
-  console.log(`Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas Flow auth/chat.`);
+  console.log(
+    `Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas MCP config e Flow auth/chat.`,
+  );
 } finally {
   if (child && child.exitCode === null) child.kill();
   const relative = path.relative(os.tmpdir(), tempRoot);
