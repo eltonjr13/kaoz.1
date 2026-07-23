@@ -220,7 +220,7 @@ export interface ChatMessageState {
   attachedImage?: string | null;
   plan?: PendingPlan | null;
   jobId?: string | null;
-  jobType?: AgentType | null;
+  jobType?: PlannedKind | null;
   jobStatus?: 'running' | 'completed' | 'failed' | null;
   jobLogs?: string[];
   imageResult?: GenerationResult | null;

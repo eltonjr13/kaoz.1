@@ -762,7 +762,7 @@ type ChatWithAgentOptions = {
   relevantMemories?: string;
   activeMemories?: ChatMemoryRecord[];
   voiceInstruction?: string;
-  requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
+  requestedFlow?: 'image' | 'video' | 'ad-creative';
   imageOperation?: ImageGenerationOperation;
   imageAspectRatio?: FlowImageAspectRatio;
   characterRuntime?: CharacterRuntimeSnapshot;

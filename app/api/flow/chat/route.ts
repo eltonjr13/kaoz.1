@@ -34,7 +34,7 @@ type FlowChatRequestBody = {
   messages: ChatMessage[];
   model?: string;
   referenceImage?: string;
-  requestedFlow?: 'image' | 'video' | 'project' | 'ad-creative';
+  requestedFlow?: 'image' | 'video' | 'ad-creative';
   imageOperation?: ImageGenerationOperation;
   imageAspectRatio?: FlowImageAspectRatio;
   useCortexMemory?: boolean;
