@@ -85,7 +85,18 @@ try {
   child.stderr.on("data", appendOutput);
 
   const status = await waitForHttp(`http://127.0.0.1:${port}`, child, () => output);
-  console.log(`Standalone desktop iniciou isolado com HTTP ${status}.`);
+  const flowAuthResponse = await fetch(`http://127.0.0.1:${port}/api/flow/auth`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "desktop-runtime-smoke" }),
+  });
+  if (flowAuthResponse.status !== 400) {
+    const responseBody = await flowAuthResponse.text();
+    throw new Error(
+      `Rota Flow falhou no runtime desktop com HTTP ${flowAuthResponse.status}: ${responseBody}\n${output}`,
+    );
+  }
+  console.log(`Standalone desktop iniciou isolado com HTTP ${status} e carregou a rota Flow.`);
 } finally {
   if (child && child.exitCode === null) child.kill();
   const relative = path.relative(os.tmpdir(), tempRoot);
