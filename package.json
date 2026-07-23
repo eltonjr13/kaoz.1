@@ -38,7 +38,7 @@
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
     "test:artifacts": "node --experimental-strip-types --no-warnings --test tests/artifact-contract.test.ts",
     "test:updates": "node --test tests/electron-update-errors.test.cjs",
-    "test:desktop": "node --test tests/desktop-preferences.test.cjs tests/electron-process-lifecycle.test.cjs",
+    "test:desktop": "node --test tests/desktop-layout.test.cjs tests/desktop-preferences.test.cjs tests/electron-process-lifecycle.test.cjs",
     "test:speech": "node --experimental-strip-types --no-warnings --test tests/microphone-session.test.ts",
     "test:lipsync": "node --no-warnings --test tests/lipsync-integration.test.mjs",
     "test:build-cleanup": "node --no-warnings --test tests/build-cleanup.test.mjs"

@@ -83,6 +83,14 @@ html[data-mrchicken-desktop="true"] body {
   padding-top: var(--mrchicken-titlebar-height);
 }
 
+/* The body is border-box sized to the viewport. Keep the application inside
+   its remaining content box after the desktop titlebar consumes 36px. */
+html[data-mrchicken-desktop="true"] .mrchicken-app-shell {
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+}
+
 .mrchicken-desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;
