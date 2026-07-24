@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
 import { skillRegistry } from "@/services/skills/skill.registry";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "@/services/skills/skill.types";
-import { toolExecutionService } from "@/services/tools/tool-execution.service";
+import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
 import { normalizeScriptPolicy } from "@/services/skills/skill.policy";
 

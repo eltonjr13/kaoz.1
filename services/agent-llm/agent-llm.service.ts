@@ -7,7 +7,7 @@ import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, Ag
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format.ts";
-import { toolExecutionService } from "../tools/tool-execution.service.ts";
+import { toolExecutionService } from "../tools/tool-execution.runtime.ts";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {

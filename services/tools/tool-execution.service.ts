@@ -13,7 +13,6 @@ import {
   requiredApproval,
 } from "../orchestrator/orchestrator.policy.ts";
 import type { ApprovalMode } from "../orchestrator/orchestrator.types.ts";
-import { toolRegistry } from "./tool.registry.ts";
 import { assertToolArguments } from "./tool.validation.ts";
 import { InMemoryToolExecutionAudit } from "./tool-execution.audit.ts";
 import type {
@@ -33,6 +32,7 @@ import type { KaozTool, ToolResult } from "./tool.types.ts";
 
 const DEFAULT_TOOL_SERVICE_ID = createAgentId("tool-execution-service");
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_BUS_TIMEOUT_MS = 10 * 60_000;
 const APPROVAL_LEVEL: Readonly<Record<ApprovalMode, number>> = Object.freeze({
   never: 0,
   plan: 1,
@@ -83,8 +83,8 @@ export class ToolExecutionService {
   private readonly clock: ToolExecutionClock;
   private readonly pending = new Map<string, ToolExecutionRequest>();
 
-  constructor(options: ToolExecutionServiceOptions = {}) {
-    this.catalog = options.catalog ?? toolRegistry;
+  constructor(options: ToolExecutionServiceOptions) {
+    this.catalog = options.catalog;
     this.messageBus = options.messageBus ?? new MessageBus();
     this.auditRecorder =
       options.auditRecorder ??
@@ -121,15 +121,12 @@ export class ToolExecutionService {
   async execute(
     request: ToolExecutionRequest,
   ): Promise<ToolExecutionOutcome> {
-    validateRequest(request);
     const requestId = crypto.randomUUID();
     const correlationId =
       request.correlationId?.trim() || crypto.randomUUID();
-    const configuredTool = await this.catalog.get(request.toolId);
-    const timeoutMs = resolveTimeout(
-      request.timeoutMs,
-      configuredTool?.timeoutMs,
-    );
+    const timeoutMs = request.timeoutMs
+      ? validateTimeout(request.timeoutMs)
+      : DEFAULT_BUS_TIMEOUT_MS;
     const normalizedRequest: ToolExecutionRequest = Object.freeze({
       ...request,
       correlationId,
@@ -197,6 +194,7 @@ export class ToolExecutionService {
     let result: ToolResult | undefined;
 
     try {
+      validateRequest(request);
       tool = await this.catalog.get(request.toolId);
       if (!tool || !tool.enabled) {
         throw new Error(`Ferramenta '${request.toolId}' não encontrada.`);
@@ -212,16 +210,25 @@ export class ToolExecutionService {
       if (!handler) {
         throw new Error(`Ferramenta '${tool.id}' não possui executor.`);
       }
+      const executionTimeoutMs = resolveTimeout(
+        request.timeoutMs,
+        tool.timeoutMs,
+      );
       const signal = combineSignals(
         request.context.signal,
         busContext.signal,
+        AbortSignal.timeout(executionTimeoutMs),
       );
-      result = await handler(
-        { ...request.arguments },
-        {
-          ...request.context,
-          signal,
-        },
+      result = await invokeWithTimeout(
+        handler(
+          { ...request.arguments },
+          {
+            ...request.context,
+            signal,
+          },
+        ),
+        executionTimeoutMs,
+        tool.id,
       );
       const completed = this.clock.now();
       const audit = this.createAudit({
@@ -380,8 +387,42 @@ function resolveTimeout(
 function combineSignals(
   requestSignal: AbortSignal,
   busSignal: AbortSignal,
+  serviceSignal: AbortSignal,
 ): AbortSignal {
-  return AbortSignal.any([requestSignal, busSignal]);
+  return AbortSignal.any([requestSignal, busSignal, serviceSignal]);
+}
+
+function validateTimeout(timeout: number): number {
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error("Tool execution timeout must be positive.");
+  }
+  return timeout;
+}
+
+async function invokeWithTimeout<TResult>(
+  execution: Promise<TResult>,
+  timeoutMs: number,
+  toolId: string,
+): Promise<TResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Ferramenta '${toolId}' excedeu o timeout de ${timeoutMs}ms.`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  try {
+    return await Promise.race([execution, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function measureConsumption(
@@ -457,5 +498,3 @@ function freezeToolResult(result: ToolResult): ToolResult {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-
-export const toolExecutionService = new ToolExecutionService();

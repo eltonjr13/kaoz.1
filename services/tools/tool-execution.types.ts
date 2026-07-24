@@ -107,7 +107,7 @@ export interface ToolExecutionClock {
 }
 
 export interface ToolExecutionServiceOptions {
-  readonly catalog?: ToolCatalog;
+  readonly catalog: ToolCatalog;
   readonly messageBus?: import("../agents/messaging/message-bus.ts").MessageBus;
   readonly auditRecorder?: ToolExecutionAuditRecorder;
   readonly costCalculator?: ToolExecutionCostCalculator;
@@ -115,4 +115,3 @@ export interface ToolExecutionServiceOptions {
   readonly serviceId?: AgentId;
   readonly auditLimit?: number;
 }
-
