@@ -1028,6 +1028,7 @@ function freezeSubtask(subtask: Subtask): ExecutionTask {
     dependencies: Object.freeze(dependencies),
     timeout,
     expectedOutput,
+    input: executionTask.input,
     estimatedCost: subtask.estimatedCost,
     estimatedTime: subtask.estimatedTime,
     confidence: subtask.confidence,

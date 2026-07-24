@@ -45,6 +45,7 @@ export interface ExecutionTask extends Subtask {
   readonly ownerCapability: string;
   readonly timeout: number;
   readonly expectedOutput: ExecutionTaskExpectedOutput;
+  readonly input?: unknown;
 }
 
 export interface SubtaskOwnerResolver {
