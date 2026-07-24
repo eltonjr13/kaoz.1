@@ -19,11 +19,17 @@ export interface AgentMonitor {
   health(): Promise<AgentHealth>;
 }
 
-export interface AgentDescriptor {
+export interface AgentDescriptorProvider {
   getCapabilities(): AgentCapabilities;
   getMetadata(): AgentMetadata;
 }
 
+/**
+ * Unified agent contract.
+ *
+ * Concrete agents should extend AbstractAgent instead of implementing this
+ * interface directly so lifecycle and state behavior stay consistent.
+ */
 export interface BaseAgent<
   TTask = unknown,
   TTaskResult = unknown,
@@ -34,7 +40,7 @@ export interface BaseAgent<
     AgentTaskHandler<TTask, TTaskResult>,
     AgentMessageHandler<TMessage, TMessageResult>,
     AgentMonitor,
-    AgentDescriptor {
+    AgentDescriptorProvider {
   readonly id: AgentId;
   readonly state: Readonly<AgentState>;
 }

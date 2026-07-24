@@ -77,6 +77,7 @@ test("AbstractAgent owns the lifecycle while concrete agents own task behavior",
 
   assert.equal(agent.id, "test-agent");
   assert.equal(agent.state.status, "created");
+  assert.equal(Object.isFrozen(agent.state), true);
   assert.equal(await agent.handleTask("work", context), "task:work:request-1");
   assert.equal(await agent.handleMessage("hello", context), "message:hello:request-1");
 

@@ -30,11 +30,11 @@ export abstract class AbstractAgent<
     this.capabilities = freezeCapabilities(config.capabilities);
 
     const timestamp = this.timestamp();
-    this.currentState = {
+    this.currentState = freezeState({
       status: "created",
       statusChangedAt: timestamp,
       updatedAt: timestamp,
-    };
+    });
   }
 
   get id(): AgentId {
@@ -129,11 +129,11 @@ export abstract class AbstractAgent<
 
   async heartbeat(): Promise<AgentHeartbeat> {
     const timestamp = this.timestamp();
-    this.currentState = {
+    this.currentState = freezeState({
       ...this.currentState,
       lastHeartbeatAt: timestamp,
       updatedAt: timestamp,
-    };
+    });
 
     return {
       agentId: this.id,
@@ -193,13 +193,13 @@ export abstract class AbstractAgent<
 
   private transitionTo(status: AgentStatus, patch: AgentStatePatch = {}): void {
     const timestamp = this.timestamp();
-    this.currentState = {
+    this.currentState = freezeState({
       ...this.currentState,
       ...patch,
       status,
       statusChangedAt: timestamp,
       updatedAt: timestamp,
-    };
+    });
   }
 
   private transitionToFailure(error: unknown): void {
@@ -248,5 +248,14 @@ function freezeCapabilities(capabilities: AgentCapabilities): AgentCapabilities 
     items: Object.freeze(
       capabilities.items.map((capability) => Object.freeze({ ...capability })),
     ),
+  });
+}
+
+function freezeState(state: AgentState): AgentState {
+  return Object.freeze({
+    ...state,
+    lastError: state.lastError
+      ? Object.freeze({ ...state.lastError })
+      : undefined,
   });
 }
