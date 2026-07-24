@@ -168,7 +168,8 @@ test("preserves a structured dependency graph and stops at Scheduler decisions",
   ]);
   assert.equal(result.subtasks.length, 3);
   assert.equal(result.decisions.length, 1);
-  assert.equal(result.decisions[0]?.taskId, "analyze");
+  assert.equal(result.subtasks[0]?.sourceStepId, "analyze");
+  assert.equal(result.decisions[0]?.taskId, result.subtasks[0]?.id);
   assert.equal(result.planningMetric.schedulerDecisionCount, 1);
 });
 
