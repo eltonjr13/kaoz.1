@@ -1,5 +1,7 @@
 import type { BaseAgent } from "../core/base-agent.ts";
+import type { AgentContext } from "../core/agent-context.ts";
 import type { AgentId } from "../core/agent-id.ts";
+import type { AgentContextHydrator } from "../memory/agent-context.adapter.ts";
 import type {
   ExecutionTask,
   Subtask,
@@ -155,6 +157,7 @@ export interface SchedulerExecutionOptions {
   readonly sessionId?: string;
   readonly signal?: AbortSignal;
   readonly manageAgentLifecycle?: boolean;
+  readonly agentContext?: AgentContext;
   readonly isRetryable?: (
     error: unknown,
     task: ExecutionTask,
@@ -180,6 +183,7 @@ export interface SchedulerOptions {
   };
   readonly clock?: SchedulerClock;
   readonly idGenerator?: () => string;
+  readonly contextAdapter?: AgentContextHydrator;
 }
 
 export type SchedulerErrorCode =

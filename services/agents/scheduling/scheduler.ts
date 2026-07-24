@@ -1,7 +1,12 @@
 import {
   normalizeCapabilityName,
 } from "../core/agent-capabilities.ts";
+import type { AgentContext } from "../core/agent-context.ts";
 import { createAgentId, type AgentId } from "../core/agent-id.ts";
+import {
+  AgentContextAdapter,
+  type AgentContextHydrator,
+} from "../memory/agent-context.adapter.ts";
 import type {
   ExecutionTask,
   ExecutionTaskExpectedOutput,
@@ -85,6 +90,7 @@ export class Scheduler {
   private readonly config: SchedulerConfig;
   private readonly clock: SchedulerClock;
   private readonly idGenerator: () => string;
+  private readonly contextAdapter: AgentContextHydrator;
   private decisionSequence = 0;
   private fairnessCounter = 0;
   private eventSequence = 0;
@@ -94,6 +100,8 @@ export class Scheduler {
     this.config = resolveConfig(options.config);
     this.clock = options.clock ?? systemClock;
     this.idGenerator = options.idGenerator ?? defaultDecisionId;
+    this.contextAdapter =
+      options.contextAdapter ?? new AgentContextAdapter();
   }
 
   enqueue(request: SchedulingRequest): ScheduledTask {
@@ -550,8 +558,9 @@ export class Scheduler {
 
     try {
       const output = await executeWithTimeout(
-        (signal) =>
-          agent.handleTask(entry.subtask, {
+        async (signal) => {
+          const rawContext: AgentContext = {
+            ...(options.agentContext ?? {}),
             requestId: decision.id,
             correlationId: options.correlationId ?? options.executionId,
             sessionId: options.sessionId,
@@ -560,7 +569,18 @@ export class Scheduler {
               decision,
             }),
             signal,
-          }),
+          };
+          const context = await this.contextAdapter.adapt(rawContext, {
+            agentId: agent.id,
+            executionId: options.executionId,
+            objective: entry.subtask.description,
+            topic: entry.subtask.title,
+            executionContext: options.agentContext?.executionContext,
+            sharedContext: options.agentContext?.sharedContext,
+            blackboard: options.agentContext?.blackboard,
+          });
+          return agent.handleTask(entry.subtask, context);
+        },
         entry.timeoutMs,
         options.signal,
       );

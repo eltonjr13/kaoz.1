@@ -6,13 +6,20 @@ import {
 } from "../blackboard/knowledge-entry.ts";
 import { AbstractAgent } from "../core/abstract-agent.ts";
 import type { AgentConfig } from "../core/agent-config.ts";
-import type { AgentContext } from "../core/agent-context.ts";
+import type {
+  AgentContext,
+  HydratedAgentContext,
+} from "../core/agent-context.ts";
 import { createAgentId, type AgentId } from "../core/agent-id.ts";
 import { SharedContext } from "../context/shared-context.ts";
 import type {
   ContextData,
   ExecutionContext,
 } from "../context/context.types.ts";
+import {
+  AgentContextAdapter,
+  type AgentContextHydrator,
+} from "../memory/agent-context.adapter.ts";
 import {
   TaskDecomposerAgent,
   createTaskDecomposerAgentConfig,
@@ -125,6 +132,7 @@ export interface ChiefAgentOptions {
   readonly clock?: SupervisorClock;
   readonly idGenerator?: () => string;
   readonly metricsRecorder?: PlanningMetricsRecorder;
+  readonly contextAdapter?: AgentContextHydrator;
 }
 
 export interface ChiefAgentConfigOptions {
@@ -151,6 +159,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
   private readonly clock: SupervisorClock;
   private readonly idGenerator: () => string;
   private readonly metricsRecorder: PlanningMetricsRecorder;
+  private readonly contextAdapter: AgentContextHydrator;
 
   constructor(options: ChiefAgentOptions = {}) {
     const config = options.config ?? createChiefAgentConfig();
@@ -159,11 +168,13 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     this.clock = options.clock ?? systemClock;
     this.idGenerator = options.idGenerator ?? defaultId;
     this.metricsRecorder = options.metricsRecorder ?? planningMetricsStore;
+    this.contextAdapter =
+      options.contextAdapter ?? new AgentContextAdapter();
   }
 
   async handleTask(
     input: ChiefObjective<TResponse>,
-    _agentContext?: AgentContext,
+    agentContext?: AgentContext,
   ): Promise<ChiefAgentResult<TResponse>> {
     this.assertReady();
     const objective = requireText(input.objective, "Chief objective");
@@ -224,6 +235,17 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         createdAt: this.currentTimestamp(),
       }),
     );
+    let runtimeContext = await this.contextAdapter.adapt(agentContext, {
+      agentId: this.id,
+      executionId,
+      objective,
+      avatarId: contextText(input.contextData, "avatarId"),
+      topic: objective,
+      executionContext,
+      sharedContext,
+      blackboard,
+    });
+    executionContext = runtimeContext.executionContext;
 
     const planner = this.createPlanner(input, requiredCapability);
     const decomposer = new TaskDecomposerAgent({
@@ -241,6 +263,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     const scheduler = new Scheduler({
       clock: this.clock,
       idGenerator: this.idGenerator,
+      contextAdapter: this.contextAdapter,
       config: {
         maxConcurrency: 4,
         maxConcurrencyPerAgent: 1,
@@ -266,7 +289,10 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     const plannerStartedAt = monotonicNow();
     try {
       try {
-        plan = await planner.handleTask(goal);
+        plan = await planner.handleTask(
+          goal,
+          withExecutionContext(runtimeContext, executionContext),
+        );
         executionContext = sharedContext.update("execution", {
           planId: plan.id,
           planVersion: plan.version,
@@ -298,7 +324,11 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       }
 
       try {
-        tasks = await decomposer.handleTask(plan);
+        runtimeContext = withExecutionContext(
+          runtimeContext,
+          executionContext,
+        );
+        tasks = await decomposer.handleTask(plan, runtimeContext);
         scheduler.enqueueAll(
           tasks.map((task) => ({
             subtask: task,
@@ -339,6 +369,10 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         executionReport = await scheduler.executeAll(executionAgents, {
           executionId,
           correlationId: executionId,
+          agentContext: withExecutionContext(
+            runtimeContext,
+            executionContext,
+          ),
           manageAgentLifecycle: true,
         });
         decisions = executionReport.decisions;
@@ -394,6 +428,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           executionReport,
           capturedAt: this.currentTimestamp(),
         }),
+        withExecutionContext(runtimeContext, executionContext),
       );
       executionContext = sharedContext.update("execution", {
         selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
