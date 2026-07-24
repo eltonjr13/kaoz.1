@@ -1,4 +1,7 @@
-import type { AgentCapabilities } from "./agent-capabilities.ts";
+import {
+  defineAgentCapabilities,
+  type AgentCapabilities,
+} from "./agent-capabilities.ts";
 import type { AgentConfig } from "./agent-config.ts";
 import type { AgentContext } from "./agent-context.ts";
 import type { AgentHealth, AgentHealthStatus, AgentHeartbeat } from "./agent-health.ts";
@@ -27,7 +30,7 @@ export abstract class AbstractAgent<
   constructor(config: AgentConfig) {
     this.config = config;
     this.metadata = freezeMetadata(config.metadata);
-    this.capabilities = freezeCapabilities(config.capabilities);
+    this.capabilities = defineAgentCapabilities(config.capabilities.items);
 
     const timestamp = this.timestamp();
     this.currentState = freezeState({
@@ -240,14 +243,6 @@ function freezeMetadata(metadata: AgentMetadata): AgentMetadata {
   return Object.freeze({
     ...metadata,
     tags: metadata.tags ? Object.freeze([...metadata.tags]) : undefined,
-  });
-}
-
-function freezeCapabilities(capabilities: AgentCapabilities): AgentCapabilities {
-  return Object.freeze({
-    items: Object.freeze(
-      capabilities.items.map((capability) => Object.freeze({ ...capability })),
-    ),
   });
 }
 
