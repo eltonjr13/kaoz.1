@@ -29,6 +29,7 @@ import { logger } from "../FlowUtils";
 import type {
   AgentTaskOptions,
   FlowExecutionResult,
+  GenerationQuantity,
 } from "./FlowAgentContracts";
 
 const VIDEO_REFERENCE_EXTENSIONS = new Set([
@@ -51,6 +52,14 @@ export abstract class FlowSpecializedAgentBase<
   FlowAgentMessage,
   TResult
 > {
+  protected assertReadyForFlowTask(): void {
+    if (this.state.status !== "ready") {
+      throw new Error(
+        `${this.getMetadata().name} must be ready before execution.`,
+      );
+    }
+  }
+
   handleMessage(
     message: FlowAgentMessage,
     context?: AgentContext,
@@ -405,7 +414,15 @@ export abstract class FlowSpecializedAgentBase<
   }
 
   protected isImageCollectionFailure(errorMessage: string): boolean {
-    return /\[FLOW_SUBMITTED\]/i.test(errorMessage);
+    return /\[FLOW_SUBMITTED\]|download|baixad|coleta|preview|visualiza|locator\.waitFor[\s\S]*(download|baixar)/i.test(
+      errorMessage,
+    );
+  }
+
+  protected getImageBatchQuantity(
+    count: number,
+  ): GenerationQuantity {
+    return (count === 1 ? "1x" : `x${count}`) as GenerationQuantity;
   }
 
   private async cacheRemoteAvatarReferenceMedia(
