@@ -17,7 +17,7 @@ export interface SchedulerAgentSnapshot {
   readonly maxConcurrency?: number;
 }
 
-export interface RetryPolicy {
+export interface SchedulerRetryPolicy {
   /**
    * Total attempts, including the first assignment.
    */
@@ -36,7 +36,7 @@ export interface SchedulingRequest {
   readonly fairnessKey?: string;
   readonly notBefore?: string;
   readonly timeoutMs?: number;
-  readonly retryPolicy?: RetryPolicy;
+  readonly retryPolicy?: SchedulerRetryPolicy;
 }
 
 export interface ScheduledTask {
@@ -48,7 +48,7 @@ export interface ScheduledTask {
   readonly enqueuedAt: string;
   readonly nextEligibleAt: string;
   readonly timeoutMs: number;
-  readonly retryPolicy: RetryPolicy;
+  readonly retryPolicy: SchedulerRetryPolicy;
   readonly assignedAgentId?: AgentId;
   readonly activeDecisionId?: string;
   readonly assignedAt?: string;
@@ -99,12 +99,12 @@ export interface SchedulerConfig {
   readonly maxConcurrencyPerAgent: number;
   readonly defaultTimeoutMs: number;
   readonly priorityAgingIntervalMs: number;
-  readonly defaultRetryPolicy: RetryPolicy;
+  readonly defaultRetryPolicy: SchedulerRetryPolicy;
 }
 
 export interface SchedulerOptions {
   readonly config?: Partial<Omit<SchedulerConfig, "defaultRetryPolicy">> & {
-    readonly defaultRetryPolicy?: Partial<RetryPolicy>;
+    readonly defaultRetryPolicy?: Partial<SchedulerRetryPolicy>;
   };
   readonly clock?: SchedulerClock;
   readonly idGenerator?: () => string;
@@ -127,4 +127,3 @@ export class SchedulerError extends Error {
     this.taskId = taskId;
   }
 }
-

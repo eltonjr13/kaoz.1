@@ -6,7 +6,7 @@ import type { Subtask } from "../decomposition/task-decomposition.types.ts";
 import {
   SchedulerError,
   type CancellationDecision,
-  type RetryPolicy,
+  type SchedulerRetryPolicy,
   type ScheduledTask,
   type ScheduledTaskStatus,
   type SchedulerAgentSnapshot,
@@ -24,7 +24,7 @@ interface SchedulerEntry {
   readonly fairnessKey: string;
   readonly enqueuedAt: string;
   readonly timeoutMs: number;
-  readonly retryPolicy: RetryPolicy;
+  readonly retryPolicy: SchedulerRetryPolicy;
   status: ScheduledTaskStatus;
   attempt: number;
   nextEligibleAt: string;
@@ -43,7 +43,7 @@ interface ResolvedAgent {
   readonly capacity: number;
 }
 
-const DEFAULT_RETRY_POLICY: RetryPolicy = Object.freeze({
+const DEFAULT_RETRY_POLICY: SchedulerRetryPolicy = Object.freeze({
   maxAttempts: 3,
   baseDelayMs: 1_000,
   backoffMultiplier: 2,
@@ -610,9 +610,9 @@ function resolveConfig(
 }
 
 function resolveRetryPolicy(
-  input: Partial<RetryPolicy> | undefined,
-  fallback: RetryPolicy,
-): RetryPolicy {
+  input: Partial<SchedulerRetryPolicy> | undefined,
+  fallback: SchedulerRetryPolicy,
+): SchedulerRetryPolicy {
   const maxAttempts = positiveInteger(
     input?.maxAttempts ?? fallback.maxAttempts,
     "Retry maxAttempts",
@@ -640,7 +640,10 @@ function resolveRetryPolicy(
   });
 }
 
-function retryDelay(policy: RetryPolicy, completedAttempt: number): number {
+function retryDelay(
+  policy: SchedulerRetryPolicy,
+  completedAttempt: number,
+): number {
   return Math.min(
     policy.maxDelayMs,
     policy.baseDelayMs *
@@ -744,4 +747,3 @@ function assertUnique(values: readonly string[], message: string): void {
     throw new Error(message);
   }
 }
-
