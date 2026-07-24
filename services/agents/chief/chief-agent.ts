@@ -246,143 +246,153 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     const plannerStartedAt = monotonicNow();
     try {
       try {
-      plan = await planner.handleTask(goal);
-      executionContext = sharedContext.update("execution", {
-        planId: plan.id,
-        planVersion: plan.version,
-        status: "planned",
-      });
-      subtasks = await decomposer.handleTask(plan);
-      scheduler.enqueueAll(
-        subtasks.map((subtask) => ({
-          subtask,
-          fairnessKey: executionId,
-          timeoutMs: Math.max(1, subtask.estimatedTime),
-          retryPolicy: {
-            maxAttempts: 1,
-            baseDelayMs: 0,
-            backoffMultiplier: 1,
-            maxDelayMs: 0,
-          },
-        })),
-      );
-      const workerSnapshot: SchedulerAgentSnapshot = {
-        id: executionAdapterId,
-        capabilities: Object.freeze([
-          ...new Set(
-            subtasks.map((subtask) => subtask.requiredCapability),
-          ),
-        ]),
-        online: true,
-        available: true,
-        currentLoad: 0,
-        maxConcurrency: 1,
-      };
-      decisions = scheduler.schedule([workerSnapshot]);
-      if (decisions.length === 0) {
-        throw new Error(
-          "PlannerAgent produced a plan with no schedulable initial task.",
-        );
-      }
-      executionContext = sharedContext.update("execution", {
-        planId: plan.id,
-        scheduledDecisionIds: decisions.map((decision) => decision.id),
-        status: "scheduled-not-executed",
-      });
+        plan = await planner.handleTask(goal);
+        executionContext = sharedContext.update("execution", {
+          planId: plan.id,
+          planVersion: plan.version,
+          status: "planned",
+        });
       } catch (error) {
-      plannerError = errorMessage(error);
-      plan = undefined;
-      subtasks = Object.freeze([]);
-      decisions = Object.freeze([]);
-      executionContext = sharedContext.update("execution", {
-        plannerError,
-        status: "legacy-fallback",
-      });
+        plannerError = errorMessage(error);
+        plan = undefined;
+        executionContext = sharedContext.update("execution", {
+          plannerError,
+          status: "legacy-fallback",
+        });
       }
       const newPlannerDurationMs = elapsedSince(plannerStartedAt);
-    const legacyStartedAt = monotonicNow();
-    let response: TResponse;
-    try {
-      response = await this.runLegacyPlanning(
-        input,
-        executionContext,
-        goal,
-        plan,
-        subtasks,
-        decisions,
-      );
-    } catch (error) {
+      if (plan) {
+        try {
+          subtasks = await decomposer.handleTask(plan);
+          scheduler.enqueueAll(
+            subtasks.map((subtask) => ({
+              subtask,
+              fairnessKey: executionId,
+              timeoutMs: Math.max(1, subtask.estimatedTime),
+              retryPolicy: {
+                maxAttempts: 1,
+                baseDelayMs: 0,
+                backoffMultiplier: 1,
+                maxDelayMs: 0,
+              },
+            })),
+          );
+          const workerSnapshot: SchedulerAgentSnapshot = {
+            id: executionAdapterId,
+            capabilities: Object.freeze([
+              ...new Set(
+                subtasks.map((subtask) => subtask.requiredCapability),
+              ),
+            ]),
+            online: true,
+            available: true,
+            currentLoad: 0,
+            maxConcurrency: 1,
+          };
+          decisions = scheduler.schedule([workerSnapshot]);
+          if (decisions.length === 0) {
+            throw new Error(
+              "PlannerAgent produced a plan with no schedulable initial task.",
+            );
+          }
+          executionContext = sharedContext.update("execution", {
+            planId: plan.id,
+            scheduledDecisionIds: decisions.map((decision) => decision.id),
+            status: "scheduled-not-executed",
+          });
+        } catch (error) {
+          subtasks = Object.freeze([]);
+          decisions = Object.freeze([]);
+          executionContext = sharedContext.update("execution", {
+            schedulerError: errorMessage(error),
+            status: "planned-not-scheduled",
+          });
+        }
+      }
+
+      const legacyStartedAt = monotonicNow();
+      let response: TResponse;
+      try {
+        response = await this.runLegacyPlanning(
+          input,
+          executionContext,
+          goal,
+          plan,
+          subtasks,
+          decisions,
+        );
+      } catch (error) {
+        const legacyDurationMs = elapsedSince(legacyStartedAt);
+        const metric = createComparisonMetric({
+          id: this.nextId("planning-metric"),
+          executionId,
+          goal,
+          recordedAt: this.currentTimestamp(),
+          plan,
+          plannerError,
+          newPlannerDurationMs,
+          legacyDurationMs,
+          legacyError: errorMessage(error),
+          legacyObservation: defaultLegacyObservation(),
+          schedulerDecisionCount: decisions.length,
+        });
+        await this.recordMetric(metric);
+        sharedContext.update("execution", {
+          status: "failed",
+          failureReason: errorMessage(error),
+        });
+        throw error;
+      }
+
       const legacyDurationMs = elapsedSince(legacyStartedAt);
-      const metric = createComparisonMetric({
+      const legacyObservation = inspectLegacyPlan(
+        input.legacyPlanInspector,
+        response,
+      );
+      if (!plan) {
+        plan = createLegacyFallbackPlan(
+          goal,
+          legacyObservation,
+          requiredCapability,
+          this.nextId("legacy-plan"),
+          this.currentTimestamp(),
+          input,
+        );
+        executionContext = sharedContext.update("execution", {
+          planId: plan.id,
+          planVersion: plan.version,
+          status: "legacy-fallback",
+        });
+      }
+
+      const supervision = await supervisor.handleTask(
+        createPlanningSupervisionSnapshot({
+          executionId,
+          plan,
+          subtasks,
+          decisions,
+          workerId: executionAdapterId,
+          capturedAt: this.currentTimestamp(),
+        }),
+      );
+      executionContext = sharedContext.update("execution", {
+        selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
+        schedulerDecisionCount: decisions.length,
+        status: "planning-complete-no-execution",
+      });
+      const planningMetric = createComparisonMetric({
         id: this.nextId("planning-metric"),
         executionId,
         goal,
         recordedAt: this.currentTimestamp(),
-        plan,
+        plan: plannerError ? undefined : plan,
         plannerError,
         newPlannerDurationMs,
         legacyDurationMs,
-        legacyError: errorMessage(error),
-        legacyObservation: defaultLegacyObservation(),
+        legacyObservation,
         schedulerDecisionCount: decisions.length,
       });
-      await this.recordMetric(metric);
-      sharedContext.update("execution", {
-        status: "failed",
-        failureReason: errorMessage(error),
-      });
-      throw error;
-    }
-
-    const legacyDurationMs = elapsedSince(legacyStartedAt);
-    const legacyObservation = inspectLegacyPlan(
-      input.legacyPlanInspector,
-      response,
-    );
-    if (!plan) {
-      plan = createLegacyFallbackPlan(
-        goal,
-        legacyObservation,
-        requiredCapability,
-        this.nextId("legacy-plan"),
-        this.currentTimestamp(),
-        input,
-      );
-      executionContext = sharedContext.update("execution", {
-        planId: plan.id,
-        planVersion: plan.version,
-        status: "legacy-fallback",
-      });
-    }
-
-    const supervision = await supervisor.handleTask(
-      createPlanningSupervisionSnapshot({
-        executionId,
-        plan,
-        subtasks,
-        decisions,
-        workerId: executionAdapterId,
-        capturedAt: this.currentTimestamp(),
-      }),
-    );
-    executionContext = sharedContext.update("execution", {
-      selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
-      schedulerDecisionCount: decisions.length,
-      status: "planning-complete-no-execution",
-    });
-    const planningMetric = createComparisonMetric({
-      id: this.nextId("planning-metric"),
-      executionId,
-      goal,
-      recordedAt: this.currentTimestamp(),
-      plan: plannerError ? undefined : plan,
-      plannerError,
-      newPlannerDurationMs,
-      legacyDurationMs,
-      legacyObservation,
-      schedulerDecisionCount: decisions.length,
-    });
-    await this.recordMetric(planningMetric);
+      await this.recordMetric(planningMetric);
 
       return Object.freeze({
         response,

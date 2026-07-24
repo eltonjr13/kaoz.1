@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ChiefAgent,
+  PlanningMetricsStore,
   createAgentId,
   createChiefAgentConfig,
   type AgentConfig,
-  type ChiefExecutionAssignment,
   type SupervisorClock,
 } from "../services/agents/index.ts";
 
@@ -22,12 +22,13 @@ function createIdGenerator(): () => string {
   return () => `id-${++sequence}`;
 }
 
-test("coordinates objective through context, Goal, Planner, Scheduler and Supervisor", async () => {
-  let assignment: ChiefExecutionAssignment | undefined;
-  let executionCalls = 0;
+test("plans and schedules without executing the new ExecutionPlan", async () => {
+  let legacyCalls = 0;
+  const metrics = new PlanningMetricsStore();
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
+    metricsRecorder: metrics,
   });
   await chief.initialize();
 
@@ -44,20 +45,28 @@ test("coordinates objective through context, Goal, Planner, Scheduler and Superv
     estimatedTime: 5_000,
     confidence: 0.9,
     executionAdapterId: createAgentId("existing-chat-adapter"),
-    executionAdapter: {
-      execute: async (receivedAssignment) => {
-        executionCalls += 1;
-        assignment = receivedAssignment;
+    legacyPlanningAdapter: {
+      run: async () => {
+        legacyCalls += 1;
         return "compatible response";
       },
     },
+    legacyPlanInspector: {
+      inspect: () => ({
+        planKind: "legacy-chat",
+        stepCount: 1,
+      }),
+    },
   });
 
-  assert.equal(executionCalls, 1);
+  assert.equal(legacyCalls, 1);
   assert.equal(result.response, "compatible response");
   assert.equal(result.executionContext.kind, "execution");
   assert.equal(result.executionContext.version, 5);
-  assert.equal(result.executionContext.data.status, "completed");
+  assert.equal(
+    result.executionContext.data.status,
+    "planning-complete-no-execution",
+  );
   assert.equal(result.goal.objective, "Responda ao usuário sem alterar o contrato.");
   assert.equal(result.goalRegistration.content.goalId, result.goal.id);
   assert.equal(result.plan.goal.id, result.goal.id);
@@ -66,10 +75,11 @@ test("coordinates objective through context, Goal, Planner, Scheduler and Superv
   assert.equal(result.decisions.length, 1);
   assert.equal(result.decisions[0]?.agentId, "existing-chat-adapter");
   assert.equal(result.supervision.healthy, true);
-  assert.equal(assignment?.goal.id, result.goal.id);
-  assert.equal(assignment?.plan.id, result.plan.id);
-  assert.equal(assignment?.subtask.id, result.subtasks[0]?.id);
-  assert.equal(assignment?.decision.id, result.decisions[0]?.id);
+  assert.equal(result.planningMetric.selectedPlanner, "planner-agent");
+  assert.equal(result.planningMetric.fallbackUsed, false);
+  assert.equal(result.planningMetric.newPlanner.stepCount, 1);
+  assert.equal(result.planningMetric.legacyBaseline.planKind, "legacy-chat");
+  assert.equal(metrics.summary().plannerAgentSelected, 1);
   assert.equal(Object.isFrozen(result), true);
 });
 
@@ -101,6 +111,53 @@ test("propagates execution adapter failures instead of fabricating a response", 
     }),
     /worker failed/,
   );
+});
+
+test("uses the legacy planner as fallback and records comparison metrics", async () => {
+  const metrics = new PlanningMetricsStore();
+  const chief = new ChiefAgent<string>({
+    clock: new FixedClock(),
+    idGenerator: createIdGenerator(),
+    metricsRecorder: metrics,
+  });
+  await chief.initialize();
+
+  const result = await chief.handleTask({
+    executionId: "execution-planner-fallback",
+    objective: "Return a compatible response.",
+    requiredCapability: "chat-response",
+    planGenerator: {
+      generate: () => {
+        throw new Error("new planner unavailable");
+      },
+    },
+    legacyPlanningAdapter: {
+      run: () => Promise.resolve("legacy response"),
+    },
+    legacyPlanInspector: {
+      inspect: () => ({
+        planKind: "legacy-conversation",
+        stepCount: 2,
+        dependencyCount: 1,
+        milestoneCount: 1,
+      }),
+    },
+  });
+
+  assert.equal(result.response, "legacy response");
+  assert.match(result.plan.title, /Legacy fallback plan/);
+  assert.equal(result.plan.steps.length, 2);
+  assert.equal(result.subtasks.length, 0);
+  assert.equal(result.decisions.length, 0);
+  assert.equal(result.planningMetric.selectedPlanner, "legacy-fallback");
+  assert.equal(result.planningMetric.fallbackUsed, true);
+  assert.equal(result.planningMetric.newPlanner.success, false);
+  assert.match(
+    result.planningMetric.newPlanner.error ?? "",
+    /new planner unavailable/,
+  );
+  assert.equal(result.planningMetric.legacyBaseline.stepCount, 2);
+  assert.equal(metrics.summary().legacyFallbacks, 1);
 });
 
 test("requires initialization and goal-coordination capability", async () => {
@@ -141,4 +198,3 @@ test("requires initialization and goal-coordination capability", async () => {
     /goal-coordination.*capability/,
   );
 });
-

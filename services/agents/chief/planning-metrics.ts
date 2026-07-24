@@ -60,11 +60,13 @@ export interface PlanningMetricsSummary {
 
 export class PlanningMetricsStore implements PlanningMetricsRecorder {
   private readonly metrics: PlannerComparisonMetric[] = [];
+  private readonly capacity: number;
 
-  constructor(private readonly capacity = 500) {
+  constructor(capacity = 500) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new Error("Planning metrics capacity must be a positive integer.");
     }
+    this.capacity = capacity;
   }
 
   record(metric: PlannerComparisonMetric): void {
@@ -122,4 +124,3 @@ function average(values: readonly number[]): number {
     ) / 1_000
   );
 }
-
