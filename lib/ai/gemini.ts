@@ -15,6 +15,7 @@ import {
   type FlowImageAspectRatio,
 } from "@/lib/ai/image-prompt-engineering";
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
+import { ChiefAgent } from "@/services/agents/chief/chief-agent";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -964,7 +965,7 @@ function parseChatModelResponse(
   };
 }
 
-export async function chatWithAgent(
+async function executeScheduledChatTask(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
   executeWebQuery?: ExecuteWebQuery,
@@ -1118,6 +1119,60 @@ Responda agora, EXCLUSIVAMENTE com o objeto JSON válido esperado, baseado na ú
       message: "Ops, ocorreu uma falha na minha conexao com o modelo de IA. Tente novamente.",
       action: null
     };
+  }
+}
+
+export async function chatWithAgent(
+  messages: ChatMessage[],
+  avatarPersonality?: Record<string, unknown> | null,
+  executeWebQuery?: ExecuteWebQuery,
+  referenceImagePath?: string,
+  options?: ChatWithAgentOptions
+): Promise<ChatAgentResponse> {
+  const chief = new ChiefAgent<ChatAgentResponse>();
+  await chief.initialize();
+
+  try {
+    const latestUserText = getLatestUserText(messages);
+    const result = await chief.handleTask({
+      executionId: `chat-${globalThis.crypto.randomUUID()}`,
+      objective: latestUserText || "Responder a conversa atual.",
+      contextData: {
+        channel: "flow-chat",
+        messageCount: messages.length,
+        hasReferenceImage: Boolean(referenceImagePath),
+        hasExternalTools: Boolean(options?.hasExternalTools),
+        structuredResponse: shouldUseStructuredChatResponse(
+          options,
+          referenceImagePath,
+          messages,
+        ),
+      },
+      requiredCapability: "chat-response",
+      priority: 50,
+      estimatedCost: 0,
+      estimatedTime: 60_000,
+      confidence: 1,
+      executionAdapter: {
+        execute: () =>
+          executeScheduledChatTask(
+            messages,
+            avatarPersonality,
+            executeWebQuery,
+            referenceImagePath,
+            options,
+          ),
+      },
+    });
+    return result.response;
+  } catch (error) {
+    console.error("Falha na coordenacao do Chief Agent:", error);
+    return {
+      message: "Ops, ocorreu uma falha na minha conexao com o modelo de IA. Tente novamente.",
+      action: null,
+    };
+  } finally {
+    await chief.shutdown();
   }
 }
 
