@@ -6,6 +6,7 @@ import {
   AgentRegistryError,
   createAgentId,
   type AgentConfig,
+  type AgentCapability,
   type AgentContext,
   type AgentFactory,
   type AgentHealth,
@@ -61,7 +62,7 @@ class RegistryTestAgentFactory implements AgentFactory<RegistryTestAgent> {
 
 function createConfig(
   id: string,
-  capabilityIds: readonly string[],
+  capabilities: readonly (string | AgentCapability)[],
 ): AgentConfig {
   return {
     metadata: {
@@ -70,8 +71,28 @@ function createConfig(
       version: "1.0.0",
     },
     capabilities: {
-      items: capabilityIds.map((capabilityId) => ({ id: capabilityId })),
+      items: capabilities.map((capability) =>
+        typeof capability === "string"
+          ? createCapability(capability)
+          : capability,
+      ),
     },
+  };
+}
+
+function createCapability(
+  name: string,
+  overrides: Partial<Omit<AgentCapability, "name">> = {},
+): AgentCapability {
+  return {
+    name,
+    version: overrides.version ?? "1.0.0",
+    description: overrides.description ?? `${name} capability`,
+    priority: overrides.priority ?? 50,
+    cost: overrides.cost ?? 1,
+    expectedLatencyMs: overrides.expectedLatencyMs ?? 100,
+    dependencies: overrides.dependencies ?? [],
+    restrictions: overrides.restrictions ?? [],
   };
 }
 
@@ -131,6 +152,20 @@ test("discovers agents deterministically by capability and type", () => {
   assert.deepEqual(
     registry.findByCapability("shared").map((item) => item.id),
     ["agent-a", "agent-b"],
+  );
+  assert.deepEqual(
+    registry.findByCapability(" SHARED ").map((item) => item.id),
+    ["agent-a", "agent-b"],
+  );
+  assert.deepEqual(
+    registry.findByCapability("shared", { version: "1.0.0" }).map(
+      (item) => item.id,
+    ),
+    ["agent-a", "agent-b"],
+  );
+  assert.equal(
+    registry.findByCapability("shared", { version: "2.0.0" }).length,
+    0,
   );
   assert.deepEqual(
     registry.findByType("analysis").map((item) => item.id),
@@ -283,6 +318,138 @@ test("statistics summarize availability, health, type and capabilities", async (
   assert.equal(Object.isFrozen(statistics.byCapability), true);
 });
 
+test("ranks and selects the best available agent for a capability", async () => {
+  const clock = new FakeClock("2026-07-24T12:00:00.000Z");
+  const registry = createRegistry(clock);
+  const expensive = new RegistryTestAgent(
+    createConfig("expensive", [
+      createCapability("analysis", {
+        priority: 90,
+        cost: 10,
+        expectedLatencyMs: 2_000,
+      }),
+    ]),
+  );
+  const balanced = new RegistryTestAgent(
+    createConfig("balanced", [
+      createCapability("analysis", {
+        priority: 70,
+        cost: 1,
+        expectedLatencyMs: 500,
+      }),
+    ]),
+  );
+  const busy = new RegistryTestAgent(
+    createConfig("busy-best", [
+      createCapability("analysis", {
+        priority: 100,
+        cost: 0,
+        expectedLatencyMs: 0,
+      }),
+    ]),
+  );
+
+  registry.register({ agent: expensive, type: "analyst" });
+  registry.register({ agent: balanced, type: "analyst" });
+  registry.register({ agent: busy, type: "analyst", availability: "busy" });
+  await Promise.all([
+    expensive.initialize(),
+    balanced.initialize(),
+    busy.initialize(),
+  ]);
+  await Promise.all([
+    registry.heartbeat(expensive.id),
+    registry.heartbeat(balanced.id),
+    registry.heartbeat(busy.id),
+  ]);
+
+  const ranking = registry.rankByCapability("analysis");
+  const best = registry.findBestByCapability("analysis");
+
+  assert.deepEqual(
+    ranking.map((selection) => selection.agent.id),
+    ["balanced", "expensive"],
+  );
+  assert.equal(best?.agent.id, "balanced");
+  assert.equal(best?.capability.name, "analysis");
+  assert.equal(best?.score, best?.breakdown.total);
+  assert.equal(Object.isFrozen(best), true);
+  assert.equal(Object.isFrozen(best?.breakdown), true);
+
+  const includingBusy = registry.findBestByCapability("analysis", {
+    requireAvailable: false,
+  });
+  assert.equal(includingBusy?.agent.id, "busy-best");
+
+  const constrained = registry.findBestByCapability("analysis", {
+    maxCost: 1,
+    maxExpectedLatencyMs: 600,
+  });
+  assert.equal(constrained?.agent.id, "balanced");
+});
+
+test("best-agent selection honors dependencies and restrictions", async () => {
+  const clock = new FakeClock("2026-07-24T12:00:00.000Z");
+  const registry = createRegistry(clock);
+  const eligible = new RegistryTestAgent(
+    createConfig("eligible", [
+      createCapability("memory"),
+      createCapability("research", {
+        priority: 70,
+        dependencies: [{ name: "memory", version: "1.0.0" }],
+      }),
+    ]),
+  );
+  const missingDependency = new RegistryTestAgent(
+    createConfig("missing-dependency", [
+      createCapability("research", {
+        priority: 100,
+        cost: 0,
+        expectedLatencyMs: 0,
+        dependencies: [{ name: "memory" }],
+      }),
+    ]),
+  );
+  const restricted = new RegistryTestAgent(
+    createConfig("restricted", [
+      createCapability("research", {
+        priority: 90,
+        restrictions: [
+          {
+            name: "network-access",
+            description: "Requires unrestricted network access.",
+          },
+        ],
+      }),
+    ]),
+  );
+
+  for (const agent of [eligible, missingDependency, restricted]) {
+    registry.register({ agent, type: "researcher" });
+    await agent.initialize();
+    await registry.heartbeat(agent.id);
+  }
+
+  assert.equal(
+    registry.findBestByCapability("research")?.agent.id,
+    "restricted",
+  );
+  assert.equal(
+    registry.findBestByCapability("research", {
+      excludedRestrictions: ["network-access"],
+    })?.agent.id,
+    "eligible",
+  );
+  assert.deepEqual(
+    registry
+      .rankByCapability("research", {
+        excludedRestrictions: ["network-access"],
+      })
+      .map((selection) => selection.agent.id),
+    ["eligible"],
+  );
+});
+
 test("rejects invalid types and operations for unknown agents", async () => {
   const clock = new FakeClock("2026-07-24T12:00:00.000Z");
   const registry = createRegistry(clock);
@@ -306,5 +473,19 @@ test("rejects invalid types and operations for unknown agents", async () => {
     (error) =>
       error instanceof AgentRegistryError &&
       error.code === "AGENT_NOT_FOUND",
+  );
+  assert.throws(
+    () =>
+      registry.rankByCapability("analysis", {
+        maxCost: -1,
+      }),
+    /maxCost must be a non-negative/,
+  );
+  assert.throws(
+    () =>
+      registry.rankByCapability("analysis", {
+        weights: { priority: 0, cost: 0, latency: 0 },
+      }),
+    /At least one capability selection weight/,
   );
 });

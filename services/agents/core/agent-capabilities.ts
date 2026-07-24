@@ -66,14 +66,14 @@ export function defineAgentCapability(
     capability.expectedLatencyMs,
     "Capability expectedLatencyMs",
   );
+  assertArray(capability.dependencies, "Capability dependencies");
+  assertArray(capability.restrictions, "Capability restrictions");
 
   const dependencies = capability.dependencies.map((dependency) =>
     freezeDependency(dependency, name),
   );
   assertUnique(
-    dependencies.map(
-      (dependency) => `${dependency.name}@${dependency.version ?? "*"}`,
-    ),
+    dependencies.map((dependency) => dependency.name),
     `Capability "${name}" contains duplicate dependencies.`,
   );
 
@@ -126,7 +126,7 @@ function freezeDependency(
   }
   return Object.freeze({
     name,
-    version: dependency.version
+    version: dependency.version !== undefined
       ? requireText(dependency.version, "Dependency version")
       : undefined,
     optional: dependency.optional === true,
@@ -173,5 +173,11 @@ function assertNonNegative(value: number, label: string): void {
 function assertUnique(values: readonly string[], message: string): void {
   if (new Set(values).size !== values.length) {
     throw new Error(message);
+  }
+}
+
+function assertArray(value: unknown, label: string): asserts value is readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array.`);
   }
 }

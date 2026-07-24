@@ -57,9 +57,14 @@ function createConfig(): AgentConfig {
     capabilities: {
       items: [
         {
-          id: "test.echo",
+          name: "test.echo",
+          version: "1.0.0",
           description: "Echoes test input",
-          version: "1",
+          priority: 50,
+          cost: 1,
+          expectedLatencyMs: 10,
+          dependencies: [],
+          restrictions: [],
         },
       ],
     },
@@ -112,12 +117,14 @@ test("metadata and capabilities are exposed as immutable descriptors", () => {
   assert.equal(metadata.id, agent.id);
   assert.equal(metadata.name, "Test Agent");
   assert.deepEqual(metadata.tags, ["test"]);
-  assert.deepEqual(capabilities.items.map((item) => item.id), ["test.echo"]);
+  assert.deepEqual(capabilities.items.map((item) => item.name), ["test.echo"]);
   assert.equal(Object.isFrozen(metadata), true);
   assert.equal(Object.isFrozen(metadata.tags), true);
   assert.equal(Object.isFrozen(capabilities), true);
   assert.equal(Object.isFrozen(capabilities.items), true);
   assert.equal(Object.isFrozen(capabilities.items[0]), true);
+  assert.equal(Object.isFrozen(capabilities.items[0].dependencies), true);
+  assert.equal(Object.isFrozen(capabilities.items[0].restrictions), true);
 });
 
 test("heartbeat and health report infrastructure state without business logic", async () => {

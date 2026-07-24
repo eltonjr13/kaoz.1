@@ -1,4 +1,7 @@
-import type { AgentCapabilities } from "../core/agent-capabilities.ts";
+import {
+  defineAgentCapabilities,
+  type AgentCapabilities,
+} from "../core/agent-capabilities.ts";
 import type { AgentHealth, AgentHealthStatus, AgentHeartbeat } from "../core/agent-health.ts";
 import type { AgentId } from "../core/agent-id.ts";
 import type { AgentMetadata } from "../core/agent-metadata.ts";
@@ -11,6 +14,13 @@ import type {
   AgentRegistration,
 } from "./agent-descriptor.ts";
 import type { AgentDiscovery } from "./agent-discovery.ts";
+import {
+  findDeclaredCapability,
+  rankCapabilityAgents,
+  type AgentCapabilitySelection,
+  type CapabilityQueryOptions,
+  type CapabilitySelectionOptions,
+} from "./capability-selection.ts";
 import {
   AgentRegistryError,
   type AgentHealthCheckResult,
@@ -74,8 +84,9 @@ export class AgentRegistry implements AgentDiscovery {
       availability: registration.availability ?? "available",
       registeredAt: this.timestamp(),
     };
+    const descriptor = this.toDescriptor(entry);
     this.entries.set(agent.id, entry);
-    return this.toDescriptor(entry);
+    return descriptor;
   }
 
   remove(agentId: AgentId): boolean {
@@ -87,12 +98,33 @@ export class AgentRegistry implements AgentDiscovery {
     return entry ? this.toDescriptor(entry) : undefined;
   }
 
-  findByCapability(capabilityId: string): readonly AgentDescriptor[] {
+  findByCapability(
+    capabilityName: string,
+    options: CapabilityQueryOptions = {},
+  ): readonly AgentDescriptor[] {
     return this.filterEntries((entry) =>
-      entry.agent
-        .getCapabilities()
-        .items.some((capability) => capability.id === capabilityId),
+      Boolean(
+        findDeclaredCapability(
+          entry.agent.getCapabilities(),
+          capabilityName,
+          options,
+        ),
+      ),
     );
+  }
+
+  rankByCapability(
+    capabilityName: string,
+    options: CapabilitySelectionOptions = {},
+  ): readonly AgentCapabilitySelection[] {
+    return rankCapabilityAgents(this.list(), capabilityName, options);
+  }
+
+  findBestByCapability(
+    capabilityName: string,
+    options: CapabilitySelectionOptions = {},
+  ): AgentCapabilitySelection | undefined {
+    return this.rankByCapability(capabilityName, options)[0];
   }
 
   findByType(type: string): readonly AgentDescriptor[] {
@@ -207,7 +239,7 @@ export class AgentRegistry implements AgentDiscovery {
       healthUnknown: healthStatuses.filter((status) => status === undefined).length,
       byType: countBy(entries, (entry) => [entry.type]),
       byCapability: countBy(entries, (entry) =>
-        entry.agent.getCapabilities().items.map((capability) => capability.id),
+        entry.agent.getCapabilities().items.map((capability) => capability.name),
       ),
     });
   }
@@ -360,11 +392,7 @@ function freezeMetadata(metadata: AgentMetadata): AgentMetadata {
 }
 
 function freezeCapabilities(capabilities: AgentCapabilities): AgentCapabilities {
-  return Object.freeze({
-    items: Object.freeze(
-      capabilities.items.map((capability) => Object.freeze({ ...capability })),
-    ),
-  });
+  return defineAgentCapabilities(capabilities.items);
 }
 
 function freezeState(state: Readonly<AgentState>): Readonly<AgentState> {
