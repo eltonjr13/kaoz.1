@@ -4,9 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
+import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format.ts";
-import { assertToolArguments } from "../tools/tool.validation.ts";
+import { toolExecutionService } from "../tools/tool-execution.service.ts";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
@@ -34,6 +35,7 @@ const WINDOWS_CODEX_BIN_ROOT = path.join("OpenAI", "Codex", "bin");
 const MCP_TOOL_TIMEOUT_MS = 45_000;
 const USD_BRL_TOOL_NAME = "web_get_usd_brl_rate";
 const SPOTIFY_SERVER_ID = "spotify-mcp-server-local";
+const CHAT_TOOL_AGENT_ID = createAgentId("chief-agent");
 const SPOTIFY_TOOL_NAMES = new Set([
   "create_playlist",
   "search_tracks",
@@ -804,8 +806,7 @@ export async function getConfiguredAgentIdentity(agent?: QueryOptions["agent"]):
 }
 
 async function runCliWithToolsLoop(prompt: string, options: QueryOptions, executor: (currentPrompt: string) => Promise<string>): Promise<string> {
-  const { toolRegistry } = await import("../tools/tool.registry");
-  const allTools = await toolRegistry.list();
+  const allTools = await toolExecutionService.listTools();
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
@@ -868,13 +869,20 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       const tool = relevantTools.find((candidate) => candidate.id === toolId);
       if (!tool) throw new Error(`Ferramenta '${toolId}' não encontrada.`);
       const args = call.args || {};
-      assertToolArguments(tool.inputSchema, args);
-
-      const handler = toolRegistry.handler(toolId);
-      if (!handler) throw new Error(`Ferramenta '${toolId}' nao encontrada.`);
-
       const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
-      const result = await handler(args, context);
+      const execution = await toolExecutionService.execute({
+        agentId: CHAT_TOOL_AGENT_ID,
+        toolId,
+        arguments: args,
+        context,
+        permissions: {
+          allowedToolIds: Object.freeze([...allowedToolIds]),
+          approvalMode: "step",
+          reason: "Ferramentas autorizadas pelo objetivo atual do usuário.",
+        },
+        correlationId: `chat-tool-${crypto.randomUUID()}`,
+      });
+      const result = execution.result;
       if (connectorProvider) return connectorToolResultResponse(connectorProvider, result);
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {

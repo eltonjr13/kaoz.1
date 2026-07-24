@@ -110,7 +110,7 @@ export class ToolExecutionService {
         }
         return this.executeInternal(request, context);
       },
-      { maxSize: 1_000 },
+      { capacity: 1_000 },
     );
   }
 
@@ -130,7 +130,11 @@ export class ToolExecutionService {
       request.timeoutMs,
       configuredTool?.timeoutMs,
     );
-    this.pending.set(requestId, request);
+    const normalizedRequest: ToolExecutionRequest = Object.freeze({
+      ...request,
+      correlationId,
+    });
+    this.pending.set(requestId, normalizedRequest);
 
     try {
       const response =
@@ -430,15 +434,15 @@ function serializedBytes(value: unknown): number {
 }
 
 function freezeToolResult(result: ToolResult): ToolResult {
-  return Object.freeze({
+  const frozen: ToolResult = {
     ...result,
     artifacts: result.artifacts
-      ? Object.freeze(result.artifacts.map((artifact) => Object.freeze({
+      ? result.artifacts.map((artifact) => Object.freeze({
           ...artifact,
           metadata: artifact.metadata
             ? Object.freeze({ ...artifact.metadata })
             : undefined,
-        })))
+        }))
       : undefined,
     metrics: result.metrics
       ? Object.freeze({
@@ -446,7 +450,8 @@ function freezeToolResult(result: ToolResult): ToolResult {
           limits: Object.freeze({ ...result.metrics.limits }),
         })
       : undefined,
-  });
+  };
+  return Object.freeze(frozen);
 }
 
 function errorMessage(error: unknown): string {
@@ -454,4 +459,3 @@ function errorMessage(error: unknown): string {
 }
 
 export const toolExecutionService = new ToolExecutionService();
-

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { queryConfiguredAgentCli } from "@/services/agent-llm/agent-llm.service";
 import { skillRegistry } from "@/services/skills/skill.registry";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "@/services/skills/skill.types";
-import { toolRegistry } from "@/services/tools/tool.registry";
+import { toolExecutionService } from "@/services/tools/tool-execution.service";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
 import { normalizeScriptPolicy } from "@/services/skills/skill.policy";
 
@@ -127,7 +127,7 @@ function builderContext(): string {
 
 async function availableToolsContext(): Promise<string> {
   try {
-    const tools = await toolRegistry.list();
+    const tools = await toolExecutionService.listTools();
     const compact = tools.map((tool) => `${tool.id}: ${tool.description.slice(0, 180)} (${tool.effect}/${tool.approvalMode})`).join("\n");
     return compact.slice(0, MAX_TOOLS_CONTEXT_CHARS);
   } catch (error) {
