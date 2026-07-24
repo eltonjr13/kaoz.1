@@ -57,6 +57,8 @@ export interface DeliveryReport {
 export interface MessageBusOptions {
   readonly router?: import("./message-router.ts").MessageRouter;
   readonly deadLetterQueue?: import("./dead-letter-queue.ts").InMemoryDeadLetterQueue;
+  readonly traceStore?: import("./message-trace.ts").MessageTraceStore;
+  readonly clock?: () => Date;
 }
 
 export interface MessageBusSnapshot {
@@ -64,4 +66,5 @@ export interface MessageBusSnapshot {
   readonly pendingRequestCount: number;
   readonly activeMailboxCount: number;
   readonly deadLetterCount: number;
+  readonly traceCount: number;
 }

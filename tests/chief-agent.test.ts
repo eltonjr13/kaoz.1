@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ChiefAgent,
@@ -99,6 +100,28 @@ test("plans and executes only through Scheduler using LegacyAgentAdapter", async
   assert.equal(result.planningMetric.legacyBaseline.planKind, "legacy-chat");
   assert.equal(metrics.summary().plannerAgentSelected, 1);
   assert.equal(Object.isFrozen(result), true);
+  const traces = chief.getMessageTraces();
+  assert.equal(traces.length, 6);
+  assert.deepEqual(
+    traces
+      .filter((trace) => trace.messageKind === "command")
+      .map((trace) => trace.messageName)
+      .sort(),
+    [
+      "agent.planner.plan-goal",
+      "agent.supervisor.analyze-execution",
+      "agent.task-decomposer.decompose-plan",
+    ],
+  );
+  assert.equal(
+    traces.every(
+      (trace) =>
+        trace.senderId !== undefined &&
+        trace.recipientId !== undefined &&
+        trace.correlationId === "execution-execution-chat-1",
+    ),
+    true,
+  );
 });
 
 test("executes a structured dependency graph through Scheduler only", async () => {
@@ -242,6 +265,19 @@ test("does not expose direct execution, restart, scheduling or planning methods"
   assert.equal("restartAgent" in chief, false);
   assert.equal("schedule" in chief, false);
   assert.equal("createPlan" in chief, false);
+});
+
+test("ChiefAgent source depends on MessageBus addresses, not concrete agents", () => {
+  const source = readFileSync(
+    new URL("../services/agents/chief/chief-agent.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /\bnew\s+PlannerAgent\b/);
+  assert.doesNotMatch(source, /\bnew\s+TaskDecomposerAgent\b/);
+  assert.doesNotMatch(source, /\bnew\s+SupervisorAgent\b/);
+  assert.doesNotMatch(source, /\b(planner|decomposer|supervisor)\.handleTask\(/);
+  assert.match(source, /messaging\.gateway\.request/);
 });
 
 test("propagates execution adapter failures instead of fabricating a response", async () => {

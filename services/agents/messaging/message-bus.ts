@@ -20,6 +20,11 @@ import {
   type Response,
 } from "./message.ts";
 import { MessageRouter } from "./message-router.ts";
+import {
+  InMemoryMessageTraceStore,
+  type MessageTrace,
+  type MessageTraceStore,
+} from "./message-trace.ts";
 import type {
   DeliveryReceipt,
   DeliveryReport,
@@ -46,16 +51,20 @@ interface PendingRequest {
 export class MessageBus {
   readonly router: MessageRouter;
   readonly deadLetterQueue: InMemoryDeadLetterQueue;
+  readonly traceStore: MessageTraceStore;
 
   private readonly deliveryWaiters = new Map<string, Deferred<DeliveryReceipt>>();
   private readonly pendingRequests = new Map<string, PendingRequest>();
   private readonly activeMailboxes = new Map<AgentId, Promise<void>>();
   private readonly scheduledMailboxes = new Set<AgentId>();
+  private readonly clock: () => Date;
 
   constructor(options: MessageBusOptions = {}) {
     this.router = options.router ?? new MessageRouter();
     this.deadLetterQueue =
       options.deadLetterQueue ?? new InMemoryDeadLetterQueue();
+    this.traceStore = options.traceStore ?? new InMemoryMessageTraceStore();
+    this.clock = options.clock ?? (() => new Date());
   }
 
   registerMailbox(
@@ -184,6 +193,14 @@ export class MessageBus {
     const recipients = this.router.resolveRecipients(envelope);
     if (recipients.length === 0) {
       if (envelope.mode === "broadcast" || envelope.mode === "event") {
+        const completedAt = this.clock();
+        this.traceStore.record({
+          envelope,
+          receivedAt: completedAt,
+          completedAt,
+          status: "no-recipients",
+          result: { delivered: 0 },
+        });
         return freezeDeliveryReport(envelope.correlationId, []);
       }
       const receipt = this.moveToDeadLetter(
@@ -212,6 +229,14 @@ export class MessageBus {
     return this.deadLetterQueue.clear();
   }
 
+  listTraces(): readonly MessageTrace[] {
+    return this.traceStore.list();
+  }
+
+  clearTraces(): readonly MessageTrace[] {
+    return this.traceStore.clear();
+  }
+
   snapshot(): MessageBusSnapshot {
     return Object.freeze({
       endpointCount: this.router.listEndpoints().length,
@@ -219,6 +244,7 @@ export class MessageBus {
       activeMailboxCount:
         this.activeMailboxes.size + this.scheduledMailboxes.size,
       deadLetterCount: this.deadLetterQueue.list().length,
+      traceCount: this.traceStore.list().length,
     });
   }
 
@@ -285,8 +311,19 @@ export class MessageBus {
     envelope: Envelope,
     handler: MessageHandler,
   ): Promise<void> {
+    const receivedAt = this.clock();
+    const startedAt = monotonicNow();
     try {
       const result = await invokeWithTimeout(handler, envelope);
+      const completedAt = this.clock();
+      this.traceStore.record({
+        envelope,
+        receivedAt,
+        completedAt,
+        handlingTimeMs: elapsedSince(startedAt),
+        status: "completed",
+        result,
+      });
       if (envelope.mode === "request") {
         this.createAutomaticResponse(envelope, result);
       }
@@ -298,11 +335,28 @@ export class MessageBus {
         completedAt: new Date().toISOString(),
       });
     } catch (error) {
+      const message = errorMessage(error);
+      const timedOut = isTimeoutError(message);
+      const completedAt = this.clock();
       if (envelope.attempt < envelope.retryPolicy.maxAttempts) {
+        this.traceStore.record({
+          envelope,
+          receivedAt,
+          completedAt,
+          handlingTimeMs: elapsedSince(startedAt),
+          status: timedOut ? "timed-out" : "failed",
+          timedOut,
+          error: message,
+        });
         this.scheduleRetry(envelope);
         return;
       }
-      const receipt = this.moveToDeadLetter(envelope, errorMessage(error));
+      const receipt = this.moveToDeadLetter(envelope, message, {
+        receivedAt,
+        completedAt,
+        handlingTimeMs: elapsedSince(startedAt),
+        timedOut,
+      });
       this.resolveDelivery(envelope, receipt);
     }
   }
@@ -367,6 +421,7 @@ export class MessageBus {
   }
 
   private deliverResponse(envelope: Envelope): DeliveryReport {
+    const receivedAt = this.clock();
     if (!isResponse(envelope.message)) {
       const receipt = this.moveToDeadLetter(
         envelope,
@@ -386,6 +441,14 @@ export class MessageBus {
 
     this.pendingRequests.delete(envelope.correlationId);
     pending.resolve(envelope.message);
+    const completedAt = this.clock();
+    this.traceStore.record({
+      envelope,
+      receivedAt,
+      completedAt,
+      status: "completed",
+      result: envelope.message.payload,
+    });
     return freezeDeliveryReport(envelope.correlationId, [
       Object.freeze({
         envelopeId: envelope.id,
@@ -400,8 +463,24 @@ export class MessageBus {
   private moveToDeadLetter(
     envelope: Envelope,
     reason: string,
+    trace?: {
+      readonly receivedAt?: Date;
+      readonly completedAt?: Date;
+      readonly handlingTimeMs?: number;
+      readonly timedOut?: boolean;
+    },
   ): DeliveryReceipt {
     const deadLetter = this.deadLetterQueue.add(envelope, reason);
+    this.traceStore.record({
+      envelope,
+      receivedAt: trace?.receivedAt,
+      completedAt: trace?.completedAt ?? this.clock(),
+      handlingTimeMs: trace?.handlingTimeMs,
+      status: "dead-lettered",
+      timedOut: trace?.timedOut,
+      error: reason,
+      deadLetterId: deadLetter.id,
+    });
     if (envelope.mode === "request") {
       this.rejectPendingRequest(envelope.correlationId, new Error(reason));
     }
@@ -508,4 +587,16 @@ function toError(error: unknown): Error {
 
 function errorMessage(error: unknown): string {
   return toError(error).message;
+}
+
+function isTimeoutError(message: string): boolean {
+  return /\btimed out after \d+(?:\.\d+)?ms\b/i.test(message);
+}
+
+function monotonicNow(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function elapsedSince(startedAt: number): number {
+  return Math.max(0, (globalThis.performance?.now?.() ?? Date.now()) - startedAt);
 }

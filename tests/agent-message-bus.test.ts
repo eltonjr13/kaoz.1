@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AgentMailbox,
+  AgentMessageEndpoint,
+  AgentMessageGateway,
   MessageBus,
   MessagePriority,
+  PlannerAgent,
   createAgentId,
   createCommand,
   createEnvelope,
@@ -117,6 +120,15 @@ test("routes direct, broadcast and subscribed event deliveries in memory", async
     "direct.command",
     "system.broadcast",
   ]);
+  assert.equal(bus.listTraces().length, 6);
+  assert.equal(
+    bus.listTraces().filter((trace) => trace.mode === "broadcast").length,
+    3,
+  );
+  assert.equal(
+    bus.listTraces().filter((trace) => trace.mode === "event").length,
+    2,
+  );
 });
 
 test("request produces a correlated response from the destination handler", async () => {
@@ -145,6 +157,26 @@ test("request produces a correlated response from the destination handler", asyn
   assert.deepEqual(response.payload, { result: 42 });
   assert.deepEqual(observedCorrelations, ["request-42"]);
   assert.equal(bus.snapshot().pendingRequestCount, 0);
+  const commandTrace = bus
+    .listTraces()
+    .find((trace) => trace.messageKind === "command");
+  const responseTrace = bus
+    .listTraces()
+    .find((trace) => trace.messageKind === "response");
+  assert.equal(commandTrace?.senderId, senderId);
+  assert.equal(commandTrace?.recipientId, workerId);
+  assert.equal(commandTrace?.correlationId, "request-42");
+  assert.deepEqual(commandTrace?.payload, { value: 21 });
+  assert.deepEqual(commandTrace?.result, { result: 42 });
+  assert.equal(commandTrace?.timedOut, false);
+  assert.equal(typeof commandTrace?.queueLatencyMs, "number");
+  assert.equal(typeof commandTrace?.handlingTimeMs, "number");
+  assert.equal(typeof commandTrace?.totalLatencyMs, "number");
+  assert.equal(responseTrace?.senderId, workerId);
+  assert.equal(responseTrace?.recipientId, senderId);
+  assert.deepEqual(responseTrace?.payload, { result: 42 });
+  assert.equal(Object.isFrozen(commandTrace), true);
+  assert.equal(Object.isFrozen(commandTrace?.payload), true);
 });
 
 test("request preserves an explicit failed Response from the handler", async () => {
@@ -226,6 +258,14 @@ test("timeout exhausts retries, rejects request and moves it to dead letter", as
   assert.equal(deadLetters[0].envelope.attempt, 2);
   assert.match(deadLetters[0].reason, /timed out/);
   assert.equal(bus.snapshot().pendingRequestCount, 0);
+  const traces = bus.listTraces();
+  assert.equal(traces.length, 2);
+  assert.equal(traces[0]?.status, "timed-out");
+  assert.equal(traces[0]?.timedOut, true);
+  assert.equal(traces[1]?.status, "dead-lettered");
+  assert.equal(traces[1]?.timedOut, true);
+  assert.equal(traces[1]?.timeoutMs, 10);
+  assert.match(traces[1]?.error ?? "", /timed out/);
 });
 
 test("missing destinations are dead-lettered without external queues", async () => {
@@ -290,4 +330,100 @@ test("fire-and-forget returns immediately and processes asynchronously", async (
   assert.equal(correlationId, "fire-and-forget-1");
   await delivered;
   assert.equal(bus.listDeadLetters().length, 0);
+});
+
+test("AgentMessageGateway isolates callers from concrete agent references", async () => {
+  const bus = new MessageBus();
+  const planner = new PlannerAgent(
+    {
+      generate: (goal) => ({
+        title: `Plan for ${goal.title}`,
+        summary: "Gateway test plan.",
+        steps: [
+          {
+            id: "step-1",
+            title: "Test",
+            description: "Validate MessageBus dispatch.",
+            capability: "testing",
+            estimate: {
+              effortPoints: 1,
+              durationMs: 100,
+              cost: 0,
+              confidence: 1,
+            },
+          },
+        ],
+      }),
+    },
+    {
+      config: {
+        metadata: {
+          id: createAgentId("gateway-planner"),
+          name: "Gateway Planner",
+          version: "1.0.0",
+          kind: "planner",
+          tags: [],
+        },
+        capabilities: {
+          items: [
+            {
+              name: "planning",
+              version: "1.0.0",
+              description: "Plans through the MessageBus gateway.",
+              priority: 100,
+              cost: 0,
+              expectedLatencyMs: 0,
+              dependencies: [],
+              restrictions: [],
+            },
+          ],
+        },
+      },
+      idGenerator: () => "gateway-plan",
+    },
+  );
+  const endpoint = new AgentMessageEndpoint(bus, planner);
+  const gateway = new AgentMessageGateway(bus);
+  await endpoint.initialize();
+
+  try {
+    const plan = await gateway.request<
+      {
+        readonly type: "plan-goal";
+        readonly goal: {
+          readonly id: string;
+          readonly title: string;
+          readonly objective: string;
+          readonly acceptanceCriteria: readonly [];
+          readonly createdAt: string;
+        };
+      },
+      { readonly id: string; readonly title: string }
+    >(
+      "agent.planner.plan-goal",
+      {
+        type: "plan-goal",
+        goal: {
+          id: "goal-gateway",
+          title: "Gateway",
+          objective: "Validate message isolation.",
+          acceptanceCriteria: [],
+          createdAt: "2026-07-24T20:00:00.000Z",
+        },
+      },
+      {
+        senderId,
+        recipientId: planner.id,
+        correlationId: "gateway-correlation",
+        context: { requestId: "gateway-request" },
+        retryPolicy: { maxAttempts: 1 },
+      },
+    );
+
+    assert.equal(plan.id, "gateway-plan");
+    assert.equal(plan.title, "Plan for Gateway");
+    assert.equal(bus.listTraces().length, 2);
+  } finally {
+    await endpoint.shutdown();
+  }
 });

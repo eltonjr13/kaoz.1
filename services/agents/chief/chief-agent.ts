@@ -20,19 +20,13 @@ import {
   AgentContextAdapter,
   type AgentContextHydrator,
 } from "../memory/agent-context.adapter.ts";
-import {
-  TaskDecomposerAgent,
-  createTaskDecomposerAgentConfig,
-} from "../decomposition/task-decomposer-agent.ts";
 import type {
   ExecutionTask,
   Subtask,
 } from "../decomposition/task-decomposition.types.ts";
+import { MessageBus } from "../messaging/message-bus.ts";
+import type { MessageTrace } from "../messaging/message-trace.ts";
 import type { PlanGenerator } from "../planning/plan-generator.ts";
-import {
-  PlannerAgent,
-  createPlannerAgentConfig,
-} from "../planning/planner-agent.ts";
 import {
   createExecutionPlan,
   createGoal,
@@ -50,10 +44,6 @@ import type {
   SchedulerExecutionReport,
   SchedulingDecision,
 } from "../scheduling/scheduler.types.ts";
-import {
-  SupervisorAgent,
-  createSupervisorAgentConfig,
-} from "../supervision/supervisor-agent.ts";
 import type {
   ExecutionSnapshot,
   SupervisionReport,
@@ -67,6 +57,7 @@ import {
   type PlannerMeasurement,
   type PlanningMetricsRecorder,
 } from "./planning-metrics.ts";
+import { createChiefAgentMessagingRuntime } from "./chief-agent-messaging.ts";
 
 export interface ChiefExecutionAssignment {
   readonly executionContext: ExecutionContext;
@@ -133,6 +124,7 @@ export interface ChiefAgentOptions {
   readonly idGenerator?: () => string;
   readonly metricsRecorder?: PlanningMetricsRecorder;
   readonly contextAdapter?: AgentContextHydrator;
+  readonly messageBus?: MessageBus;
 }
 
 export interface ChiefAgentConfigOptions {
@@ -160,6 +152,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
   private readonly idGenerator: () => string;
   private readonly metricsRecorder: PlanningMetricsRecorder;
   private readonly contextAdapter: AgentContextHydrator;
+  private readonly messageBus: MessageBus;
 
   constructor(options: ChiefAgentOptions = {}) {
     const config = options.config ?? createChiefAgentConfig();
@@ -170,6 +163,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     this.metricsRecorder = options.metricsRecorder ?? planningMetricsStore;
     this.contextAdapter =
       options.contextAdapter ?? new AgentContextAdapter();
+    this.messageBus = options.messageBus ?? new MessageBus();
   }
 
   async handleTask(
@@ -247,18 +241,14 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     });
     executionContext = runtimeContext.executionContext;
 
-    const planner = this.createPlanner(input, requiredCapability);
-    const decomposer = new TaskDecomposerAgent({
-      config: createTaskDecomposerAgentConfig({
-        id: createAgentId(`${this.id}:task-decomposer`),
-      }),
-    });
-    const supervisor = new SupervisorAgent({
-      config: createSupervisorAgentConfig({
-        id: createAgentId(`${this.id}:supervisor`),
-      }),
+    const messaging = createChiefAgentMessagingRuntime({
+      bus: this.messageBus,
+      chiefId: this.id,
+      executionId,
+      planGenerator: this.createPlanGenerator(input, requiredCapability),
       clock: this.clock,
-      idGenerator: this.idGenerator,
+      planIdGenerator: () => this.nextId("plan"),
+      supervisionIdGenerator: this.idGenerator,
     });
     const scheduler = new Scheduler({
       clock: this.clock,
@@ -276,11 +266,14 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       },
     });
 
-    await Promise.all([
-      planner.initialize(),
-      decomposer.initialize(),
-      supervisor.initialize(),
-    ]);
+    await messaging.initialize();
+    const correlationId = messageCorrelationId(executionId);
+    const coordinationOptions = {
+      senderId: this.id,
+      correlationId,
+      timeoutMs: 2_147_483_647,
+      retryPolicy: { maxAttempts: 1 },
+    } as const;
 
     let plan: ExecutionPlan | undefined;
     let tasks: readonly ExecutionTask[] = Object.freeze([]);
@@ -289,9 +282,17 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     const plannerStartedAt = monotonicNow();
     try {
       try {
-        plan = await planner.handleTask(
-          goal,
-          withExecutionContext(runtimeContext, executionContext),
+        plan = await messaging.gateway.request<
+          { readonly type: "plan-goal"; readonly goal: Goal },
+          ExecutionPlan
+        >(
+          "agent.planner.plan-goal",
+          { type: "plan-goal", goal },
+          {
+            ...coordinationOptions,
+            recipientId: messaging.plannerId,
+            context: withExecutionContext(runtimeContext, executionContext),
+          },
         );
         executionContext = sharedContext.update("execution", {
           planId: plan.id,
@@ -328,7 +329,21 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           runtimeContext,
           executionContext,
         );
-        tasks = await decomposer.handleTask(plan, runtimeContext);
+        tasks = await messaging.gateway.request<
+          {
+            readonly type: "decompose-plan";
+            readonly plan: ExecutionPlan;
+          },
+          readonly ExecutionTask[]
+        >(
+          "agent.task-decomposer.decompose-plan",
+          { type: "decompose-plan", plan },
+          {
+            ...coordinationOptions,
+            recipientId: messaging.decomposerId,
+            context: runtimeContext,
+          },
+        );
         scheduler.enqueueAll(
           tasks.map((task) => ({
             subtask: task,
@@ -419,16 +434,31 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         response,
       );
 
-      const supervision = await supervisor.handleTask(
-        createExecutionSupervisionSnapshot({
-          executionId,
-          plan,
-          scheduledTasks: scheduler.list(),
-          executionAgents,
-          executionReport,
-          capturedAt: this.currentTimestamp(),
-        }),
-        withExecutionContext(runtimeContext, executionContext),
+      const supervisionSnapshot = createExecutionSupervisionSnapshot({
+        executionId,
+        plan,
+        scheduledTasks: scheduler.list(),
+        executionAgents,
+        executionReport,
+        capturedAt: this.currentTimestamp(),
+      });
+      const supervision = await messaging.gateway.request<
+        {
+          readonly type: "analyze-execution";
+          readonly snapshot: ExecutionSnapshot;
+        },
+        SupervisionReport
+      >(
+        "agent.supervisor.analyze-execution",
+        {
+          type: "analyze-execution",
+          snapshot: supervisionSnapshot,
+        },
+        {
+          ...coordinationOptions,
+          recipientId: messaging.supervisorId,
+          context: withExecutionContext(runtimeContext, executionContext),
+        },
       );
       executionContext = sharedContext.update("execution", {
         selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
@@ -466,11 +496,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         planningMetric,
       });
     } finally {
-      await Promise.allSettled([
-        planner.shutdown(),
-        decomposer.shutdown(),
-        supervisor.shutdown(),
-      ]);
+      await messaging.shutdown();
     }
   }
 
@@ -486,11 +512,15 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     return this.handleTask(message.objective, context);
   }
 
-  private createPlanner(
+  getMessageTraces(): readonly MessageTrace[] {
+    return this.messageBus.listTraces();
+  }
+
+  private createPlanGenerator(
     input: ChiefObjective<TResponse>,
     requiredCapability: string,
-  ): PlannerAgent {
-    const planGenerator: PlanGenerator = input.planGenerator ?? {
+  ): PlanGenerator {
+    return input.planGenerator ?? {
       generate: (goal): ExecutionPlanDraft => ({
         title: `Execution plan: ${goal.title}`,
         summary: "Delegate the objective to the compatible scheduled execution adapter.",
@@ -525,13 +555,6 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         ],
       }),
     };
-    return new PlannerAgent(planGenerator, {
-      config: createPlannerAgentConfig({
-        id: createAgentId(`${this.id}:planner`),
-      }),
-      clock: this.clock,
-      idGenerator: () => this.nextId("plan"),
-    });
   }
 
   private createExecutionAgents(options: {
@@ -1037,6 +1060,10 @@ function monotonicNow(): number {
 
 function elapsedSince(startedAt: number): number {
   return roundDuration(monotonicNow() - startedAt);
+}
+
+function messageCorrelationId(executionId: string): string {
+  return `execution-${executionId.trim().replace(/\s+/g, "-")}`;
 }
 
 function roundDuration(value: number): number {
