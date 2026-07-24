@@ -46,8 +46,8 @@ export class SharedContext {
       throw new Error("Initial contexts must start at version 1.");
     }
 
-    const normalized = createContextRecord(
-      context.kind,
+    const normalized = createContextRecord<TKind>(
+      context.kind as TKind,
       context.id,
       context.data,
       {
@@ -69,7 +69,7 @@ export class SharedContext {
   ): ContextFor<TKind> {
     const timestamp = this.timestamp();
     return this.initialize(
-      createContextRecord(kind, id, data, {
+      createContextRecord<TKind>(kind, id, data, {
         createdAt: timestamp,
         updatedAt: timestamp,
       }),
@@ -191,7 +191,7 @@ export class SharedContext {
     sourceVersion?: number,
   ): ContextFor<TKind> {
     const active = this.requireContext(kind);
-    const next = createContextRecord(kind, active.id, data, {
+    const next = createContextRecord<TKind>(kind, active.id, data, {
       version: active.version + 1,
       operation,
       createdAt: active.createdAt,

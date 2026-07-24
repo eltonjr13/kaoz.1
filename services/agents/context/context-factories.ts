@@ -3,6 +3,7 @@ import type {
   ContextFor,
   ContextKind,
   ContextOperation,
+  ContextValue,
   ConversationContext,
   ExecutionContext,
   ProjectContext,
@@ -87,7 +88,7 @@ export function createContextRecord<TKind extends ContextKind>(
     updatedAt,
     previousVersion: options.previousVersion,
     sourceVersion: options.sourceVersion,
-  }) as ContextFor<TKind>;
+  }) as unknown as ContextFor<TKind>;
 }
 
 export function cloneContextData<TData extends ContextData>(

@@ -61,7 +61,16 @@ export interface ContextByKind {
 
 export type SharedContextEntry = ContextByKind[ContextKind];
 
-export type ContextFor<TKind extends ContextKind> = ContextByKind[TKind];
+export type ContextFor<TKind extends ContextKind> =
+  TKind extends "execution"
+    ? ExecutionContext
+    : TKind extends "project"
+      ? ProjectContext
+      : TKind extends "conversation"
+        ? ConversationContext
+        : TKind extends "task"
+          ? TaskContext
+          : SessionContext;
 
 export type SharedContextSnapshotEntries = Readonly<
   Partial<{ [TKind in ContextKind]: ContextByKind[TKind] }>
