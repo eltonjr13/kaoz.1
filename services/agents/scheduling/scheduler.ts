@@ -7,6 +7,11 @@ import {
   AgentContextAdapter,
   type AgentContextHydrator,
 } from "../memory/agent-context.adapter.ts";
+import {
+  AgentMessageEndpoint,
+  AgentMessageGateway,
+} from "../messaging/agent-message-gateway.ts";
+import { MessageBus } from "../messaging/message-bus.ts";
 import type {
   ExecutionTask,
   ExecutionTaskExpectedOutput,
@@ -19,6 +24,7 @@ import {
   type ScheduledTask,
   type ScheduledTaskStatus,
   type SchedulerAgentSnapshot,
+  type SchedulerAgentMessage,
   type SchedulerClock,
   type SchedulerConfig,
   type SchedulerEvent,
@@ -94,6 +100,8 @@ export class Scheduler {
   private readonly clock: SchedulerClock;
   private readonly idGenerator: () => string;
   private readonly contextAdapter: AgentContextHydrator;
+  private readonly messageBus: MessageBus;
+  private readonly messageGateway: AgentMessageGateway;
   private decisionSequence = 0;
   private fairnessCounter = 0;
   private eventSequence = 0;
@@ -107,6 +115,8 @@ export class Scheduler {
     this.idGenerator = options.idGenerator ?? defaultDecisionId;
     this.contextAdapter =
       options.contextAdapter ?? new AgentContextAdapter();
+    this.messageBus = options.messageBus ?? new MessageBus();
+    this.messageGateway = new AgentMessageGateway(this.messageBus);
   }
 
   enqueue(request: SchedulingRequest): ScheduledTask {
@@ -417,7 +427,7 @@ export class Scheduler {
     );
     const startedAt = this.timestamp();
     const eventOffset = this.events.length;
-    const managedAgents: SchedulerExecutionAgent<TResult>[] = [];
+    const managedEndpoints: AgentMessageEndpoint[] = [];
     const decisions: SchedulingDecision[] = [];
     const results: SchedulerTaskExecutionResult<TResult>[] = [];
 
@@ -441,7 +451,7 @@ export class Scheduler {
     try {
       await this.prepareAgents(
         agents,
-        managedAgents,
+        managedEndpoints,
         options.manageAgentLifecycle === true,
       );
       await this.checkpoint(options, "execution-started");
@@ -549,7 +559,9 @@ export class Scheduler {
     } finally {
       if (options.manageAgentLifecycle === true) {
         await Promise.allSettled(
-          managedAgents.map((agent) => agent.shutdown()),
+          managedEndpoints
+            .reverse()
+            .map((endpoint) => endpoint.shutdown()),
         );
       }
       this.activeExecutionId = undefined;
@@ -593,7 +605,7 @@ export class Scheduler {
 
   private async prepareAgents<TResult>(
     agents: readonly SchedulerExecutionAgent<TResult>[],
-    managedAgents: SchedulerExecutionAgent<TResult>[],
+    managedEndpoints: AgentMessageEndpoint[],
     manageLifecycle: boolean,
   ): Promise<void> {
     assertUnique(
@@ -601,13 +613,13 @@ export class Scheduler {
       "Scheduler execution agents must have unique ids.",
     );
     for (const agent of agents) {
-      if (agent.state.status === "created" || agent.state.status === "stopped") {
-        await agent.initialize();
-        if (manageLifecycle) {
-          managedAgents.push(agent);
-        }
-      } else if (agent.state.status === "paused") {
-        await agent.resume();
+      if (manageLifecycle) {
+        const endpoint = new AgentMessageEndpoint(
+          this.messageBus,
+          agent,
+        );
+        await endpoint.initialize();
+        managedEndpoints.push(endpoint);
       }
       if (agent.state.status !== "ready") {
         throw new SchedulerError(
@@ -683,7 +695,25 @@ export class Scheduler {
             sharedContext: options.agentContext?.sharedContext,
             blackboard: options.agentContext?.blackboard,
           });
-          return agent.handleTask(entry.subtask, context);
+          return this.messageGateway.request<
+            SchedulerAgentMessage,
+            TResult
+          >(
+            "agent.scheduler.execute-task",
+            {
+              type: "execute-scheduled-task",
+              task: entry.subtask,
+            },
+            {
+              senderId: createAgentId("scheduler"),
+              recipientId: agent.id,
+              correlationId:
+                `${options.correlationId ?? options.executionId}:${decision.id}`,
+              timeoutMs: entry.timeoutMs,
+              retryPolicy: { maxAttempts: 1 },
+              context,
+            },
+          );
         },
         entry.timeoutMs,
         combineAbortSignals(

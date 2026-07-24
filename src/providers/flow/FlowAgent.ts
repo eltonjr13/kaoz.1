@@ -1,9 +1,14 @@
 import type { FlowDecision } from "@/lib/ai/gemini";
 import {
   AgentRegistry,
-  Scheduler,
+  ChiefAgent,
   type SchedulerExecutionAgent,
 } from "@/services/agents";
+import type {
+  ExecutionPlanDraft,
+  Goal,
+  PlanGenerator,
+} from "@/services/agents/planning";
 import { CreativeAgent } from "./agents/CreativeAgent";
 import {
   type AgentTaskOptions,
@@ -30,8 +35,8 @@ const FLOW_PLANNING_TIMEOUT_MS = 2 * 60 * 1_000;
 /**
  * Compatibility facade for the historical FlowAgent API.
  *
- * It contains no media business logic. Every call is represented as an
- * ExecutionTask and dispatched by Scheduler to a registered specialist.
+ * It contains no media business logic. Every call enters the complete
+ * Chief -> Planner -> TaskDecomposer -> Scheduler -> specialist pipeline.
  */
 export class FlowAgent {
   readonly registry: AgentRegistry;
@@ -135,72 +140,80 @@ export class FlowAgent {
     const { agentContextAdapter } = await import(
       "@/services/agents/memory/agent-context.runtime"
     );
-    const scheduler = new Scheduler({
+    const chief = new ChiefAgent<TResult>({
       contextAdapter: agentContextAdapter,
-      config: {
-        maxConcurrency: 1,
-        maxConcurrencyPerAgent: 1,
-        defaultRetryPolicy: {
-          maxAttempts: 1,
-          baseDelayMs: 0,
-          backoffMultiplier: 1,
-          maxDelayMs: 0,
-        },
-      },
     });
-    const taskId = `flow-task-${globalThis.crypto.randomUUID()}`;
-    scheduler.enqueue({
-      subtask: Object.freeze({
-        id: taskId,
-        sourcePlanId: `flow-facade:${executionId}`,
-        sourcePlanVersion: 1,
-        sourceStepId: capability,
-        title: `Dispatch ${capability}`,
-        description: `Execute ${capability} through a registered Flow specialist.`,
-        owner: null,
-        ownerCapability: capability,
+    await chief.initialize();
+    try {
+      const result = await chief.handleTask({
+        executionId,
+        objective: `Execute ${capability} for Flow execution ${executionId}.`,
+        contextData: {
+          channel: "flow-provider",
+          capability,
+        },
         requiredCapability: capability,
         priority: 50,
-        dependencies: Object.freeze([]),
-        timeout,
-        expectedOutput: Object.freeze({
-          description: `Completed output for ${capability}.`,
-          acceptanceCriteria: Object.freeze([]),
-        }),
-        input: Object.freeze(input),
         estimatedCost: 0,
         estimatedTime: timeout,
         confidence: 1,
-      }),
-      fairnessKey: executionId,
-      timeoutMs: timeout,
-    });
-
-    const candidates = this.agents.filter((agent) =>
-      agent
-        .getCapabilities()
-        .items.some((declared) => declared.name === capability),
-    );
-    if (candidates.length === 0) {
-      throw new Error(
-        `No registered Flow agent declares capability "${capability}".`,
-      );
+        executionAgents: this.agents,
+        planGenerator: createFlowPlanGenerator(capability, input, timeout),
+      });
+      return result.response;
+    } finally {
+      await chief.shutdown();
     }
-    const report = await scheduler.executeAll(candidates, {
-      executionId,
-      correlationId: executionId,
-      manageAgentLifecycle: true,
-    });
-    const result = report.results.find(
-      (candidate) => candidate.taskId === taskId,
-    );
-    if (!result) {
-      throw new Error(
-        `Scheduler returned no result for Flow task "${taskId}".`,
-      );
-    }
-    return result.output as TResult;
   }
+}
+
+function createFlowPlanGenerator(
+  capability: string,
+  input: FlowTaskInput,
+  timeout: number,
+): PlanGenerator {
+  return Object.freeze({
+    generate: (goal: Goal): ExecutionPlanDraft => {
+      const stepId = `flow-step-${globalThis.crypto.randomUUID()}`;
+      return {
+        title: `Flow execution plan: ${goal.title}`,
+        summary:
+          "Route the Flow objective to the registered specialized agent.",
+        steps: [
+          {
+            id: stepId,
+            title: `Execute ${capability}`,
+            description:
+              `Execute ${capability} through its registered Flow specialist.`,
+            capability,
+            input,
+            acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+              (criterion) => criterion.id,
+            ),
+            milestoneId: "flow-result-ready",
+            estimate: {
+              effortPoints: 1,
+              durationMs: timeout,
+              cost: 0,
+              confidence: 1,
+            },
+          },
+        ],
+        milestones: [
+          {
+            id: "flow-result-ready",
+            title: "Flow result ready",
+            description:
+              "The specialized Flow agent completed the scheduled objective.",
+            stepIds: [stepId],
+            acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+              (criterion) => criterion.id,
+            ),
+          },
+        ],
+      };
+    },
+  });
 }
 
 function capabilityForFlow(flow: FlowDecision["flow"]): string {

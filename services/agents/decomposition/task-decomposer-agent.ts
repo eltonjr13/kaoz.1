@@ -153,6 +153,7 @@ export class TaskDecomposerAgent extends AbstractAgent<
       dependencies: Object.freeze(dependencies),
       timeout,
       expectedOutput,
+      ...(step.input === undefined ? {} : { input: step.input }),
       estimatedCost: step.estimate.cost,
       estimatedTime: step.estimate.durationMs,
       confidence: step.estimate.confidence,

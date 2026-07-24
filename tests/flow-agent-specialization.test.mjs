@@ -45,7 +45,7 @@ async function source(relativePath) {
   return readFile(new URL(relativePath, ROOT), "utf8");
 }
 
-test("FlowAgent preserva a API publica e atua somente como fachada do Scheduler", async () => {
+test("FlowAgent preserva a API publica e entra somente pelo ChiefAgent", async () => {
   const facade = await readFile(FLOW_AGENT_PATH, "utf8");
 
   for (const method of [
@@ -56,9 +56,13 @@ test("FlowAgent preserva a API publica e atua somente como fachada do Scheduler"
     assert.match(facade, new RegExp(method.replace("(", "\\(")));
   }
 
-  assert.match(facade, /new Scheduler\(/);
-  assert.match(facade, /scheduler\.executeAll\(/);
+  assert.match(facade, /new ChiefAgent/);
+  assert.match(facade, /chief\.handleTask\(/);
+  assert.doesNotMatch(facade, /new Scheduler\(/);
+  assert.doesNotMatch(facade, /scheduler\.executeAll\(/);
   assert.match(facade, /new AgentRegistry\(/);
+  assert.match(facade, /createFlowPlanGenerator/);
+  assert.match(facade, /executionAgents:\s*this\.agents/);
 
   for (const heavyDependency of [
     "flowProvider",

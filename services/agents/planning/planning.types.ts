@@ -35,6 +35,7 @@ export interface ExecutionStep {
   readonly title: string;
   readonly description: string;
   readonly capability: string;
+  readonly input?: unknown;
   readonly dependencyIds: readonly string[];
   readonly milestoneId?: string;
   readonly acceptanceCriteriaIds: readonly string[];
@@ -91,6 +92,7 @@ export interface ExecutionStepDraft {
   readonly title: string;
   readonly description: string;
   readonly capability: string;
+  readonly input?: unknown;
   readonly dependencyIds?: readonly string[];
   readonly milestoneId?: string;
   readonly acceptanceCriteriaIds?: readonly string[];
@@ -120,4 +122,3 @@ export interface ExecutionPlanMaterialization {
   readonly createdAt: string;
   readonly version?: number;
 }
-

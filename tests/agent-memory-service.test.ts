@@ -3,12 +3,12 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import {
-  LegacyAgentAdapter,
   Scheduler,
   createAgentId,
   type AgentContext,
   type ExecutionTask,
 } from "../services/agents/index.ts";
+import { TestExecutionAgent } from "./helpers/test-execution-agent.ts";
 import { Blackboard } from "../services/agents/blackboard/blackboard.ts";
 import { createExecutionContext } from "../services/agents/context/context-factories.ts";
 import { SharedContext } from "../services/agents/context/shared-context.ts";
@@ -196,17 +196,13 @@ test("adapts a legacy AgentContext to all four runtime resources", async () => {
 
 test("Scheduler always delivers hydrated context to execution agents", async () => {
   let received: AgentContext | undefined;
-  const worker = new LegacyAgentAdapter<string, AgentContext | undefined>({
+  const worker = new TestExecutionAgent<string>({
     id: createAgentId("memory-aware-worker"),
-    name: "Memory aware worker",
     capabilities: ["memory-aware"],
-    executor: {
-      execute: async (context) => {
-        received = context;
-        return "completed";
-      },
+    execute: async (_task, context) => {
+      received = context;
+      return "completed";
     },
-    assignmentFactory: (_task, context) => context,
   });
   const scheduler = new Scheduler({
     config: {

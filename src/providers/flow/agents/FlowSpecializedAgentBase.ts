@@ -19,6 +19,7 @@ import {
   type AgentContext,
   type AgentId,
   type ExecutionTask,
+  type SchedulerAgentMessage,
 } from "@/services/agents";
 import type { JobStatus } from "@/types";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
@@ -40,17 +41,12 @@ const VIDEO_REFERENCE_EXTENSIONS = new Set([
   ".m4v",
 ]);
 
-export interface FlowAgentMessage {
-  readonly type: "execute-flow-task";
-  readonly task: ExecutionTask;
-}
-
 export abstract class FlowSpecializedAgentBase<
   TResult = FlowExecutionResult,
 > extends AbstractAgent<
   ExecutionTask,
   TResult,
-  FlowAgentMessage,
+  SchedulerAgentMessage,
   TResult
 > {
   protected assertReadyForFlowTask(): void {
@@ -62,13 +58,13 @@ export abstract class FlowSpecializedAgentBase<
   }
 
   handleMessage(
-    message: FlowAgentMessage,
+    message: SchedulerAgentMessage,
     context?: AgentContext,
   ): Promise<TResult> {
-    if (message?.type !== "execute-flow-task" || !message.task) {
+    if (message?.type !== "execute-scheduled-task" || !message.task) {
       return Promise.reject(
         new Error(
-          "Flow specialized agents only accept execute-flow-task messages.",
+          "Flow specialized agents only accept execute-scheduled-task messages.",
         ),
       );
     }

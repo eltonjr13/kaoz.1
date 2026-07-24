@@ -1,5 +1,5 @@
-export * from "./adapters/index.ts";
 export * from "./blackboard/index.ts";
+export * from "./chat/index.ts";
 export * from "./chief/index.ts";
 export * from "./core/index.ts";
 export * from "./context/index.ts";

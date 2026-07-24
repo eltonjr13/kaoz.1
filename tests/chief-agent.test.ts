@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ChiefAgent,
-  PlanningMetricsStore,
   createAgentId,
   createChiefAgentConfig,
   type AgentConfig,
   type SupervisorClock,
 } from "../services/agents/index.ts";
+import { TestExecutionAgent } from "./helpers/test-execution-agent.ts";
 
 const timestamp = "2026-07-24T19:00:00.000Z";
 
@@ -23,13 +23,19 @@ function createIdGenerator(): () => string {
   return () => `id-${++sequence}`;
 }
 
-test("plans and executes only through Scheduler using LegacyAgentAdapter", async () => {
-  let legacyCalls = 0;
-  const metrics = new PlanningMetricsStore();
+test("coordinates a native specialized agent through the complete pipeline", async () => {
+  let executions = 0;
+  const responseAgent = new TestExecutionAgent<string>({
+    id: createAgentId("chat-response-agent"),
+    capabilities: ["chat-response"],
+    execute: async () => {
+      executions += 1;
+      return "compatible response";
+    },
+  });
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
-    metricsRecorder: metrics,
   });
   await chief.initialize();
 
@@ -45,63 +51,25 @@ test("plans and executes only through Scheduler using LegacyAgentAdapter", async
     estimatedCost: 2,
     estimatedTime: 5_000,
     confidence: 0.9,
-    executionAdapterId: createAgentId("existing-chat-adapter"),
-    legacyPlanningAdapter: {
-      run: async () => {
-        legacyCalls += 1;
-        return "compatible response";
-      },
-    },
-    legacyPlanInspector: {
-      inspect: () => ({
-        planKind: "legacy-chat",
-        stepCount: 1,
-      }),
-    },
+    executionAgents: [responseAgent],
   });
 
-  assert.equal(legacyCalls, 1);
+  assert.equal(executions, 1);
   assert.equal(result.response, "compatible response");
   assert.equal(result.executionContext.kind, "execution");
-  assert.equal(result.executionContext.version, 6);
-  assert.equal(
-    typeof result.executionContext.data.memory,
-    "object",
-  );
-  assert.equal(
-    result.executionContext.data.status,
-    "execution-completed",
-  );
-  assert.equal(result.goal.objective, "Responda ao usuário sem alterar o contrato.");
+  assert.equal(result.executionContext.data.status, "execution-completed");
   assert.equal(result.goalRegistration.content.goalId, result.goal.id);
   assert.equal(result.plan.goal.id, result.goal.id);
   assert.equal(result.plan.steps[0]?.capability, "chat-response");
   assert.equal(result.tasks, result.subtasks);
   assert.equal(result.tasks[0]?.ownerCapability, "chat-response");
   assert.equal(result.tasks[0]?.timeout, 5_000);
-  assert.match(
-    result.tasks[0]?.expectedOutput.description ?? "",
-    /scheduler execution returns a final compatible response/i,
-  );
-  assert.equal(result.subtasks.length, 1);
-  assert.equal(result.decisions.length, 1);
-  assert.equal(result.decisions[0]?.agentId, "existing-chat-adapter");
+  assert.equal(result.decisions[0]?.agentId, responseAgent.id);
   assert.equal(result.executionReport.status, "completed");
-  assert.equal(
-    result.schedulerEvents.some(
-      (event) => event.type === "task-completed",
-    ),
-    true,
-  );
   assert.equal(result.supervision.healthy, true);
-  assert.equal(result.planningMetric.selectedPlanner, "planner-agent");
-  assert.equal(result.planningMetric.fallbackUsed, false);
-  assert.equal(result.planningMetric.newPlanner.stepCount, 1);
-  assert.equal(result.planningMetric.legacyBaseline.planKind, "legacy-chat");
-  assert.equal(metrics.summary().plannerAgentSelected, 1);
   assert.equal(Object.isFrozen(result), true);
+
   const traces = chief.getMessageTraces();
-  assert.equal(traces.length >= 10, true);
   const commandNames = new Set(
     traces
       .filter((trace) => trace.messageKind === "command")
@@ -126,9 +94,18 @@ test("plans and executes only through Scheduler using LegacyAgentAdapter", async
   );
 });
 
-test("executes a structured dependency graph through Scheduler only", async () => {
-  let legacyCalls = 0;
-  let compatibilityExecutionCalls = 0;
+test("executes a structured dependency graph only through specialized agents", async () => {
+  const executions: string[] = [];
+  const worker = new TestExecutionAgent<string>({
+    id: createAgentId("structured-worker"),
+    capabilities: ["analysis", "research", "chat-response"],
+    execute: async (task) => {
+      executions.push(task.ownerCapability);
+      return task.ownerCapability === "chat-response"
+        ? "final response"
+        : `${task.ownerCapability} completed`;
+    },
+  });
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
@@ -139,6 +116,7 @@ test("executes a structured dependency graph through Scheduler only", async () =
     executionId: "execution-structured-plan",
     objective: "Research and compose a response.",
     requiredCapability: "chat-response",
+    executionAgents: [worker],
     planGenerator: {
       generate: (goal) => ({
         title: "Structured chat plan",
@@ -188,93 +166,35 @@ test("executes a structured dependency graph through Scheduler only", async () =
         ],
       }),
     },
-    legacyPlanningAdapter: {
-      run: async () => {
-        legacyCalls += 1;
-        return "compatible response";
-      },
-    },
-    executionAdapter: {
-      execute: async () => {
-        compatibilityExecutionCalls += 1;
-        return "must not execute";
-      },
-    },
   });
 
-  assert.equal(legacyCalls, 1);
-  assert.equal(compatibilityExecutionCalls, 0);
-  assert.equal(result.plan.steps.length, 3);
+  assert.deepEqual(executions, ["analysis", "research", "chat-response"]);
+  assert.equal(result.response, "final response");
   assert.deepEqual(result.plan.dependencyGraph.edges, [
     { prerequisiteStepId: "analyze", dependentStepId: "research" },
     { prerequisiteStepId: "research", dependentStepId: "compose" },
   ]);
-  assert.equal(result.subtasks.length, 3);
-  assert.deepEqual(
-    result.tasks.map((task) => ({
-      ownerCapability: task.ownerCapability,
-      priority: task.priority,
-      dependencies: task.dependencies,
-      timeout: task.timeout,
-      expectedOutput: task.expectedOutput.description,
-      confidence: task.confidence,
-    })),
-    [
-      {
-        ownerCapability: "analysis",
-        priority: 50,
-        dependencies: [],
-        timeout: 1_000,
-        expectedOutput:
-          'Completed output for "Analyze": Analyze the objective.',
-        confidence: 0.95,
-      },
-      {
-        ownerCapability: "research",
-        priority: 50,
-        dependencies: [result.tasks[0]?.id],
-        timeout: 2_000,
-        expectedOutput:
-          'Completed output for "Research": Collect context.',
-        confidence: 0.8,
-      },
-      {
-        ownerCapability: "chat-response",
-        priority: 50,
-        dependencies: [result.tasks[1]?.id],
-        timeout: 1_000,
-        expectedOutput:
-          "Scheduler execution returns a final compatible response.",
-        confidence: 0.9,
-      },
-    ],
-  );
+  assert.equal(result.tasks.length, 3);
   assert.equal(result.decisions.length, 3);
-  assert.equal(result.subtasks[0]?.sourceStepId, "analyze");
-  assert.equal(result.decisions[0]?.taskId, result.subtasks[0]?.id);
   assert.deepEqual(
-    result.executionReport.results.map((result) => result.taskId),
+    result.executionReport.results.map((entry) => entry.taskId),
     result.tasks.map((task) => task.id),
   );
-  assert.equal(result.planningMetric.schedulerDecisionCount, 3);
 });
 
-test("does not expose direct execution, restart, scheduling or planning methods", () => {
+test("contains no direct execution API or legacy compatibility path", () => {
   const chief = new ChiefAgent<string>();
+  const source = readFileSync(
+    new URL("../services/agents/chief/chief-agent.ts", import.meta.url),
+    "utf8",
+  );
 
   assert.equal("execute" in chief, false);
   assert.equal("executeTask" in chief, false);
   assert.equal("restartAgent" in chief, false);
   assert.equal("schedule" in chief, false);
   assert.equal("createPlan" in chief, false);
-});
-
-test("ChiefAgent source depends on MessageBus addresses, not concrete agents", () => {
-  const source = readFileSync(
-    new URL("../services/agents/chief/chief-agent.ts", import.meta.url),
-    "utf8",
-  );
-
+  assert.doesNotMatch(source, /LegacyAgentAdapter|legacyPlanningAdapter/);
   assert.doesNotMatch(source, /\bnew\s+PlannerAgent\b/);
   assert.doesNotMatch(source, /\bnew\s+TaskDecomposerAgent\b/);
   assert.doesNotMatch(source, /\bnew\s+SupervisorAgent\b/);
@@ -282,7 +202,16 @@ test("ChiefAgent source depends on MessageBus addresses, not concrete agents", (
   assert.match(source, /messaging\.gateway\.request/);
 });
 
-test("propagates execution adapter failures instead of fabricating a response", async () => {
+test("fails when Planner fails and never executes a specialist", async () => {
+  let executions = 0;
+  const worker = new TestExecutionAgent<string>({
+    id: createAgentId("never-executed-worker"),
+    capabilities: ["chat-response"],
+    execute: async () => {
+      executions += 1;
+      return "must not execute";
+    },
+  });
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
@@ -291,62 +220,37 @@ test("propagates execution adapter failures instead of fabricating a response", 
 
   await assert.rejects(
     chief.handleTask({
-      executionId: "execution-chat-failure",
+      executionId: "execution-planner-failure",
       objective: "Return a response.",
       requiredCapability: "chat-response",
-      executionAdapter: {
-        execute: () => Promise.reject(new Error("worker failed")),
+      executionAgents: [worker],
+      planGenerator: {
+        generate: () => {
+          throw new Error("planner unavailable");
+        },
       },
     }),
-    /worker failed/,
+    /planner unavailable/,
   );
+  assert.equal(executions, 0);
 });
 
-test("uses the legacy planner as fallback and records comparison metrics", async () => {
-  const metrics = new PlanningMetricsStore();
+test("requires every planned capability to have a specialized agent", async () => {
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
-    metricsRecorder: metrics,
   });
   await chief.initialize();
 
-  const result = await chief.handleTask({
-    executionId: "execution-planner-fallback",
-    objective: "Return a compatible response.",
-    requiredCapability: "chat-response",
-    planGenerator: {
-      generate: () => {
-        throw new Error("new planner unavailable");
-      },
-    },
-    legacyPlanningAdapter: {
-      run: () => Promise.resolve("legacy response"),
-    },
-    legacyPlanInspector: {
-      inspect: () => ({
-        planKind: "legacy-conversation",
-        stepCount: 2,
-        dependencyCount: 1,
-        milestoneCount: 1,
-      }),
-    },
-  });
-
-  assert.equal(result.response, "legacy response");
-  assert.match(result.plan.title, /Legacy fallback plan/);
-  assert.equal(result.plan.steps.length, 1);
-  assert.equal(result.subtasks.length, 1);
-  assert.equal(result.decisions.length, 1);
-  assert.equal(result.planningMetric.selectedPlanner, "legacy-fallback");
-  assert.equal(result.planningMetric.fallbackUsed, true);
-  assert.equal(result.planningMetric.newPlanner.success, false);
-  assert.match(
-    result.planningMetric.newPlanner.error ?? "",
-    /new planner unavailable/,
+  await assert.rejects(
+    chief.handleTask({
+      executionId: "execution-missing-agent",
+      objective: "Return a response.",
+      requiredCapability: "chat-response",
+      executionAgents: [],
+    }),
+    /No specialized execution agent.*chat-response/,
   );
-  assert.equal(result.planningMetric.legacyBaseline.stepCount, 2);
-  assert.equal(metrics.summary().legacyFallbacks, 1);
 });
 
 test("requires initialization and goal-coordination capability", async () => {
@@ -356,9 +260,7 @@ test("requires initialization and goal-coordination capability", async () => {
       executionId: "execution-uninitialized",
       objective: "Return a response.",
       requiredCapability: "chat-response",
-      executionAdapter: {
-        execute: () => Promise.resolve("response"),
-      },
+      executionAgents: [],
     }),
     /must be ready/,
   );

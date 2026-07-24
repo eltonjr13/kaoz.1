@@ -2,6 +2,7 @@ import type { BaseAgent } from "../core/base-agent.ts";
 import type { AgentContext } from "../core/agent-context.ts";
 import type { AgentId } from "../core/agent-id.ts";
 import type { AgentContextHydrator } from "../memory/agent-context.adapter.ts";
+import type { MessageBus } from "../messaging/message-bus.ts";
 import type {
   ExecutionTask,
   Subtask,
@@ -129,9 +130,14 @@ export type SchedulerEventSubscriber = (event: SchedulerEvent) => void;
 export type SchedulerExecutionAgent<TResult = unknown> = BaseAgent<
   ExecutionTask,
   TResult,
-  unknown,
-  unknown
+  SchedulerAgentMessage,
+  TResult
 >;
+
+export interface SchedulerAgentMessage {
+  readonly type: "execute-scheduled-task";
+  readonly task: ExecutionTask;
+}
 
 export interface SchedulerTaskExecutionResult<TResult = unknown> {
   readonly taskId: string;
@@ -201,6 +207,7 @@ export interface SchedulerOptions {
   readonly clock?: SchedulerClock;
   readonly idGenerator?: () => string;
   readonly contextAdapter?: AgentContextHydrator;
+  readonly messageBus?: MessageBus;
 }
 
 export type SchedulerErrorCode =

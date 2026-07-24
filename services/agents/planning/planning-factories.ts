@@ -93,6 +93,7 @@ export function createExecutionStep(input: ExecutionStepDraft): ExecutionStep {
       "Execution step description",
     ),
     capability: normalizeCapabilityName(input.capability),
+    input: freezeStructuredValue(input.input),
     dependencyIds: normalizeUniqueIds(
       input.dependencyIds ?? [],
       `Execution step "${id}" contains duplicate dependencies.`,
@@ -336,6 +337,23 @@ function optionalText(value: string | undefined, label: string): string | undefi
   return value === undefined ? undefined : requireText(value, label);
 }
 
+function freezeStructuredValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(freezeStructuredValue));
+  }
+  if (value && typeof value === "object") {
+    return Object.freeze(
+      Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [
+          key,
+          freezeStructuredValue(entry),
+        ]),
+      ),
+    );
+  }
+  return value;
+}
+
 function requireText(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) {
@@ -375,4 +393,3 @@ function assertRange(
     throw new Error(`${label} must be between ${minimum} and ${maximum}.`);
   }
 }
-

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  LegacyAgentAdapter,
   Scheduler,
   createAgentId,
   type SchedulerAgentSnapshot,
   type SchedulerClock,
   type Subtask,
 } from "../services/agents/index.ts";
+import { TestExecutionAgent } from "./helpers/test-execution-agent.ts";
 
 class FakeClock implements SchedulerClock {
   private current: Date;
@@ -309,12 +309,10 @@ test("executes dependency-ordered tasks through selected agents and records even
       }),
     },
   ]);
-  const agent = new LegacyAgentAdapter<string>({
+  const agent = new TestExecutionAgent<string>({
     id: analysisAgent,
     capabilities: ["analysis"],
-    executor: {
-      run: async () => `output-${++executions}`,
-    },
+    execute: async () => `output-${++executions}`,
   });
 
   const report = await scheduler.executeAll([agent], {
@@ -360,21 +358,27 @@ test("executes independent tasks within configured concurrency", async () => {
     { subtask: createSubtask("parallel-b") },
     { subtask: createSubtask("parallel-c") },
   ]);
-  const agent = new LegacyAgentAdapter<string>({
-    id: analysisAgent,
-    capabilities: ["analysis"],
-    executor: {
-      run: async () => {
-        active += 1;
-        maximumActive = Math.max(maximumActive, active);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        active -= 1;
-        return "done";
-      },
-    },
-  });
+  const execute = async () => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return "done";
+  };
+  const agents = [
+    new TestExecutionAgent<string>({
+      id: analysisAgent,
+      capabilities: ["analysis"],
+      execute,
+    }),
+    new TestExecutionAgent<string>({
+      id: secondAnalysisAgent,
+      capabilities: ["analysis"],
+      execute,
+    }),
+  ];
 
-  const report = await scheduler.executeAll([agent], {
+  const report = await scheduler.executeAll(agents, {
     executionId: "parallel-execution",
     manageAgentLifecycle: true,
   });
@@ -397,17 +401,15 @@ test("executes retries and records the successful attempt", async () => {
     idGenerator: () => `retry-decision-${attempts + 1}`,
   });
   scheduler.enqueue({ subtask: createSubtask("retry-execution") });
-  const agent = new LegacyAgentAdapter<string>({
+  const agent = new TestExecutionAgent<string>({
     id: analysisAgent,
     capabilities: ["analysis"],
-    executor: {
-      run: async () => {
-        attempts += 1;
-        if (attempts === 1) {
-          throw new Error("temporary execution failure");
-        }
-        return "recovered";
-      },
+    execute: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary execution failure");
+      }
+      return "recovered";
     },
   });
 
@@ -442,12 +444,10 @@ test("enforces execution timeout and records terminal failure", async () => {
     subtask: createSubtask("timeout-execution"),
     timeoutMs: 10,
   });
-  const agent = new LegacyAgentAdapter<string>({
+  const agent = new TestExecutionAgent<string>({
     id: analysisAgent,
     capabilities: ["analysis"],
-    executor: {
-      run: () => new Promise<string>(() => undefined),
-    },
+    execute: () => new Promise<string>(() => undefined),
   });
 
   await assert.rejects(

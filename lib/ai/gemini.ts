@@ -16,6 +16,7 @@ import {
 } from "@/lib/ai/image-prompt-engineering";
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import { ChiefAgent } from "@/services/agents/chief/chief-agent";
+import { createChatSpecializedAgents } from "@/services/agents/chat/chat-specialized-agents";
 import type {
   ExecutionPlanDraft,
   Goal,
@@ -970,7 +971,7 @@ function parseChatModelResponse(
   };
 }
 
-async function executeScheduledChatTask(
+async function executeChatResponseWorkflow(
   messages: ChatMessage[],
   avatarPersonality?: Record<string, unknown> | null,
   executeWebQuery?: ExecuteWebQuery,
@@ -1164,19 +1165,13 @@ export async function chatWithAgent(
       estimatedTime: 60_000,
       confidence: 1,
       planGenerator: createChatPlanGenerator(messages, options),
-      legacyPlanningAdapter: {
-        run: () =>
-          executeScheduledChatTask(
-            messages,
-            avatarPersonality,
-            executeWebQuery,
-            referenceImagePath,
-            options,
-          ),
-      },
-      legacyPlanInspector: {
-        inspect: inspectLegacyChatPlan,
-      },
+      executionAgents: createChatExecutionAgents(
+        messages,
+        avatarPersonality,
+        executeWebQuery,
+        referenceImagePath,
+        options,
+      ),
     });
     return result.response;
   } catch (error) {
@@ -1188,6 +1183,25 @@ export async function chatWithAgent(
   } finally {
     await chief.shutdown();
   }
+}
+
+function createChatExecutionAgents(
+  messages: ChatMessage[],
+  avatarPersonality?: Record<string, unknown> | null,
+  executeWebQuery?: ExecuteWebQuery,
+  referenceImagePath?: string,
+  options?: ChatWithAgentOptions,
+) {
+  return createChatSpecializedAgents<ChatAgentResponse>({
+    execute: () =>
+      executeChatResponseWorkflow(
+        messages,
+        avatarPersonality,
+        executeWebQuery,
+        referenceImagePath,
+        options,
+      ),
+  });
 }
 
 function createChatPlanGenerator(
@@ -1308,23 +1322,4 @@ function createChatPlanGenerator(
   });
 }
 
-function inspectLegacyChatPlan(
-  response: ChatAgentResponse,
-): {
-  readonly planKind: string;
-  readonly stepCount: number;
-  readonly dependencyCount: number;
-  readonly milestoneCount: number;
-  readonly confidence: number;
-} {
-  const creativeStepCount = response.action?.creativeSteps?.length ?? 0;
-  const stepCount = response.action ? Math.max(1, creativeStepCount) : 1;
-  return Object.freeze({
-    planKind: response.action?.flow ?? "conversation",
-    stepCount,
-    dependencyCount: Math.max(0, stepCount - 1),
-    milestoneCount: 1,
-    confidence: response.action ? 0.8 : 0.9,
-  });
-}
 
