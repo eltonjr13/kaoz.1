@@ -1,5 +1,9 @@
+import type { BaseAgent } from "../core/base-agent.ts";
 import type { AgentId } from "../core/agent-id.ts";
-import type { Subtask } from "../decomposition/task-decomposition.types.ts";
+import type {
+  ExecutionTask,
+  Subtask,
+} from "../decomposition/task-decomposition.types.ts";
 
 export type ScheduledTaskStatus =
   | "queued"
@@ -41,7 +45,7 @@ export interface SchedulingRequest {
 
 export interface ScheduledTask {
   readonly id: string;
-  readonly subtask: Subtask;
+  readonly subtask: ExecutionTask;
   readonly fairnessKey: string;
   readonly status: ScheduledTaskStatus;
   readonly attempt: number;
@@ -90,6 +94,74 @@ export interface SchedulerStatistics {
   readonly byFairnessKey: Readonly<Record<string, number>>;
 }
 
+export type SchedulerEventType =
+  | "execution-started"
+  | "execution-completed"
+  | "execution-failed"
+  | "execution-cancelled"
+  | "task-enqueued"
+  | "task-assigned"
+  | "task-started"
+  | "task-completed"
+  | "task-failed"
+  | "task-retry-scheduled"
+  | "task-timed-out"
+  | "task-cancelled";
+
+export interface SchedulerEvent {
+  readonly id: string;
+  readonly type: SchedulerEventType;
+  readonly occurredAt: string;
+  readonly executionId?: string;
+  readonly taskId?: string;
+  readonly agentId?: AgentId;
+  readonly decisionId?: string;
+  readonly attempt?: number;
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
+export type SchedulerExecutionAgent<TResult = unknown> = BaseAgent<
+  ExecutionTask,
+  TResult,
+  unknown,
+  unknown
+>;
+
+export interface SchedulerTaskExecutionResult<TResult = unknown> {
+  readonly taskId: string;
+  readonly agentId: AgentId;
+  readonly decisionId: string;
+  readonly attempt: number;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly durationMs: number;
+  readonly output: TResult;
+}
+
+export interface SchedulerExecutionReport<TResult = unknown> {
+  readonly executionId: string;
+  readonly status: "completed";
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly decisions: readonly SchedulingDecision[];
+  readonly results: readonly SchedulerTaskExecutionResult<TResult>[];
+  readonly events: readonly SchedulerEvent[];
+  readonly statistics: SchedulerStatistics;
+}
+
+export interface SchedulerExecutionOptions {
+  readonly executionId: string;
+  readonly correlationId?: string;
+  readonly sessionId?: string;
+  readonly signal?: AbortSignal;
+  readonly manageAgentLifecycle?: boolean;
+  readonly isRetryable?: (
+    error: unknown,
+    task: ExecutionTask,
+    attempt: number,
+  ) => boolean;
+}
+
 export interface SchedulerClock {
   now(): Date;
 }
@@ -114,7 +186,10 @@ export type SchedulerErrorCode =
   | "TASK_ALREADY_EXISTS"
   | "TASK_NOT_FOUND"
   | "INVALID_STATE"
-  | "DEPENDENCY_CYCLE";
+  | "DEPENDENCY_CYCLE"
+  | "NO_ELIGIBLE_AGENT"
+  | "EXECUTION_FAILED"
+  | "EXECUTION_CANCELLED";
 
 export class SchedulerError extends Error {
   readonly code: SchedulerErrorCode;

@@ -2,7 +2,11 @@ import {
   normalizeCapabilityName,
 } from "../core/agent-capabilities.ts";
 import { createAgentId, type AgentId } from "../core/agent-id.ts";
-import type { Subtask } from "../decomposition/task-decomposition.types.ts";
+import type {
+  ExecutionTask,
+  ExecutionTaskExpectedOutput,
+  Subtask,
+} from "../decomposition/task-decomposition.types.ts";
 import {
   SchedulerError,
   type CancellationDecision,
@@ -12,15 +16,21 @@ import {
   type SchedulerAgentSnapshot,
   type SchedulerClock,
   type SchedulerConfig,
+  type SchedulerEvent,
+  type SchedulerEventType,
+  type SchedulerExecutionAgent,
+  type SchedulerExecutionOptions,
+  type SchedulerExecutionReport,
   type SchedulerOptions,
   type SchedulerStatistics,
+  type SchedulerTaskExecutionResult,
   type SchedulingDecision,
   type SchedulingRequest,
 } from "./scheduler.types.ts";
 
 interface SchedulerEntry {
   readonly id: string;
-  readonly subtask: Subtask;
+  readonly subtask: ExecutionTask;
   readonly fairnessKey: string;
   readonly enqueuedAt: string;
   readonly timeoutMs: number;
@@ -65,17 +75,19 @@ const systemClock: SchedulerClock = Object.freeze({
 /**
  * In-memory scheduling decision engine.
  *
- * The scheduler reserves capacity and returns decisions. It never invokes an
- * agent, dispatches a message or executes a subtask.
+ * The decision APIs remain available independently. executeAll additionally
+ * owns agent selection, dependency ordering, concurrency, retries and timeout.
  */
 export class Scheduler {
   private readonly entries = new Map<string, SchedulerEntry>();
   private readonly fairnessSequence = new Map<string, number>();
+  private readonly events: SchedulerEvent[] = [];
   private readonly config: SchedulerConfig;
   private readonly clock: SchedulerClock;
   private readonly idGenerator: () => string;
   private decisionSequence = 0;
   private fairnessCounter = 0;
+  private eventSequence = 0;
 
   constructor(options: SchedulerOptions = {}) {
     this.config = resolveConfig(options.config);
@@ -110,7 +122,7 @@ export class Scheduler {
       enqueuedAt: now,
       nextEligibleAt,
       timeoutMs: positiveFinite(
-        request.timeoutMs ?? this.config.defaultTimeoutMs,
+        request.timeoutMs ?? subtask.timeout ?? this.config.defaultTimeoutMs,
         "Scheduling timeoutMs",
       ),
       retryPolicy: resolveRetryPolicy(
@@ -126,6 +138,14 @@ export class Scheduler {
       this.entries.delete(entry.id);
       throw error;
     }
+    this.emit("task-enqueued", {
+      taskId: entry.id,
+      details: {
+        capability: entry.subtask.ownerCapability,
+        priority: entry.subtask.priority,
+        timeoutMs: entry.timeoutMs,
+      },
+    });
     return freezeEntry(entry);
   }
 
@@ -192,6 +212,16 @@ export class Scheduler {
           timeoutAt,
         }),
       );
+      this.emit("task-assigned", {
+        taskId: entry.id,
+        agentId: agent.snapshot.id,
+        decisionId,
+        attempt: entry.attempt,
+        details: {
+          priority: effectivePriority,
+          timeoutAt,
+        },
+      });
     }
 
     return Object.freeze(decisions);
@@ -202,6 +232,13 @@ export class Scheduler {
     this.assertAssigned(entry, "complete");
     entry.status = "completed";
     entry.completedAt = this.timestamp();
+    this.emit("task-completed", {
+      taskId: entry.id,
+      agentId: entry.assignedAgentId,
+      decisionId: entry.activeDecisionId,
+      attempt: entry.attempt,
+      details: {},
+    });
     this.clearAssignment(entry);
     return freezeEntry(entry);
   }
@@ -209,7 +246,32 @@ export class Scheduler {
   fail(taskId: string, reason: string, retryable = true): ScheduledTask {
     const entry = this.requireEntry(taskId);
     this.assertAssigned(entry, "fail");
-    return this.recordFailure(entry, reason, retryable);
+    const agentId = entry.assignedAgentId;
+    const decisionId = entry.activeDecisionId;
+    const failed = this.recordFailure(entry, reason, retryable);
+    this.emit("task-failed", {
+      taskId: entry.id,
+      agentId,
+      decisionId,
+      attempt: entry.attempt,
+      details: {
+        reason: failed.failureReason,
+        retryable,
+        terminal: failed.status === "failed",
+      },
+    });
+    if (failed.status === "queued") {
+      this.emit("task-retry-scheduled", {
+        taskId: entry.id,
+        agentId,
+        decisionId,
+        attempt: entry.attempt,
+        details: {
+          nextEligibleAt: failed.nextEligibleAt,
+        },
+      });
+    }
+    return failed;
   }
 
   cancel(taskId: string, reason: string): CancellationDecision {
@@ -235,6 +297,13 @@ export class Scheduler {
     });
     entry.status = "cancelled";
     entry.cancelledAt = decision.cancelledAt;
+    this.emit("task-cancelled", {
+      taskId: entry.id,
+      agentId: decision.agentId,
+      decisionId: decision.decisionId,
+      attempt: entry.attempt,
+      details: { reason: decision.reason },
+    });
     this.clearAssignment(entry);
     return decision;
   }
@@ -249,8 +318,141 @@ export class Scheduler {
           Date.parse(entry.timeoutAt) <= now,
       )
       .sort(compareEntriesById)
-      .map((entry) => this.recordFailure(entry, "assignment-timeout", true));
+      .map((entry) => {
+        this.emit("task-timed-out", {
+          taskId: entry.id,
+          agentId: entry.assignedAgentId,
+          decisionId: entry.activeDecisionId,
+          attempt: entry.attempt,
+          details: { timeoutAt: entry.timeoutAt },
+        });
+        return this.fail(entry.id, "assignment-timeout", true);
+      });
     return Object.freeze(timedOut);
+  }
+
+  listEvents(): readonly SchedulerEvent[] {
+    return Object.freeze([...this.events]);
+  }
+
+  async executeAll<TResult>(
+    agents: readonly SchedulerExecutionAgent<TResult>[],
+    options: SchedulerExecutionOptions,
+  ): Promise<SchedulerExecutionReport<TResult>> {
+    const executionId = requireText(
+      options.executionId,
+      "Scheduler executionId",
+    );
+    const startedAt = this.timestamp();
+    const eventOffset = this.events.length;
+    const managedAgents: SchedulerExecutionAgent<TResult>[] = [];
+    const decisions: SchedulingDecision[] = [];
+    const results: SchedulerTaskExecutionResult<TResult>[] = [];
+
+    this.emit("execution-started", {
+      executionId,
+      details: {
+        taskCount: this.entries.size,
+        agentCount: agents.length,
+      },
+    });
+
+    try {
+      await this.prepareAgents(
+        agents,
+        managedAgents,
+        options.manageAgentLifecycle === true,
+      );
+      const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+
+      while (true) {
+        this.throwIfCancelled(options.signal, executionId);
+        const failed = this.list("failed");
+        if (failed.length > 0) {
+          throw new SchedulerError(
+            "EXECUTION_FAILED",
+            `Scheduler execution "${executionId}" failed at task "${failed[0]?.id}".`,
+            failed[0]?.id,
+          );
+        }
+        if (this.entries.size > 0 && this.list("completed").length === this.entries.size) {
+          const completedAt = this.timestamp();
+          this.emit("execution-completed", {
+            executionId,
+            details: {
+              taskCount: this.entries.size,
+              decisionCount: decisions.length,
+            },
+          });
+          const decisionOrder = new Map(
+            decisions.map((decision) => [decision.id, decision.order]),
+          );
+          return Object.freeze({
+            executionId,
+            status: "completed",
+            startedAt,
+            completedAt,
+            decisions: Object.freeze([...decisions]),
+            results: Object.freeze(
+              [...results].sort(
+                (left, right) =>
+                  (decisionOrder.get(left.decisionId) ?? 0) -
+                  (decisionOrder.get(right.decisionId) ?? 0),
+              ),
+            ),
+            events: Object.freeze(this.events.slice(eventOffset)),
+            statistics: this.getStatistics(),
+          });
+        }
+
+        const batch = this.schedule(
+          agents.map((agent) => executionSnapshot(agent)),
+        );
+        if (batch.length === 0) {
+          const waitMs = this.nextRetryWaitMs();
+          if (waitMs !== undefined) {
+            await waitForRetry(waitMs, options.signal);
+            continue;
+          }
+          const blocked = this.list("queued")[0];
+          throw new SchedulerError(
+            "NO_ELIGIBLE_AGENT",
+            blocked
+              ? `No eligible agent can execute task "${blocked.id}" with capability "${blocked.subtask.ownerCapability}".`
+              : `Scheduler execution "${executionId}" has no executable tasks.`,
+            blocked?.id,
+          );
+        }
+
+        decisions.push(...batch);
+        await Promise.all(
+          batch.map((decision) =>
+            this.executeDecision(
+              decision,
+              agentsById,
+              options,
+              results,
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      const cancelled =
+        options.signal?.aborted === true ||
+        (error instanceof SchedulerError &&
+          error.code === "EXECUTION_CANCELLED");
+      this.emit(cancelled ? "execution-cancelled" : "execution-failed", {
+        executionId,
+        details: { error: errorMessage(error) },
+      });
+      throw error;
+    } finally {
+      if (options.manageAgentLifecycle === true) {
+        await Promise.allSettled(
+          managedAgents.map((agent) => agent.shutdown()),
+        );
+      }
+    }
   }
 
   get(taskId: string): ScheduledTask | undefined {
@@ -284,6 +486,155 @@ export class Scheduler {
       ),
       byFairnessKey: countBy(entries.map((entry) => entry.fairnessKey)),
     });
+  }
+
+  private async prepareAgents<TResult>(
+    agents: readonly SchedulerExecutionAgent<TResult>[],
+    managedAgents: SchedulerExecutionAgent<TResult>[],
+    manageLifecycle: boolean,
+  ): Promise<void> {
+    assertUnique(
+      agents.map((agent) => String(agent.id)),
+      "Scheduler execution agents must have unique ids.",
+    );
+    for (const agent of agents) {
+      if (agent.state.status === "created" || agent.state.status === "stopped") {
+        await agent.initialize();
+        if (manageLifecycle) {
+          managedAgents.push(agent);
+        }
+      } else if (agent.state.status === "paused") {
+        await agent.resume();
+      }
+      if (agent.state.status !== "ready") {
+        throw new SchedulerError(
+          "NO_ELIGIBLE_AGENT",
+          `Execution agent "${agent.id}" is not ready.`,
+        );
+      }
+    }
+  }
+
+  private async executeDecision<TResult>(
+    decision: SchedulingDecision,
+    agentsById: ReadonlyMap<AgentId, SchedulerExecutionAgent<TResult>>,
+    options: SchedulerExecutionOptions,
+    results: SchedulerTaskExecutionResult<TResult>[],
+  ): Promise<void> {
+    const entry = this.requireEntry(decision.taskId);
+    const agent = agentsById.get(decision.agentId);
+    if (!agent) {
+      this.fail(entry.id, `Assigned agent "${decision.agentId}" was not found.`, false);
+      return;
+    }
+    const startedAt = this.timestamp();
+    const startedAtMs = monotonicNow();
+    this.emit("task-started", {
+      executionId: options.executionId,
+      taskId: entry.id,
+      agentId: agent.id,
+      decisionId: decision.id,
+      attempt: decision.attempt,
+      details: {},
+    });
+
+    try {
+      const output = await executeWithTimeout(
+        (signal) =>
+          agent.handleTask(entry.subtask, {
+            requestId: decision.id,
+            correlationId: options.correlationId ?? options.executionId,
+            sessionId: options.sessionId,
+            attributes: Object.freeze({
+              executionId: options.executionId,
+              decision,
+            }),
+            signal,
+          }),
+        entry.timeoutMs,
+        options.signal,
+      );
+      const completedAt = this.timestamp();
+      this.complete(entry.id);
+      results.push(
+        Object.freeze({
+          taskId: entry.id,
+          agentId: agent.id,
+          decisionId: decision.id,
+          attempt: decision.attempt,
+          startedAt,
+          completedAt,
+          durationMs: roundDuration(elapsedSince(startedAtMs)),
+          output,
+        }),
+      );
+    } catch (error) {
+      const timedOut = error instanceof SchedulerTaskTimeoutError;
+      if (timedOut) {
+        this.emit("task-timed-out", {
+          executionId: options.executionId,
+          taskId: entry.id,
+          agentId: agent.id,
+          decisionId: decision.id,
+          attempt: decision.attempt,
+          details: { timeoutMs: entry.timeoutMs },
+        });
+      }
+      const retryable =
+        options.isRetryable?.(error, entry.subtask, decision.attempt) ??
+        !isAbortError(error);
+      this.fail(entry.id, errorMessage(error), retryable);
+    }
+  }
+
+  private nextRetryWaitMs(): number | undefined {
+    const now = this.clock.now().getTime();
+    const futureTimes = this.list("queued")
+      .map((task) => Date.parse(task.nextEligibleAt))
+      .filter((timestamp) => timestamp > now);
+    if (futureTimes.length === 0) {
+      return undefined;
+    }
+    return Math.max(0, Math.min(...futureTimes) - now);
+  }
+
+  private throwIfCancelled(
+    signal: AbortSignal | undefined,
+    executionId: string,
+  ): void {
+    if (!signal?.aborted) {
+      return;
+    }
+    for (const entry of this.entries.values()) {
+      if (entry.status === "queued" || entry.status === "assigned") {
+        this.cancel(entry.id, "execution-cancelled");
+      }
+    }
+    throw new SchedulerError(
+      "EXECUTION_CANCELLED",
+      `Scheduler execution "${executionId}" was cancelled.`,
+    );
+  }
+
+  private emit(
+    type: SchedulerEventType,
+    input: Omit<SchedulerEvent, "id" | "type" | "occurredAt" | "details"> & {
+      readonly details?: Readonly<Record<string, unknown>>;
+    },
+  ): void {
+    this.events.push(
+      Object.freeze({
+        id: `scheduler-event-${++this.eventSequence}`,
+        type,
+        occurredAt: this.timestamp(),
+        executionId: input.executionId,
+        taskId: input.taskId,
+        agentId: input.agentId,
+        decisionId: input.decisionId,
+        attempt: input.attempt,
+        details: Object.freeze({ ...(input.details ?? {}) }),
+      }),
+    );
   }
 
   private selectNext(
@@ -454,6 +805,91 @@ export class Scheduler {
   }
 }
 
+class SchedulerTaskTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Agent task timed out after ${timeoutMs}ms.`);
+    this.name = "SchedulerTaskTimeoutError";
+  }
+}
+
+function executionSnapshot<TResult>(
+  agent: SchedulerExecutionAgent<TResult>,
+): SchedulerAgentSnapshot {
+  return Object.freeze({
+    id: agent.id,
+    capabilities: Object.freeze(
+      agent.getCapabilities().items.map((capability) => capability.name),
+    ),
+    online: agent.state.status === "ready",
+    available: agent.state.status === "ready",
+    currentLoad: 0,
+  });
+}
+
+async function executeWithTimeout<TResult>(
+  operation: (signal: AbortSignal) => Promise<TResult>,
+  timeoutMs: number,
+  parentSignal?: AbortSignal,
+): Promise<TResult> {
+  const controller = new AbortController();
+  const onAbort = (): void => {
+    controller.abort(parentSignal?.reason);
+  };
+  if (parentSignal?.aborted) {
+    onAbort();
+  } else {
+    parentSignal?.addEventListener("abort", onAbort, { once: true });
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort(new SchedulerTaskTimeoutError(timeoutMs));
+        reject(new SchedulerTaskTimeoutError(timeoutMs));
+      }, timeoutMs);
+    });
+    const operationPromise = operation(controller.signal);
+    return await Promise.race([operationPromise, timeoutPromise]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    parentSignal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function waitForRetry(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, delayMs);
+    const onAbort = (): void => {
+      clearTimeout(timeout);
+      reject(createAbortError());
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function createAbortError(): Error {
+  const error = new Error("Scheduler execution was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function selectLeastLoadedAgent(
   entry: SchedulerEntry,
   agents: readonly ResolvedAgent[],
@@ -520,7 +956,7 @@ function normalizeAgents(
   );
 }
 
-function freezeSubtask(subtask: Subtask): Subtask {
+function freezeSubtask(subtask: Subtask): ExecutionTask {
   const id = requireText(subtask.id, "Subtask id");
   const dependencies = subtask.dependencies.map((dependencyId) =>
     requireText(dependencyId, "Subtask dependency id")
@@ -536,6 +972,20 @@ function freezeSubtask(subtask: Subtask): Subtask {
   nonNegativeFinite(subtask.estimatedCost, "Subtask estimatedCost");
   nonNegativeFinite(subtask.estimatedTime, "Subtask estimatedTime");
   range(subtask.confidence, 0, 1, "Subtask confidence");
+  const executionTask = subtask as Partial<ExecutionTask>;
+  const ownerCapability = normalizeCapabilityName(
+    executionTask.ownerCapability ?? subtask.requiredCapability,
+  );
+  const timeout = positiveFinite(
+    executionTask.timeout ?? Math.max(1, subtask.estimatedTime),
+    "Execution task timeout",
+  );
+  const expectedOutput = freezeExpectedOutput(
+    executionTask.expectedOutput ?? {
+      description: subtask.description,
+      acceptanceCriteria: [],
+    },
+  );
 
   return Object.freeze({
     id,
@@ -548,14 +998,34 @@ function freezeSubtask(subtask: Subtask): Subtask {
     title: requireText(subtask.title, "Subtask title"),
     description: requireText(subtask.description, "Subtask description"),
     owner: subtask.owner === null ? null : createAgentId(subtask.owner),
-    requiredCapability: normalizeCapabilityName(
-      subtask.requiredCapability,
-    ),
+    ownerCapability,
+    requiredCapability: ownerCapability,
     priority: subtask.priority,
     dependencies: Object.freeze(dependencies),
+    timeout,
+    expectedOutput,
     estimatedCost: subtask.estimatedCost,
     estimatedTime: subtask.estimatedTime,
     confidence: subtask.confidence,
+  });
+}
+
+function freezeExpectedOutput(
+  output: ExecutionTaskExpectedOutput,
+): ExecutionTaskExpectedOutput {
+  return Object.freeze({
+    description: requireText(
+      output.description,
+      "Execution task expectedOutput description",
+    ),
+    acceptanceCriteria: Object.freeze(
+      output.acceptanceCriteria.map((criterion) =>
+        Object.freeze({ ...criterion }),
+      ),
+    ),
+    milestone: output.milestone
+      ? Object.freeze({ ...output.milestone })
+      : undefined,
   });
 }
 
@@ -746,4 +1216,22 @@ function assertUnique(values: readonly string[], message: string): void {
   if (new Set(values).size !== values.length) {
     throw new Error(message);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function monotonicNow(): number {
+  return typeof globalThis.performance?.now === "function"
+    ? globalThis.performance.now()
+    : Date.now();
+}
+
+function elapsedSince(startedAt: number): number {
+  return Math.max(0, monotonicNow() - startedAt);
+}
+
+function roundDuration(value: number): number {
+  return Math.round(value * 1_000) / 1_000;
 }
