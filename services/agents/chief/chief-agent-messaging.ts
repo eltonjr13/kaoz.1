@@ -6,6 +6,7 @@ import {
 import {
   AgentMessageEndpoint,
   AgentMessageGateway,
+  type AgentRuntimeSnapshot,
 } from "../messaging/agent-message-gateway.ts";
 import type { MessageBus } from "../messaging/message-bus.ts";
 import type { PlanGenerator } from "../planning/plan-generator.ts";
@@ -25,6 +26,7 @@ export interface ChiefAgentMessagingRuntime {
   readonly plannerId: AgentId;
   readonly decomposerId: AgentId;
   readonly supervisorId: AgentId;
+  listAgentRuntimeSnapshots(): readonly AgentRuntimeSnapshot[];
   initialize(): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -77,6 +79,9 @@ export function createChiefAgentMessagingRuntime(
     plannerId: planner.id,
     decomposerId: decomposer.id,
     supervisorId: supervisor.id,
+    listAgentRuntimeSnapshots(): readonly AgentRuntimeSnapshot[] {
+      return Object.freeze(endpoints.map((endpoint) => endpoint.snapshot()));
+    },
     async initialize(): Promise<void> {
       const initialized: AgentMessageEndpoint[] = [];
       try {

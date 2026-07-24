@@ -53,7 +53,10 @@ export interface MessageTraceStore {
   record(input: MessageTraceInput): MessageTrace;
   list(): readonly MessageTrace[];
   clear(): readonly MessageTrace[];
+  subscribe?(subscriber: MessageTraceSubscriber): () => void;
 }
+
+export type MessageTraceSubscriber = (trace: MessageTrace) => void;
 
 export interface InMemoryMessageTraceStoreOptions {
   readonly idGenerator?: () => string;
@@ -65,6 +68,7 @@ export interface InMemoryMessageTraceStoreOptions {
  */
 export class InMemoryMessageTraceStore implements MessageTraceStore {
   private readonly traces: MessageTrace[] = [];
+  private readonly subscribers = new Set<MessageTraceSubscriber>();
   private readonly idGenerator: () => string;
 
   constructor(options: InMemoryMessageTraceStoreOptions = {}) {
@@ -106,6 +110,13 @@ export class InMemoryMessageTraceStore implements MessageTraceStore {
       deadLetterId: input.deadLetterId,
     }) as MessageTrace;
     this.traces.push(trace);
+    for (const subscriber of this.subscribers) {
+      try {
+        subscriber(trace);
+      } catch {
+        // Trace consumers are observational and cannot break message delivery.
+      }
+    }
     return trace;
   }
 
@@ -117,6 +128,13 @@ export class InMemoryMessageTraceStore implements MessageTraceStore {
     const removed = this.list();
     this.traces.length = 0;
     return removed;
+  }
+
+  subscribe(subscriber: MessageTraceSubscriber): () => void {
+    this.subscribers.add(subscriber);
+    return () => {
+      this.subscribers.delete(subscriber);
+    };
   }
 }
 

@@ -1,4 +1,4 @@
-import type { AgentId } from "../core/agent-id.ts";
+import { createAgentId, type AgentId } from "../core/agent-id.ts";
 import type {
   ExecutionSnapshot,
   SupervisedTaskSnapshot,
@@ -51,6 +51,43 @@ export class FailureDetector implements SupervisionDetector {
         ),
       );
     }
+    for (const component of (snapshot.components ?? []).filter(
+      (item) => item.status === "failed",
+    )) {
+      findings.push(
+        finding(
+          this.type,
+          "critical",
+          `Component "${component.name}" is failed.`,
+          [],
+          [],
+          {
+            scope: component.name,
+            reason: component.failureReason ?? "unknown",
+          },
+        ),
+      );
+    }
+    for (const message of (snapshot.messages ?? []).filter(
+      (item) =>
+        !item.name.startsWith("agent.supervisor.") &&
+        (item.status === "failed" || item.status === "dead-lettered"),
+    )) {
+      findings.push(
+        finding(
+          this.type,
+          "high",
+          `Message "${message.name}" failed delivery.`,
+          [],
+          message.recipientId ? [message.recipientId] : [],
+          {
+            scope: "message-bus",
+            traceId: message.traceId,
+            status: message.status,
+          },
+        ),
+      );
+    }
     return Object.freeze(findings);
   }
 }
@@ -100,7 +137,7 @@ export class TimeoutDetector implements SupervisionDetector {
 
   detect(snapshot: ExecutionSnapshot): readonly SupervisionFinding[] {
     const now = Date.parse(snapshot.capturedAt);
-    return Object.freeze(
+    const taskFindings =
       snapshot.tasks
         .filter(
           (task) =>
@@ -117,8 +154,27 @@ export class TimeoutDetector implements SupervisionDetector {
             task.agentId ? [task.agentId] : [],
             { timeoutAt: task.timeoutAt ?? "" },
           )
-        ),
-    );
+        );
+    const messageFindings = (snapshot.messages ?? [])
+      .filter(
+        (message) =>
+          !message.name.startsWith("agent.supervisor.") &&
+          message.timedOut,
+      )
+      .map((message) =>
+        finding(
+          this.type,
+          "high",
+          `Message "${message.name}" timed out.`,
+          [],
+          message.recipientId ? [message.recipientId] : [],
+          {
+            traceId: message.traceId,
+            attempt: message.attempt,
+          },
+        )
+      );
+    return Object.freeze([...taskFindings, ...messageFindings]);
   }
 }
 
@@ -219,6 +275,108 @@ export class StuckTaskDetector implements SupervisionDetector {
   }
 }
 
+export class DuplicateDetector implements SupervisionDetector {
+  readonly type = "duplicate" as const;
+
+  detect(snapshot: ExecutionSnapshot): readonly SupervisionFinding[] {
+    const findings: SupervisionFinding[] = [];
+    const duplicateMessages = duplicateKeys(
+      snapshot.messages ?? [],
+      (message) =>
+        [
+          message.messageId,
+          message.recipientId ?? "",
+          message.attempt,
+        ].join("\u0000"),
+    );
+    for (const key of duplicateMessages) {
+      const [messageId, recipientId] = key.split("\u0000");
+      findings.push(
+        finding(
+          this.type,
+          "high",
+          `Message "${messageId}" was delivered more than once for the same attempt.`,
+          [],
+          recipientId ? [createAgentId(recipientId)] : [],
+          { scope: "message-bus", messageId },
+        ),
+      );
+    }
+
+    const duplicateKnowledge = duplicateKeys(
+      snapshot.knowledge ?? [],
+      (entry) => `${entry.id}\u0000${entry.version}`,
+    );
+    for (const key of duplicateKnowledge) {
+      const [entryId, version] = key.split("\u0000");
+      findings.push(
+        finding(
+          this.type,
+          "medium",
+          `Knowledge "${entryId}" version "${version}" is duplicated.`,
+          [],
+          [],
+          { scope: "blackboard", entryId, version },
+        ),
+      );
+    }
+    return Object.freeze(findings);
+  }
+}
+
+export class InfiniteRetryDetector implements SupervisionDetector {
+  readonly type = "infinite-retry" as const;
+
+  detect(
+    snapshot: ExecutionSnapshot,
+    policy: SupervisionPolicy,
+  ): readonly SupervisionFinding[] {
+    const taskFindings = snapshot.tasks
+      .filter((task) => task.attempt >= policy.maxRetryAttempts)
+      .map((task) =>
+        finding(
+          this.type,
+          "critical",
+          `Task "${task.id}" reached the supervision retry limit.`,
+          [task.id],
+          task.agentId ? [task.agentId] : [],
+          {
+            attempts: task.attempt,
+            limit: policy.maxRetryAttempts,
+          },
+        )
+      );
+    const attemptsByMessage = new Map<string, number>();
+    for (const message of snapshot.messages ?? []) {
+      if (message.name.startsWith("agent.supervisor.")) {
+        continue;
+      }
+      const key = `${message.messageId}\u0000${message.recipientId ?? ""}`;
+      attemptsByMessage.set(
+        key,
+        Math.max(attemptsByMessage.get(key) ?? 0, message.attempt),
+      );
+    }
+    const messageFindings = [...attemptsByMessage.entries()]
+      .filter(([, attempts]) => attempts >= policy.maxRetryAttempts)
+      .map(([key, attempts]) => {
+        const [messageId, recipientId] = key.split("\u0000");
+        return finding(
+          this.type,
+          "critical",
+          `Message "${messageId}" reached the supervision retry limit.`,
+          [],
+          recipientId ? [createAgentId(recipientId)] : [],
+          {
+            attempts,
+            limit: policy.maxRetryAttempts,
+          },
+        );
+      });
+    return Object.freeze([...taskFindings, ...messageFindings]);
+  }
+}
+
 export const DEFAULT_SUPERVISION_DETECTORS: readonly SupervisionDetector[] =
   Object.freeze([
     new FailureDetector(),
@@ -227,7 +385,26 @@ export const DEFAULT_SUPERVISION_DETECTORS: readonly SupervisionDetector[] =
     new LoopDetector(),
     new InactiveAgentDetector(),
     new StuckTaskDetector(),
+    new DuplicateDetector(),
+    new InfiniteRetryDetector(),
   ]);
+
+function duplicateKeys<T>(
+  values: readonly T[],
+  keyOf: (value: T) => string,
+): readonly string[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const key = keyOf(value);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Object.freeze(
+    [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key)
+      .sort(),
+  );
+}
 
 function finding(
   type: SupervisionFinding["type"],
@@ -308,4 +485,3 @@ function freezeEvidence(
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
-

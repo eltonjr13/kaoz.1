@@ -23,6 +23,7 @@ import { MessageRouter } from "./message-router.ts";
 import {
   InMemoryMessageTraceStore,
   type MessageTrace,
+  type MessageTraceSubscriber,
   type MessageTraceStore,
 } from "./message-trace.ts";
 import type {
@@ -235,6 +236,10 @@ export class MessageBus {
 
   clearTraces(): readonly MessageTrace[] {
     return this.traceStore.clear();
+  }
+
+  subscribeTraces(subscriber: MessageTraceSubscriber): () => void {
+    return this.traceStore.subscribe?.(subscriber) ?? (() => undefined);
   }
 
   snapshot(): MessageBusSnapshot {

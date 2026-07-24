@@ -47,6 +47,7 @@ const DEFAULT_POLICY: SupervisionPolicy = Object.freeze({
   loopTransitionThreshold: 3,
   cancelOnDeadlock: true,
   cancelOnLoop: false,
+  maxRetryAttempts: 5,
 });
 
 const systemClock: SupervisorClock = Object.freeze({
@@ -310,6 +311,10 @@ function resolvePolicy(
     cancelOnDeadlock:
       input?.cancelOnDeadlock ?? DEFAULT_POLICY.cancelOnDeadlock,
     cancelOnLoop: input?.cancelOnLoop ?? DEFAULT_POLICY.cancelOnLoop,
+    maxRetryAttempts: positiveInteger(
+      input?.maxRetryAttempts ?? DEFAULT_POLICY.maxRetryAttempts,
+      "Supervision maxRetryAttempts",
+    ),
   });
 }
 
@@ -377,4 +382,3 @@ function requireText(value: string, label: string): string {
 function defaultId(): string {
   return `supervision-${globalThis.crypto.randomUUID()}`;
 }
-

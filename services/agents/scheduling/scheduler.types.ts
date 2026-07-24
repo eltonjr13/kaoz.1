@@ -101,12 +101,14 @@ export type SchedulerEventType =
   | "execution-completed"
   | "execution-failed"
   | "execution-cancelled"
+  | "execution-cancellation-requested"
   | "task-enqueued"
   | "task-assigned"
   | "task-started"
   | "task-completed"
   | "task-failed"
   | "task-retry-scheduled"
+  | "task-reassigned"
   | "task-timed-out"
   | "task-cancelled";
 
@@ -121,6 +123,8 @@ export interface SchedulerEvent {
   readonly attempt?: number;
   readonly details: Readonly<Record<string, unknown>>;
 }
+
+export type SchedulerEventSubscriber = (event: SchedulerEvent) => void;
 
 export type SchedulerExecutionAgent<TResult = unknown> = BaseAgent<
   ExecutionTask,
@@ -163,6 +167,19 @@ export interface SchedulerExecutionOptions {
     task: ExecutionTask,
     attempt: number,
   ) => boolean;
+  readonly onCheckpoint?: (
+    checkpoint: SchedulerCheckpoint,
+  ) => void | Promise<void>;
+}
+
+export interface SchedulerCheckpoint {
+  readonly type:
+    | "execution-started"
+    | "before-schedule"
+    | "blocked"
+    | "batch-completed";
+  readonly executionId: string;
+  readonly occurredAt: string;
 }
 
 export interface SchedulerClock {

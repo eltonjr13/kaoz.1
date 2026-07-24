@@ -38,14 +38,15 @@ import type {
 } from "../planning/planning.types.ts";
 import { Scheduler } from "../scheduling/scheduler.ts";
 import type {
-  ScheduledTask,
   SchedulerEvent,
   SchedulerExecutionAgent,
   SchedulerExecutionReport,
   SchedulingDecision,
 } from "../scheduling/scheduler.types.ts";
+import {
+  ProductionSupervisionRuntime,
+} from "../supervision/production-supervision-runtime.ts";
 import type {
-  ExecutionSnapshot,
   SupervisionReport,
   SupervisorClock,
 } from "../supervision/supervision.types.ts";
@@ -267,6 +268,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     });
 
     await messaging.initialize();
+    let supervisionRuntime: ProductionSupervisionRuntime | undefined;
     const correlationId = messageCorrelationId(executionId);
     const coordinationOptions = {
       senderId: this.id,
@@ -324,6 +326,43 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         });
       }
 
+      supervisionRuntime = new ProductionSupervisionRuntime({
+        executionId,
+        scheduler,
+        messageBus: this.messageBus,
+        blackboard,
+        gateway: messaging.gateway,
+        coordinatorId: this.id,
+        supervisorId: messaging.supervisorId,
+        plannerId: messaging.plannerId,
+        decomposerId: messaging.decomposerId,
+        executionAgents: [],
+        collaboratorSnapshots: () =>
+          messaging.listAgentRuntimeSnapshots(),
+        plan,
+        context: withExecutionContext(runtimeContext, executionContext),
+        replan: () =>
+          messaging.gateway.request<
+            { readonly type: "plan-goal"; readonly goal: Goal },
+            ExecutionPlan
+          >(
+            "agent.planner.plan-goal",
+            { type: "plan-goal", goal },
+            {
+              ...coordinationOptions,
+              recipientId: messaging.plannerId,
+              context: withExecutionContext(
+                runtimeContext,
+                executionContext,
+              ),
+            },
+          ),
+        clock: () => this.clock.now(),
+        idGenerator: () => this.nextId("recovery"),
+      });
+      await supervisionRuntime.start();
+      await supervisionRuntime.observe("running");
+
       try {
         runtimeContext = withExecutionContext(
           runtimeContext,
@@ -344,6 +383,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             context: runtimeContext,
           },
         );
+        await supervisionRuntime.observe("running");
         scheduler.enqueueAll(
           tasks.map((task) => ({
             subtask: task,
@@ -352,6 +392,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           })),
         );
       } catch (error) {
+        await supervisionRuntime.observe("failed");
         executionContext = sharedContext.update("execution", {
           decompositionError: errorMessage(error),
           executionTaskIds: [],
@@ -377,6 +418,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         terminalTask,
         executionAdapterId,
       });
+      await supervisionRuntime.registerExecutionAgents(executionAgents);
 
       const legacyStartedAt = monotonicNow();
       let executionReport: SchedulerExecutionReport<unknown>;
@@ -388,10 +430,14 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             runtimeContext,
             executionContext,
           ),
-          manageAgentLifecycle: true,
+          manageAgentLifecycle: false,
+          onCheckpoint: async () => {
+            await supervisionRuntime?.observe("running");
+          },
         });
         decisions = executionReport.decisions;
       } catch (error) {
+        await supervisionRuntime.observe("failed");
         const legacyDurationMs = elapsedSince(legacyStartedAt);
         const schedulerDecisionCount = scheduler
           .listEvents()
@@ -434,32 +480,10 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         response,
       );
 
-      const supervisionSnapshot = createExecutionSupervisionSnapshot({
-        executionId,
-        plan,
-        scheduledTasks: scheduler.list(),
-        executionAgents,
-        executionReport,
-        capturedAt: this.currentTimestamp(),
-      });
-      const supervision = await messaging.gateway.request<
-        {
-          readonly type: "analyze-execution";
-          readonly snapshot: ExecutionSnapshot;
-        },
-        SupervisionReport
-      >(
-        "agent.supervisor.analyze-execution",
-        {
-          type: "analyze-execution",
-          snapshot: supervisionSnapshot,
-        },
-        {
-          ...coordinationOptions,
-          recipientId: messaging.supervisorId,
-          context: withExecutionContext(runtimeContext, executionContext),
-        },
-      );
+      const supervision = await supervisionRuntime.observe("completed");
+      if (!supervision) {
+        throw new Error("SupervisorAgent did not produce a supervision report.");
+      }
       executionContext = sharedContext.update("execution", {
         selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
         executionTaskCount: tasks.length,
@@ -496,6 +520,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         planningMetric,
       });
     } finally {
+      await supervisionRuntime?.stop();
       await messaging.shutdown();
     }
   }
@@ -860,54 +885,6 @@ function createLegacyFallbackPlan<TResponse>(
       createdAt,
     },
   );
-}
-
-function createExecutionSupervisionSnapshot(input: {
-  readonly executionId: string;
-  readonly plan: ExecutionPlan;
-  readonly scheduledTasks: readonly ScheduledTask[];
-  readonly executionAgents: readonly SchedulerExecutionAgent<unknown>[];
-  readonly executionReport: SchedulerExecutionReport<unknown>;
-  readonly capturedAt: string;
-}): ExecutionSnapshot {
-  const resultsByTask = new Map(
-    input.executionReport.results.map((result) => [result.taskId, result]),
-  );
-  return {
-    executionId: input.executionId,
-    planId: input.plan.id,
-    planVersion: input.plan.version,
-    status: "completed",
-    capturedAt: input.capturedAt,
-    tasks: input.scheduledTasks.map((task) => {
-      const result = resultsByTask.get(task.id);
-      return {
-        id: task.id,
-        status: task.status,
-        dependencies: task.subtask.dependencies,
-        attempt: task.attempt,
-        updatedAt:
-          task.completedAt ??
-          task.cancelledAt ??
-          task.assignedAt ??
-          task.enqueuedAt,
-        agentId: result?.agentId,
-        startedAt: result?.startedAt,
-        timeoutAt: task.timeoutAt,
-        failureReason: task.failureReason,
-      };
-    }),
-    agents: input.executionAgents.map((agent) => ({
-      id: agent.id,
-      status: agent.state.status,
-      online: agent.state.status === "ready",
-      lastHeartbeatAt: agent.state.lastHeartbeatAt,
-      taskIds: input.executionReport.results
-        .filter((result) => result.agentId === agent.id)
-        .map((result) => result.taskId),
-    })),
-    transitions: [],
-  };
 }
 
 function inspectLegacyPlan<TResponse>(

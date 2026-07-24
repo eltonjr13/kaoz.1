@@ -50,6 +50,9 @@ function createHealthySnapshot(
       },
     ],
     transitions: overrides.transitions ?? [],
+    components: overrides.components,
+    messages: overrides.messages,
+    knowledge: overrides.knowledge,
   };
 }
 
@@ -235,6 +238,64 @@ test("detects stale heartbeats for otherwise ready agents", async () => {
   assert.deepEqual(
     report.actions.map((action) => action.type).sort(),
     ["reassign-task", "restart-agent"],
+  );
+});
+
+test("detects duplicate deliveries and bounded infinite retry patterns", async () => {
+  let idSequence = 0;
+  const supervisor = new SupervisorAgent({
+    clock: new FixedClock(),
+    policy: { maxRetryAttempts: 3 },
+    idGenerator: () => `supervision-${++idSequence}`,
+  });
+  await supervisor.initialize();
+  const duplicateMessage = {
+    traceId: "trace-1",
+    messageId: "message-duplicate",
+    name: "agent.worker.execute",
+    senderId: createAgentId("sender"),
+    recipientId: agentId,
+    correlationId: "correlation-duplicate",
+    attempt: 3,
+    status: "failed",
+    timedOut: false,
+    occurredAt: capturedAt,
+  };
+
+  const report = await supervisor.handleTask(
+    createHealthySnapshot({
+      tasks: [
+        {
+          id: "retry-task",
+          status: "retrying",
+          dependencies: [],
+          attempt: 3,
+          updatedAt: capturedAt,
+          agentId,
+        },
+      ],
+      messages: [
+        duplicateMessage,
+        { ...duplicateMessage, traceId: "trace-2" },
+      ],
+    }),
+  );
+
+  assert.equal(
+    report.issues.some((issue) => issue.type === "duplicate"),
+    true,
+  );
+  assert.equal(
+    report.issues.some((issue) => issue.type === "infinite-retry"),
+    true,
+  );
+  assert.equal(
+    report.actions.some((action) => action.type === "cancel-execution"),
+    true,
+  );
+  assert.equal(
+    report.actions.some((action) => action.type === "reanalyze-plan"),
+    true,
   );
 });
 

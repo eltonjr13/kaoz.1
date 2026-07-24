@@ -45,6 +45,49 @@ export function createExecutionSnapshot(
   const tasks = input.tasks.map(freezeTask);
   const agents = input.agents.map(freezeAgent);
   const transitions = input.transitions.map(freezeTransition);
+  const components = (input.components ?? []).map((component) =>
+    Object.freeze({
+      ...component,
+      observedAt: normalizeTimestamp(
+        component.observedAt,
+        "Component observedAt",
+      ),
+      lastActivityAt: optionalTimestamp(
+        component.lastActivityAt,
+        "Component lastActivityAt",
+      ),
+      failureReason: optionalText(
+        component.failureReason,
+        "Component failureReason",
+      ),
+      metrics: Object.freeze({ ...component.metrics }),
+    })
+  );
+  const messages = (input.messages ?? []).map((message) =>
+    Object.freeze({
+      ...message,
+      traceId: requireText(message.traceId, "Message trace id"),
+      messageId: requireText(message.messageId, "Message id"),
+      name: requireText(message.name, "Message name"),
+      correlationId: requireText(
+        message.correlationId,
+        "Message correlation id",
+      ),
+      occurredAt: normalizeTimestamp(
+        message.occurredAt,
+        "Message occurredAt",
+      ),
+    })
+  );
+  const knowledge = (input.knowledge ?? []).map((entry) =>
+    Object.freeze({
+      ...entry,
+      id: requireText(entry.id, "Knowledge id"),
+      topic: requireText(entry.topic, "Knowledge topic"),
+      kind: requireText(entry.kind, "Knowledge kind"),
+      updatedAt: normalizeTimestamp(entry.updatedAt, "Knowledge updatedAt"),
+    })
+  );
   assertUnique(tasks.map((task) => task.id), "Execution tasks must have unique ids.");
   assertUnique(
     agents.map((agent) => String(agent.id)),
@@ -60,6 +103,9 @@ export function createExecutionSnapshot(
     tasks: Object.freeze(tasks),
     agents: Object.freeze(agents),
     transitions: Object.freeze(transitions),
+    components: Object.freeze(components),
+    messages: Object.freeze(messages),
+    knowledge: Object.freeze(knowledge),
   });
 }
 
@@ -181,4 +227,3 @@ function assertUnique(values: readonly string[], message: string): void {
     throw new Error(message);
   }
 }
-

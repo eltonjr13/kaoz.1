@@ -55,6 +55,53 @@ export interface ExecutionSnapshot {
   readonly tasks: readonly SupervisedTaskSnapshot[];
   readonly agents: readonly SupervisedAgentSnapshot[];
   readonly transitions: readonly TaskTransition[];
+  readonly components?: readonly SupervisedComponentSnapshot[];
+  readonly messages?: readonly SupervisedMessageSnapshot[];
+  readonly knowledge?: readonly SupervisedKnowledgeSnapshot[];
+}
+
+export type SupervisedComponentStatus =
+  | "healthy"
+  | "degraded"
+  | "unavailable"
+  | "failed";
+
+export interface SupervisedComponentSnapshot {
+  readonly name:
+    | "scheduler"
+    | "planner"
+    | "task-decomposer"
+    | "agents"
+    | "message-bus"
+    | "blackboard";
+  readonly status: SupervisedComponentStatus;
+  readonly observedAt: string;
+  readonly lastActivityAt?: string;
+  readonly failureReason?: string;
+  readonly metrics: Readonly<Record<string, number>>;
+}
+
+export interface SupervisedMessageSnapshot {
+  readonly traceId: string;
+  readonly messageId: string;
+  readonly name: string;
+  readonly senderId?: AgentId;
+  readonly recipientId?: AgentId;
+  readonly correlationId: string;
+  readonly attempt: number;
+  readonly status: string;
+  readonly timedOut: boolean;
+  readonly occurredAt: string;
+}
+
+export interface SupervisedKnowledgeSnapshot {
+  readonly id: string;
+  readonly version: number;
+  readonly topic: string;
+  readonly kind: string;
+  readonly sourceAgentId: AgentId;
+  readonly active: boolean;
+  readonly updatedAt: string;
 }
 
 export type SupervisionIssueType =
@@ -63,7 +110,9 @@ export type SupervisionIssueType =
   | "timeout"
   | "loop"
   | "inactive-agent"
-  | "stuck-task";
+  | "stuck-task"
+  | "duplicate"
+  | "infinite-retry";
 
 export type SupervisionSeverity = "low" | "medium" | "high" | "critical";
 
@@ -126,6 +175,7 @@ export interface SupervisionPolicy {
   readonly loopTransitionThreshold: number;
   readonly cancelOnDeadlock: boolean;
   readonly cancelOnLoop: boolean;
+  readonly maxRetryAttempts: number;
 }
 
 export interface SupervisionDetector {
@@ -147,4 +197,3 @@ export interface SupervisionActionPlanner {
 export interface SupervisorClock {
   now(): Date;
 }
-

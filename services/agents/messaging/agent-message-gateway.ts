@@ -1,5 +1,6 @@
 import type { AgentContext } from "../core/agent-context.ts";
 import type { AgentId } from "../core/agent-id.ts";
+import type { AgentState } from "../core/agent-state.ts";
 import type { BaseAgent } from "../core/base-agent.ts";
 import type { RetryPolicy } from "./envelope.ts";
 import {
@@ -16,6 +17,13 @@ import type {
 export interface AgentMessagePayload<TMessage = unknown> {
   readonly message: TMessage;
   readonly context?: AgentContext;
+}
+
+export interface AgentRuntimeSnapshot {
+  readonly id: AgentId;
+  readonly type?: string;
+  readonly state: Readonly<AgentState>;
+  readonly capabilities: readonly string[];
 }
 
 export interface AgentRequestOptions {
@@ -146,6 +154,19 @@ export class AgentMessageEndpoint {
     return this.agent.id;
   }
 
+  snapshot(): AgentRuntimeSnapshot {
+    return Object.freeze({
+      id: this.agent.id,
+      type: this.agent.getMetadata().kind,
+      state: Object.freeze({ ...this.agent.state }),
+      capabilities: Object.freeze(
+        this.agent
+          .getCapabilities()
+          .items.map((capability) => capability.name),
+      ),
+    });
+  }
+
   async initialize(): Promise<void> {
     await this.agent.initialize();
     try {
@@ -173,6 +194,12 @@ export class AgentMessageEndpoint {
     message: Message,
     handlerContext: MessageHandlerContext,
   ): Promise<unknown> {
+    if (message.name === "agent.lifecycle.restart") {
+      return this.restart();
+    }
+    if (message.name === "agent.lifecycle.health") {
+      return this.agent.health();
+    }
     const payload = requireAgentMessagePayload(message.payload);
     const context: AgentContext = Object.freeze({
       ...(payload.context ?? {
@@ -182,6 +209,12 @@ export class AgentMessageEndpoint {
       signal: handlerContext.signal,
     });
     return this.agent.handleMessage(payload.message, context);
+  }
+
+  private async restart(): Promise<AgentRuntimeSnapshot> {
+    await this.agent.shutdown();
+    await this.agent.initialize();
+    return this.snapshot();
   }
 }
 

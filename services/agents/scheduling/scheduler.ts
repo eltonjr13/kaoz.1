@@ -22,6 +22,7 @@ import {
   type SchedulerClock,
   type SchedulerConfig,
   type SchedulerEvent,
+  type SchedulerEventSubscriber,
   type SchedulerEventType,
   type SchedulerExecutionAgent,
   type SchedulerExecutionOptions,
@@ -50,6 +51,7 @@ interface SchedulerEntry {
   completedAt?: string;
   cancelledAt?: string;
   failureReason?: string;
+  readonly excludedAgentIds: Set<AgentId>;
 }
 
 interface ResolvedAgent {
@@ -87,6 +89,7 @@ export class Scheduler {
   private readonly entries = new Map<string, SchedulerEntry>();
   private readonly fairnessSequence = new Map<string, number>();
   private readonly events: SchedulerEvent[] = [];
+  private readonly subscribers = new Set<SchedulerEventSubscriber>();
   private readonly config: SchedulerConfig;
   private readonly clock: SchedulerClock;
   private readonly idGenerator: () => string;
@@ -95,6 +98,8 @@ export class Scheduler {
   private fairnessCounter = 0;
   private eventSequence = 0;
   private activeExecutionId?: string;
+  private activeAbortController?: AbortController;
+  private cancellationReason?: string;
 
   constructor(options: SchedulerOptions = {}) {
     this.config = resolveConfig(options.config);
@@ -138,6 +143,7 @@ export class Scheduler {
         request.retryPolicy,
         this.config.defaultRetryPolicy,
       ),
+      excludedAgentIds: new Set(),
     };
 
     this.entries.set(entry.id, entry);
@@ -317,6 +323,56 @@ export class Scheduler {
     return decision;
   }
 
+  reassign(
+    taskId: string,
+    reason: string,
+    excludedAgentId?: AgentId,
+  ): ScheduledTask {
+    const entry = this.requireEntry(taskId);
+    if (entry.status === "completed" || entry.status === "cancelled") {
+      throw new SchedulerError(
+        "INVALID_STATE",
+        `Cannot reassign scheduled task "${entry.id}" while status is "${entry.status}".`,
+        entry.id,
+      );
+    }
+    const previousAgentId = excludedAgentId ?? entry.assignedAgentId;
+    if (previousAgentId) {
+      entry.excludedAgentIds.add(previousAgentId);
+    }
+    entry.status = "queued";
+    entry.failureReason = requireText(reason, "Reassignment reason");
+    entry.nextEligibleAt = this.timestamp();
+    this.clearAssignment(entry);
+    this.emit("task-reassigned", {
+      taskId: entry.id,
+      agentId: previousAgentId,
+      attempt: entry.attempt,
+      details: {
+        reason: entry.failureReason,
+        excludedAgentId: previousAgentId,
+      },
+    });
+    return freezeEntry(entry);
+  }
+
+  cancelExecution(reason: string): readonly CancellationDecision[] {
+    const cancellationReason = requireText(reason, "Cancellation reason");
+    this.cancellationReason = cancellationReason;
+    this.emit("execution-cancellation-requested", {
+      executionId: this.activeExecutionId,
+      details: { reason: cancellationReason },
+    });
+    const decisions: CancellationDecision[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.status === "queued" || entry.status === "assigned") {
+        decisions.push(this.cancel(entry.id, cancellationReason));
+      }
+    }
+    this.activeAbortController?.abort(cancellationReason);
+    return Object.freeze(decisions);
+  }
+
   sweepTimeouts(): readonly ScheduledTask[] {
     const now = this.clock.now().getTime();
     const timedOut = [...this.entries.values()]
@@ -344,6 +400,13 @@ export class Scheduler {
     return Object.freeze([...this.events]);
   }
 
+  subscribe(subscriber: SchedulerEventSubscriber): () => void {
+    this.subscribers.add(subscriber);
+    return () => {
+      this.subscribers.delete(subscriber);
+    };
+  }
+
   async executeAll<TResult>(
     agents: readonly SchedulerExecutionAgent<TResult>[],
     options: SchedulerExecutionOptions,
@@ -365,6 +428,8 @@ export class Scheduler {
       );
     }
     this.activeExecutionId = executionId;
+    this.activeAbortController = new AbortController();
+    this.cancellationReason = undefined;
     this.emit("execution-started", {
       executionId,
       details: {
@@ -379,10 +444,15 @@ export class Scheduler {
         managedAgents,
         options.manageAgentLifecycle === true,
       );
+      await this.checkpoint(options, "execution-started");
       const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
 
       while (true) {
-        this.throwIfCancelled(options.signal, executionId);
+        this.throwIfCancelled(
+          combineAbortSignals(options.signal, this.activeAbortController.signal),
+          executionId,
+        );
+        await this.checkpoint(options, "before-schedule");
         const failed = this.list("failed");
         if (failed.length > 0) {
           const failureReason = failed[0]?.failureReason;
@@ -422,13 +492,25 @@ export class Scheduler {
           });
         }
 
-        const batch = this.schedule(
+        let batch = this.schedule(
           agents.map((agent) => executionSnapshot(agent)),
         );
         if (batch.length === 0) {
+          await this.checkpoint(options, "blocked");
+          batch = this.schedule(
+            agents.map((agent) => executionSnapshot(agent)),
+          );
+        }
+        if (batch.length === 0) {
           const waitMs = this.nextRetryWaitMs();
           if (waitMs !== undefined) {
-            await waitForRetry(waitMs, options.signal);
+            await waitForRetry(
+              waitMs,
+              combineAbortSignals(
+                options.signal,
+                this.activeAbortController.signal,
+              ),
+            );
             continue;
           }
           const blocked = this.list("queued")[0];
@@ -452,6 +534,7 @@ export class Scheduler {
             ),
           ),
         );
+        await this.checkpoint(options, "batch-completed");
       }
     } catch (error) {
       const cancelled =
@@ -470,6 +553,8 @@ export class Scheduler {
         );
       }
       this.activeExecutionId = undefined;
+      this.activeAbortController = undefined;
+      this.cancellationReason = undefined;
     }
   }
 
@@ -533,6 +618,25 @@ export class Scheduler {
     }
   }
 
+  private checkpoint(
+    options: SchedulerExecutionOptions,
+    type:
+      | "execution-started"
+      | "before-schedule"
+      | "blocked"
+      | "batch-completed",
+  ): Promise<void> {
+    return Promise.resolve(
+      options.onCheckpoint?.(
+        Object.freeze({
+          type,
+          executionId: options.executionId,
+          occurredAt: this.timestamp(),
+        }),
+      ),
+    );
+  }
+
   private async executeDecision<TResult>(
     decision: SchedulingDecision,
     agentsById: ReadonlyMap<AgentId, SchedulerExecutionAgent<TResult>>,
@@ -582,7 +686,10 @@ export class Scheduler {
           return agent.handleTask(entry.subtask, context);
         },
         entry.timeoutMs,
-        options.signal,
+        combineAbortSignals(
+          options.signal,
+          this.activeAbortController?.signal,
+        ),
       );
       const completedAt = this.timestamp();
       this.complete(entry.id);
@@ -599,6 +706,9 @@ export class Scheduler {
         }),
       );
     } catch (error) {
+      if (entry.status === "cancelled") {
+        return;
+      }
       const timedOut = error instanceof SchedulerTaskTimeoutError;
       if (timedOut) {
         this.emit("task-timed-out", {
@@ -632,12 +742,15 @@ export class Scheduler {
     signal: AbortSignal | undefined,
     executionId: string,
   ): void {
-    if (!signal?.aborted) {
+    if (!signal?.aborted && !this.cancellationReason) {
       return;
     }
     for (const entry of this.entries.values()) {
       if (entry.status === "queued" || entry.status === "assigned") {
-        this.cancel(entry.id, "execution-cancelled");
+        this.cancel(
+          entry.id,
+          this.cancellationReason ?? "execution-cancelled",
+        );
       }
     }
     throw new SchedulerError(
@@ -652,8 +765,7 @@ export class Scheduler {
       readonly details?: Readonly<Record<string, unknown>>;
     },
   ): void {
-    this.events.push(
-      Object.freeze({
+    const event = Object.freeze({
         id: `scheduler-event-${++this.eventSequence}`,
         type,
         occurredAt: this.timestamp(),
@@ -663,8 +775,15 @@ export class Scheduler {
         decisionId: input.decisionId,
         attempt: input.attempt,
         details: Object.freeze({ ...(input.details ?? {}) }),
-      }),
-    );
+      });
+    this.events.push(event);
+    for (const subscriber of this.subscribers) {
+      try {
+        subscriber(event);
+      } catch {
+        // Scheduler observers cannot interfere with scheduling.
+      }
+    }
   }
 
   private selectNext(
@@ -943,6 +1062,7 @@ function selectLeastLoadedAgent(
     .filter((agent) => {
       const internalLoad = internalLoads.get(agent.snapshot.id) ?? 0;
       return (
+        !entry.excludedAgentIds.has(agent.snapshot.id) &&
         agent.snapshot.online &&
         agent.snapshot.available &&
         agent.snapshot.capabilities.includes(
@@ -964,6 +1084,22 @@ function selectLeastLoadedAgent(
         String(left.snapshot.id).localeCompare(String(right.snapshot.id))
       );
     })[0];
+}
+
+function combineAbortSignals(
+  first?: AbortSignal,
+  second?: AbortSignal,
+): AbortSignal | undefined {
+  const signals = [first, second].filter(
+    (signal): signal is AbortSignal => signal !== undefined,
+  );
+  if (signals.length === 0) {
+    return undefined;
+  }
+  if (signals.length === 1) {
+    return signals[0];
+  }
+  return AbortSignal.any(signals);
 }
 
 function normalizeAgents(

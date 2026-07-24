@@ -47,6 +47,33 @@ export class DefaultSupervisionActionPlanner
         reason: issue.message,
       });
     }
+    if (issue.type === "duplicate") {
+      for (const taskId of issue.taskIds) {
+        actions.push({
+          type: "reassign-task",
+          taskId,
+          priority: 85,
+          reason: issue.message,
+        });
+      }
+      actions.push({
+        type: "reanalyze-plan",
+        priority: 90,
+        reason: issue.message,
+      });
+    }
+    if (issue.type === "infinite-retry") {
+      actions.push({
+        type: "reanalyze-plan",
+        priority: 100,
+        reason: issue.message,
+      });
+      actions.push({
+        type: "cancel-execution",
+        priority: 100,
+        reason: issue.message,
+      });
+    }
     if (
       (issue.type === "deadlock" && policy.cancelOnDeadlock) ||
       (issue.type === "loop" && policy.cancelOnLoop)
@@ -61,4 +88,3 @@ export class DefaultSupervisionActionPlanner
     return Object.freeze(actions.map((action) => Object.freeze(action)));
   }
 }
-
