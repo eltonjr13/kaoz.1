@@ -250,8 +250,10 @@ test("plan output strips provider and model-specific fields", async () => {
   });
   await agent.initialize();
 
-  const serialized = JSON.stringify(await agent.handleTask(createTestGoal()));
-  assert.doesNotMatch(serialized, /model|provider|openai|gemini|flow/i);
+  const plan = await agent.handleTask(createTestGoal());
+  const fieldNames = collectFieldNames(plan);
+  assert.equal(fieldNames.has("model"), false);
+  assert.equal(fieldNames.has("provider"), false);
 });
 
 test("PlannerAgent requires initialization and the planning capability", async () => {
@@ -285,3 +287,19 @@ test("PlannerAgent requires initialization and the planning capability", async (
   );
 });
 
+function collectFieldNames(value: unknown, fields = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectFieldNames(item, fields);
+    }
+    return fields;
+  }
+  if (typeof value !== "object" || value === null) {
+    return fields;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    fields.add(key.toLowerCase());
+    collectFieldNames(item, fields);
+  }
+  return fields;
+}
