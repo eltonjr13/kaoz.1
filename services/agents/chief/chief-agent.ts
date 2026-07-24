@@ -22,7 +22,10 @@ import {
   PlannerAgent,
   createPlannerAgentConfig,
 } from "../planning/planner-agent.ts";
-import { createGoal } from "../planning/planning-factories.ts";
+import {
+  createExecutionPlan,
+  createGoal,
+} from "../planning/planning-factories.ts";
 import type {
   ExecutionPlan,
   ExecutionPlanDraft,
@@ -38,9 +41,18 @@ import {
   createSupervisorAgentConfig,
 } from "../supervision/supervisor-agent.ts";
 import type {
+  ExecutionSnapshot,
   SupervisionReport,
   SupervisorClock,
 } from "../supervision/supervision.types.ts";
+import {
+  planningMetricsStore,
+  type LegacyPlanInspector,
+  type LegacyPlanObservation,
+  type PlannerComparisonMetric,
+  type PlannerMeasurement,
+  type PlanningMetricsRecorder,
+} from "./planning-metrics.ts";
 
 export interface ChiefExecutionAssignment {
   readonly executionContext: ExecutionContext;
@@ -54,6 +66,10 @@ export interface ChiefExecutionAdapter<TResponse> {
   execute(assignment: ChiefExecutionAssignment): Promise<TResponse>;
 }
 
+export interface ChiefLegacyPlanningAdapter<TResponse> {
+  run(): Promise<TResponse>;
+}
+
 export interface ChiefObjective<TResponse> {
   readonly executionId: string;
   readonly objective: string;
@@ -64,7 +80,13 @@ export interface ChiefObjective<TResponse> {
   readonly estimatedTime?: number;
   readonly confidence?: number;
   readonly executionAdapterId?: AgentId;
-  readonly executionAdapter: ChiefExecutionAdapter<TResponse>;
+  readonly planGenerator?: PlanGenerator;
+  readonly legacyPlanningAdapter?: ChiefLegacyPlanningAdapter<TResponse>;
+  /**
+   * Compatibility alias for callers from the first Chief migration.
+   */
+  readonly executionAdapter?: ChiefExecutionAdapter<TResponse>;
+  readonly legacyPlanInspector?: LegacyPlanInspector<TResponse>;
 }
 
 export interface ChiefAgentResult<TResponse> {
@@ -76,6 +98,7 @@ export interface ChiefAgentResult<TResponse> {
   readonly subtasks: readonly Subtask[];
   readonly decisions: readonly SchedulingDecision[];
   readonly supervision: SupervisionReport;
+  readonly planningMetric: PlannerComparisonMetric;
 }
 
 export interface ChiefMessage<TResponse> {
@@ -87,6 +110,7 @@ export interface ChiefAgentOptions {
   readonly config?: AgentConfig;
   readonly clock?: SupervisorClock;
   readonly idGenerator?: () => string;
+  readonly metricsRecorder?: PlanningMetricsRecorder;
 }
 
 export interface ChiefAgentConfigOptions {
@@ -112,6 +136,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
 > {
   private readonly clock: SupervisorClock;
   private readonly idGenerator: () => string;
+  private readonly metricsRecorder: PlanningMetricsRecorder;
 
   constructor(options: ChiefAgentOptions = {}) {
     const config = options.config ?? createChiefAgentConfig();
@@ -119,6 +144,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     super(config);
     this.clock = options.clock ?? systemClock;
     this.idGenerator = options.idGenerator ?? defaultId;
+    this.metricsRecorder = options.metricsRecorder ?? planningMetricsStore;
   }
 
   async handleTask(
@@ -213,18 +239,20 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       supervisor.initialize(),
     ]);
 
-    let activePlan: ExecutionPlan | undefined;
-    let activeSubtask: Subtask | undefined;
-    let activeDecision: SchedulingDecision | undefined;
+    let plan: ExecutionPlan | undefined;
+    let subtasks: readonly Subtask[] = Object.freeze([]);
+    let decisions: readonly SchedulingDecision[] = Object.freeze([]);
+    let plannerError: string | undefined;
+    const plannerStartedAt = monotonicNow();
     try {
-      const plan = await planner.handleTask(goal);
-      activePlan = plan;
+      try {
+      plan = await planner.handleTask(goal);
       executionContext = sharedContext.update("execution", {
         planId: plan.id,
         planVersion: plan.version,
         status: "planned",
       });
-      const subtasks = await decomposer.handleTask(plan);
+      subtasks = await decomposer.handleTask(plan);
       scheduler.enqueueAll(
         subtasks.map((subtask) => ({
           subtask,
@@ -240,104 +268,121 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       );
       const workerSnapshot: SchedulerAgentSnapshot = {
         id: executionAdapterId,
-        capabilities: [requiredCapability],
+        capabilities: Object.freeze([
+          ...new Set(
+            subtasks.map((subtask) => subtask.requiredCapability),
+          ),
+        ]),
         online: true,
         available: true,
         currentLoad: 0,
         maxConcurrency: 1,
       };
-      const decisions = scheduler.schedule([workerSnapshot]);
-      if (decisions.length !== 1 || subtasks.length !== 1) {
+      decisions = scheduler.schedule([workerSnapshot]);
+      if (decisions.length === 0) {
         throw new Error(
-          "ChiefAgent compatibility coordination requires exactly one scheduled subtask.",
+          "PlannerAgent produced a plan with no schedulable initial task.",
         );
       }
-      const decision = decisions[0];
-      const subtask = subtasks[0];
-      activeDecision = decision;
-      activeSubtask = subtask;
       executionContext = sharedContext.update("execution", {
-        scheduledDecisionId: decision.id,
-        assignedAgentId: String(decision.agentId),
-        status: "executing",
-      });
-
-      await supervisor.handleTask({
-        executionId,
         planId: plan.id,
-        planVersion: plan.version,
-        status: "running",
-        capturedAt: this.currentTimestamp(),
-        tasks: [
-          {
-            id: subtask.id,
-            status: "running",
-            dependencies: subtask.dependencies,
-            attempt: decision.attempt,
-            updatedAt: decision.scheduledAt,
-            agentId: decision.agentId,
-            startedAt: decision.scheduledAt,
-            timeoutAt: decision.timeoutAt,
-          },
-        ],
-        agents: [
-          {
-            id: decision.agentId,
-            status: "ready",
-            online: true,
-            lastHeartbeatAt: this.currentTimestamp(),
-            taskIds: [subtask.id],
-          },
-        ],
-        transitions: [],
+        scheduledDecisionIds: decisions.map((decision) => decision.id),
+        status: "scheduled-not-executed",
       });
-
-      const response = await input.executionAdapter.execute({
+      } catch (error) {
+      plannerError = errorMessage(error);
+      plan = undefined;
+      subtasks = Object.freeze([]);
+      decisions = Object.freeze([]);
+      executionContext = sharedContext.update("execution", {
+        plannerError,
+        status: "legacy-fallback",
+      });
+      }
+      const newPlannerDurationMs = elapsedSince(plannerStartedAt);
+    const legacyStartedAt = monotonicNow();
+    let response: TResponse;
+    try {
+      response = await this.runLegacyPlanning(
+        input,
         executionContext,
         goal,
         plan,
-        subtask,
-        decision,
-      });
-      scheduler.complete(subtask.id);
-      executionContext = sharedContext.update("execution", {
-        status: "completed",
-      });
-      const supervision = await supervisor.handleTask({
+        subtasks,
+        decisions,
+      );
+    } catch (error) {
+      const legacyDurationMs = elapsedSince(legacyStartedAt);
+      const metric = createComparisonMetric({
+        id: this.nextId("planning-metric"),
         executionId,
+        goal,
+        recordedAt: this.currentTimestamp(),
+        plan,
+        plannerError,
+        newPlannerDurationMs,
+        legacyDurationMs,
+        legacyError: errorMessage(error),
+        legacyObservation: defaultLegacyObservation(),
+        schedulerDecisionCount: decisions.length,
+      });
+      await this.recordMetric(metric);
+      sharedContext.update("execution", {
+        status: "failed",
+        failureReason: errorMessage(error),
+      });
+      throw error;
+    }
+
+    const legacyDurationMs = elapsedSince(legacyStartedAt);
+    const legacyObservation = inspectLegacyPlan(
+      input.legacyPlanInspector,
+      response,
+    );
+    if (!plan) {
+      plan = createLegacyFallbackPlan(
+        goal,
+        legacyObservation,
+        requiredCapability,
+        this.nextId("legacy-plan"),
+        this.currentTimestamp(),
+        input,
+      );
+      executionContext = sharedContext.update("execution", {
         planId: plan.id,
         planVersion: plan.version,
-        status: "completed",
-        capturedAt: this.currentTimestamp(),
-        tasks: [
-          {
-            id: subtask.id,
-            status: "completed",
-            dependencies: subtask.dependencies,
-            attempt: decision.attempt,
-            updatedAt: this.currentTimestamp(),
-            agentId: decision.agentId,
-            startedAt: decision.scheduledAt,
-          },
-        ],
-        agents: [
-          {
-            id: decision.agentId,
-            status: "ready",
-            online: true,
-            lastHeartbeatAt: this.currentTimestamp(),
-            taskIds: [],
-          },
-        ],
-        transitions: [
-          {
-            taskId: subtask.id,
-            from: "running",
-            to: "completed",
-            occurredAt: this.currentTimestamp(),
-          },
-        ],
+        status: "legacy-fallback",
       });
+    }
+
+    const supervision = await supervisor.handleTask(
+      createPlanningSupervisionSnapshot({
+        executionId,
+        plan,
+        subtasks,
+        decisions,
+        workerId: executionAdapterId,
+        capturedAt: this.currentTimestamp(),
+      }),
+    );
+    executionContext = sharedContext.update("execution", {
+      selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
+      schedulerDecisionCount: decisions.length,
+      status: "planning-complete-no-execution",
+    });
+    const planningMetric = createComparisonMetric({
+      id: this.nextId("planning-metric"),
+      executionId,
+      goal,
+      recordedAt: this.currentTimestamp(),
+      plan: plannerError ? undefined : plan,
+      plannerError,
+      newPlannerDurationMs,
+      legacyDurationMs,
+      legacyObservation,
+      schedulerDecisionCount: decisions.length,
+    });
+    await this.recordMetric(planningMetric);
 
       return Object.freeze({
         response,
@@ -348,54 +393,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         subtasks,
         decisions,
         supervision,
+        planningMetric,
       });
-    } catch (error) {
-      sharedContext.update("execution", {
-        status: "failed",
-        failureReason: errorMessage(error),
-      });
-      if (activePlan && activeSubtask && activeDecision) {
-        if (scheduler.get(activeSubtask.id)?.status === "assigned") {
-          scheduler.fail(activeSubtask.id, errorMessage(error), false);
-        }
-        await supervisor.handleTask({
-          executionId,
-          planId: activePlan.id,
-          planVersion: activePlan.version,
-          status: "failed",
-          capturedAt: this.currentTimestamp(),
-          tasks: [
-            {
-              id: activeSubtask.id,
-              status: "failed",
-              dependencies: activeSubtask.dependencies,
-              attempt: activeDecision.attempt,
-              updatedAt: this.currentTimestamp(),
-              agentId: activeDecision.agentId,
-              startedAt: activeDecision.scheduledAt,
-              failureReason: errorMessage(error),
-            },
-          ],
-          agents: [
-            {
-              id: activeDecision.agentId,
-              status: "ready",
-              online: true,
-              lastHeartbeatAt: this.currentTimestamp(),
-              taskIds: [],
-            },
-          ],
-          transitions: [
-            {
-              taskId: activeSubtask.id,
-              from: "running",
-              to: "failed",
-              occurredAt: this.currentTimestamp(),
-            },
-          ],
-        });
-      }
-      throw error;
     } finally {
       await Promise.allSettled([
         planner.shutdown(),
@@ -421,7 +420,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     input: ChiefObjective<TResponse>,
     requiredCapability: string,
   ): PlannerAgent {
-    const planGenerator: PlanGenerator = {
+    const planGenerator: PlanGenerator = input.planGenerator ?? {
       generate: (goal): ExecutionPlanDraft => ({
         title: `Execution plan: ${goal.title}`,
         summary: "Delegate the objective to the compatible scheduled execution adapter.",
@@ -463,6 +462,46 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       clock: this.clock,
       idGenerator: () => this.nextId("plan"),
     });
+  }
+
+  private runLegacyPlanning(
+    input: ChiefObjective<TResponse>,
+    executionContext: ExecutionContext,
+    goal: Goal,
+    plan: ExecutionPlan | undefined,
+    subtasks: readonly Subtask[],
+    decisions: readonly SchedulingDecision[],
+  ): Promise<TResponse> {
+    if (input.legacyPlanningAdapter) {
+      return input.legacyPlanningAdapter.run();
+    }
+    const subtask = subtasks[0];
+    const decision = decisions[0];
+    if (input.executionAdapter && plan && subtask && decision) {
+      return input.executionAdapter.execute({
+        executionContext,
+        goal,
+        plan,
+        subtask,
+        decision,
+      });
+    }
+    return Promise.reject(
+      new Error(
+        "ChiefAgent requires a legacyPlanningAdapter for Planner fallback.",
+      ),
+    );
+  }
+
+  private async recordMetric(metric: PlannerComparisonMetric): Promise<void> {
+    try {
+      await this.metricsRecorder.record(metric);
+    } catch (error) {
+      console.warn(
+        "[ChiefAgent] Failed to record planner comparison metric:",
+        error,
+      );
+    }
   }
 
   private nextId(prefix: string): string {
@@ -573,6 +612,285 @@ function requireText(value: string, label: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function createLegacyFallbackPlan<TResponse>(
+  goal: Goal,
+  observation: LegacyPlanObservation,
+  requiredCapability: string,
+  planId: string,
+  createdAt: string,
+  input: ChiefObjective<TResponse>,
+): ExecutionPlan {
+  const stepCount = Math.max(1, observation.stepCount);
+  const stepIds = Array.from(
+    { length: stepCount },
+    (_, index) => `legacy-step-${index + 1}`,
+  );
+  const totalTime = nonNegativeFinite(
+    observation.estimatedTime ?? input.estimatedTime ?? 60_000,
+    "Legacy estimatedTime",
+  );
+  const totalCost = nonNegativeFinite(
+    observation.estimatedCost ?? input.estimatedCost ?? 0,
+    "Legacy estimatedCost",
+  );
+  const confidence = range(
+    observation.confidence ?? input.confidence ?? 1,
+    0,
+    1,
+    "Legacy confidence",
+  );
+
+  return createExecutionPlan(
+    goal,
+    {
+      title: `Legacy fallback plan: ${goal.title}`,
+      summary:
+        "Structured representation inferred from the legacy planning response.",
+      steps: stepIds.map((id, index) => ({
+        id,
+        title: `Legacy planning step ${index + 1}`,
+        description: "Step inferred from the legacy planning baseline.",
+        capability: requiredCapability,
+        dependencyIds: index === 0 ? [] : [stepIds[index - 1]],
+        acceptanceCriteriaIds:
+          index === stepIds.length - 1
+            ? goal.acceptanceCriteria.map((criterion) => criterion.id)
+            : [],
+        milestoneId: "legacy-response-ready",
+        estimate: {
+          effortPoints: 1,
+          durationMs: totalTime / stepCount,
+          cost: totalCost / stepCount,
+          confidence,
+        },
+      })),
+      milestones: [
+        {
+          id: "legacy-response-ready",
+          title: "Legacy response ready",
+          description: "The legacy planning response has been represented.",
+          stepIds,
+          acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+            (criterion) => criterion.id,
+          ),
+        },
+      ],
+    },
+    {
+      id: planId,
+      createdAt,
+    },
+  );
+}
+
+function createPlanningSupervisionSnapshot(input: {
+  readonly executionId: string;
+  readonly plan: ExecutionPlan;
+  readonly subtasks: readonly Subtask[];
+  readonly decisions: readonly SchedulingDecision[];
+  readonly workerId: AgentId;
+  readonly capturedAt: string;
+}): ExecutionSnapshot {
+  const decisionsByTask = new Map(
+    input.decisions.map((decision) => [decision.taskId, decision]),
+  );
+  return {
+    executionId: input.executionId,
+    planId: input.plan.id,
+    planVersion: input.plan.version,
+    status: "pending",
+    capturedAt: input.capturedAt,
+    tasks: input.subtasks.map((subtask) => {
+      const decision = decisionsByTask.get(subtask.id);
+      return {
+        id: subtask.id,
+        status: decision ? "assigned" : "queued",
+        dependencies: subtask.dependencies,
+        attempt: decision?.attempt ?? 0,
+        updatedAt: decision?.scheduledAt ?? input.capturedAt,
+        agentId: decision?.agentId,
+        timeoutAt: decision?.timeoutAt,
+      };
+    }),
+    agents:
+      input.decisions.length === 0
+        ? []
+        : [
+            {
+              id: input.workerId,
+              status: "ready",
+              online: true,
+              lastHeartbeatAt: input.capturedAt,
+              taskIds: input.decisions.map((decision) => decision.taskId),
+            },
+          ],
+    transitions: [],
+  };
+}
+
+function inspectLegacyPlan<TResponse>(
+  inspector: LegacyPlanInspector<TResponse> | undefined,
+  response: TResponse,
+): LegacyPlanObservation {
+  if (!inspector) {
+    return defaultLegacyObservation();
+  }
+  try {
+    const observation = inspector.inspect(response);
+    return Object.freeze({
+      planKind: requireText(observation.planKind, "Legacy planKind"),
+      stepCount: nonNegativeInteger(
+        observation.stepCount,
+        "Legacy stepCount",
+      ),
+      dependencyCount: nonNegativeInteger(
+        observation.dependencyCount ?? 0,
+        "Legacy dependencyCount",
+      ),
+      milestoneCount: nonNegativeInteger(
+        observation.milestoneCount ?? 0,
+        "Legacy milestoneCount",
+      ),
+      estimatedCost: nonNegativeFinite(
+        observation.estimatedCost ?? 0,
+        "Legacy estimatedCost",
+      ),
+      estimatedTime: nonNegativeFinite(
+        observation.estimatedTime ?? 0,
+        "Legacy estimatedTime",
+      ),
+      confidence: range(
+        observation.confidence ?? 0,
+        0,
+        1,
+        "Legacy confidence",
+      ),
+    });
+  } catch {
+    return defaultLegacyObservation();
+  }
+}
+
+function defaultLegacyObservation(): LegacyPlanObservation {
+  return Object.freeze({
+    planKind: "unknown",
+    stepCount: 0,
+    dependencyCount: 0,
+    milestoneCount: 0,
+    estimatedCost: 0,
+    estimatedTime: 0,
+    confidence: 0,
+  });
+}
+
+function createComparisonMetric(input: {
+  readonly id: string;
+  readonly executionId: string;
+  readonly goal: Goal;
+  readonly recordedAt: string;
+  readonly plan?: ExecutionPlan;
+  readonly plannerError?: string;
+  readonly newPlannerDurationMs: number;
+  readonly legacyDurationMs: number;
+  readonly legacyError?: string;
+  readonly legacyObservation: LegacyPlanObservation;
+  readonly schedulerDecisionCount: number;
+}): PlannerComparisonMetric {
+  const newPlanner = input.plan
+    ? measurePlan(input.plan, input.newPlannerDurationMs)
+    : failedPlannerMeasurement(
+        "planner-agent",
+        input.newPlannerDurationMs,
+        input.plannerError ?? "PlannerAgent failed.",
+      );
+  const legacyBaseline: PlannerMeasurement = Object.freeze({
+    success: input.legacyError === undefined,
+    durationMs: roundDuration(input.legacyDurationMs),
+    planKind: input.legacyObservation.planKind,
+    stepCount: input.legacyObservation.stepCount,
+    dependencyCount: input.legacyObservation.dependencyCount ?? 0,
+    milestoneCount: input.legacyObservation.milestoneCount ?? 0,
+    estimatedCost: input.legacyObservation.estimatedCost ?? 0,
+    estimatedTime: input.legacyObservation.estimatedTime ?? 0,
+    confidence: input.legacyObservation.confidence ?? 0,
+    error: input.legacyError,
+  });
+  return Object.freeze({
+    id: input.id,
+    executionId: input.executionId,
+    goalId: input.goal.id,
+    recordedAt: input.recordedAt,
+    selectedPlanner: input.plannerError
+      ? "legacy-fallback"
+      : "planner-agent",
+    fallbackUsed: input.plannerError !== undefined,
+    newPlanner,
+    legacyBaseline,
+    comparison: Object.freeze({
+      stepCountDelta: newPlanner.stepCount - legacyBaseline.stepCount,
+      durationMsDelta:
+        newPlanner.durationMs - legacyBaseline.durationMs,
+      structuredPlanAvailable: input.plan !== undefined,
+    }),
+    schedulerDecisionCount: input.schedulerDecisionCount,
+  });
+}
+
+function measurePlan(
+  plan: ExecutionPlan,
+  durationMs: number,
+): PlannerMeasurement {
+  return Object.freeze({
+    success: true,
+    durationMs: roundDuration(durationMs),
+    planKind: "execution-plan",
+    stepCount: plan.steps.length,
+    dependencyCount: plan.dependencyGraph.edges.length,
+    milestoneCount: plan.milestones.length,
+    estimatedCost: plan.estimate.cost,
+    estimatedTime: plan.estimate.durationMs,
+    confidence: plan.estimate.confidence,
+  });
+}
+
+function failedPlannerMeasurement(
+  planKind: string,
+  durationMs: number,
+  error: string,
+): PlannerMeasurement {
+  return Object.freeze({
+    success: false,
+    durationMs: roundDuration(durationMs),
+    planKind,
+    stepCount: 0,
+    dependencyCount: 0,
+    milestoneCount: 0,
+    estimatedCost: 0,
+    estimatedTime: 0,
+    confidence: 0,
+    error,
+  });
+}
+
+function monotonicNow(): number {
+  return globalThis.performance.now();
+}
+
+function elapsedSince(startedAt: number): number {
+  return roundDuration(monotonicNow() - startedAt);
+}
+
+function roundDuration(value: number): number {
+  return Math.max(0, Math.round(value * 1_000) / 1_000);
+}
+
+function nonNegativeInteger(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  return value;
 }
 
 function defaultId(): string {

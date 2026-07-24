@@ -16,6 +16,11 @@ import {
 } from "@/lib/ai/image-prompt-engineering";
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import { ChiefAgent } from "@/services/agents/chief/chief-agent";
+import type {
+  ExecutionPlanDraft,
+  Goal,
+  PlanGenerator,
+} from "@/services/agents/planning";
 export type GeminiAnalysisResult = {
   description: string;
   transcription: string;
@@ -1153,8 +1158,9 @@ export async function chatWithAgent(
       estimatedCost: 0,
       estimatedTime: 60_000,
       confidence: 1,
-      executionAdapter: {
-        execute: () =>
+      planGenerator: createChatPlanGenerator(messages, options),
+      legacyPlanningAdapter: {
+        run: () =>
           executeScheduledChatTask(
             messages,
             avatarPersonality,
@@ -1162,6 +1168,9 @@ export async function chatWithAgent(
             referenceImagePath,
             options,
           ),
+      },
+      legacyPlanInspector: {
+        inspect: inspectLegacyChatPlan,
       },
     });
     return result.response;
@@ -1174,5 +1183,143 @@ export async function chatWithAgent(
   } finally {
     await chief.shutdown();
   }
+}
+
+function createChatPlanGenerator(
+  messages: ChatMessage[],
+  options?: ChatWithAgentOptions,
+): PlanGenerator {
+  const requiresTools = Boolean(options?.hasExternalTools);
+  const requiresMediaPlanning = isLikelyActionRequest(messages);
+
+  return Object.freeze({
+    generate: (goal: Goal): ExecutionPlanDraft => {
+      const steps: ExecutionPlanDraft["steps"][number][] = [
+        {
+          id: "analyze-objective",
+          title: "Analyze the user objective",
+          description:
+            "Identify the requested outcome and the response constraints.",
+          capability: "analysis",
+          acceptanceCriteriaIds: [],
+          estimate: {
+            effortPoints: 1,
+            durationMs: 5_000,
+            cost: 0,
+            confidence: 0.95,
+          },
+        },
+      ];
+      const responseDependencies = ["analyze-objective"];
+
+      if (requiresTools) {
+        steps.push({
+          id: "collect-external-context",
+          title: "Collect external context",
+          description:
+            "Resolve the external information required by the objective.",
+          capability: "research",
+          dependencyIds: ["analyze-objective"],
+          acceptanceCriteriaIds: [],
+          estimate: {
+            effortPoints: 2,
+            durationMs: 30_000,
+            cost: 1,
+            confidence: 0.8,
+          },
+        });
+        responseDependencies.push("collect-external-context");
+      }
+      if (requiresMediaPlanning) {
+        steps.push({
+          id: "prepare-media-action",
+          title: "Prepare the media action",
+          description:
+            "Structure the requested media action while preserving user intent.",
+          capability: "media-planning",
+          dependencyIds: ["analyze-objective"],
+          acceptanceCriteriaIds: [],
+          estimate: {
+            effortPoints: 2,
+            durationMs: 10_000,
+            cost: 0,
+            confidence: 0.9,
+          },
+        });
+        responseDependencies.push("prepare-media-action");
+      }
+      steps.push({
+        id: "compose-compatible-response",
+        title: "Compose the compatible response",
+        description:
+          "Produce the existing ChatAgentResponse contract for the caller.",
+        capability: "chat-response",
+        dependencyIds: responseDependencies,
+        acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+          (criterion) => criterion.id,
+        ),
+        milestoneId: "response-ready",
+        estimate: {
+          effortPoints: 2,
+          durationMs: 15_000,
+          cost: 1,
+          confidence: 0.9,
+        },
+      });
+
+      return {
+        title: `Chat execution plan: ${goal.title}`,
+        summary:
+          "Structured plan for understanding the objective and preparing the compatible response.",
+        steps,
+        milestones: [
+          {
+            id: "response-ready",
+            title: "Response ready",
+            description:
+              "All planning required for the compatible response is complete.",
+            stepIds: steps.map((step) => step.id),
+            acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+              (criterion) => criterion.id,
+            ),
+          },
+        ],
+        risks: requiresTools
+          ? [
+              {
+                id: "external-context-unavailable",
+                description:
+                  "External context may be unavailable or incomplete.",
+                probability: 0.2,
+                impact: 3,
+                mitigation:
+                  "Preserve the existing concrete tool-failure response.",
+                relatedStepIds: ["collect-external-context"],
+              },
+            ]
+          : [],
+      };
+    },
+  });
+}
+
+function inspectLegacyChatPlan(
+  response: ChatAgentResponse,
+): {
+  readonly planKind: string;
+  readonly stepCount: number;
+  readonly dependencyCount: number;
+  readonly milestoneCount: number;
+  readonly confidence: number;
+} {
+  const creativeStepCount = response.action?.creativeSteps?.length ?? 0;
+  const stepCount = response.action ? Math.max(1, creativeStepCount) : 1;
+  return Object.freeze({
+    planKind: response.action?.flow ?? "conversation",
+    stepCount,
+    dependencyCount: Math.max(0, stepCount - 1),
+    milestoneCount: 1,
+    confidence: response.action ? 0.8 : 0.9,
+  });
 }
 
