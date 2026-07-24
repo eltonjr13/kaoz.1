@@ -79,7 +79,7 @@ function createTestPlan(): ExecutionPlan {
   );
 }
 
-test("decomposes every ExecutionStep into an immutable Subtask", async () => {
+test("decomposes every ExecutionStep into an immutable ExecutionTask", async () => {
   const agent = new TaskDecomposerAgent();
   await agent.initialize();
 

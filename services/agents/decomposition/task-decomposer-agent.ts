@@ -41,8 +41,8 @@ export interface TaskDecomposerAgentConfigOptions {
 }
 
 /**
- * Converts plan steps into immutable subtasks. It does not dispatch, assign,
- * schedule or execute the resulting work.
+ * Converts plan steps into immutable execution tasks. It does not dispatch,
+ * assign, schedule or execute the resulting work.
  */
 export class TaskDecomposerAgent extends AbstractAgent<
   ExecutionPlan,
@@ -178,7 +178,7 @@ export function createTaskDecomposerAgentConfig(
       version: options.version?.trim() || "1.0.0",
       description:
         options.description?.trim() ||
-        "Transforms execution plan steps into immutable subtasks.",
+        "Transforms execution plan steps into immutable execution tasks.",
       kind: "task-decomposer",
       tags: Object.freeze(["planning", "decomposition", "infrastructure"]),
     }),
@@ -187,7 +187,7 @@ export function createTaskDecomposerAgentConfig(
         Object.freeze({
           name: "task-decomposition",
           version: "1.0.0",
-          description: "Decomposes execution plans into subtasks.",
+          description: "Decomposes execution plans into execution tasks.",
           priority: 100,
           cost: 0,
           expectedLatencyMs: 0,
@@ -195,7 +195,8 @@ export function createTaskDecomposerAgentConfig(
           restrictions: Object.freeze([
             Object.freeze({
               name: "no-execution",
-              description: "The decomposer cannot execute or dispatch subtasks.",
+              description:
+                "The decomposer cannot execute or dispatch execution tasks.",
             }),
           ]),
         }),
