@@ -83,8 +83,13 @@ export function createResponse<TPayload>(
   });
 }
 
-export function isResponse(message: Message): message is Response {
-  return message.kind === "response";
+export function isResponse(message: unknown): message is Response {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === "response"
+  );
 }
 
 export function normalizeMessageName(value: string): string {

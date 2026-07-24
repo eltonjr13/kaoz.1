@@ -104,8 +104,9 @@ export function addressEnvelope(
 ): Envelope {
   return createEnvelope(envelope.message, {
     ...envelope,
-    id: `${envelope.id}:${recipientId}`,
+    id: crypto.randomUUID(),
     recipientId,
+    causationId: envelope.id,
   });
 }
 
