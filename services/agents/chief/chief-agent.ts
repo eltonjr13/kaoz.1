@@ -615,7 +615,8 @@ export function createChiefAgentConfig(
         Object.freeze({
           name: "goal-coordination",
           version: "1.0.0",
-          description: "Coordinates an objective without executing its work.",
+          description:
+            "Coordinates an objective while Scheduler owns its execution.",
           priority: 100,
           cost: 0,
           expectedLatencyMs: 0,
@@ -637,7 +638,7 @@ export function createChiefAgentConfig(
             Object.freeze({
               name: "no-direct-execution",
               description:
-                "All work must be delegated through a scheduled execution adapter.",
+                "All work must be executed by Scheduler through registered agents or LegacyAgentAdapter.",
             }),
           ]),
         }),
@@ -763,11 +764,12 @@ function createLegacyFallbackPlan<TResponse>(
     {
       title: `Legacy fallback plan: ${goal.title}`,
       summary:
-        "Structured representation inferred from the legacy planning response.",
+        "Minimal compatibility plan used while PlannerAgent is unavailable.",
       steps: stepIds.map((id, index) => ({
         id,
         title: `Legacy planning step ${index + 1}`,
-        description: "Step inferred from the legacy planning baseline.",
+        description:
+          "Execute the compatible legacy path through LegacyAgentAdapter.",
         capability: requiredCapability,
         dependencyIds: index === 0 ? [] : [stepIds[index - 1]],
         acceptanceCriteriaIds:
@@ -786,7 +788,8 @@ function createLegacyFallbackPlan<TResponse>(
         {
           id: "legacy-response-ready",
           title: "Legacy response ready",
-          description: "The legacy planning response has been represented.",
+          description:
+            "The compatible legacy response has completed through Scheduler.",
           stepIds,
           acceptanceCriteriaIds: goal.acceptanceCriteria.map(
             (criterion) => criterion.id,

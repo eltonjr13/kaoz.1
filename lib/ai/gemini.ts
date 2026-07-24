@@ -1261,7 +1261,7 @@ function createChatPlanGenerator(
         milestoneId: "response-ready",
         estimate: {
           effortPoints: 2,
-          durationMs: 15_000,
+          durationMs: 60_000,
           cost: 1,
           confidence: 0.9,
         },

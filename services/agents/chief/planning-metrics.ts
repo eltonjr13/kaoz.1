@@ -20,8 +20,9 @@ export interface PlannerComparisonMetric {
   readonly fallbackUsed: boolean;
   readonly newPlanner: PlannerMeasurement;
   /**
-   * The legacy baseline includes the complete compatibility-model call because
-   * the old architecture does not separate planning from response generation.
+   * The legacy baseline includes Scheduler execution of the complete
+   * compatibility-model call because the old architecture does not separate
+   * planning from response generation.
    */
   readonly legacyBaseline: PlannerMeasurement;
   readonly comparison: {

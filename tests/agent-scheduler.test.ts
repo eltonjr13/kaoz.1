@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  LegacyAgentAdapter,
   Scheduler,
   createAgentId,
   type SchedulerAgentSnapshot,
@@ -288,3 +289,180 @@ test("detects dependency cycles and exposes immutable statistics", () => {
   assert.equal(Object.isFrozen(statistics.byAgent), true);
 });
 
+test("executes dependency-ordered tasks through selected agents and records events", async () => {
+  let executions = 0;
+  const scheduler = new Scheduler({
+    config: {
+      maxConcurrency: 2,
+      maxConcurrencyPerAgent: 2,
+    },
+    idGenerator: (() => {
+      let value = 0;
+      return () => `execution-decision-${++value}`;
+    })(),
+  });
+  scheduler.enqueueAll([
+    { subtask: createSubtask("prepare") },
+    {
+      subtask: createSubtask("deliver", {
+        dependencies: ["prepare"],
+      }),
+    },
+  ]);
+  const agent = new LegacyAgentAdapter<string>({
+    id: analysisAgent,
+    capabilities: ["analysis"],
+    executor: {
+      run: async () => `output-${++executions}`,
+    },
+  });
+
+  const report = await scheduler.executeAll([agent], {
+    executionId: "scheduler-execution",
+    manageAgentLifecycle: true,
+  });
+
+  assert.equal(report.status, "completed");
+  assert.deepEqual(
+    report.decisions.map((decision) => decision.taskId),
+    ["prepare", "deliver"],
+  );
+  assert.deepEqual(
+    report.results.map((result) => result.output),
+    ["output-1", "output-2"],
+  );
+  assert.equal(scheduler.getStatistics().completed, 2);
+  assert.equal(agent.state.status, "stopped");
+  assert.deepEqual(
+    scheduler
+      .listEvents()
+      .filter((event) => event.type === "task-started")
+      .map((event) => event.taskId),
+    ["prepare", "deliver"],
+  );
+  assert.equal(
+    scheduler.listEvents().at(-1)?.type,
+    "execution-completed",
+  );
+});
+
+test("executes independent tasks within configured concurrency", async () => {
+  let active = 0;
+  let maximumActive = 0;
+  const scheduler = new Scheduler({
+    config: {
+      maxConcurrency: 2,
+      maxConcurrencyPerAgent: 2,
+    },
+  });
+  scheduler.enqueueAll([
+    { subtask: createSubtask("parallel-a") },
+    { subtask: createSubtask("parallel-b") },
+    { subtask: createSubtask("parallel-c") },
+  ]);
+  const agent = new LegacyAgentAdapter<string>({
+    id: analysisAgent,
+    capabilities: ["analysis"],
+    executor: {
+      run: async () => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active -= 1;
+        return "done";
+      },
+    },
+  });
+
+  const report = await scheduler.executeAll([agent], {
+    executionId: "parallel-execution",
+    manageAgentLifecycle: true,
+  });
+
+  assert.equal(report.results.length, 3);
+  assert.equal(maximumActive, 2);
+});
+
+test("executes retries and records the successful attempt", async () => {
+  let attempts = 0;
+  const scheduler = new Scheduler({
+    config: {
+      defaultRetryPolicy: {
+        maxAttempts: 2,
+        baseDelayMs: 0,
+        backoffMultiplier: 1,
+        maxDelayMs: 0,
+      },
+    },
+    idGenerator: () => `retry-decision-${attempts + 1}`,
+  });
+  scheduler.enqueue({ subtask: createSubtask("retry-execution") });
+  const agent = new LegacyAgentAdapter<string>({
+    id: analysisAgent,
+    capabilities: ["analysis"],
+    executor: {
+      run: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("temporary execution failure");
+        }
+        return "recovered";
+      },
+    },
+  });
+
+  const report = await scheduler.executeAll([agent], {
+    executionId: "retry-execution",
+    manageAgentLifecycle: true,
+  });
+
+  assert.equal(attempts, 2);
+  assert.equal(report.results[0]?.attempt, 2);
+  assert.equal(report.results[0]?.output, "recovered");
+  assert.equal(
+    scheduler
+      .listEvents()
+      .filter((event) => event.type === "task-retry-scheduled").length,
+    1,
+  );
+});
+
+test("enforces execution timeout and records terminal failure", async () => {
+  const scheduler = new Scheduler({
+    config: {
+      defaultRetryPolicy: {
+        maxAttempts: 1,
+        baseDelayMs: 0,
+        backoffMultiplier: 1,
+        maxDelayMs: 0,
+      },
+    },
+  });
+  scheduler.enqueue({
+    subtask: createSubtask("timeout-execution"),
+    timeoutMs: 10,
+  });
+  const agent = new LegacyAgentAdapter<string>({
+    id: analysisAgent,
+    capabilities: ["analysis"],
+    executor: {
+      run: () => new Promise<string>(() => undefined),
+    },
+  });
+
+  await assert.rejects(
+    scheduler.executeAll([agent], {
+      executionId: "timeout-execution",
+      manageAgentLifecycle: true,
+    }),
+    /timed out after 10ms/,
+  );
+  assert.equal(scheduler.get("timeout-execution")?.status, "failed");
+  assert.equal(
+    scheduler
+      .listEvents()
+      .filter((event) => event.type === "task-timed-out").length,
+    1,
+  );
+  assert.equal(scheduler.listEvents().at(-1)?.type, "execution-failed");
+});

@@ -22,7 +22,7 @@ function createIdGenerator(): () => string {
   return () => `id-${++sequence}`;
 }
 
-test("plans and schedules without executing the new ExecutionPlan", async () => {
+test("plans and executes only through Scheduler using LegacyAgentAdapter", async () => {
   let legacyCalls = 0;
   const metrics = new PlanningMetricsStore();
   const chief = new ChiefAgent<string>({
@@ -65,7 +65,7 @@ test("plans and schedules without executing the new ExecutionPlan", async () => 
   assert.equal(result.executionContext.version, 5);
   assert.equal(
     result.executionContext.data.status,
-    "planning-complete-no-execution",
+    "execution-completed",
   );
   assert.equal(result.goal.objective, "Responda ao usuário sem alterar o contrato.");
   assert.equal(result.goalRegistration.content.goalId, result.goal.id);
@@ -76,11 +76,18 @@ test("plans and schedules without executing the new ExecutionPlan", async () => 
   assert.equal(result.tasks[0]?.timeout, 5_000);
   assert.match(
     result.tasks[0]?.expectedOutput.description ?? "",
-    /compatible execution adapter returns a final response/i,
+    /scheduler execution returns a final compatible response/i,
   );
   assert.equal(result.subtasks.length, 1);
   assert.equal(result.decisions.length, 1);
   assert.equal(result.decisions[0]?.agentId, "existing-chat-adapter");
+  assert.equal(result.executionReport.status, "completed");
+  assert.equal(
+    result.schedulerEvents.some(
+      (event) => event.type === "task-completed",
+    ),
+    true,
+  );
   assert.equal(result.supervision.healthy, true);
   assert.equal(result.planningMetric.selectedPlanner, "planner-agent");
   assert.equal(result.planningMetric.fallbackUsed, false);
@@ -90,7 +97,7 @@ test("plans and schedules without executing the new ExecutionPlan", async () => 
   assert.equal(Object.isFrozen(result), true);
 });
 
-test("preserves a structured dependency graph and stops at Scheduler decisions", async () => {
+test("executes a structured dependency graph through Scheduler only", async () => {
   let legacyCalls = 0;
   let compatibilityExecutionCalls = 0;
   const chief = new ChiefAgent<string>({
@@ -208,15 +215,19 @@ test("preserves a structured dependency graph and stops at Scheduler decisions",
         dependencies: [result.tasks[1]?.id],
         timeout: 1_000,
         expectedOutput:
-          "The compatible execution adapter returns a final response.",
+          "Scheduler execution returns a final compatible response.",
         confidence: 0.9,
       },
     ],
   );
-  assert.equal(result.decisions.length, 1);
+  assert.equal(result.decisions.length, 3);
   assert.equal(result.subtasks[0]?.sourceStepId, "analyze");
   assert.equal(result.decisions[0]?.taskId, result.subtasks[0]?.id);
-  assert.equal(result.planningMetric.schedulerDecisionCount, 1);
+  assert.deepEqual(
+    result.executionReport.results.map((result) => result.taskId),
+    result.tasks.map((task) => task.id),
+  );
+  assert.equal(result.planningMetric.schedulerDecisionCount, 3);
 });
 
 test("does not expose direct execution, restart, scheduling or planning methods", () => {
@@ -282,9 +293,9 @@ test("uses the legacy planner as fallback and records comparison metrics", async
 
   assert.equal(result.response, "legacy response");
   assert.match(result.plan.title, /Legacy fallback plan/);
-  assert.equal(result.plan.steps.length, 2);
-  assert.equal(result.subtasks.length, 0);
-  assert.equal(result.decisions.length, 0);
+  assert.equal(result.plan.steps.length, 1);
+  assert.equal(result.subtasks.length, 1);
+  assert.equal(result.decisions.length, 1);
   assert.equal(result.planningMetric.selectedPlanner, "legacy-fallback");
   assert.equal(result.planningMetric.fallbackUsed, true);
   assert.equal(result.planningMetric.newPlanner.success, false);

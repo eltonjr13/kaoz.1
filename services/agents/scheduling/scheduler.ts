@@ -88,6 +88,7 @@ export class Scheduler {
   private decisionSequence = 0;
   private fairnessCounter = 0;
   private eventSequence = 0;
+  private activeExecutionId?: string;
 
   constructor(options: SchedulerOptions = {}) {
     this.config = resolveConfig(options.config);
@@ -349,6 +350,13 @@ export class Scheduler {
     const decisions: SchedulingDecision[] = [];
     const results: SchedulerTaskExecutionResult<TResult>[] = [];
 
+    if (this.activeExecutionId) {
+      throw new SchedulerError(
+        "INVALID_STATE",
+        `Scheduler execution "${this.activeExecutionId}" is already running.`,
+      );
+    }
+    this.activeExecutionId = executionId;
     this.emit("execution-started", {
       executionId,
       details: {
@@ -369,9 +377,10 @@ export class Scheduler {
         this.throwIfCancelled(options.signal, executionId);
         const failed = this.list("failed");
         if (failed.length > 0) {
+          const failureReason = failed[0]?.failureReason;
           throw new SchedulerError(
             "EXECUTION_FAILED",
-            `Scheduler execution "${executionId}" failed at task "${failed[0]?.id}".`,
+            `Scheduler execution "${executionId}" failed at task "${failed[0]?.id}": ${failureReason ?? "unknown failure"}.`,
             failed[0]?.id,
           );
         }
@@ -452,6 +461,7 @@ export class Scheduler {
           managedAgents.map((agent) => agent.shutdown()),
         );
       }
+      this.activeExecutionId = undefined;
     }
   }
 
@@ -627,7 +637,7 @@ export class Scheduler {
         id: `scheduler-event-${++this.eventSequence}`,
         type,
         occurredAt: this.timestamp(),
-        executionId: input.executionId,
+        executionId: input.executionId ?? this.activeExecutionId,
         taskId: input.taskId,
         agentId: input.agentId,
         decisionId: input.decisionId,
@@ -832,16 +842,8 @@ async function executeWithTimeout<TResult>(
   parentSignal?: AbortSignal,
 ): Promise<TResult> {
   const controller = new AbortController();
-  const onAbort = (): void => {
-    controller.abort(parentSignal?.reason);
-  };
-  if (parentSignal?.aborted) {
-    onAbort();
-  } else {
-    parentSignal?.addEventListener("abort", onAbort, { once: true });
-  }
-
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   try {
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timeout = setTimeout(() => {
@@ -849,13 +851,30 @@ async function executeWithTimeout<TResult>(
         reject(new SchedulerTaskTimeoutError(timeoutMs));
       }, timeoutMs);
     });
+    const cancellationPromise = new Promise<never>((_resolve, reject) => {
+      onAbort = () => {
+        controller.abort(parentSignal?.reason);
+        reject(createAbortError());
+      };
+      if (parentSignal?.aborted) {
+        onAbort();
+      } else {
+        parentSignal?.addEventListener("abort", onAbort, { once: true });
+      }
+    });
     const operationPromise = operation(controller.signal);
-    return await Promise.race([operationPromise, timeoutPromise]);
+    return await Promise.race([
+      operationPromise,
+      timeoutPromise,
+      cancellationPromise,
+    ]);
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
-    parentSignal?.removeEventListener("abort", onAbort);
+    if (onAbort) {
+      parentSignal?.removeEventListener("abort", onAbort);
+    }
   }
 }
 
@@ -867,9 +886,14 @@ function waitForRetry(
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(resolve, delayMs);
+    const finish = (): void => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timeout = setTimeout(finish, delayMs);
     const onAbort = (): void => {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
       reject(createAbortError());
     };
     if (signal?.aborted) {
