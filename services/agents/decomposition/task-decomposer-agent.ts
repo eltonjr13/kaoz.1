@@ -277,7 +277,7 @@ function createExpectedOutput(
         `Execution step "${step.id}" references unknown acceptance criterion "${criterionId}".`,
       );
     }
-    return criterion;
+    return Object.freeze({ ...criterion });
   });
   const milestone = step.milestoneId
     ? plan.milestones.find((candidate) => candidate.id === step.milestoneId)

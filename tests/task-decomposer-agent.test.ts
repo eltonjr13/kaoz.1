@@ -17,6 +17,14 @@ function createTestPlan(): ExecutionPlan {
     id: "goal-decomposition",
     title: "Deliver a result",
     objective: "Prepare and deliver a result.",
+    acceptanceCriteria: [
+      {
+        id: "criterion-delivered",
+        description: "The prepared result is delivered.",
+        verificationMethod: "Verify the final delivery artifact.",
+        required: true,
+      },
+    ],
     createdAt: timestamp,
   });
 
@@ -32,6 +40,8 @@ function createTestPlan(): ExecutionPlan {
           description: "Deliver the prepared result.",
           capability: "document",
           dependencyIds: ["prepare"],
+          milestoneId: "delivery-ready",
+          acceptanceCriteriaIds: ["criterion-delivered"],
           estimate: {
             effortPoints: 2,
             durationMs: 2_000,
@@ -50,6 +60,15 @@ function createTestPlan(): ExecutionPlan {
             cost: 1,
             confidence: 0.9,
           },
+        },
+      ],
+      milestones: [
+        {
+          id: "delivery-ready",
+          title: "Delivery ready",
+          description: "The final result is ready for delivery.",
+          stepIds: ["deliver"],
+          acceptanceCriteriaIds: ["criterion-delivered"],
         },
       ],
     },
@@ -75,9 +94,16 @@ test("decomposes every ExecutionStep into an immutable Subtask", async () => {
     title: "Prepare",
     description: "Prepare the result.",
     owner: null,
+    ownerCapability: "analysis",
     requiredCapability: "analysis",
     priority: 50,
     dependencies: [],
+    timeout: 1_000,
+    expectedOutput: {
+      description: 'Completed output for "Prepare": Prepare the result.',
+      acceptanceCriteria: [],
+      milestone: undefined,
+    },
     estimatedCost: 1,
     estimatedTime: 1_000,
     confidence: 0.9,
@@ -88,10 +114,33 @@ test("decomposes every ExecutionStep into an immutable Subtask", async () => {
   assert.equal(subtasks[1]?.requiredCapability, "document");
   assert.equal(subtasks[1]?.estimatedCost, 3);
   assert.equal(subtasks[1]?.estimatedTime, 2_000);
+  assert.equal(subtasks[1]?.ownerCapability, "document");
+  assert.equal(subtasks[1]?.timeout, 2_000);
+  assert.deepEqual(subtasks[1]?.expectedOutput, {
+    description: "The prepared result is delivered.",
+    acceptanceCriteria: [
+      {
+        id: "criterion-delivered",
+        description: "The prepared result is delivered.",
+        verificationMethod: "Verify the final delivery artifact.",
+        required: true,
+      },
+    ],
+    milestone: {
+      id: "delivery-ready",
+      title: "Delivery ready",
+      description: "The final result is ready for delivery.",
+    },
+  });
   assert.equal(subtasks[1]?.confidence, 0.8);
   assert.equal(Object.isFrozen(subtasks), true);
   assert.equal(Object.isFrozen(subtasks[0]), true);
   assert.equal(Object.isFrozen(subtasks[0]?.dependencies), true);
+  assert.equal(Object.isFrozen(subtasks[1]?.expectedOutput), true);
+  assert.equal(
+    Object.isFrozen(subtasks[1]?.expectedOutput.acceptanceCriteria),
+    true,
+  );
 });
 
 test("supports independent owner and priority policies without Registry integration", async () => {
@@ -211,4 +260,3 @@ function collectFieldNames(value: unknown, fields = new Set<string>()): Set<stri
   }
   return fields;
 }
-

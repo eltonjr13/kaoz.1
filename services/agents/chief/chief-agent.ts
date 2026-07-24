@@ -273,6 +273,15 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       if (plan) {
         try {
           tasks = await decomposer.handleTask(plan);
+        } catch (error) {
+          executionContext = sharedContext.update("execution", {
+            decompositionError: errorMessage(error),
+            executionTaskIds: [],
+            status: "decomposition-failed",
+          });
+        }
+        if (tasks.length > 0) {
+          try {
           scheduler.enqueueAll(
             tasks.map((task) => ({
               subtask: task,
@@ -310,16 +319,14 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             scheduledDecisionIds: decisions.map((decision) => decision.id),
             status: "scheduled-not-executed",
           });
-        } catch (error) {
-          decisions = Object.freeze([]);
-          executionContext = sharedContext.update("execution", {
-            schedulerError: errorMessage(error),
-            executionTaskIds: tasks.map((task) => task.id),
-            status:
-              tasks.length === 0
-                ? "decomposition-failed"
-                : "tasks-produced-not-scheduled",
-          });
+          } catch (error) {
+            decisions = Object.freeze([]);
+            executionContext = sharedContext.update("execution", {
+              schedulerError: errorMessage(error),
+              executionTaskIds: tasks.map((task) => task.id),
+              status: "tasks-produced-not-scheduled",
+            });
+          }
         }
       }
 

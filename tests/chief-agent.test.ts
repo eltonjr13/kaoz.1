@@ -71,6 +71,13 @@ test("plans and schedules without executing the new ExecutionPlan", async () => 
   assert.equal(result.goalRegistration.content.goalId, result.goal.id);
   assert.equal(result.plan.goal.id, result.goal.id);
   assert.equal(result.plan.steps[0]?.capability, "chat-response");
+  assert.equal(result.tasks, result.subtasks);
+  assert.equal(result.tasks[0]?.ownerCapability, "chat-response");
+  assert.equal(result.tasks[0]?.timeout, 5_000);
+  assert.match(
+    result.tasks[0]?.expectedOutput.description ?? "",
+    /compatible execution adapter returns a final response/i,
+  );
   assert.equal(result.subtasks.length, 1);
   assert.equal(result.decisions.length, 1);
   assert.equal(result.decisions[0]?.agentId, "existing-chat-adapter");
@@ -167,6 +174,45 @@ test("preserves a structured dependency graph and stops at Scheduler decisions",
     { prerequisiteStepId: "research", dependentStepId: "compose" },
   ]);
   assert.equal(result.subtasks.length, 3);
+  assert.deepEqual(
+    result.tasks.map((task) => ({
+      ownerCapability: task.ownerCapability,
+      priority: task.priority,
+      dependencies: task.dependencies,
+      timeout: task.timeout,
+      expectedOutput: task.expectedOutput.description,
+      confidence: task.confidence,
+    })),
+    [
+      {
+        ownerCapability: "analysis",
+        priority: 50,
+        dependencies: [],
+        timeout: 1_000,
+        expectedOutput:
+          'Completed output for "Analyze": Analyze the objective.',
+        confidence: 0.95,
+      },
+      {
+        ownerCapability: "research",
+        priority: 50,
+        dependencies: [result.tasks[0]?.id],
+        timeout: 2_000,
+        expectedOutput:
+          'Completed output for "Research": Collect context.',
+        confidence: 0.8,
+      },
+      {
+        ownerCapability: "chat-response",
+        priority: 50,
+        dependencies: [result.tasks[1]?.id],
+        timeout: 1_000,
+        expectedOutput:
+          "The compatible execution adapter returns a final response.",
+        confidence: 0.9,
+      },
+    ],
+  );
   assert.equal(result.decisions.length, 1);
   assert.equal(result.subtasks[0]?.sourceStepId, "analyze");
   assert.equal(result.decisions[0]?.taskId, result.subtasks[0]?.id);
