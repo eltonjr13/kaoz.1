@@ -74,7 +74,11 @@ export class MessageBus {
       return false;
     }
     for (const envelope of endpoint.mailbox.close()) {
-      this.moveToDeadLetter(envelope, `Mailbox "${agentId}" was unregistered.`);
+      const receipt = this.moveToDeadLetter(
+        envelope,
+        `Mailbox "${agentId}" was unregistered.`,
+      );
+      this.resolveDelivery(envelope, receipt);
     }
     return true;
   }
