@@ -119,7 +119,7 @@ function resolveExecutionContext(
   const provided =
     context?.executionContext ?? defaults.executionContext;
   if (provided) {
-    return sharedContext.initialize(provided);
+    return sharedContext.initialize<"execution">(provided);
   }
   return sharedContext.create("execution", defaults.executionId, {
     objective: defaults.objective ?? defaults.topic ?? defaults.executionId,
