@@ -1,8 +1,6 @@
 import type { AgentId } from "../core/agent-id.ts";
-import {
-  cloneContextData,
-  type ContextData,
-} from "../context/index.ts";
+import { cloneContextData } from "../context/context-factories.ts";
+import type { ContextData } from "../context/context.types.ts";
 
 export type KnowledgeKind =
   | "observation"

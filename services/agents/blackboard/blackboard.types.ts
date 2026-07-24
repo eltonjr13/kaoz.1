@@ -1,5 +1,5 @@
 import type { AgentId } from "../core/agent-id.ts";
-import type { ContextData } from "../context/index.ts";
+import type { ContextData } from "../context/context.types.ts";
 import type {
   KnowledgeEntry,
   KnowledgeKind,
