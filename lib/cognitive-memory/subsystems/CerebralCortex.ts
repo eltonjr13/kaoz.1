@@ -2,7 +2,11 @@ import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { GraphNode, GraphEdge, SemanticGraph } from '../types/graph';
 
 export class CerebralCortex {
-  constructor(private storage: IStorageProvider) {}
+  private readonly storage: IStorageProvider;
+
+  constructor(storage: IStorageProvider) {
+    this.storage = storage;
+  }
 
   public async upsertNode(node: GraphNode): Promise<void> {
     const data = await this.storage.readMemory();

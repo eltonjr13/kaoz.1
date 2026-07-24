@@ -2,7 +2,11 @@ import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { ProceduralRule } from '../types/memory';
 
 export class PrefrontalCortex {
-  constructor(private storage: IStorageProvider) {}
+  private readonly storage: IStorageProvider;
+
+  constructor(storage: IStorageProvider) {
+    this.storage = storage;
+  }
 
   public async addRule(rule: ProceduralRule): Promise<void> {
     const data = await this.storage.readMemory();

@@ -2,7 +2,11 @@ import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { EpisodicMemoryNode } from '../types/memory';
 
 export class Amygdala {
-  constructor(private storage: IStorageProvider) {}
+  private readonly storage: IStorageProvider;
+
+  constructor(storage: IStorageProvider) {
+    this.storage = storage;
+  }
 
   /**
    * Avalia se uma memória deve ser incluída no contexto baseando-se no seu

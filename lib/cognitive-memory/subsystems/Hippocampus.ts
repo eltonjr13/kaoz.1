@@ -2,7 +2,11 @@ import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { EpisodicMemoryNode } from '../types/memory';
 
 export class Hippocampus {
-  constructor(private storage: IStorageProvider) {}
+  private readonly storage: IStorageProvider;
+
+  constructor(storage: IStorageProvider) {
+    this.storage = storage;
+  }
 
   public async addEpisode(episode: EpisodicMemoryNode): Promise<void> {
     const data = await this.storage.readMemory();
