@@ -204,7 +204,7 @@ test("detects timeout, repeated loops and stuck tasks", async () => {
   );
   assert.deepEqual(
     [...new Set(report.actions.map((action) => action.type))].sort(),
-    ["reassign-task", "reanalyze-plan"],
+    ["reanalyze-plan", "reassign-task"],
   );
 });
 
@@ -295,4 +295,3 @@ test("requires initialization and execution-supervision capability", async () =>
     /execution-supervision.*capability/,
   );
 });
-
