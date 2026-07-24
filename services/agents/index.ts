@@ -5,3 +5,4 @@ export * from "./decomposition/index.ts";
 export * from "./messaging/index.ts";
 export * from "./planning/index.ts";
 export * from "./registry/index.ts";
+export * from "./scheduling/index.ts";
