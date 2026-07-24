@@ -6,3 +6,4 @@ export * from "./messaging/index.ts";
 export * from "./planning/index.ts";
 export * from "./registry/index.ts";
 export * from "./scheduling/index.ts";
+export * from "./supervision/index.ts";
