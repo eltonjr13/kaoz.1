@@ -83,6 +83,95 @@ test("plans and schedules without executing the new ExecutionPlan", async () => 
   assert.equal(Object.isFrozen(result), true);
 });
 
+test("preserves a structured dependency graph and stops at Scheduler decisions", async () => {
+  let legacyCalls = 0;
+  let compatibilityExecutionCalls = 0;
+  const chief = new ChiefAgent<string>({
+    clock: new FixedClock(),
+    idGenerator: createIdGenerator(),
+  });
+  await chief.initialize();
+
+  const result = await chief.handleTask({
+    executionId: "execution-structured-plan",
+    objective: "Research and compose a response.",
+    requiredCapability: "chat-response",
+    planGenerator: {
+      generate: (goal) => ({
+        title: "Structured chat plan",
+        summary: "Analyze, research and compose.",
+        steps: [
+          {
+            id: "analyze",
+            title: "Analyze",
+            description: "Analyze the objective.",
+            capability: "analysis",
+            estimate: {
+              effortPoints: 1,
+              durationMs: 1_000,
+              cost: 0,
+              confidence: 0.95,
+            },
+          },
+          {
+            id: "research",
+            title: "Research",
+            description: "Collect context.",
+            capability: "research",
+            dependencyIds: ["analyze"],
+            estimate: {
+              effortPoints: 2,
+              durationMs: 2_000,
+              cost: 1,
+              confidence: 0.8,
+            },
+          },
+          {
+            id: "compose",
+            title: "Compose",
+            description: "Compose the response.",
+            capability: "chat-response",
+            dependencyIds: ["research"],
+            acceptanceCriteriaIds: goal.acceptanceCriteria.map(
+              (criterion) => criterion.id,
+            ),
+            estimate: {
+              effortPoints: 1,
+              durationMs: 1_000,
+              cost: 0,
+              confidence: 0.9,
+            },
+          },
+        ],
+      }),
+    },
+    legacyPlanningAdapter: {
+      run: async () => {
+        legacyCalls += 1;
+        return "compatible response";
+      },
+    },
+    executionAdapter: {
+      execute: async () => {
+        compatibilityExecutionCalls += 1;
+        return "must not execute";
+      },
+    },
+  });
+
+  assert.equal(legacyCalls, 1);
+  assert.equal(compatibilityExecutionCalls, 0);
+  assert.equal(result.plan.steps.length, 3);
+  assert.deepEqual(result.plan.dependencyGraph.edges, [
+    { prerequisiteStepId: "analyze", dependentStepId: "research" },
+    { prerequisiteStepId: "research", dependentStepId: "compose" },
+  ]);
+  assert.equal(result.subtasks.length, 3);
+  assert.equal(result.decisions.length, 1);
+  assert.equal(result.decisions[0]?.taskId, "analyze");
+  assert.equal(result.planningMetric.schedulerDecisionCount, 1);
+});
+
 test("does not expose direct execution, restart, scheduling or planning methods", () => {
   const chief = new ChiefAgent<string>();
 

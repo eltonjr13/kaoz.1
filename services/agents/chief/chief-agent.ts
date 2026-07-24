@@ -126,7 +126,8 @@ const systemClock: SupervisorClock = Object.freeze({
 
 /**
  * Coordinates one objective through the existing multi-agent infrastructure.
- * Content generation and tool execution remain behind ChiefExecutionAdapter.
+ * Planning reaches the Scheduler, but scheduled decisions are not dispatched.
+ * The legacy adapter remains isolated as the compatible response baseline.
  */
 export class ChiefAgent<TResponse> extends AbstractAgent<
   ChiefObjective<TResponse>,
@@ -177,7 +178,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         {
           id: this.nextId("criterion"),
           description: "The compatible execution adapter returns a final response.",
-          verificationMethod: "The scheduled execution completes without throwing.",
+          verificationMethod:
+            "The legacy compatibility path returns without changing the public response contract.",
           required: true,
         },
       ],
