@@ -16,7 +16,6 @@ import {
 } from "@/lib/ai/image-prompt-engineering";
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import { ChiefAgent } from "@/services/agents/chief/chief-agent";
-import { agentContextAdapter } from "@/services/agents/memory/agent-context.runtime";
 import type {
   ExecutionPlanDraft,
   Goal,
@@ -1135,6 +1134,9 @@ export async function chatWithAgent(
   referenceImagePath?: string,
   options?: ChatWithAgentOptions
 ): Promise<ChatAgentResponse> {
+  const { agentContextAdapter } = await import(
+    "@/services/agents/memory/agent-context.runtime"
+  );
   const chief = new ChiefAgent<ChatAgentResponse>({
     contextAdapter: agentContextAdapter,
   });
