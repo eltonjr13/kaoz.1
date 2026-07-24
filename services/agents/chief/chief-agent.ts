@@ -1,3 +1,4 @@
+import { LegacyAgentAdapter } from "../adapters/legacy-agent-adapter.ts";
 import { Blackboard } from "../blackboard/blackboard.ts";
 import {
   createArtifact,
@@ -36,7 +37,10 @@ import type {
 } from "../planning/planning.types.ts";
 import { Scheduler } from "../scheduling/scheduler.ts";
 import type {
-  SchedulerAgentSnapshot,
+  ScheduledTask,
+  SchedulerEvent,
+  SchedulerExecutionAgent,
+  SchedulerExecutionReport,
   SchedulingDecision,
 } from "../scheduling/scheduler.types.ts";
 import {
@@ -83,6 +87,7 @@ export interface ChiefObjective<TResponse> {
   readonly estimatedTime?: number;
   readonly confidence?: number;
   readonly executionAdapterId?: AgentId;
+  readonly executionAgents?: readonly SchedulerExecutionAgent<unknown>[];
   readonly planGenerator?: PlanGenerator;
   readonly legacyPlanningAdapter?: ChiefLegacyPlanningAdapter<TResponse>;
   /**
@@ -104,6 +109,8 @@ export interface ChiefAgentResult<TResponse> {
    */
   readonly subtasks: readonly Subtask[];
   readonly decisions: readonly SchedulingDecision[];
+  readonly executionReport: SchedulerExecutionReport<unknown>;
+  readonly schedulerEvents: readonly SchedulerEvent[];
   readonly supervision: SupervisionReport;
   readonly planningMetric: PlannerComparisonMetric;
 }
@@ -133,8 +140,7 @@ const systemClock: SupervisorClock = Object.freeze({
 
 /**
  * Coordinates one objective through the existing multi-agent infrastructure.
- * Planning reaches the Scheduler, but scheduled decisions are not dispatched.
- * The legacy adapter remains isolated as the compatible response baseline.
+ * Coordinates goals and consolidates the result. Scheduler owns all execution.
  */
 export class ChiefAgent<TResponse> extends AbstractAgent<
   ChiefObjective<TResponse>,
@@ -184,9 +190,9 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       acceptanceCriteria: [
         {
           id: this.nextId("criterion"),
-          description: "The compatible execution adapter returns a final response.",
+          description: "Scheduler execution returns a final compatible response.",
           verificationMethod:
-            "The legacy compatibility path returns without changing the public response contract.",
+            "The Scheduler completes the terminal task without changing the public response contract.",
           required: true,
         },
       ],
@@ -236,9 +242,14 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       clock: this.clock,
       idGenerator: this.idGenerator,
       config: {
-        maxConcurrency: 1,
+        maxConcurrency: 4,
         maxConcurrencyPerAgent: 1,
-        defaultRetryPolicy: { maxAttempts: 1 },
+        defaultRetryPolicy: {
+          maxAttempts: 3,
+          baseDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        },
       },
     });
 
@@ -270,79 +281,72 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         });
       }
       const newPlannerDurationMs = elapsedSince(plannerStartedAt);
-      if (plan) {
-        try {
-          tasks = await decomposer.handleTask(plan);
-        } catch (error) {
-          executionContext = sharedContext.update("execution", {
-            decompositionError: errorMessage(error),
-            executionTaskIds: [],
-            status: "decomposition-failed",
-          });
-        }
-        if (tasks.length > 0) {
-          try {
-            scheduler.enqueueAll(
-              tasks.map((task) => ({
-                subtask: task,
-                fairnessKey: executionId,
-                timeoutMs: task.timeout,
-                retryPolicy: {
-                  maxAttempts: 1,
-                  baseDelayMs: 0,
-                  backoffMultiplier: 1,
-                  maxDelayMs: 0,
-                },
-              })),
-            );
-            const workerSnapshot: SchedulerAgentSnapshot = {
-              id: executionAdapterId,
-              capabilities: Object.freeze([
-                ...new Set(tasks.map((task) => task.ownerCapability)),
-              ]),
-              online: true,
-              available: true,
-              currentLoad: 0,
-              maxConcurrency: 1,
-            };
-            decisions = scheduler.schedule([workerSnapshot]);
-            if (decisions.length === 0) {
-              throw new Error(
-                "PlannerAgent produced a plan with no schedulable initial task.",
-              );
-            }
-            executionContext = sharedContext.update("execution", {
-              planId: plan.id,
-              executionTaskIds: tasks.map((task) => task.id),
-              scheduledDecisionIds: decisions.map(
-                (decision) => decision.id,
-              ),
-              status: "scheduled-not-executed",
-            });
-          } catch (error) {
-            decisions = Object.freeze([]);
-            executionContext = sharedContext.update("execution", {
-              schedulerError: errorMessage(error),
-              executionTaskIds: tasks.map((task) => task.id),
-              status: "tasks-produced-not-scheduled",
-            });
-          }
-        }
+      if (!plan) {
+        plan = createLegacyFallbackPlan(
+          goal,
+          defaultLegacyObservation(),
+          requiredCapability,
+          this.nextId("legacy-plan"),
+          this.currentTimestamp(),
+          input,
+        );
+        executionContext = sharedContext.update("execution", {
+          planId: plan.id,
+          planVersion: plan.version,
+          status: "legacy-fallback-planned",
+        });
       }
 
-      const legacyStartedAt = monotonicNow();
-      let response: TResponse;
       try {
-        response = await this.runLegacyPlanning(
-          input,
-          executionContext,
-          goal,
-          plan,
-          tasks,
-          decisions,
+        tasks = await decomposer.handleTask(plan);
+        scheduler.enqueueAll(
+          tasks.map((task) => ({
+            subtask: task,
+            fairnessKey: executionId,
+            timeoutMs: task.timeout,
+          })),
         );
       } catch (error) {
+        executionContext = sharedContext.update("execution", {
+          decompositionError: errorMessage(error),
+          executionTaskIds: [],
+          status: "decomposition-failed",
+        });
+        throw error;
+      }
+
+      executionContext = sharedContext.update("execution", {
+        executionTaskIds: tasks.map((task) => task.id),
+        status: "scheduler-ready",
+      });
+      const terminalTask = tasks.at(-1);
+      if (!terminalTask) {
+        throw new Error("TaskDecomposerAgent produced no execution tasks.");
+      }
+      const executionAgents = this.createExecutionAgents({
+        input,
+        executionContext,
+        goal,
+        plan,
+        tasks,
+        terminalTask,
+        executionAdapterId,
+      });
+
+      const legacyStartedAt = monotonicNow();
+      let executionReport: SchedulerExecutionReport<unknown>;
+      try {
+        executionReport = await scheduler.executeAll(executionAgents, {
+          executionId,
+          correlationId: executionId,
+          manageAgentLifecycle: true,
+        });
+        decisions = executionReport.decisions;
+      } catch (error) {
         const legacyDurationMs = elapsedSince(legacyStartedAt);
+        const schedulerDecisionCount = scheduler
+          .listEvents()
+          .filter((event) => event.type === "task-assigned").length;
         const metric = createComparisonMetric({
           id: this.nextId("planning-metric"),
           executionId,
@@ -354,10 +358,12 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           legacyDurationMs,
           legacyError: errorMessage(error),
           legacyObservation: defaultLegacyObservation(),
-          schedulerDecisionCount: decisions.length,
+          schedulerDecisionCount,
         });
         await this.recordMetric(metric);
-        sharedContext.update("execution", {
+        executionContext = sharedContext.update("execution", {
+          schedulerError: errorMessage(error),
+          schedulerDecisionCount,
           status: "failed",
           failureReason: errorMessage(error),
         });
@@ -365,33 +371,27 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       }
 
       const legacyDurationMs = elapsedSince(legacyStartedAt);
+      const terminalResult = executionReport.results.find(
+        (result) => result.taskId === terminalTask.id,
+      );
+      if (!terminalResult) {
+        throw new Error(
+          `Scheduler did not return a result for terminal task "${terminalTask.id}".`,
+        );
+      }
+      const response = terminalResult.output as TResponse;
       const legacyObservation = inspectLegacyPlan(
         input.legacyPlanInspector,
         response,
       );
-      if (!plan) {
-        plan = createLegacyFallbackPlan(
-          goal,
-          legacyObservation,
-          requiredCapability,
-          this.nextId("legacy-plan"),
-          this.currentTimestamp(),
-          input,
-        );
-        executionContext = sharedContext.update("execution", {
-          planId: plan.id,
-          planVersion: plan.version,
-          status: "legacy-fallback",
-        });
-      }
 
       const supervision = await supervisor.handleTask(
-        createPlanningSupervisionSnapshot({
+        createExecutionSupervisionSnapshot({
           executionId,
           plan,
-          tasks,
-          decisions,
-          workerId: executionAdapterId,
+          scheduledTasks: scheduler.list(),
+          executionAgents,
+          executionReport,
           capturedAt: this.currentTimestamp(),
         }),
       );
@@ -399,7 +399,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
         executionTaskCount: tasks.length,
         schedulerDecisionCount: decisions.length,
-        status: "planning-complete-no-execution",
+        schedulerEventCount: executionReport.events.length,
+        status: "execution-completed",
       });
       const planningMetric = createComparisonMetric({
         id: this.nextId("planning-metric"),
@@ -424,6 +425,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         tasks,
         subtasks: tasks,
         decisions,
+        executionReport,
+        schedulerEvents: executionReport.events,
         supervision,
         planningMetric,
       });
@@ -496,33 +499,73 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     });
   }
 
-  private runLegacyPlanning(
-    input: ChiefObjective<TResponse>,
-    executionContext: ExecutionContext,
-    goal: Goal,
-    plan: ExecutionPlan | undefined,
-    subtasks: readonly Subtask[],
-    decisions: readonly SchedulingDecision[],
-  ): Promise<TResponse> {
-    if (input.legacyPlanningAdapter) {
-      return input.legacyPlanningAdapter.run();
-    }
-    const subtask = subtasks[0];
-    const decision = decisions[0];
-    if (input.executionAdapter && plan && subtask && decision) {
-      return input.executionAdapter.execute({
-        executionContext,
-        goal,
-        plan,
-        subtask,
-        decision,
-      });
-    }
-    return Promise.reject(
-      new Error(
-        "ChiefAgent requires a legacyPlanningAdapter for Planner fallback.",
+  private createExecutionAgents(options: {
+    readonly input: ChiefObjective<TResponse>;
+    readonly executionContext: ExecutionContext;
+    readonly goal: Goal;
+    readonly plan: ExecutionPlan;
+    readonly tasks: readonly ExecutionTask[];
+    readonly terminalTask: ExecutionTask;
+    readonly executionAdapterId: AgentId;
+  }): readonly SchedulerExecutionAgent<unknown>[] {
+    const nativeAgents = [...(options.input.executionAgents ?? [])];
+    const declaredCapabilities = new Set(
+      nativeAgents.flatMap((agent) =>
+        agent
+          .getCapabilities()
+          .items.map((capability) => capability.name),
       ),
     );
+    const missingCapabilities = [
+      ...new Set(
+        options.tasks
+          .map((task) => task.ownerCapability)
+          .filter((capability) => !declaredCapabilities.has(capability)),
+      ),
+    ];
+    if (missingCapabilities.length === 0) {
+      return Object.freeze(nativeAgents);
+    }
+
+    let legacyAgent: SchedulerExecutionAgent<unknown>;
+    if (options.input.legacyPlanningAdapter) {
+      legacyAgent = new LegacyAgentAdapter<TResponse>({
+        id: options.executionAdapterId,
+        capabilities: missingCapabilities,
+        executor: options.input.legacyPlanningAdapter,
+        executeOnTaskId: options.terminalTask.id,
+      });
+    } else if (options.input.executionAdapter) {
+      legacyAgent = new LegacyAgentAdapter<
+        TResponse,
+        ChiefExecutionAssignment
+      >({
+        id: options.executionAdapterId,
+        capabilities: missingCapabilities,
+        executor: options.input.executionAdapter,
+        executeOnTaskId: options.terminalTask.id,
+        assignmentFactory: (task, context) => ({
+          executionContext: options.executionContext,
+          goal: options.goal,
+          plan: options.plan,
+          subtask: task,
+          decision: requireSchedulingDecision(
+            context?.attributes?.decision,
+          ),
+        }),
+      });
+    } else {
+      throw new Error(
+        `No execution agent or LegacyAgentAdapter executor is available for capabilities: ${missingCapabilities.join(", ")}.`,
+      );
+    }
+
+    if (nativeAgents.some((agent) => agent.id === legacyAgent.id)) {
+      throw new Error(
+        `LegacyAgentAdapter id "${legacyAgent.id}" conflicts with a native execution agent.`,
+      );
+    }
+    return Object.freeze([...nativeAgents, legacyAgent]);
   }
 
   private async recordMetric(metric: PlannerComparisonMetric): Promise<void> {
@@ -646,6 +689,47 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function requireSchedulingDecision(value: unknown): SchedulingDecision {
+  if (!value || typeof value !== "object") {
+    throw new Error(
+      "LegacyAgentAdapter requires the Scheduler decision context.",
+    );
+  }
+  const decision = value as Partial<SchedulingDecision>;
+  return Object.freeze({
+    id: requireText(decision.id ?? "", "Scheduling decision id"),
+    taskId: requireText(
+      decision.taskId ?? "",
+      "Scheduling decision taskId",
+    ),
+    agentId: createAgentId(decision.agentId ?? ""),
+    requiredCapability: requireText(
+      decision.requiredCapability ?? "",
+      "Scheduling decision capability",
+    ),
+    order: nonNegativeInteger(
+      decision.order ?? -1,
+      "Scheduling decision order",
+    ),
+    priority: nonNegativeInteger(
+      decision.priority ?? -1,
+      "Scheduling decision priority",
+    ),
+    attempt: nonNegativeInteger(
+      decision.attempt ?? -1,
+      "Scheduling decision attempt",
+    ),
+    scheduledAt: requireText(
+      decision.scheduledAt ?? "",
+      "Scheduling decision scheduledAt",
+    ),
+    timeoutAt: requireText(
+      decision.timeoutAt ?? "",
+      "Scheduling decision timeoutAt",
+    ),
+  });
+}
+
 function createLegacyFallbackPlan<TResponse>(
   goal: Goal,
   observation: LegacyPlanObservation,
@@ -717,47 +801,50 @@ function createLegacyFallbackPlan<TResponse>(
   );
 }
 
-function createPlanningSupervisionSnapshot(input: {
+function createExecutionSupervisionSnapshot(input: {
   readonly executionId: string;
   readonly plan: ExecutionPlan;
-  readonly tasks: readonly ExecutionTask[];
-  readonly decisions: readonly SchedulingDecision[];
-  readonly workerId: AgentId;
+  readonly scheduledTasks: readonly ScheduledTask[];
+  readonly executionAgents: readonly SchedulerExecutionAgent<unknown>[];
+  readonly executionReport: SchedulerExecutionReport<unknown>;
   readonly capturedAt: string;
 }): ExecutionSnapshot {
-  const decisionsByTask = new Map(
-    input.decisions.map((decision) => [decision.taskId, decision]),
+  const resultsByTask = new Map(
+    input.executionReport.results.map((result) => [result.taskId, result]),
   );
   return {
     executionId: input.executionId,
     planId: input.plan.id,
     planVersion: input.plan.version,
-    status: "pending",
+    status: "completed",
     capturedAt: input.capturedAt,
-    tasks: input.tasks.map((task) => {
-      const decision = decisionsByTask.get(task.id);
+    tasks: input.scheduledTasks.map((task) => {
+      const result = resultsByTask.get(task.id);
       return {
         id: task.id,
-        status: decision ? "assigned" : "queued",
-        dependencies: task.dependencies,
-        attempt: decision?.attempt ?? 0,
-        updatedAt: decision?.scheduledAt ?? input.capturedAt,
-        agentId: decision?.agentId,
-        timeoutAt: decision?.timeoutAt,
+        status: task.status,
+        dependencies: task.subtask.dependencies,
+        attempt: task.attempt,
+        updatedAt:
+          task.completedAt ??
+          task.cancelledAt ??
+          task.assignedAt ??
+          task.enqueuedAt,
+        agentId: result?.agentId,
+        startedAt: result?.startedAt,
+        timeoutAt: task.timeoutAt,
+        failureReason: task.failureReason,
       };
     }),
-    agents:
-      input.decisions.length === 0
-        ? []
-        : [
-            {
-              id: input.workerId,
-              status: "ready",
-              online: true,
-              lastHeartbeatAt: input.capturedAt,
-              taskIds: input.decisions.map((decision) => decision.taskId),
-            },
-          ],
+    agents: input.executionAgents.map((agent) => ({
+      id: agent.id,
+      status: agent.state.status,
+      online: agent.state.status === "ready",
+      lastHeartbeatAt: agent.state.lastHeartbeatAt,
+      taskIds: input.executionReport.results
+        .filter((result) => result.agentId === agent.id)
+        .map((result) => result.taskId),
+    })),
     transitions: [],
   };
 }
