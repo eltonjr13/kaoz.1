@@ -4,6 +4,7 @@ import {
   Scheduler,
   type SchedulerExecutionAgent,
 } from "@/services/agents";
+import { agentContextAdapter } from "@/services/agents/memory/agent-context.runtime";
 import { CreativeAgent } from "./agents/CreativeAgent";
 import {
   type AgentTaskOptions,
@@ -133,6 +134,7 @@ export class FlowAgent {
     timeout: number,
   ): Promise<TResult> {
     const scheduler = new Scheduler({
+      contextAdapter: agentContextAdapter,
       config: {
         maxConcurrency: 1,
         maxConcurrencyPerAgent: 1,

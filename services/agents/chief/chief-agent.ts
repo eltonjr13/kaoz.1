@@ -1050,6 +1050,26 @@ function nonNegativeInteger(value: number, label: string): number {
   return value;
 }
 
+function withExecutionContext(
+  context: HydratedAgentContext,
+  executionContext: ExecutionContext,
+): HydratedAgentContext {
+  return Object.freeze({
+    ...context,
+    executionContext,
+  });
+}
+
+function contextText(
+  data: ContextData | undefined,
+  key: string,
+): string | undefined {
+  const value = data?.[key];
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : undefined;
+}
+
 function defaultId(): string {
   return globalThis.crypto.randomUUID();
 }

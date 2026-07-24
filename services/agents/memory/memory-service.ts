@@ -92,6 +92,26 @@ export class MemoryService {
     return formatPromptContext(instructions, memories);
   }
 
+  /**
+   * Preserves the historical agent-memory behavior: resolved instructions are
+   * topic-specific, while the success/failure examples come from all recent
+   * valuable episodes for the avatar.
+   */
+  async getLegacyPromptContext(
+    query: MemoryQuery,
+  ): Promise<string> {
+    const normalized = normalizeQuery(query);
+    const [instructions, memories] = await Promise.all([
+      this.backend.getInstructions(normalized),
+      this.backend.getMemories({
+        ...normalized,
+        topic: undefined,
+        projectId: undefined,
+      }),
+    ]);
+    return formatPromptContext(instructions, memories);
+  }
+
   async persistMemory(
     input: PersistMemoryInput,
     options: PersistMemoryOptions,
@@ -285,4 +305,3 @@ function optionalText(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized || undefined;
 }
-

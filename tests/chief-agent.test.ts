@@ -62,7 +62,11 @@ test("plans and executes only through Scheduler using LegacyAgentAdapter", async
   assert.equal(legacyCalls, 1);
   assert.equal(result.response, "compatible response");
   assert.equal(result.executionContext.kind, "execution");
-  assert.equal(result.executionContext.version, 5);
+  assert.equal(result.executionContext.version, 6);
+  assert.equal(
+    typeof result.executionContext.data.memory,
+    "object",
+  );
   assert.equal(
     result.executionContext.data.status,
     "execution-completed",
