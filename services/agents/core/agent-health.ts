@@ -1,5 +1,5 @@
-import type { AgentId } from "./agent-id";
-import type { AgentStatus } from "./agent-status";
+import type { AgentId } from "./agent-id.ts";
+import type { AgentStatus } from "./agent-status.ts";
 
 export type AgentHealthStatus = "healthy" | "degraded" | "unhealthy";
 

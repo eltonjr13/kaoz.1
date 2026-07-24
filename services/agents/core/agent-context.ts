@@ -1,4 +1,4 @@
-import type { AgentId } from "./agent-id";
+import type { AgentId } from "./agent-id.ts";
 
 export interface AgentContext {
   readonly requestId: string;

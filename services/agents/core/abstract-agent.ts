@@ -1,12 +1,12 @@
-import type { AgentCapabilities } from "./agent-capabilities";
-import type { AgentConfig } from "./agent-config";
-import type { AgentContext } from "./agent-context";
-import type { AgentHealth, AgentHealthStatus, AgentHeartbeat } from "./agent-health";
-import type { AgentId } from "./agent-id";
-import type { AgentMetadata } from "./agent-metadata";
-import type { AgentState } from "./agent-state";
-import type { AgentStatus } from "./agent-status";
-import type { BaseAgent } from "./base-agent";
+import type { AgentCapabilities } from "./agent-capabilities.ts";
+import type { AgentConfig } from "./agent-config.ts";
+import type { AgentContext } from "./agent-context.ts";
+import type { AgentHealth, AgentHealthStatus, AgentHeartbeat } from "./agent-health.ts";
+import type { AgentId } from "./agent-id.ts";
+import type { AgentMetadata } from "./agent-metadata.ts";
+import type { AgentState } from "./agent-state.ts";
+import type { AgentStatus } from "./agent-status.ts";
+import type { BaseAgent } from "./base-agent.ts";
 
 type AgentStatePatch = Partial<
   Omit<AgentState, "status" | "statusChangedAt" | "updatedAt">
@@ -24,7 +24,7 @@ export abstract class AbstractAgent<
   private readonly capabilities: AgentCapabilities;
   private currentState: AgentState;
 
-  protected constructor(config: AgentConfig) {
+  constructor(config: AgentConfig) {
     this.config = config;
     this.metadata = freezeMetadata(config.metadata);
     this.capabilities = freezeCapabilities(config.capabilities);

@@ -1,4 +1,4 @@
-import type { AgentStatus } from "./agent-status";
+import type { AgentStatus } from "./agent-status.ts";
 
 export interface AgentErrorState {
   readonly name: string;
