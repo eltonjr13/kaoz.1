@@ -243,6 +243,32 @@ test("missing destinations are dead-lettered without external queues", async () 
   assert.equal(bus.snapshot().deadLetterCount, 1);
 });
 
+test("unregistering a mailbox dead-letters queued deliveries without hanging callers", async () => {
+  const bus = new MessageBus();
+  bus.registerMailbox(workerId, () => undefined);
+
+  const delivery = bus.send(createCommand("task.queued", {}), {
+    recipientId: workerId,
+  });
+  assert.equal(bus.unregisterMailbox(workerId), true);
+
+  const report = await delivery;
+  assert.equal(report.failed, 1);
+  assert.match(report.receipts[0].error ?? "", /was unregistered/);
+  assert.equal(bus.listDeadLetters().length, 1);
+});
+
+test("events without subscribers complete without creating dead letters", async () => {
+  const bus = new MessageBus();
+
+  const report = await bus.publish(createEvent("unused.event", {}));
+
+  assert.equal(report.delivered, 0);
+  assert.equal(report.failed, 0);
+  assert.equal(report.receipts.length, 0);
+  assert.equal(bus.listDeadLetters().length, 0);
+});
+
 test("fire-and-forget returns immediately and processes asynchronously", async () => {
   const bus = new MessageBus();
   let resolveDelivery: (() => void) | undefined;

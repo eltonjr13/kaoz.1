@@ -1,7 +1,6 @@
 import type { AgentId } from "../core/agent-id.ts";
-import type { DeadLetter } from "./dead-letter-queue.ts";
 import type { Envelope, RetryPolicy } from "./envelope.ts";
-import type { Message, Response } from "./message.ts";
+import type { Response } from "./message.ts";
 
 export interface MessageHandlerContext {
   readonly signal: AbortSignal;
@@ -65,14 +64,4 @@ export interface MessageBusSnapshot {
   readonly pendingRequestCount: number;
   readonly activeMailboxCount: number;
   readonly deadLetterCount: number;
-}
-
-export interface DeadLetterRedriveResult {
-  readonly deadLetter: DeadLetter;
-  readonly report: DeliveryReport;
-}
-
-export interface PendingResponse<TPayload = unknown> {
-  readonly message: Message;
-  readonly response: Response<TPayload>;
 }
