@@ -213,8 +213,12 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       supervisor.initialize(),
     ]);
 
+    let activePlan: ExecutionPlan | undefined;
+    let activeSubtask: Subtask | undefined;
+    let activeDecision: SchedulingDecision | undefined;
     try {
       const plan = await planner.handleTask(goal);
+      activePlan = plan;
       executionContext = sharedContext.update("execution", {
         planId: plan.id,
         planVersion: plan.version,
@@ -250,6 +254,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       }
       const decision = decisions[0];
       const subtask = subtasks[0];
+      activeDecision = decision;
+      activeSubtask = subtask;
       executionContext = sharedContext.update("execution", {
         scheduledDecisionId: decision.id,
         assignedAgentId: String(decision.agentId),
@@ -344,10 +350,51 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         supervision,
       });
     } catch (error) {
-      executionContext = sharedContext.update("execution", {
+      sharedContext.update("execution", {
         status: "failed",
         failureReason: errorMessage(error),
       });
+      if (activePlan && activeSubtask && activeDecision) {
+        if (scheduler.get(activeSubtask.id)?.status === "assigned") {
+          scheduler.fail(activeSubtask.id, errorMessage(error), false);
+        }
+        await supervisor.handleTask({
+          executionId,
+          planId: activePlan.id,
+          planVersion: activePlan.version,
+          status: "failed",
+          capturedAt: this.currentTimestamp(),
+          tasks: [
+            {
+              id: activeSubtask.id,
+              status: "failed",
+              dependencies: activeSubtask.dependencies,
+              attempt: activeDecision.attempt,
+              updatedAt: this.currentTimestamp(),
+              agentId: activeDecision.agentId,
+              startedAt: activeDecision.scheduledAt,
+              failureReason: errorMessage(error),
+            },
+          ],
+          agents: [
+            {
+              id: activeDecision.agentId,
+              status: "ready",
+              online: true,
+              lastHeartbeatAt: this.currentTimestamp(),
+              taskIds: [],
+            },
+          ],
+          transitions: [
+            {
+              taskId: activeSubtask.id,
+              from: "running",
+              to: "failed",
+              occurredAt: this.currentTimestamp(),
+            },
+          ],
+        });
+      }
       throw error;
     } finally {
       await Promise.allSettled([
