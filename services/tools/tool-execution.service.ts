@@ -125,7 +125,7 @@ export class ToolExecutionService {
     const correlationId =
       request.correlationId?.trim() || crypto.randomUUID();
     const timeoutMs = request.timeoutMs
-      ? validateTimeout(request.timeoutMs)
+      ? validateTimeout(request.timeoutMs) + 1_000
       : DEFAULT_BUS_TIMEOUT_MS;
     const normalizedRequest: ToolExecutionRequest = Object.freeze({
       ...request,
@@ -186,8 +186,6 @@ export class ToolExecutionService {
     busContext: MessageHandlerContext,
   ): Promise<ToolExecutionOutcome> {
     const started = this.clock.now();
-    const correlationId =
-      request.correlationId?.trim() || busContext.correlationId;
     let tool: KaozTool | undefined;
     let required: ApprovalMode | undefined;
     let permissionDecision: "allowed" | "denied" = "denied";

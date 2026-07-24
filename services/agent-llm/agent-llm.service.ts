@@ -7,7 +7,6 @@ import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, Ag
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
 import { formatSpotifyToolResponse } from "../spotify/spotify-response-format.ts";
-import { toolExecutionService } from "../tools/tool-execution.runtime.ts";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
 
 type ProcessResult = {
@@ -806,6 +805,9 @@ export async function getConfiguredAgentIdentity(agent?: QueryOptions["agent"]):
 }
 
 async function runCliWithToolsLoop(prompt: string, options: QueryOptions, executor: (currentPrompt: string) => Promise<string>): Promise<string> {
+  const { toolExecutionService } = await import(
+    "../tools/tool-execution.runtime.ts"
+  );
   const allTools = await toolExecutionService.listTools();
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);

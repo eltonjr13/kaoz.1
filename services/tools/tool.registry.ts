@@ -1,8 +1,8 @@
-import type { KaozTool, ToolHandler } from "./tool.types";
-import { discoverMcpTools, executeMcpTool } from "../orchestrator/adapters/mcp.adapter";
-import { systemHandlers } from "../orchestrator/adapters/system.adapter";
-import { contentHandlers } from "../orchestrator/adapters/content.adapter";
-import { connectorHandlers } from "../orchestrator/adapters/connector.adapter";
+import type { KaozTool, ToolHandler } from "./tool.types.ts";
+import { discoverMcpTools, executeMcpTool } from "../orchestrator/adapters/mcp.adapter.ts";
+import { systemHandlers } from "../orchestrator/adapters/system.adapter.ts";
+import { contentHandlers } from "../orchestrator/adapters/content.adapter.ts";
+import { connectorHandlers } from "../orchestrator/adapters/connector.adapter.ts";
 const nativeTools:KaozTool[]=[
  {id:"native:web-research",name:"Pesquisa web",description:"Pesquisa a web e retorna fontes observadas.",source:"native",inputSchema:{type:"object",required:["query"]},effect:"read",approvalMode:"never",timeoutMs:15_000,enabled:true},
  {id:"system.summarize",name:"Resumir dados",description:"Limita e organiza texto já disponível.",source:"native",inputSchema:{type:"object",required:["text"]},effect:"read",approvalMode:"never",timeoutMs:5_000,enabled:true},
@@ -17,9 +17,9 @@ const nativeTools:KaozTool[]=[
  ,{id:"social:telegram:publish",name:"Enviar no Telegram",description:"Envia texto e mídia ao chat Telegram configurado quando o usuário pedir diretamente para enviar ou publicar.",source:"native",inputSchema:{type:"object",required:["text"],properties:{text:{type:"string"},accountId:{type:"string"},media:{type:"array"}}},effect:"external",approvalMode:"never",timeoutMs:30_000,enabled:true}
 ];
 
-import { skillRegistry } from "../skills/skill.registry";
-import { createSkillScriptHandler } from "../orchestrator/adapters/skill-script.adapter";
-import type { KaozSkill } from "../skills/skill.types";
+import { skillRegistry } from "../skills/skill.registry.ts";
+import { createSkillScriptHandler } from "../orchestrator/adapters/skill-script.adapter.ts";
+import type { KaozSkill } from "../skills/skill.types.ts";
 
 export class ToolRegistry { 
   async list(){ 
