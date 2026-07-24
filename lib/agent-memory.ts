@@ -66,7 +66,7 @@ export function getMemoryContextForPrompt(
   avatarId: string,
   topic: string,
 ): Promise<string> {
-  return memoryService.getPromptContext({
+  return memoryService.getLegacyPromptContext({
     avatarId,
     topic,
     taskType: "project",
