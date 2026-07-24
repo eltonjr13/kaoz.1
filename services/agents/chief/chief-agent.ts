@@ -282,43 +282,43 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         }
         if (tasks.length > 0) {
           try {
-          scheduler.enqueueAll(
-            tasks.map((task) => ({
-              subtask: task,
-              fairnessKey: executionId,
-              timeoutMs: task.timeout,
-              retryPolicy: {
-                maxAttempts: 1,
-                baseDelayMs: 0,
-                backoffMultiplier: 1,
-                maxDelayMs: 0,
-              },
-            })),
-          );
-          const workerSnapshot: SchedulerAgentSnapshot = {
-            id: executionAdapterId,
-            capabilities: Object.freeze([
-              ...new Set(
-                tasks.map((task) => task.ownerCapability),
-              ),
-            ]),
-            online: true,
-            available: true,
-            currentLoad: 0,
-            maxConcurrency: 1,
-          };
-          decisions = scheduler.schedule([workerSnapshot]);
-          if (decisions.length === 0) {
-            throw new Error(
-              "PlannerAgent produced a plan with no schedulable initial task.",
+            scheduler.enqueueAll(
+              tasks.map((task) => ({
+                subtask: task,
+                fairnessKey: executionId,
+                timeoutMs: task.timeout,
+                retryPolicy: {
+                  maxAttempts: 1,
+                  baseDelayMs: 0,
+                  backoffMultiplier: 1,
+                  maxDelayMs: 0,
+                },
+              })),
             );
-          }
-          executionContext = sharedContext.update("execution", {
-            planId: plan.id,
-            executionTaskIds: tasks.map((task) => task.id),
-            scheduledDecisionIds: decisions.map((decision) => decision.id),
-            status: "scheduled-not-executed",
-          });
+            const workerSnapshot: SchedulerAgentSnapshot = {
+              id: executionAdapterId,
+              capabilities: Object.freeze([
+                ...new Set(tasks.map((task) => task.ownerCapability)),
+              ]),
+              online: true,
+              available: true,
+              currentLoad: 0,
+              maxConcurrency: 1,
+            };
+            decisions = scheduler.schedule([workerSnapshot]);
+            if (decisions.length === 0) {
+              throw new Error(
+                "PlannerAgent produced a plan with no schedulable initial task.",
+              );
+            }
+            executionContext = sharedContext.update("execution", {
+              planId: plan.id,
+              executionTaskIds: tasks.map((task) => task.id),
+              scheduledDecisionIds: decisions.map(
+                (decision) => decision.id,
+              ),
+              status: "scheduled-not-executed",
+            });
           } catch (error) {
             decisions = Object.freeze([]);
             executionContext = sharedContext.update("execution", {
