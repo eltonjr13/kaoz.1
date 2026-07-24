@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { memoryManager } from '@/lib/cognitive-memory/core/MemoryManager';
+import { memoryService } from '@/services/agents/memory/memory-service.runtime';
 
 // Endpoint para envio de feedback direto da aba Córtex
 // Permite thumbs up/down em episódios da memória pelo ID do episódio
@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     }
 
     // Propaga o feedback para a memória cognitiva (ACME)
-    // Funciona com jobId, episodeId, ou projectId — o MemoryManager busca por todos
-    await memoryManager.submitUserFeedback(jobId, feedback);
+    // Funciona com jobId, episodeId, ou projectId pelo adapter legado.
+    await memoryService.submitFeedback(jobId, feedback);
 
     console.info(`[Memory Feedback API] Episódio ${jobId} avaliado como: ${feedback}`);
 

@@ -1,5 +1,6 @@
-import { memoryManager } from "./cognitive-memory/core/MemoryManager";
-import type { EpisodicMemoryNode, TaskType } from "./cognitive-memory/types/memory";
+import { createAgentId } from "@/services/agents/core/agent-id";
+import { memoryService } from "@/services/agents/memory/memory-service.runtime";
+import type { MemoryRecord } from "@/services/agents/memory/memory.types";
 
 export interface AgentMemoryEntry {
   id: string;
@@ -16,18 +17,16 @@ export interface AgentMemoryEntry {
   topic?: string;
 }
 
-export async function loadAgentMemory(avatarId: string, topic?: string): Promise<AgentMemoryEntry[]> {
-  const episodes = await memoryManager.hippocampus.getRecentEpisodes(avatarId, 50);
-  let mapped = episodes.map(mapNodeToEntry);
-
-  if (topic) {
-    const searchTopic = topic.toLowerCase().trim();
-    mapped = mapped.filter(
-      (m) => (m.topic || m.inputSummary || "").toLowerCase().trim() === searchTopic
-    );
-  }
-
-  return mapped;
+export async function loadAgentMemory(
+  avatarId: string,
+  topic?: string,
+): Promise<AgentMemoryEntry[]> {
+  const memories = await memoryService.getMemories({
+    avatarId,
+    topic,
+    limit: 50,
+  });
+  return memories.map(mapRecordToEntry);
 }
 
 export async function appendAgentMemory(
@@ -36,94 +35,69 @@ export async function appendAgentMemory(
     inputSummary?: string;
     outputSummary?: string;
     taskType?: "image" | "video" | "project" | "refine";
-  }
+  },
 ): Promise<AgentMemoryEntry> {
-  const taskType: TaskType = entry.taskType || "project";
   const inputPrompt = entry.promptUsed || entry.inputSummary || "N/A";
-  const outputSummary = entry.outputSummary || entry.learnings || "N/A";
+  const outputSummary =
+    entry.outputSummary || entry.learnings || "N/A";
+  const memory = await memoryService.persistMemory(
+    {
+      avatarId: entry.avatarId,
+      taskType: entry.taskType || "project",
+      inputPrompt,
+      outputSummary,
+      status: entry.type,
+      modelUsed: entry.modelUsed,
+      errorMessage: entry.errorMessage || null,
+      executionTimeMs: 0,
+      projectId: entry.topic || entry.inputSummary || undefined,
+      rawDetails: {
+        jobId: entry.topic || entry.inputSummary || undefined,
+      },
+    },
+    {
+      sourceAgentId: createAgentId("legacy-agent-memory-adapter"),
+    },
+  );
+  return mapRecordToEntry(memory);
+}
 
-  const newEpisode = await memoryManager.recordEpisode({
-    avatarId: entry.avatarId,
-    taskType,
-    inputPrompt,
-    outputSummary,
-    status: entry.type,
-    modelUsed: entry.modelUsed,
-    errorMessage: entry.errorMessage || null,
-    executionTimeMs: 0,
-    projectId: entry.topic || entry.inputSummary || undefined,
-    rawDetails: {
-      jobId: entry.topic || entry.inputSummary || undefined
-    }
+export function getMemoryContextForPrompt(
+  avatarId: string,
+  topic: string,
+): Promise<string> {
+  return memoryService.getPromptContext({
+    avatarId,
+    topic,
+    taskType: "project",
+    projectId: topic,
+    limit: 15,
   });
-
-  return mapNodeToEntry(newEpisode);
 }
 
-export async function getMemoryContextForPrompt(avatarId: string, topic: string): Promise<string> {
-  // 1. Obtém instruções consolidadas do resolvedor hierárquico ACME
-  const instructions = await memoryManager.getActiveInstructions(avatarId, topic, "project", {
-    projectId: topic
-  });
-
-  let context = "";
-
-  if (instructions.length > 0) {
-    context += "Instruções e aprendizados refinados da memória cognitiva:\n";
-    instructions.forEach((ins) => {
-      context += `- ${ins}\n`;
-    });
-    context += "\n";
-  }
-
-  // 2. Fallback Híbrido: Obtém histórico recente de sucessos/falhas para guiar o LLM com exemplos reais
-  const recentEpisodes = await memoryManager.hippocampus.getRecentEpisodes(avatarId, 15);
-  
-  // A Amígdala avalia se a memória é valiosa/segura para compor o contexto
-  const valuableEpisodes = recentEpisodes.filter((e) => memoryManager.amygdala.isMemoryValuable(e));
-  
-  const successes = valuableEpisodes.filter((e) => e.status === "success").slice(0, 3);
-  const failures = valuableEpisodes.filter((e) => e.status === "failure").slice(0, 3);
-
-  if (successes.length > 0) {
-    context += "- EXEMPLOS DE SUCESSO (essas abordagens funcionaram):\n";
-    successes.forEach((e) => {
-      context += `  * No tema "${e.projectId || e.inputPrompt}", usou o prompt: "${e.inputPrompt}". Aprendizado: ${e.outputSummary}\n`;
-    });
-  }
-
-  if (failures.length > 0) {
-    context += "- ERROS A EVITAR (essas abordagens falharam):\n";
-    failures.forEach((e) => {
-      context += `  * No tema "${e.projectId || e.inputPrompt}", usou o prompt: "${e.inputPrompt}". Falhou com o erro: "${e.errorMessage || e.outputSummary}"\n`;
-    });
-  }
-
-  return context.trim();
+export function pruneOldMemory(
+  avatarId: string,
+  maxEntries = 20,
+): Promise<void> {
+  return memoryService.prune(avatarId, maxEntries);
 }
 
-export async function pruneOldMemory(avatarId: string, maxEntries = 20): Promise<void> {
-  // O pruner assíncrono já faz a poda reativa no evento de gravação, 
-  // mas expomos a assinatura para compatibilidade legada
-  const { graphPruner } = await import("./cognitive-memory/background/GraphPruner");
-  await graphPruner.compressEpisodicMemory(avatarId, maxEntries);
-  await graphPruner.decaySemanticGraph(avatarId);
-}
-
-// Auxiliar de mapeamento
-function mapNodeToEntry(node: EpisodicMemoryNode): AgentMemoryEntry {
+function mapRecordToEntry(memory: MemoryRecord): AgentMemoryEntry {
   return {
-    id: node.id,
-    avatarId: node.avatarId,
-    taskType: node.taskType === "ad-creative" ? "image" : node.taskType,
-    inputSummary: node.inputPrompt,
-    outputSummary: node.outputSummary,
-    timestamp: node.timestamp,
-    type: node.status,
-    promptUsed: node.inputPrompt,
-    modelUsed: node.modelUsed,
-    errorMessage: node.errorMessage,
-    learnings: node.outputSummary,
-    topic: node.projectId
+    id: memory.id,
+    avatarId: memory.avatarId,
+    taskType:
+      memory.taskType === "ad-creative"
+        ? "image"
+        : memory.taskType,
+    inputSummary: memory.inputPrompt,
+    outputSummary: memory.outputSummary,
+    timestamp: memory.timestamp,
+    type: memory.status,
+    promptUsed: memory.inputPrompt,
+    modelUsed: memory.modelUsed,
+    errorMessage: memory.errorMessage,
+    learnings: memory.outputSummary,
+    topic: memory.projectId,
   };
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { findLocalJob, updateLocalJob } from '@/lib/local-store';
-import { memoryManager } from '@/lib/cognitive-memory/core/MemoryManager';
+import { memoryService } from '@/services/agents/memory/memory-service.runtime';
 import { ChatMemoryService } from '@/lib/cognitive-memory/chat/ChatMemoryService';
 import { JsonStorageProvider } from '@/lib/cognitive-memory/storage/JsonStorageProvider';
 export async function POST(request: Request) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
     // 2. Propaga o feedback para a memória cognitiva (ACME) quando Cortex estiver ativo
     if (job.use_cortex_memory !== false) {
-      await memoryManager.submitUserFeedback(jobId, feedback);
+      await memoryService.submitFeedback(jobId, feedback);
 
       // 3. Atualizar também a personalidade / memórias do chat baseadas no feedback do Job
       try {
