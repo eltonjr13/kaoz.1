@@ -4,6 +4,7 @@ import type { AgentContext, ExecutionTask } from "@/services/agents";
 import { flowProvider } from "../FlowProvider";
 import { logger } from "../FlowUtils";
 import {
+  type AgentTaskOptions,
   type FlowExecutionResult,
   requireFlowTaskInput,
 } from "./FlowAgentContracts";

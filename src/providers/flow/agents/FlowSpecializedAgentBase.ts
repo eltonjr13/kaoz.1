@@ -20,6 +20,7 @@ import {
   type AgentId,
   type ExecutionTask,
 } from "@/services/agents";
+import type { JobStatus } from "@/types";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -372,7 +373,7 @@ export abstract class FlowSpecializedAgentBase<
     patch: {
       source_video_id: string;
       script_text: string;
-      status: string;
+      status: JobStatus;
     },
   ): Promise<void> {
     await updateLocalJob(jobId, {

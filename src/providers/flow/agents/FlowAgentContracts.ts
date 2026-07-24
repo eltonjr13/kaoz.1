@@ -93,6 +93,21 @@ export interface FlowExecutionResult {
   readonly error?: string;
 }
 
+type SpecialistFlowTaskKind =
+  | "image"
+  | "video"
+  | "creative"
+  | "refine"
+  | "project";
+
+type SpecialistFlowTaskInput = {
+  [TKind in SpecialistFlowTaskKind]: {
+    readonly kind: TKind;
+    readonly options: AgentTaskOptions;
+    readonly decision: FlowDecision;
+  };
+}[SpecialistFlowTaskKind];
+
 export type FlowTaskInput =
   | {
       readonly kind: "planning";
@@ -102,16 +117,7 @@ export type FlowTaskInput =
       readonly kind: "prepare";
       readonly options: AgentTaskOptions;
     }
-  | {
-      readonly kind:
-        | "image"
-        | "video"
-        | "creative"
-        | "refine"
-        | "project";
-      readonly options: AgentTaskOptions;
-      readonly decision: FlowDecision;
-    };
+  | SpecialistFlowTaskInput;
 
 export interface FlowExecutionTask extends ExecutionTask {
   readonly input: FlowTaskInput;

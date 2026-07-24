@@ -2,7 +2,6 @@ import type { FlowDecision } from "@/lib/ai/gemini";
 import {
   AgentRegistry,
   Scheduler,
-  createAgentId,
   type SchedulerExecutionAgent,
 } from "@/services/agents";
 import { CreativeAgent } from "./agents/CreativeAgent";
@@ -52,7 +51,7 @@ export class FlowAgent {
     for (const agent of this.agents) {
       this.registry.register({
         agent,
-        type: agent.getMetadata().kind,
+        type: agent.getMetadata().kind ?? agent.constructor.name,
       });
     }
   }

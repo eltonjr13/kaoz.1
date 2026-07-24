@@ -8,6 +8,8 @@ import { flowProvider } from "../FlowProvider";
 import { logger } from "../FlowUtils";
 import {
   BASE_TURNAROUND_VIEWS,
+  MAX_IMAGE_BATCH_SIZE,
+  MAX_SCALE_IMAGE_COUNT,
   TOP_BOTTOM_VIEWS,
   TURNAROUND_VIEW_INSTRUCTIONS,
   TURNAROUND_VIEW_LABELS,
@@ -55,7 +57,9 @@ export class ImageAgent extends FlowSpecializedAgentBase<FlowExecutionResult> {
   private getTurnaroundViews(options: AgentTaskOptions): TurnaroundView[] {
     const requested = options.turnaroundViews || [];
     const includesTopBottom = requested.some(view => TOP_BOTTOM_VIEWS.includes(view));
-    return includesTopBottom ? [...BASE_TURNAROUND_VIEWS, ...TOP_BOTTOM_VIEWS] : BASE_TURNAROUND_VIEWS;
+    return includesTopBottom
+      ? [...BASE_TURNAROUND_VIEWS, ...TOP_BOTTOM_VIEWS]
+      : [...BASE_TURNAROUND_VIEWS];
   }
 
   private buildPrimaryTurnaroundPrompt(prompt: string): string {
