@@ -14,7 +14,8 @@ import {
   UNASSIGNED_SUBTASK_OWNER_RESOLVER,
 } from "./task-decomposition-policies.ts";
 import type {
-  Subtask,
+  ExecutionTask,
+  ExecutionTaskExpectedOutput,
   SubtaskIdFactory,
   SubtaskOwnerResolver,
   SubtaskPriorityResolver,
@@ -45,9 +46,9 @@ export interface TaskDecomposerAgentConfigOptions {
  */
 export class TaskDecomposerAgent extends AbstractAgent<
   ExecutionPlan,
-  readonly Subtask[],
+  readonly ExecutionTask[],
   TaskDecomposerMessage,
-  readonly Subtask[]
+  readonly ExecutionTask[]
 > {
   private readonly ownerResolver: SubtaskOwnerResolver;
   private readonly priorityResolver: SubtaskPriorityResolver;
@@ -67,7 +68,7 @@ export class TaskDecomposerAgent extends AbstractAgent<
   async handleTask(
     plan: ExecutionPlan,
     _context?: AgentContext,
-  ): Promise<readonly Subtask[]> {
+  ): Promise<readonly ExecutionTask[]> {
     this.assertReady();
     return this.decompose(plan);
   }
@@ -75,7 +76,7 @@ export class TaskDecomposerAgent extends AbstractAgent<
   handleMessage(
     message: TaskDecomposerMessage,
     context?: AgentContext,
-  ): Promise<readonly Subtask[]> {
+  ): Promise<readonly ExecutionTask[]> {
     if (message?.type !== "decompose-plan" || !message.plan) {
       return Promise.reject(
         new Error("TaskDecomposerAgent only accepts decompose-plan messages."),
@@ -84,7 +85,7 @@ export class TaskDecomposerAgent extends AbstractAgent<
     return this.handleTask(message.plan, context);
   }
 
-  private decompose(plan: ExecutionPlan): readonly Subtask[] {
+  private decompose(plan: ExecutionPlan): readonly ExecutionTask[] {
     assertExecutionPlan(plan);
     const graph = createDependencyGraph(plan.steps);
     const stepById = new Map(plan.steps.map((step) => [step.id, step]));
@@ -114,7 +115,7 @@ export class TaskDecomposerAgent extends AbstractAgent<
     plan: ExecutionPlan,
     step: ExecutionStep,
     subtaskIdByStepId: ReadonlyMap<string, string>,
-  ): Subtask {
+  ): ExecutionTask {
     const owner = this.ownerResolver.resolveOwner(plan, step);
     const priority = this.priorityResolver.resolvePriority(plan, step);
     assertPriority(priority);
@@ -131,6 +132,9 @@ export class TaskDecomposerAgent extends AbstractAgent<
       }
       return dependencyId;
     });
+    const ownerCapability = normalizeCapabilityName(step.capability);
+    const timeout = positiveTimeout(step.estimate.durationMs);
+    const expectedOutput = createExpectedOutput(plan, step);
 
     return Object.freeze({
       id: requireText(
@@ -143,9 +147,12 @@ export class TaskDecomposerAgent extends AbstractAgent<
       title: requireText(step.title, "Subtask title"),
       description: requireText(step.description, "Subtask description"),
       owner: normalizeOwner(owner),
-      requiredCapability: normalizeCapabilityName(step.capability),
+      ownerCapability,
+      requiredCapability: ownerCapability,
       priority,
       dependencies: Object.freeze(dependencies),
+      timeout,
+      expectedOutput,
       estimatedCost: step.estimate.cost,
       estimatedTime: step.estimate.durationMs,
       confidence: step.estimate.confidence,
@@ -249,6 +256,56 @@ function assertEstimate(value: number, label: string): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(`${label} must be a non-negative finite number.`);
   }
+}
+
+function positiveTimeout(value: number): number {
+  assertEstimate(value, "Execution task timeout");
+  return Math.max(1, value);
+}
+
+function createExpectedOutput(
+  plan: ExecutionPlan,
+  step: ExecutionStep,
+): ExecutionTaskExpectedOutput {
+  const criteriaById = new Map(
+    plan.acceptanceCriteria.map((criterion) => [criterion.id, criterion]),
+  );
+  const acceptanceCriteria = step.acceptanceCriteriaIds.map((criterionId) => {
+    const criterion = criteriaById.get(criterionId);
+    if (!criterion) {
+      throw new Error(
+        `Execution step "${step.id}" references unknown acceptance criterion "${criterionId}".`,
+      );
+    }
+    return criterion;
+  });
+  const milestone = step.milestoneId
+    ? plan.milestones.find((candidate) => candidate.id === step.milestoneId)
+    : undefined;
+  if (step.milestoneId && !milestone) {
+    throw new Error(
+      `Execution step "${step.id}" references unknown milestone "${step.milestoneId}".`,
+    );
+  }
+  const description =
+    acceptanceCriteria.length > 0
+      ? acceptanceCriteria
+          .map((criterion) => criterion.description)
+          .join(" ")
+      : milestone?.description ??
+        `Completed output for "${step.title}": ${step.description}`;
+
+  return Object.freeze({
+    description: requireText(description, "Execution task expected output"),
+    acceptanceCriteria: Object.freeze([...acceptanceCriteria]),
+    milestone: milestone
+      ? Object.freeze({
+          id: milestone.id,
+          title: milestone.title,
+          description: milestone.description,
+        })
+      : undefined,
+  });
 }
 
 function assertConfidence(value: number): void {

@@ -1,9 +1,14 @@
 import type { AgentId } from "../core/agent-id.ts";
 import type {
+  AcceptanceCriteria,
   ExecutionPlan,
   ExecutionStep,
+  Milestone,
 } from "../planning/planning.types.ts";
 
+/**
+ * Compatibility contract kept for existing Scheduler consumers.
+ */
 export interface Subtask {
   readonly id: string;
   readonly sourcePlanId: string;
@@ -23,6 +28,25 @@ export interface Subtask {
   readonly confidence: number;
 }
 
+export interface ExecutionTaskExpectedOutput {
+  readonly description: string;
+  readonly acceptanceCriteria: readonly AcceptanceCriteria[];
+  readonly milestone?: Pick<Milestone, "id" | "title" | "description">;
+}
+
+/**
+ * Canonical task produced by TaskDecomposerAgent.
+ *
+ * Legacy aliases remain available through Subtask:
+ * - ownerCapability -> requiredCapability
+ * - timeout -> estimatedTime
+ */
+export interface ExecutionTask extends Subtask {
+  readonly ownerCapability: string;
+  readonly timeout: number;
+  readonly expectedOutput: ExecutionTaskExpectedOutput;
+}
+
 export interface SubtaskOwnerResolver {
   resolveOwner(
     plan: ExecutionPlan,
@@ -40,4 +64,3 @@ export interface SubtaskPriorityResolver {
 export interface SubtaskIdFactory {
   createId(plan: ExecutionPlan, step: ExecutionStep): string;
 }
-

@@ -16,7 +16,10 @@ import {
   TaskDecomposerAgent,
   createTaskDecomposerAgentConfig,
 } from "../decomposition/task-decomposer-agent.ts";
-import type { Subtask } from "../decomposition/task-decomposition.types.ts";
+import type {
+  ExecutionTask,
+  Subtask,
+} from "../decomposition/task-decomposition.types.ts";
 import type { PlanGenerator } from "../planning/plan-generator.ts";
 import {
   PlannerAgent,
@@ -95,6 +98,10 @@ export interface ChiefAgentResult<TResponse> {
   readonly goal: Goal;
   readonly goalRegistration: Artifact;
   readonly plan: ExecutionPlan;
+  readonly tasks: readonly ExecutionTask[];
+  /**
+   * Compatibility alias for consumers from the first Chief migration.
+   */
   readonly subtasks: readonly Subtask[];
   readonly decisions: readonly SchedulingDecision[];
   readonly supervision: SupervisionReport;
@@ -242,7 +249,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     ]);
 
     let plan: ExecutionPlan | undefined;
-    let subtasks: readonly Subtask[] = Object.freeze([]);
+    let tasks: readonly ExecutionTask[] = Object.freeze([]);
     let decisions: readonly SchedulingDecision[] = Object.freeze([]);
     let plannerError: string | undefined;
     const plannerStartedAt = monotonicNow();
@@ -265,12 +272,12 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       const newPlannerDurationMs = elapsedSince(plannerStartedAt);
       if (plan) {
         try {
-          subtasks = await decomposer.handleTask(plan);
+          tasks = await decomposer.handleTask(plan);
           scheduler.enqueueAll(
-            subtasks.map((subtask) => ({
-              subtask,
+            tasks.map((task) => ({
+              subtask: task,
               fairnessKey: executionId,
-              timeoutMs: Math.max(1, subtask.estimatedTime),
+              timeoutMs: task.timeout,
               retryPolicy: {
                 maxAttempts: 1,
                 baseDelayMs: 0,
@@ -283,7 +290,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             id: executionAdapterId,
             capabilities: Object.freeze([
               ...new Set(
-                subtasks.map((subtask) => subtask.requiredCapability),
+                tasks.map((task) => task.ownerCapability),
               ),
             ]),
             online: true,
@@ -299,15 +306,19 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           }
           executionContext = sharedContext.update("execution", {
             planId: plan.id,
+            executionTaskIds: tasks.map((task) => task.id),
             scheduledDecisionIds: decisions.map((decision) => decision.id),
             status: "scheduled-not-executed",
           });
         } catch (error) {
-          subtasks = Object.freeze([]);
           decisions = Object.freeze([]);
           executionContext = sharedContext.update("execution", {
             schedulerError: errorMessage(error),
-            status: "planned-not-scheduled",
+            executionTaskIds: tasks.map((task) => task.id),
+            status:
+              tasks.length === 0
+                ? "decomposition-failed"
+                : "tasks-produced-not-scheduled",
           });
         }
       }
@@ -320,7 +331,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
           executionContext,
           goal,
           plan,
-          subtasks,
+          tasks,
           decisions,
         );
       } catch (error) {
@@ -371,7 +382,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         createPlanningSupervisionSnapshot({
           executionId,
           plan,
-          subtasks,
+          tasks,
           decisions,
           workerId: executionAdapterId,
           capturedAt: this.currentTimestamp(),
@@ -379,6 +390,7 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
       );
       executionContext = sharedContext.update("execution", {
         selectedPlanner: plannerError ? "legacy-fallback" : "planner-agent",
+        executionTaskCount: tasks.length,
         schedulerDecisionCount: decisions.length,
         status: "planning-complete-no-execution",
       });
@@ -402,7 +414,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         goal,
         goalRegistration,
         plan,
-        subtasks,
+        tasks,
+        subtasks: tasks,
         decisions,
         supervision,
         planningMetric,
@@ -700,7 +713,7 @@ function createLegacyFallbackPlan<TResponse>(
 function createPlanningSupervisionSnapshot(input: {
   readonly executionId: string;
   readonly plan: ExecutionPlan;
-  readonly subtasks: readonly Subtask[];
+  readonly tasks: readonly ExecutionTask[];
   readonly decisions: readonly SchedulingDecision[];
   readonly workerId: AgentId;
   readonly capturedAt: string;
@@ -714,12 +727,12 @@ function createPlanningSupervisionSnapshot(input: {
     planVersion: input.plan.version,
     status: "pending",
     capturedAt: input.capturedAt,
-    tasks: input.subtasks.map((subtask) => {
-      const decision = decisionsByTask.get(subtask.id);
+    tasks: input.tasks.map((task) => {
+      const decision = decisionsByTask.get(task.id);
       return {
-        id: subtask.id,
+        id: task.id,
         status: decision ? "assigned" : "queued",
-        dependencies: subtask.dependencies,
+        dependencies: task.dependencies,
         attempt: decision?.attempt ?? 0,
         updatedAt: decision?.scheduledAt ?? input.capturedAt,
         agentId: decision?.agentId,
