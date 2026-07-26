@@ -113,10 +113,13 @@ sequenceDiagram
 
 ## Domínios especializados
 
-O `CreativeDomain` adiciona um agrupamento lógico para agentes criativos
-futuros sem participar da execução. Ele é registrado como domínio no
-`AgentRegistry` e reúne os contratos `CreativeDomainContext`,
-`CreativeBrief`, `CreativeWorkflow` e `CreativeArtifact`.
+O `CreativeDomain` agrupa agentes e contratos criativos sem executar geração.
+Ele é registrado como domínio no `AgentRegistry` e reúne os contratos
+`CreativeDomainContext`, `CreativeBrief`, `CreativeWorkflow` e
+`CreativeArtifact`. O Planner reconhece objetivos criativos por regras
+determinísticas, materializa o brief/workflow e produz uma etapa com
+`domainId: creative` e capability `creative.*`. Objetivos não criativos
+continuam no gerador de planos existente.
 
 Seu catálogo estrutural registra `CampaignDirectorAgent`,
 `AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,
@@ -158,8 +161,8 @@ instancia nem chama o Scheduler.
 O `ExecutionStep` aceita um `input` imutável e independente do modelo. A
 materialização do plano congela recursivamente esse valor. O decompositor o
 propaga para `ExecutionTask.input`. Isso permite que a infraestrutura carregue
-um payload específico do domínio sem ensinar o Planner, o decompositor ou o
-Scheduler sobre Google Flow ou chat.
+um payload específico do domínio sem ensinar o decompositor ou o Scheduler
+sobre Google Flow, chat ou estruturas internas do `CreativeWorkflow`.
 
 ```mermaid
 flowchart LR

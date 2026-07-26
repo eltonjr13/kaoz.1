@@ -60,11 +60,49 @@ flowchart LR
         DOM --> VAL
     end
 
-    SC -. "seleção futura por capability" .-> FUT
+    PL -->|"objetivo criativo"| VAL
+    VAL -->|"ExecutionStep + capability creative.*"| TD
+    SC -->|"seleção por capability"| FUT
 ```
 
-O vínculo pontilhado representa uma extensão futura. Esta etapa não conecta
-o domínio ao Chief, Planner, Scheduler ou MessageBus.
+O `PlannerAgent` agora reconhece intenção criativa de forma determinística.
+Ele cria um `CreativeBrief` e um `CreativeWorkflow` somente para objetivos
+criativos. O Chief, o Scheduler, o MessageBus, o SharedContext, o Blackboard e
+os demais domínios permanecem inalterados.
+
+## Roteamento do Planner
+
+```mermaid
+flowchart TD
+    G["Goal"]
+    C{"Intenção criativa?"}
+    OLD["PlanGenerator existente<br/>comportamento preservado"]
+    BRIEF["CreativeBrief"]
+    WF["CreativeWorkflow"]
+    STEP["ExecutionStep<br/>capability creative.*<br/>domainId: creative"]
+    PLAN["ExecutionPlan"]
+
+    G --> C
+    C -->|"não"| OLD
+    OLD --> PLAN
+    C -->|"sim"| BRIEF
+    BRIEF --> WF
+    WF --> STEP
+    STEP --> PLAN
+```
+
+São reconhecidos `campanha`, `imagem`, `vídeo`, `branding`, `publicidade`,
+`social media`, `anúncio` e `marketing`, incluindo plurais aplicáveis e
+variações com ou sem acento. A classificação considera apenas título e
+objetivo. Restrições não participam da decisão, pois podem mencionar um ativo
+somente para proibi-lo.
+
+| Intenção | Capability de destino |
+|---|---|
+| campanha, publicidade, social media, anúncio, marketing | `creative.campaign-direction` |
+| imagem | `creative.image-generation` |
+| vídeo | `creative.video-direction` |
+| branding | `creative.brand-governance` |
 
 ## Catálogo de agentes
 
@@ -156,15 +194,15 @@ creativeDomain.registerAgent(registry, {
 });
 ```
 
-## Limites desta etapa
+## Limites atuais
 
 Não foram adicionados:
 
 - geração de imagem, vídeo, texto ou layout;
 - execução de `CreativeWorkflow`;
 - comunicação com outros agentes;
-- integração com Chief, Planner, Scheduler ou MessageBus;
 - persistência;
 - rotas ou interface.
 
-Também não foram alterados `SharedContext` e `Blackboard`.
+O Planner apenas materializa e roteia a estrutura. Não foram alterados Chief,
+Scheduler, MessageBus, SharedContext, Blackboard nem outros domínios.
