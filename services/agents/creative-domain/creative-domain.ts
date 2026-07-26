@@ -15,6 +15,7 @@ import {
   type CreativeDomainContextInput,
 } from "./creative-domain-context.ts";
 import { CREATIVE_DOMAIN_ID } from "./creative-domain-id.ts";
+import { createCreativeAgentCatalog } from "./agents/creative-agent-catalog.ts";
 
 /**
  * Logical boundary for creative agents and contracts.
@@ -46,7 +47,20 @@ export class CreativeDomain implements AgentDomainDefinition {
   }
 
   register(registry: AgentRegistry): AgentDomainDescriptor {
-    return registry.registerDomain(this);
+    registry.registerDomain(this);
+    for (const agent of createCreativeAgentCatalog()) {
+      this.registerAgent(registry, {
+        agent,
+        type: agent.getMetadata().kind ?? "creative-specialist",
+      });
+    }
+    const descriptor = registry.getDomainById(this.id);
+    if (!descriptor) {
+      throw new Error(
+        `CreativeDomain "${this.id}" was not registered.`,
+      );
+    }
+    return descriptor;
   }
 
   registerAgent(
