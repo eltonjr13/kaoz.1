@@ -29,6 +29,8 @@ export interface WorkflowResult {
   readonly initializedAt: string;
   readonly startedAt: string;
   readonly completedAt: string;
+  readonly output?: unknown;
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface WorkflowClock {
@@ -49,4 +51,9 @@ export interface WorkflowContract {
   status(): WorkflowStatus;
   progress(): WorkflowProgress;
   result(): WorkflowResult | undefined;
+}
+
+export interface WorkflowExecutionMaterialization {
+  readonly output?: unknown;
+  readonly details?: Readonly<Record<string, unknown>>;
 }

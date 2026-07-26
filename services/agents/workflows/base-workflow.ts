@@ -7,6 +7,7 @@ import type {
   BaseWorkflowOptions,
   WorkflowClock,
   WorkflowContract,
+  WorkflowExecutionMaterialization,
   WorkflowProgress,
   WorkflowResult,
   WorkflowStatus,
@@ -29,6 +30,8 @@ export abstract class BaseWorkflow implements WorkflowContract {
   private startedAt?: string;
   private completedAt?: string;
   private currentResult?: WorkflowResult;
+  private completedProgressSteps = 0;
+  private totalProgressSteps: number;
 
   protected constructor(
     workflowType: string,
@@ -53,6 +56,7 @@ export abstract class BaseWorkflow implements WorkflowContract {
         `workflow-${workflowType}-${globalThis.crypto.randomUUID()}`,
       "BaseWorkflow id",
     );
+    this.totalProgressSteps = this.decision.expectedWorkflow.length;
     this.updatedAt = this.timestamp();
   }
 
@@ -76,8 +80,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     this.transition("running", startedAt);
 
     try {
+      const materialization = await this.performExecution();
       const completedAt = this.timestamp();
       this.completedAt = completedAt;
+      this.completedProgressSteps = this.totalProgressSteps;
       this.currentResult = Object.freeze({
         workflowId: this.id,
         workflowType: this.workflowType,
@@ -90,6 +96,12 @@ export abstract class BaseWorkflow implements WorkflowContract {
         initializedAt: this.initializedAt ?? startedAt,
         startedAt,
         completedAt,
+        ...(materialization?.output !== undefined
+          ? { output: materialization.output }
+          : {}),
+        ...(materialization?.details !== undefined
+          ? { details: Object.freeze({ ...materialization.details }) }
+          : {}),
       });
       this.transition("completed", completedAt);
       return this.currentResult;
@@ -132,13 +144,21 @@ export abstract class BaseWorkflow implements WorkflowContract {
   }
 
   progress(): WorkflowProgress {
-    const totalSteps = this.decision.expectedWorkflow.length;
-    const completed = this.currentStatus === "completed";
+    const totalSteps = this.totalProgressSteps;
+    const completedSteps =
+      this.currentStatus === "completed"
+        ? totalSteps
+        : this.completedProgressSteps;
     return Object.freeze({
       workflowId: this.id,
       status: this.currentStatus,
-      percentage: completed ? 100 : 0,
-      completedSteps: completed ? totalSteps : 0,
+      percentage:
+        totalSteps === 0
+          ? this.currentStatus === "completed"
+            ? 100
+            : 0
+          : Math.round((completedSteps / totalSteps) * 100),
+      completedSteps,
       totalSteps,
       updatedAt: this.updatedAt,
     });
@@ -146,6 +166,38 @@ export abstract class BaseWorkflow implements WorkflowContract {
 
   result(): WorkflowResult | undefined {
     return this.currentResult;
+  }
+
+  protected performExecution():
+    | Promise<WorkflowExecutionMaterialization | undefined>
+    | WorkflowExecutionMaterialization
+    | undefined {
+    return undefined;
+  }
+
+  protected configureProgress(totalSteps: number): void {
+    if (!Number.isInteger(totalSteps) || totalSteps < 0) {
+      throw new Error("Workflow progress total must be a non-negative integer.");
+    }
+    if (this.currentStatus !== "created") {
+      throw new Error("Workflow progress can only be configured before initialization.");
+    }
+    this.totalProgressSteps = totalSteps;
+    this.completedProgressSteps = 0;
+  }
+
+  protected reportProgress(completedSteps: number): void {
+    if (
+      !Number.isInteger(completedSteps) ||
+      completedSteps < 0 ||
+      completedSteps > this.totalProgressSteps
+    ) {
+      throw new Error(
+        "Workflow completed progress must be within the configured total.",
+      );
+    }
+    this.completedProgressSteps = completedSteps;
+    this.updatedAt = this.timestamp();
   }
 
   private assertStatus(
