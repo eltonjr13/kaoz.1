@@ -118,8 +118,10 @@ Ele é registrado como domínio no `AgentRegistry` e reúne os contratos
 `CreativeDomainContext`, `CreativeBrief`, `CreativeWorkflow` e
 `CreativeArtifact`. O Planner reconhece objetivos criativos por regras
 determinísticas, materializa o brief/workflow e produz uma etapa com
-`domainId: creative` e capability `creative.*`. Objetivos não criativos
-continuam no gerador de planos existente.
+`domainId: creative` no payload. A capability criativa requerida fica no
+estágio do workflow; as etapas executáveis produzidas pelo gerador existente
+são preservadas enquanto os agentes do domínio permanecem inativos. Objetivos
+não criativos continuam exatamente no gerador de planos existente.
 
 Seu catálogo estrutural registra `CampaignDirectorAgent`,
 `AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,

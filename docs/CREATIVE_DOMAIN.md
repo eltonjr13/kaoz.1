@@ -61,8 +61,8 @@ flowchart LR
     end
 
     PL -->|"objetivo criativo"| VAL
-    VAL -->|"ExecutionStep + capability creative.*"| TD
-    SC -->|"seleção por capability"| FUT
+    VAL -->|"payload domainId: creative"| TD
+    SC -. "execução futura do workflow" .-> FUT
 ```
 
 O `PlannerAgent` agora reconhece intenção criativa de forma determinística.
@@ -79,7 +79,7 @@ flowchart TD
     OLD["PlanGenerator existente<br/>comportamento preservado"]
     BRIEF["CreativeBrief"]
     WF["CreativeWorkflow"]
-    STEP["ExecutionStep<br/>capability creative.*<br/>domainId: creative"]
+    STEP["ExecutionStep existente<br/>input com domainId: creative"]
     PLAN["ExecutionPlan"]
 
     G --> C
@@ -97,7 +97,7 @@ variações com ou sem acento. A classificação considera apenas título e
 objetivo. Restrições não participam da decisão, pois podem mencionar um ativo
 somente para proibi-lo.
 
-| Intenção | Capability de destino |
+| Intenção | Capability requerida pelo CreativeWorkflow |
 |---|---|
 | campanha, publicidade, social media, anúncio, marketing | `creative.campaign-direction` |
 | imagem | `creative.image-generation` |
@@ -204,5 +204,7 @@ Não foram adicionados:
 - persistência;
 - rotas ou interface.
 
-O Planner apenas materializa e roteia a estrutura. Não foram alterados Chief,
+O Planner apenas materializa e marca a estrutura para o domínio. As etapas e
+capabilities produzidas pelo `PlanGenerator` existente são preservadas, pois os
+agentes criativos ainda não executam tarefas. Não foram alterados Chief,
 Scheduler, MessageBus, SharedContext, Blackboard nem outros domínios.
