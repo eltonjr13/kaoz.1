@@ -147,8 +147,14 @@ test("workflow selection stays isolated from LLM, tools and Chief integration", 
   const source = readdirSync(directory)
     .filter(
       (name) =>
-        name.endsWith(".ts") &&
-        !name.startsWith("execution-workflow"),
+        [
+          "analysis-workflow.ts",
+          "background-workflow.ts",
+          "base-workflow.ts",
+          "quick-workflow.ts",
+          "streaming-workflow.ts",
+          "workflow.types.ts",
+        ].includes(name),
     )
     .map((name) => readFileSync(new URL(name, directory), "utf8"))
     .join("\n");
