@@ -27,6 +27,7 @@ export interface CreativeAgentDefinition {
     readonly name: string;
     readonly description: string;
   }[];
+  readonly executable?: boolean;
 }
 
 export class CreativeAgentNotExecutableError extends Error {
@@ -47,11 +48,16 @@ export class CreativeAgentNotExecutableError extends Error {
  * Lifecycle, health, heartbeat, metadata and capabilities come from
  * AbstractAgent/BaseAgent. Task and message execution remain disabled.
  */
-export abstract class CreativeDomainAgentBase extends AbstractAgent<
-  CreativeAgentTask,
-  never,
-  CreativeAgentMessage,
-  never
+export abstract class CreativeDomainAgentBase<
+  TTask = CreativeAgentTask,
+  TTaskResult = never,
+  TMessage = CreativeAgentMessage,
+  TMessageResult = never,
+> extends AbstractAgent<
+  TTask,
+  TTaskResult,
+  TMessage,
+  TMessageResult
 > {
   readonly domain = CREATIVE_DOMAIN_NAME;
   readonly domainId = CREATIVE_DOMAIN_ID;
@@ -61,18 +67,18 @@ export abstract class CreativeDomainAgentBase extends AbstractAgent<
   }
 
   handleTask(
-    _task: CreativeAgentTask,
+    _task: TTask,
     _context?: AgentContext,
-  ): Promise<never> {
+  ): Promise<TTaskResult> {
     return Promise.reject(
       new CreativeAgentNotExecutableError(this.id),
     );
   }
 
   handleMessage(
-    _message: CreativeAgentMessage,
+    _message: TMessage,
     _context?: AgentContext,
-  ): Promise<never> {
+  ): Promise<TMessageResult> {
     return Promise.reject(
       new CreativeAgentNotExecutableError(this.id),
     );
@@ -92,22 +98,26 @@ function createCreativeAgentConfig(
       tags: Object.freeze([
         "creative",
         "specialized",
-        "structural",
+        definition.executable === true ? "active" : "structural",
         `domain:${CREATIVE_DOMAIN_ID}`,
       ]),
     }),
     capabilities: Object.freeze({
       items: Object.freeze(
         definition.capabilities.map((capability) =>
-          createDormantCapability(capability),
+          createCreativeCapability(
+            capability,
+            definition.executable === true,
+          ),
         ),
       ),
     }),
   });
 }
 
-function createDormantCapability(
+function createCreativeCapability(
   input: CreativeAgentDefinition["capabilities"][number],
+  executable: boolean,
 ): AgentCapability {
   return Object.freeze({
     name: input.name,
@@ -117,12 +127,14 @@ function createDormantCapability(
     cost: 0,
     expectedLatencyMs: 0,
     dependencies: Object.freeze([]),
-    restrictions: Object.freeze([
-      Object.freeze({
-        name: "not-executable",
-        description:
-          "Capability is registered for discovery but execution is not enabled yet.",
-      }),
-    ]),
+    restrictions: executable
+      ? Object.freeze([])
+      : Object.freeze([
+          Object.freeze({
+            name: "not-executable",
+            description:
+              "Capability is registered for discovery but execution is not enabled yet.",
+          }),
+        ]),
   });
 }
