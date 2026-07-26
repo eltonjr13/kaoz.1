@@ -3,7 +3,7 @@ import type { AgentConfig } from "../core/agent-config.ts";
 import type { AgentContext } from "../core/agent-context.ts";
 import { createAgentId, type AgentId } from "../core/agent-id.ts";
 import { classifyCreativeGoal } from "../creative-domain/creative-goal-classifier.ts";
-import { createCreativeWorkflowPlanDraft } from "../creative-domain/creative-workflow-planning.ts";
+import { routePlanDraftToCreativeWorkflow } from "../creative-domain/creative-workflow-planning.ts";
 import type { PlanGenerator } from "./plan-generator.ts";
 import { createExecutionPlan, createGoal } from "./planning-factories.ts";
 import type {
@@ -60,12 +60,14 @@ export class PlannerAgent extends AbstractAgent<
     this.assertReady();
     const canonicalGoal = createGoal(goal);
     const creativeClassification = classifyCreativeGoal(canonicalGoal);
+    const draft = await this.generator.generate(canonicalGoal, context);
     if (creativeClassification) {
       const createdAt = this.clock.now().toISOString();
       return createExecutionPlan(
         canonicalGoal,
-        createCreativeWorkflowPlanDraft(
+        routePlanDraftToCreativeWorkflow(
           canonicalGoal,
+          draft,
           creativeClassification,
           createdAt,
         ),
@@ -75,7 +77,6 @@ export class PlannerAgent extends AbstractAgent<
         },
       );
     }
-    const draft = await this.generator.generate(canonicalGoal, context);
     return createExecutionPlan(canonicalGoal, draft, {
       id: this.idGenerator(),
       createdAt: this.clock.now().toISOString(),

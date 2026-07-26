@@ -255,7 +255,7 @@ test("PlannerAgent creates a CreativeWorkflow for every supported creative inten
       objective,
       acceptanceCriteria: [
         {
-          id: `criterion-${artifactKind}`,
+          id: "criterion-goal",
           description: "O resultado atende ao objetivo.",
           verificationMethod: "Revisão",
           required: true,
@@ -264,11 +264,16 @@ test("PlannerAgent creates a CreativeWorkflow for every supported creative inten
       createdAt: timestamp,
     });
     const plan = await agent.handleTask(goal);
-    const step = plan.steps[0];
+    const step = plan.steps.find((candidate) =>
+      isCreativeWorkflowPlanningPayload(candidate.input)
+    );
 
-    assert.equal(generator.calls, 0, objective);
-    assert.equal(plan.steps.length, 1, objective);
-    assert.equal(step?.capability, capability, objective);
+    assert.equal(generator.calls, 1, objective);
+    assert.deepEqual(
+      plan.steps.map((candidate) => candidate.capability),
+      ["analysis", "document"],
+      objective,
+    );
     assert.equal(
       isCreativeWorkflowPlanningPayload(step?.input),
       true,

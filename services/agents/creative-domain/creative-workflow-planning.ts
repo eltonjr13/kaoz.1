@@ -16,10 +16,12 @@ export interface CreativeWorkflowPlanningPayload {
   readonly classification: CreativeGoalClassification;
   readonly brief: CreativeBrief;
   readonly workflow: CreativeWorkflow;
+  readonly executionInput?: unknown;
 }
 
-export function createCreativeWorkflowPlanDraft(
+export function routePlanDraftToCreativeWorkflow(
   goal: Goal,
+  draft: ExecutionPlanDraft,
   classification: CreativeGoalClassification,
   createdAt: string,
 ): ExecutionPlanDraft {
@@ -55,36 +57,31 @@ export function createCreativeWorkflowPlanDraft(
     createdAt,
     updatedAt: createdAt,
   });
+  const targetStepIndex = selectTargetStepIndex(draft);
+  const targetStep = draft.steps[targetStepIndex];
+  if (!targetStep) {
+    throw new Error("A creative ExecutionPlanDraft must contain at least one step.");
+  }
   const payload: CreativeWorkflowPlanningPayload = Object.freeze({
     type: "creative-workflow",
     domainId: CREATIVE_DOMAIN_ID,
     classification,
     brief,
     workflow,
+    ...(targetStep.input === undefined
+      ? {}
+      : { executionInput: targetStep.input }),
   });
-  const acceptanceCriteriaIds = goal.acceptanceCriteria.map(
-    (criterion) => criterion.id,
-  );
 
   return Object.freeze({
-    title: `Creative workflow for ${goal.title}`,
-    summary: `Goal routed to the CreativeDomain as a ${classification.kind} workflow.`,
-    steps: Object.freeze([
-      Object.freeze({
-        id: stageId,
-        title: workflow.stages[0]?.name ?? goal.title,
-        description: goal.objective,
-        capability: classification.requiredCapability,
-        input: payload,
-        acceptanceCriteriaIds: Object.freeze(acceptanceCriteriaIds),
-        estimate: Object.freeze({
-          effortPoints: 1,
-          durationMs: 300_000,
-          cost: 0,
-          confidence: 1,
-        }),
-      }),
-    ]),
+    ...draft,
+    steps: Object.freeze(
+      draft.steps.map((step, index) =>
+        index === targetStepIndex
+          ? Object.freeze({ ...step, input: payload })
+          : step
+      ),
+    ),
   });
 }
 
@@ -103,4 +100,14 @@ export function isCreativeWorkflowPlanningPayload(
     typeof candidate.workflow === "object" &&
     candidate.workflow !== null
   );
+}
+
+function selectTargetStepIndex(draft: ExecutionPlanDraft): number {
+  if (draft.steps.length === 0) {
+    throw new Error("A creative ExecutionPlanDraft must contain at least one step.");
+  }
+  const mediaPlanningIndex = draft.steps.findIndex(
+    (step) => step.capability === "media-planning",
+  );
+  return mediaPlanningIndex >= 0 ? mediaPlanningIndex : 0;
 }
