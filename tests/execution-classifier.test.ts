@@ -195,7 +195,7 @@ test("validates messages, estimates and policy invariants", () => {
   );
 });
 
-test("classifier has no tool, agent, provider or existing-flow integration", () => {
+test("classifier stays pure while Chief consumes its decision", () => {
   const classifierSource = readFileSync(
     new URL(
       "../services/agents/classification/execution-classifier.ts",
@@ -215,14 +215,22 @@ test("classifier has no tool, agent, provider or existing-flow integration", () 
     assert.doesNotMatch(classifierSource, new RegExp(forbidden, "i"));
   }
 
-  const currentFlowSources = [
-    "../lib/ai/gemini.ts",
-    "../services/agents/chief/chief-agent.ts",
-  ].map((path) =>
-    readFileSync(new URL(path, import.meta.url), "utf8")
+  const publicEntrySource = readFileSync(
+    new URL("../lib/ai/gemini.ts", import.meta.url),
+    "utf8",
   );
-  for (const source of currentFlowSources) {
-    assert.doesNotMatch(source, /ExecutionClassifier/);
-    assert.doesNotMatch(source, /PolicyBasedExecutionClassifier/);
-  }
+  assert.doesNotMatch(publicEntrySource, /ExecutionClassifier/);
+  assert.doesNotMatch(
+    publicEntrySource,
+    /PolicyBasedExecutionClassifier/,
+  );
+
+  const chiefSource = readFileSync(
+    new URL(
+      "../services/agents/chief/chief-agent.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(chiefSource, /PolicyBasedExecutionClassifier/);
 });

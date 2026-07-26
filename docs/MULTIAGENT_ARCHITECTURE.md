@@ -2,23 +2,23 @@
 
 ## Camada de pré-execução
 
-O `ExecutionClassifier` está implementado como fronteira independente para
-classificar `QUICK`, `ANALYSIS`, `EXECUTION`, `BACKGROUND` ou `STREAMING`.
-O `WorkflowFactory` recebe essa decisão e seleciona um `BaseWorkflow`
-especializado, sem executar tarefas. Quando conectadas, essas camadas ficarão
-entre a mensagem do usuário e a entrada pública atual. Nesta etapa elas não
-foram ligadas ao runtime, preservando o comportamento existente. Consulte
+O `ExecutionClassifier` classifica no `ChiefAgent` os modos `QUICK`,
+`ANALYSIS`, `EXECUTION`, `BACKGROUND` ou `STREAMING`. Para `EXECUTION`, o
+Chief cria uma `ExecutionSession`, executa o pipeline obrigatório pelo
+`ExecutionWorkflow` e somente libera a resposta depois do estado
+`completed`. Consulte
 [`EXECUTION_CLASSIFIER.md`](./EXECUTION_CLASSIFIER.md) e
 [`WORKFLOW_FACTORY.md`](./WORKFLOW_FACTORY.md).
 
 ```mermaid
 flowchart LR
     U0["Usuário"] --> M0["Mensagem"]
-    M0 -. "integração futura" .-> EC0["ExecutionClassifier"]
+    M0 --> C0["ChiefAgent"]
+    C0 --> EC0["ExecutionClassifier"]
     EC0 --> ED0["ExecutionDecision"]
-    ED0 --> WF0["WorkflowFactory"]
-    WF0 --> BW0["BaseWorkflow especializado"]
-    BW0 -. "ainda não conectado" .-> C0["Entrada existente → ChiefAgent"]
+    ED0 -->|"EXECUTION"| ES0["ExecutionSession"]
+    ES0 --> BW0["ExecutionWorkflow"]
+    BW0 -->|"completed"| R0["Resposta"]
 ```
 
 ## Estado final
@@ -119,8 +119,11 @@ sequenceDiagram
 
 | Camada | Responsabilidade |
 | --- | --- |
-| `ExecutionClassifier` | Classificar o modo de execução e produzir estimativas, requisitos e workflow esperado, sem responder nem executar. Ainda não conectado ao runtime. |
-| `WorkflowFactory` | Converter `ExecutionDecision` no workflow correspondente ao modo, sem executar tarefas. O `ExecutionWorkflow` possui pipeline estrito auditado, mas ainda não está conectado ao fluxo público ou ao ChiefAgent de produção. |
+| `ExecutionClassifier` | Classificar no ChiefAgent o modo de execução e produzir estimativas, requisitos e workflow esperado, sem responder nem executar. |
+| `ExecutionSession` | Registrar imutavelmente o ciclo `created → running → completed/failed` de todo objetivo `EXECUTION`. |
+| `ExecutionPolicyViolation` | Impedir que o Chief libere resposta de `EXECUTION` antes da conclusão do workflow. |
+| `WorkflowFactory` | Converter `ExecutionDecision` no workflow correspondente ao modo, sem executar tarefas. |
+| `ProgressEngine` | Emitir `WorkflowEvent` imutável para cada mudança, manter progresso, timeline, métricas e subscriptions em tempo real, sem integração com UI. |
 | `ChiefAgent` | Criar contexto e Goal, solicitar plano e decomposição, acionar Scheduler, solicitar supervisão e consolidar a resposta. |
 | `PlannerAgent` | Converter um `Goal` em `ExecutionPlan` estruturado e independente do provedor de IA. |
 | `TaskDecomposerAgent` | Converter passos do plano em tarefas imutáveis, preservando capability, dependências, prioridade, timeout, saída esperada e input. |

@@ -3,6 +3,15 @@ import {
   type ExecutionDecision,
 } from "../classification/execution-decision.ts";
 import type { ExecutionMode } from "../classification/execution-mode.ts";
+import { ProgressEngine } from "./progress-engine.ts";
+import {
+  WorkflowStage,
+  type WorkflowEvent,
+  type WorkflowEventSubscriber,
+  type WorkflowMetrics,
+  type WorkflowSubscriptionOptions,
+  type WorkflowTimeline,
+} from "./progress-engine.types.ts";
 import type {
   BaseWorkflowOptions,
   WorkflowClock,
@@ -22,6 +31,7 @@ export abstract class BaseWorkflow implements WorkflowContract {
   readonly workflowType: string;
   readonly mode: ExecutionMode;
   readonly decision: ExecutionDecision;
+  readonly progressEngine: ProgressEngine;
 
   private readonly clock: WorkflowClock;
   private currentStatus: WorkflowStatus = "created";
@@ -58,6 +68,13 @@ export abstract class BaseWorkflow implements WorkflowContract {
     );
     this.totalProgressSteps = this.decision.expectedWorkflow.length;
     this.updatedAt = this.timestamp();
+    this.progressEngine = new ProgressEngine({
+      workflowId: this.id,
+      workflowType: this.workflowType,
+      lifecycleStatus: this.currentStatus,
+      totalSteps: this.totalProgressSteps,
+      clock: this.clock,
+    });
   }
 
   async initialize(): Promise<void> {
@@ -68,6 +85,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     const timestamp = this.timestamp();
     this.initializedAt = timestamp;
     this.transition("initialized", timestamp);
+    this.emitLifecycleProgress(
+      this.progressEngine.progress().stage ?? WorkflowStage.QUEUED,
+      "Workflow initialized.",
+    );
   }
 
   async execute(): Promise<WorkflowResult> {
@@ -78,6 +99,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     const startedAt = this.timestamp();
     this.startedAt = startedAt;
     this.transition("running", startedAt);
+    this.emitLifecycleProgress(
+      this.initialExecutionStage(),
+      "Workflow execution started.",
+    );
 
     try {
       const materialization = await this.performExecution();
@@ -104,9 +129,26 @@ export abstract class BaseWorkflow implements WorkflowContract {
           : {}),
       });
       this.transition("completed", completedAt);
+      this.progressEngine.emit({
+        stage: WorkflowStage.COMPLETED,
+        lifecycleStatus: "completed",
+        completedSteps: this.totalProgressSteps,
+        totalSteps: this.totalProgressSteps,
+        message: "Workflow completed.",
+      });
       return this.currentResult;
     } catch (error) {
       this.transition("failed");
+      this.progressEngine.emit({
+        stage: WorkflowStage.FAILED,
+        lifecycleStatus: "failed",
+        completedSteps: this.completedProgressSteps,
+        totalSteps: this.totalProgressSteps,
+        message: "Workflow failed.",
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
       throw error;
     }
   }
@@ -117,6 +159,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     }
     this.assertStatus("pause", ["initialized"]);
     this.transition("paused");
+    this.emitLifecycleProgress(
+      this.progressEngine.progress().stage ?? WorkflowStage.QUEUED,
+      "Workflow paused.",
+    );
   }
 
   async resume(): Promise<void> {
@@ -125,6 +171,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     }
     this.assertStatus("resume", ["paused"]);
     this.transition("initialized");
+    this.emitLifecycleProgress(
+      this.progressEngine.progress().stage ?? WorkflowStage.QUEUED,
+      "Workflow resumed.",
+    );
   }
 
   async cancel(): Promise<void> {
@@ -137,6 +187,13 @@ export abstract class BaseWorkflow implements WorkflowContract {
       "paused",
     ]);
     this.transition("cancelled");
+    this.progressEngine.emit({
+      stage: WorkflowStage.CANCELLED,
+      lifecycleStatus: "cancelled",
+      completedSteps: this.completedProgressSteps,
+      totalSteps: this.totalProgressSteps,
+      message: "Workflow cancelled.",
+    });
   }
 
   status(): WorkflowStatus {
@@ -144,24 +201,26 @@ export abstract class BaseWorkflow implements WorkflowContract {
   }
 
   progress(): WorkflowProgress {
-    const totalSteps = this.totalProgressSteps;
-    const completedSteps =
-      this.currentStatus === "completed"
-        ? totalSteps
-        : this.completedProgressSteps;
-    return Object.freeze({
-      workflowId: this.id,
-      status: this.currentStatus,
-      percentage:
-        totalSteps === 0
-          ? this.currentStatus === "completed"
-            ? 100
-            : 0
-          : Math.round((completedSteps / totalSteps) * 100),
-      completedSteps,
-      totalSteps,
-      updatedAt: this.updatedAt,
-    });
+    return this.progressEngine.progress();
+  }
+
+  events(): readonly WorkflowEvent[] {
+    return this.progressEngine.events();
+  }
+
+  timeline(): WorkflowTimeline {
+    return this.progressEngine.timeline();
+  }
+
+  workflowMetrics(): WorkflowMetrics {
+    return this.progressEngine.metrics();
+  }
+
+  subscribeProgress(
+    subscriber: WorkflowEventSubscriber,
+    options: WorkflowSubscriptionOptions = {},
+  ): () => void {
+    return this.progressEngine.subscribe(subscriber, options);
   }
 
   result(): WorkflowResult | undefined {
@@ -175,6 +234,10 @@ export abstract class BaseWorkflow implements WorkflowContract {
     return undefined;
   }
 
+  protected initialExecutionStage(): WorkflowStage {
+    return WorkflowStage.EXECUTING;
+  }
+
   protected configureProgress(totalSteps: number): void {
     if (!Number.isInteger(totalSteps) || totalSteps < 0) {
       throw new Error("Workflow progress total must be a non-negative integer.");
@@ -184,9 +247,22 @@ export abstract class BaseWorkflow implements WorkflowContract {
     }
     this.totalProgressSteps = totalSteps;
     this.completedProgressSteps = 0;
+    this.progressEngine.emit({
+      stage: WorkflowStage.QUEUED,
+      lifecycleStatus: this.currentStatus,
+      completedSteps: 0,
+      totalSteps,
+      message: "Workflow progress configured.",
+    });
   }
 
-  protected reportProgress(completedSteps: number): void {
+  protected reportProgress(
+    completedSteps: number,
+    stage = this.progressEngine.progress().stage ??
+      this.initialExecutionStage(),
+    message?: string,
+    metadata: Readonly<Record<string, unknown>> = {},
+  ): void {
     if (
       !Number.isInteger(completedSteps) ||
       completedSteps < 0 ||
@@ -198,6 +274,28 @@ export abstract class BaseWorkflow implements WorkflowContract {
     }
     this.completedProgressSteps = completedSteps;
     this.updatedAt = this.timestamp();
+    this.progressEngine.emit({
+      stage,
+      lifecycleStatus: this.currentStatus,
+      completedSteps,
+      totalSteps: this.totalProgressSteps,
+      message,
+      metadata,
+    });
+  }
+
+  private emitLifecycleProgress(
+    stage: WorkflowStage,
+    message: string,
+  ): void {
+    this.progressEngine.emit({
+      type: "lifecycle-changed",
+      stage,
+      lifecycleStatus: this.currentStatus,
+      completedSteps: this.completedProgressSteps,
+      totalSteps: this.totalProgressSteps,
+      message,
+    });
   }
 
   private assertStatus(

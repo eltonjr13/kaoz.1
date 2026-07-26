@@ -2,6 +2,8 @@ import type { FlowDecision } from "@/lib/ai/gemini";
 import {
   AgentRegistry,
   ChiefAgent,
+  ExecutionLayer,
+  MessageBus,
   type SchedulerExecutionAgent,
 } from "@/services/agents";
 import type {
@@ -140,25 +142,34 @@ export class FlowAgent {
     const { agentContextAdapter } = await import(
       "@/services/agents/memory/agent-context.runtime"
     );
+    const messageBus = new MessageBus();
     const chief = new ChiefAgent<TResult>({
       contextAdapter: agentContextAdapter,
+      messageBus,
+    });
+    const executionLayer = new ExecutionLayer({
+      chiefAgent: chief,
+      messageBus,
+      logger: (entry) => console.info("[ExecutionLayer]", entry),
     });
     await chief.initialize();
     try {
-      const result = await chief.handleTask({
-        executionId,
-        objective: `Execute ${capability} for Flow execution ${executionId}.`,
-        contextData: {
-          channel: "flow-provider",
-          capability,
+      const result = await executionLayer.execute({
+        objective: {
+          executionId,
+          objective: `Execute ${capability} for Flow execution ${executionId}.`,
+          contextData: {
+            channel: "flow-provider",
+            capability,
+          },
+          requiredCapability: capability,
+          priority: 50,
+          estimatedCost: 0,
+          estimatedTime: timeout,
+          confidence: 1,
+          executionAgents: this.agents,
+          planGenerator: createFlowPlanGenerator(capability, input, timeout),
         },
-        requiredCapability: capability,
-        priority: 50,
-        estimatedCost: 0,
-        estimatedTime: timeout,
-        confidence: 1,
-        executionAgents: this.agents,
-        planGenerator: createFlowPlanGenerator(capability, input, timeout),
       });
       return result.response;
     } finally {

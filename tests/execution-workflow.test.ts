@@ -4,6 +4,7 @@ import {
   ExecutionMode,
   ExecutionWorkflow,
   ExecutionWorkflowError,
+  WorkflowStage,
   createAgentId,
   createExecutionDecision,
   createExecutionPlan,
@@ -291,6 +292,20 @@ test("executes the mandatory pipeline in order and exposes only Chief output", a
   assert.equal(subject.metrics().status, "completed");
   assert.equal(subject.knowledge().length, 8);
   assert.equal(subject.messages().length, 14);
+  const progressStages = new Set(
+    subject.events().map((event) => event.stage),
+  );
+  for (const stage of [
+    WorkflowStage.QUEUED,
+    WorkflowStage.PLANNING,
+    WorkflowStage.DECOMPOSING,
+    WorkflowStage.SCHEDULING,
+    WorkflowStage.EXECUTING,
+    WorkflowStage.REVIEWING,
+    WorkflowStage.COMPLETED,
+  ]) {
+    assert.equal(progressStages.has(stage), true);
+  }
   assert.equal(
     subject.messages().every(
       (trace) =>

@@ -10,6 +10,15 @@ import {
   AgentMessageGateway,
 } from "../messaging/agent-message-gateway.ts";
 import { MessageBus } from "../messaging/message-bus.ts";
+import {
+  ProgressEngine,
+  WorkflowStage,
+  type WorkflowEvent,
+  type WorkflowEventSubscriber,
+  type WorkflowMetrics,
+  type WorkflowProgress,
+  type WorkflowTimeline,
+} from "../workflows/index.ts";
 import { AudienceStrategistAgent } from "./agents/AudienceStrategistAgent.ts";
 import { BrandAgent } from "./agents/BrandAgent.ts";
 import {
@@ -73,6 +82,13 @@ export class CreativeBriefWorkflow {
   readonly blackboard: Blackboard;
 
   private readonly clock: () => Date;
+  private readonly progressEngines = new Map<string, ProgressEngine>();
+  private readonly progressSubscribers =
+    new Set<WorkflowEventSubscriber>();
+  private readonly progressUnsubscribers = new Map<
+    WorkflowEventSubscriber,
+    Set<() => void>
+  >();
 
   constructor(options: CreativeBriefWorkflowOptions = {}) {
     this.messageBus = options.messageBus ?? new MessageBus();
@@ -87,6 +103,7 @@ export class CreativeBriefWorkflow {
       input.executionId,
       "CreativeBriefWorkflow executionId",
     );
+    const progressEngine = this.createProgressEngine(executionId);
     const traceOffset = this.messageBus.listTraces().length;
     const gateway = new AgentMessageGateway(this.messageBus);
     const campaignDirector = new CampaignDirectorAgent();
@@ -100,6 +117,13 @@ export class CreativeBriefWorkflow {
     const initialized: AgentMessageEndpoint[] = [];
 
     try {
+      progressEngine.emit({
+        stage: WorkflowStage.PLANNING,
+        lifecycleStatus: "running",
+        completedSteps: 0,
+        totalSteps: 6,
+        message: "Creative brief planning started.",
+      });
       for (const endpoint of endpoints) {
         await endpoint.initialize();
         initialized.push(endpoint);
@@ -136,8 +160,15 @@ export class CreativeBriefWorkflow {
         input,
       );
       let current = initialBrief;
+      progressEngine.emit({
+        stage: WorkflowStage.PLANNING,
+        lifecycleStatus: "running",
+        completedSteps: 1,
+        totalSteps: 6,
+        message: "Campaign direction completed.",
+      });
 
-      for (const stage of stages) {
+      for (const [index, stage] of stages.entries()) {
         const createdAt = this.clock().toISOString();
         const next = await gateway.request<
           {
@@ -173,9 +204,23 @@ export class CreativeBriefWorkflow {
         });
         versions.push(next);
         current = next;
+        progressEngine.emit({
+          stage:
+            stage.kind === "creative-review"
+              ? WorkflowStage.REVIEWING
+              : WorkflowStage.EXECUTING,
+          lifecycleStatus: "running",
+          completedSteps: index + 2,
+          totalSteps: 6,
+          message: `Creative stage "${stage.name}" completed.`,
+          metadata: {
+            creativeStage: stage.name,
+            briefVersion: next.version,
+          },
+        });
       }
 
-      return Object.freeze({
+      const result = Object.freeze({
         brief: current,
         versions: Object.freeze(versions),
         blackboardEntryId,
@@ -184,13 +229,89 @@ export class CreativeBriefWorkflow {
             .listTraces()
             .slice(traceOffset)
             .map((trace) => trace.id),
-        ),
+          ),
       });
+      progressEngine.emit({
+        stage: WorkflowStage.COMPLETED,
+        lifecycleStatus: "completed",
+        completedSteps: 6,
+        totalSteps: 6,
+        message: "Creative brief workflow completed.",
+      });
+      return result;
+    } catch (error) {
+      const progress = progressEngine.progress();
+      progressEngine.emit({
+        stage: WorkflowStage.FAILED,
+        lifecycleStatus: "failed",
+        completedSteps: progress.completedSteps,
+        totalSteps: progress.totalSteps,
+        message: "Creative brief workflow failed.",
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
     } finally {
       for (const endpoint of initialized.reverse()) {
         await endpoint.shutdown();
       }
     }
+  }
+
+  progress(executionId: string): WorkflowProgress | undefined {
+    return this.progressEngines.get(executionId)?.progress();
+  }
+
+  events(executionId: string): readonly WorkflowEvent[] {
+    return this.progressEngines.get(executionId)?.events() ?? Object.freeze([]);
+  }
+
+  timeline(executionId: string): WorkflowTimeline | undefined {
+    return this.progressEngines.get(executionId)?.timeline();
+  }
+
+  workflowMetrics(executionId: string): WorkflowMetrics | undefined {
+    return this.progressEngines.get(executionId)?.metrics();
+  }
+
+  subscribeProgress(subscriber: WorkflowEventSubscriber): () => void {
+    this.progressSubscribers.add(subscriber);
+    const unsubscribers = new Set<() => void>();
+    this.progressUnsubscribers.set(subscriber, unsubscribers);
+    for (const engine of this.progressEngines.values()) {
+      unsubscribers.add(
+        engine.subscribe(subscriber, { replay: true }),
+      );
+    }
+    return () => {
+      this.progressSubscribers.delete(subscriber);
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
+      }
+      this.progressUnsubscribers.delete(subscriber);
+    };
+  }
+
+  private createProgressEngine(executionId: string): ProgressEngine {
+    if (this.progressEngines.has(executionId)) {
+      throw new Error(
+        `CreativeBriefWorkflow execution "${executionId}" already exists.`,
+      );
+    }
+    const engine = new ProgressEngine({
+      workflowId: `creative-brief-workflow:${executionId}`,
+      workflowType: "creative-brief-workflow",
+      lifecycleStatus: "created",
+      totalSteps: 6,
+      clock: { now: this.clock },
+    });
+    this.progressEngines.set(executionId, engine);
+    for (const subscriber of this.progressSubscribers) {
+      const unsubscribe = engine.subscribe(subscriber, { replay: true });
+      this.progressUnsubscribers.get(subscriber)?.add(unsubscribe);
+    }
+    return engine;
   }
 }
 

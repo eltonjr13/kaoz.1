@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   Blackboard,
   CreativeBriefWorkflow,
+  WorkflowStage,
   appendCreativeBriefContribution,
   assertCreativeBriefEnrichment,
   createCreativeBrief,
@@ -51,6 +52,10 @@ test("runs the complete append-only creative flow through MessageBus", async () 
   const workflow = new CreativeBriefWorkflow({
     blackboard,
     clock: () => new Date(timestamp),
+  });
+  const progressEvents: string[] = [];
+  workflow.subscribeProgress((event) => {
+    progressEvents.push(event.stage);
   });
 
   const result = await workflow.execute({
@@ -165,6 +170,25 @@ test("runs the complete append-only creative flow through MessageBus", async () 
   assert.equal(workflow.messageBus.deadLetterQueue.list().length, 0);
   assert.equal(workflow.messageBus.snapshot().endpointCount, 0);
   assert.equal(result.messageTraceIds.length, 12);
+  assert.deepEqual(progressEvents, [
+    WorkflowStage.QUEUED,
+    WorkflowStage.PLANNING,
+    WorkflowStage.PLANNING,
+    WorkflowStage.EXECUTING,
+    WorkflowStage.EXECUTING,
+    WorkflowStage.EXECUTING,
+    WorkflowStage.EXECUTING,
+    WorkflowStage.REVIEWING,
+    WorkflowStage.COMPLETED,
+  ]);
+  assert.equal(
+    workflow.progress("creative-flow-1")?.percentage,
+    100,
+  );
+  assert.equal(
+    workflow.workflowMetrics("creative-flow-1")?.currentStage,
+    WorkflowStage.COMPLETED,
+  );
 });
 
 test("rejects duplicate contributions and any overwrite of previous information", () => {

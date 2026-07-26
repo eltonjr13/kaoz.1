@@ -19,6 +19,12 @@ import {
   AgentContextAdapter,
   type AgentContextHydrator,
 } from "../memory/agent-context.adapter.ts";
+import {
+  PolicyBasedExecutionClassifier,
+  type ExecutionClassifier,
+} from "../classification/execution-classifier.ts";
+import type { ExecutionDecision } from "../classification/execution-decision.ts";
+import { ExecutionMode } from "../classification/execution-mode.ts";
 import type {
   ExecutionTask,
   Subtask,
@@ -46,7 +52,23 @@ import type {
   SupervisionReport,
   SupervisorClock,
 } from "../supervision/supervision.types.ts";
+import {
+  ExecutionWorkflow,
+  WorkflowFactory,
+  type ConsensusResult,
+  type ExecutionWorkflowAudit,
+  type ExecutionWorkflowRuntime,
+} from "../workflows/index.ts";
 import { createChiefAgentMessagingRuntime } from "./chief-agent-messaging.ts";
+import {
+  assertExecutionResponseAllowed,
+  ExecutionPolicyViolation,
+} from "./execution-policy-violation.ts";
+import {
+  createExecutionSession,
+  transitionExecutionSession,
+  type ExecutionSession,
+} from "./execution-session.ts";
 
 export interface ChiefObjective<TResponse> {
   readonly executionId: string;
@@ -76,6 +98,9 @@ export interface ChiefAgentResult<TResponse> {
   readonly executionReport: SchedulerExecutionReport<unknown>;
   readonly schedulerEvents: readonly SchedulerEvent[];
   readonly supervision: SupervisionReport;
+  readonly executionDecision?: ExecutionDecision;
+  readonly executionSession?: ExecutionSession;
+  readonly workflowAudit?: ExecutionWorkflowAudit;
 }
 
 export interface ChiefMessage<TResponse> {
@@ -89,6 +114,7 @@ export interface ChiefAgentOptions {
   readonly idGenerator?: () => string;
   readonly contextAdapter?: AgentContextHydrator;
   readonly messageBus?: MessageBus;
+  readonly executionClassifier?: ExecutionClassifier;
 }
 
 export interface ChiefAgentConfigOptions {
@@ -116,6 +142,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
   private readonly idGenerator: () => string;
   private readonly contextAdapter: AgentContextHydrator;
   private readonly messageBus: MessageBus;
+  private readonly executionClassifier: ExecutionClassifier;
+  private readonly executionSessions = new Map<string, ExecutionSession>();
 
   constructor(options: ChiefAgentOptions = {}) {
     const config = options.config ?? createChiefAgentConfig();
@@ -126,9 +154,87 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     this.contextAdapter =
       options.contextAdapter ?? new AgentContextAdapter();
     this.messageBus = options.messageBus ?? new MessageBus();
+    this.executionClassifier =
+      options.executionClassifier ?? new PolicyBasedExecutionClassifier();
   }
 
   async handleTask(
+    input: ChiefObjective<TResponse>,
+    agentContext?: AgentContext,
+  ): Promise<ChiefAgentResult<TResponse>> {
+    this.assertReady();
+    const objective = requireText(input.objective, "Chief objective");
+    const decision = this.executionClassifier.classify({
+      message: objective,
+    });
+    if (decision.mode === ExecutionMode.EXECUTION) {
+      return this.handleExecutionObjective(
+        input,
+        agentContext,
+        decision,
+      );
+    }
+    return this.coordinateObjective(input, agentContext);
+  }
+
+  /**
+   * Receives an objective that was already classified by ExecutionLayer.
+   * Non-execution modes retain the established Chief coordination behavior.
+   */
+  handleClassifiedTask(
+    input: ChiefObjective<TResponse>,
+    decision: ExecutionDecision,
+    agentContext?: AgentContext,
+  ): Promise<ChiefAgentResult<TResponse>> {
+    this.assertReady();
+    if (decision.mode === ExecutionMode.EXECUTION) {
+      return Promise.reject(
+        new ExecutionPolicyViolation(
+          input.executionId,
+          `unadmitted-${input.executionId}`,
+          "EXECUTION objectives require a WorkflowFactory-selected ExecutionWorkflow.",
+        ),
+      );
+    }
+    return this.coordinateObjective(input, agentContext);
+  }
+
+  /**
+   * Admits the WorkflowFactory-selected EXECUTION workflow into the Chief
+   * coordination boundary. The workflow, not the Chief, owns stage order.
+   */
+  handleSelectedWorkflow(
+    input: ChiefObjective<TResponse>,
+    decision: ExecutionDecision,
+    workflow: ExecutionWorkflow<unknown, TResponse, TResponse>,
+    blackboard: Blackboard,
+    agentContext?: AgentContext,
+  ): Promise<ChiefAgentResult<TResponse>> {
+    this.assertReady();
+    if (decision.mode !== ExecutionMode.EXECUTION) {
+      return Promise.reject(
+        new Error(
+          "ChiefAgent accepts a selected ExecutionWorkflow only for EXECUTION.",
+        ),
+      );
+    }
+    if (workflow.decision.mode !== decision.mode) {
+      return Promise.reject(
+        new Error(
+          "Selected workflow decision does not match the classified objective.",
+        ),
+      );
+    }
+    return this.handleExecutionObjective(
+      input,
+      agentContext,
+      decision,
+      workflow,
+      blackboard,
+    );
+  }
+
+  private async coordinateObjective(
     input: ChiefObjective<TResponse>,
     agentContext?: AgentContext,
   ): Promise<ChiefAgentResult<TResponse>> {
@@ -418,6 +524,452 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
     }
   }
 
+  private async handleExecutionObjective(
+    input: ChiefObjective<TResponse>,
+    agentContext: AgentContext | undefined,
+    decision: ExecutionDecision,
+    preselectedWorkflow?: ExecutionWorkflow<
+      unknown,
+      TResponse,
+      TResponse
+    >,
+    preselectedBlackboard?: Blackboard,
+  ): Promise<ChiefAgentResult<TResponse>> {
+    const objective = requireText(input.objective, "Chief objective");
+    const executionId = requireText(input.executionId, "Chief executionId");
+    const requiredCapability = requireText(
+      input.requiredCapability,
+      "Chief requiredCapability",
+    );
+    let session = createExecutionSession({
+      id: this.nextId("execution-session"),
+      executionId,
+      objective,
+      decision,
+      createdAt: this.currentTimestamp(),
+    });
+    this.executionSessions.set(session.id, session);
+
+    const sharedContext = new SharedContext({
+      clock: this.clock,
+      idGenerator: this.idGenerator,
+    });
+    let executionContext = sharedContext.create("execution", executionId, {
+      ...(input.contextData ?? {}),
+      objective,
+      executionMode: decision.mode,
+      executionSessionId: session.id,
+      status: "execution-session-created",
+    });
+    const blackboard =
+      preselectedBlackboard ??
+      new Blackboard({
+        clock: this.clock,
+        idGenerator: this.idGenerator,
+      });
+    let runtimeContext = await this.contextAdapter.adapt(agentContext, {
+      agentId: this.id,
+      executionId,
+      objective,
+      avatarId: contextText(input.contextData, "avatarId"),
+      topic: objective,
+      executionContext,
+      sharedContext,
+      blackboard,
+    });
+    executionContext = runtimeContext.executionContext;
+
+    const messaging = createChiefAgentMessagingRuntime({
+      bus: this.messageBus,
+      chiefId: this.id,
+      executionId,
+      planGenerator: this.createPlanGenerator(input, requiredCapability),
+      clock: this.clock,
+      planIdGenerator: () => this.nextId("plan"),
+      supervisionIdGenerator: this.idGenerator,
+    });
+    const scheduler = new Scheduler({
+      clock: this.clock,
+      idGenerator: this.idGenerator,
+      contextAdapter: this.contextAdapter,
+      messageBus: this.messageBus,
+      config: {
+        maxConcurrency: 4,
+        maxConcurrencyPerAgent: 1,
+        defaultRetryPolicy: {
+          maxAttempts: 3,
+          baseDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        },
+      },
+    });
+    await messaging.initialize();
+
+    let goal: Goal | undefined;
+    let goalRegistration: Artifact | undefined;
+    let plan: ExecutionPlan | undefined;
+    let tasks: readonly ExecutionTask[] = Object.freeze([]);
+    let executionReport: SchedulerExecutionReport<unknown> | undefined;
+    let supervision: SupervisionReport | undefined;
+    let supervisionRuntime: ProductionSupervisionRuntime | undefined;
+    let executionAgents: readonly SchedulerExecutionAgent<unknown>[] =
+      Object.freeze([]);
+    const correlationId = messageCorrelationId(executionId);
+    const coordinationOptions = {
+      senderId: this.id,
+      correlationId,
+      timeoutMs: 2_147_483_647,
+      retryPolicy: { maxAttempts: 1 },
+    } as const;
+
+    const workflowRuntime: ExecutionWorkflowRuntime<
+      unknown,
+      TResponse,
+      TResponse
+    > = {
+        objective,
+        goalFactory: {
+          create: ({ createdAt }) => {
+            goal = createGoal({
+              id: this.nextId("goal"),
+              title: objective.slice(0, 120),
+              objective,
+              acceptanceCriteria: [
+                {
+                  id: this.nextId("criterion"),
+                  description:
+                    "ExecutionWorkflow returns a final compatible response.",
+                  verificationMethod:
+                    "Every mandatory stage completes before response release.",
+                  required: true,
+                },
+              ],
+              createdAt,
+            });
+            executionContext = sharedContext.update("execution", {
+              goalId: goal.id,
+              status: "goal-registered",
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            session = transitionExecutionSession(session, {
+              status: "running",
+              goalId: goal.id,
+              updatedAt: this.currentTimestamp(),
+            });
+            this.executionSessions.set(session.id, session);
+            goalRegistration = blackboard.publish(
+              createArtifact({
+                id: this.nextId("goal-registration"),
+                topic: "execution.goal",
+                content: {
+                  executionId,
+                  executionSessionId: session.id,
+                  goalId: goal.id,
+                  objective: goal.objective,
+                  status: "registered",
+                },
+                sourceAgentId: this.id,
+                priority: input.priority ?? 50,
+                confidence: input.confidence ?? decision.confidence,
+                tags: ["chief", "goal", "execution-workflow"],
+                createdAt: this.currentTimestamp(),
+              }),
+            );
+            return goal;
+          },
+        },
+        planner: {
+          plan: async (createdGoal) => {
+            plan = await messaging.gateway.request<
+              { readonly type: "plan-goal"; readonly goal: Goal },
+              ExecutionPlan
+            >(
+              "agent.planner.plan-goal",
+              { type: "plan-goal", goal: createdGoal },
+              {
+                ...coordinationOptions,
+                recipientId: messaging.plannerId,
+                context: runtimeContext,
+              },
+            );
+            executionContext = sharedContext.update("execution", {
+              planId: plan.id,
+              planVersion: plan.version,
+              status: "planned",
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            supervisionRuntime = new ProductionSupervisionRuntime({
+              executionId,
+              scheduler,
+              messageBus: this.messageBus,
+              blackboard,
+              gateway: messaging.gateway,
+              coordinatorId: this.id,
+              supervisorId: messaging.supervisorId,
+              plannerId: messaging.plannerId,
+              decomposerId: messaging.decomposerId,
+              executionAgents: [],
+              collaboratorSnapshots: () =>
+                messaging.listAgentRuntimeSnapshots(),
+              plan,
+              context: runtimeContext,
+              replan: () =>
+                messaging.gateway.request<
+                  { readonly type: "plan-goal"; readonly goal: Goal },
+                  ExecutionPlan
+                >(
+                  "agent.planner.plan-goal",
+                  { type: "plan-goal", goal: createdGoal },
+                  {
+                    ...coordinationOptions,
+                    recipientId: messaging.plannerId,
+                    context: runtimeContext,
+                  },
+                ),
+              clock: () => this.clock.now(),
+              idGenerator: () => this.nextId("recovery"),
+            });
+            await supervisionRuntime.start();
+            await supervisionRuntime.observe("running");
+            return plan;
+          },
+        },
+        taskDecomposer: {
+          decompose: async (createdPlan) => {
+            tasks = await messaging.gateway.request<
+              {
+                readonly type: "decompose-plan";
+                readonly plan: ExecutionPlan;
+              },
+              readonly ExecutionTask[]
+            >(
+              "agent.task-decomposer.decompose-plan",
+              { type: "decompose-plan", plan: createdPlan },
+              {
+                ...coordinationOptions,
+                recipientId: messaging.decomposerId,
+                context: runtimeContext,
+              },
+            );
+            executionContext = sharedContext.update("execution", {
+              executionTaskIds: tasks.map((task) => task.id),
+              status: "decomposed",
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            await supervisionRuntime?.observe("running");
+            return tasks;
+          },
+        },
+        scheduler: {
+          schedule: async (createdTasks) => {
+            scheduler.enqueueAll(
+              createdTasks.map((task) => ({
+                subtask: task,
+                fairnessKey: executionId,
+                timeoutMs: task.timeout,
+              })),
+            );
+            executionAgents = this.createExecutionAgents({
+              input,
+              tasks: createdTasks,
+            });
+            await supervisionRuntime?.registerExecutionAgents(
+              executionAgents,
+            );
+            executionContext = sharedContext.update("execution", {
+              status: "scheduler-ready",
+              executionAgentCount: executionAgents.length,
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            return Object.freeze([]);
+          },
+          execute: async () => {
+            executionReport = await scheduler.executeAll(executionAgents, {
+              executionId,
+              correlationId,
+              agentContext: runtimeContext,
+              manageAgentLifecycle: false,
+              onCheckpoint: async () => {
+                await supervisionRuntime?.observe("running");
+              },
+            });
+            executionContext = sharedContext.update("execution", {
+              schedulerDecisionCount: executionReport.decisions.length,
+              schedulerEventCount: executionReport.events.length,
+              status: "specialized-agents-completed",
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            return executionReport;
+          },
+        },
+        consensus: {
+          reach: async (report) => {
+            supervision = await supervisionRuntime?.observe("completed");
+            if (!supervision) {
+              throw new Error(
+                "SupervisorAgent did not produce a supervision report.",
+              );
+            }
+            const terminalTask = tasks.at(-1);
+            const terminalResult = terminalTask
+              ? report.results.find(
+                  (result) => result.taskId === terminalTask.id,
+                )
+              : undefined;
+            if (!terminalResult) {
+              throw new Error(
+                "Consensus cannot resolve a missing terminal task result.",
+              );
+            }
+            return Object.freeze({
+              accepted: supervision.healthy,
+              confidence: supervision.healthy ? 1 : 0,
+              value: terminalResult.output as TResponse,
+              participantIds: Object.freeze([
+                ...new Set(
+                  report.results.map((result) => result.agentId),
+                ),
+              ]),
+              rationale: supervision.healthy
+                ? "Supervisor approved the complete execution."
+                : "Supervisor rejected the execution.",
+            } satisfies ConsensusResult<TResponse>);
+          },
+        },
+        chiefAgent: {
+          consolidate: async ({ consensus }) => {
+            if (!consensus.accepted) {
+              throw new Error(
+                "ChiefAgent cannot consolidate a rejected consensus.",
+              );
+            }
+            executionContext = sharedContext.update("execution", {
+              selectedPlanner: "planner-agent",
+              executionTaskCount: tasks.length,
+              status: "workflow-consolidated",
+            });
+            runtimeContext = withExecutionContext(
+              runtimeContext,
+              executionContext,
+            );
+            return consensus.value;
+          },
+        },
+    };
+    let workflow = preselectedWorkflow;
+    if (workflow) {
+      workflow.bindRuntime(workflowRuntime);
+    } else {
+      const selectedWorkflow = new WorkflowFactory({
+        clock: this.clock,
+        idGenerator: () => this.nextId("workflow"),
+        execution: {
+          runtime: workflowRuntime,
+          blackboard,
+          messageBus: this.messageBus,
+        },
+      }).create(decision);
+      if (!(selectedWorkflow instanceof ExecutionWorkflow)) {
+        throw new Error(
+          "WorkflowFactory did not select ExecutionWorkflow for EXECUTION.",
+        );
+      }
+      workflow = selectedWorkflow as ExecutionWorkflow<
+        unknown,
+        TResponse,
+        TResponse
+      >;
+    }
+
+    session = transitionExecutionSession(session, {
+      status: "running",
+      workflowId: workflow.id,
+      updatedAt: this.currentTimestamp(),
+    });
+    this.executionSessions.set(session.id, session);
+
+    try {
+      await workflow.initialize();
+      const workflowResult = await workflow.execute();
+      assertExecutionResponseAllowed({
+        decision,
+        session,
+        workflowStatus: workflow.status(),
+        workflowResult,
+      });
+      session = transitionExecutionSession(session, {
+        status: "completed",
+        updatedAt: this.currentTimestamp(),
+      });
+      this.executionSessions.set(session.id, session);
+      executionContext = sharedContext.update("execution", {
+        executionSessionVersion: session.version,
+        status: "execution-completed",
+      });
+
+      if (
+        !goal ||
+        !goalRegistration ||
+        !plan ||
+        !executionReport ||
+        !supervision
+      ) {
+        throw new Error(
+          "ExecutionWorkflow completed without mandatory Chief artifacts.",
+        );
+      }
+      const response = workflowResult.output as TResponse;
+      return Object.freeze({
+        response,
+        executionContext,
+        goal,
+        goalRegistration,
+        plan,
+        tasks,
+        subtasks: tasks,
+        decisions: executionReport.decisions,
+        executionReport,
+        schedulerEvents: executionReport.events,
+        supervision,
+        executionDecision: decision,
+        executionSession: session,
+        workflowAudit: workflow.audit(),
+      });
+    } catch (error) {
+      if (
+        session.status === "created" ||
+        session.status === "running"
+      ) {
+        session = transitionExecutionSession(session, {
+          status: "failed",
+          failureReason: errorMessage(error),
+          updatedAt: this.currentTimestamp(),
+        });
+        this.executionSessions.set(session.id, session);
+      }
+      throw error;
+    } finally {
+      await supervisionRuntime?.stop();
+      await messaging.shutdown();
+    }
+  }
+
   handleMessage(
     message: ChiefMessage<TResponse>,
     context?: AgentContext,
@@ -432,6 +984,10 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
 
   getMessageTraces(): readonly MessageTrace[] {
     return this.messageBus.listTraces();
+  }
+
+  listExecutionSessions(): readonly ExecutionSession[] {
+    return Object.freeze([...this.executionSessions.values()]);
   }
 
   private createPlanGenerator(

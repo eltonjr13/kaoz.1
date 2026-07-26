@@ -3,8 +3,14 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ChiefAgent,
+  ExecutionMode,
+  ExecutionPolicyViolation,
+  assertExecutionResponseAllowed,
   createAgentId,
   createChiefAgentConfig,
+  createExecutionDecision,
+  createExecutionSession,
+  transitionExecutionSession,
   type AgentConfig,
   type SupervisorClock,
 } from "../services/agents/index.ts";
@@ -23,6 +29,38 @@ function createIdGenerator(): () => string {
   return () => `id-${++sequence}`;
 }
 
+function executionDecision() {
+  return createExecutionDecision({
+    mode: ExecutionMode.EXECUTION,
+    confidence: 1,
+    reason: {
+      code: "action-required",
+      description: "Managed execution is mandatory.",
+      matchedSignals: ["execute"],
+      policyRuleId: "chief-execution-test",
+    },
+    estimatedComplexity: 80,
+    estimatedCost: 1,
+    estimatedDuration: 30_000,
+    requiredDomains: [],
+    requiredCapabilities: ["chat-response"],
+    expectedWorkflow: [
+      "goal",
+      "planner",
+      "execution-plan",
+      "task-decomposer",
+      "scheduler",
+      "specialized-agents",
+      "consensus",
+      "chief-agent",
+    ],
+  });
+}
+
+const executionClassifier = Object.freeze({
+  classify: () => executionDecision(),
+});
+
 test("coordinates a native specialized agent through the complete pipeline", async () => {
   let executions = 0;
   const responseAgent = new TestExecutionAgent<string>({
@@ -36,6 +74,7 @@ test("coordinates a native specialized agent through the complete pipeline", asy
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
+    executionClassifier,
   });
   await chief.initialize();
 
@@ -67,6 +106,11 @@ test("coordinates a native specialized agent through the complete pipeline", asy
   assert.equal(result.decisions[0]?.agentId, responseAgent.id);
   assert.equal(result.executionReport.status, "completed");
   assert.equal(result.supervision.healthy, true);
+  assert.equal(result.executionDecision?.mode, ExecutionMode.EXECUTION);
+  assert.equal(result.executionSession?.status, "completed");
+  assert.equal(result.executionSession?.goalId, result.goal.id);
+  assert.equal(Boolean(result.executionSession?.workflowId), true);
+  assert.equal(result.workflowAudit?.metrics.status, "completed");
   assert.equal(Object.isFrozen(result), true);
 
   const traces = chief.getMessageTraces();
@@ -109,6 +153,7 @@ test("executes a structured dependency graph only through specialized agents", a
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
+    executionClassifier,
   });
   await chief.initialize();
 
@@ -215,6 +260,7 @@ test("fails when Planner fails and never executes a specialist", async () => {
   const chief = new ChiefAgent<string>({
     clock: new FixedClock(),
     idGenerator: createIdGenerator(),
+    executionClassifier,
   });
   await chief.initialize();
 
@@ -233,6 +279,83 @@ test("fails when Planner fails and never executes a specialist", async () => {
     /planner unavailable/,
   );
   assert.equal(executions, 0);
+  assert.equal(chief.listExecutionSessions().at(-1)?.status, "failed");
+});
+
+test("EXECUTION never responds before ExecutionWorkflow completes", async () => {
+  let markStarted!: () => void;
+  let releaseExecution!: (value: string) => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const blockedResult = new Promise<string>((resolve) => {
+    releaseExecution = resolve;
+  });
+  const worker = new TestExecutionAgent<string>({
+    id: createAgentId("policy-worker"),
+    capabilities: ["chat-response"],
+    execute: async () => {
+      markStarted();
+      return blockedResult;
+    },
+  });
+  const chief = new ChiefAgent<string>({
+    clock: new FixedClock(),
+    idGenerator: createIdGenerator(),
+    executionClassifier,
+  });
+  await chief.initialize();
+
+  let responded = false;
+  const pending = chief
+    .handleTask({
+      executionId: "execution-policy-wait",
+      objective: "Execute the complete managed objective.",
+      requiredCapability: "chat-response",
+      executionAgents: [worker],
+    })
+    .then((result) => {
+      responded = true;
+      return result;
+    });
+
+  await started;
+  assert.equal(responded, false);
+  assert.equal(chief.listExecutionSessions().at(-1)?.status, "running");
+
+  releaseExecution("workflow-approved-response");
+  const result = await pending;
+  assert.equal(result.response, "workflow-approved-response");
+  assert.equal(result.executionSession?.status, "completed");
+  assert.equal(result.workflowAudit?.metrics.completedStages, 8);
+});
+
+test("direct EXECUTION response raises ExecutionPolicyViolation", () => {
+  const decision = executionDecision();
+  const created = createExecutionSession({
+    id: "session-policy-test",
+    executionId: "execution-policy-test",
+    objective: "Execute managed work.",
+    decision,
+    createdAt: timestamp,
+  });
+  const running = transitionExecutionSession(created, {
+    status: "running",
+    workflowId: "workflow-policy-test",
+    updatedAt: timestamp,
+  });
+
+  assert.throws(
+    () =>
+      assertExecutionResponseAllowed({
+        decision,
+        session: running,
+        workflowStatus: "running",
+      }),
+    (error: unknown) =>
+      error instanceof ExecutionPolicyViolation &&
+      error.executionId === running.executionId,
+  );
 });
 
 test("requires every planned capability to have a specialized agent", async () => {

@@ -21,6 +21,7 @@ import type {
 import type { ExecutionDecision } from "../classification/execution-decision.ts";
 import { ExecutionMode } from "../classification/execution-mode.ts";
 import { BaseWorkflow } from "./base-workflow.ts";
+import { WorkflowStage } from "./progress-engine.types.ts";
 import type {
   ConsensusResult,
   ExecutionWorkflowAudit,
@@ -84,7 +85,7 @@ export class ExecutionWorkflow<
   TConsensus = unknown,
   TResponse = unknown,
 > extends BaseWorkflow {
-  private readonly runtime?: ExecutionWorkflowRuntime<
+  private runtime?: ExecutionWorkflowRuntime<
     TAgentOutput,
     TConsensus,
     TResponse
@@ -159,6 +160,29 @@ export class ExecutionWorkflow<
       messages: this.messages(),
       knowledge: this.knowledge(),
     });
+  }
+
+  /**
+   * Binds the execution ports after WorkflowFactory has selected the workflow.
+   * This is intentionally a one-time operation and must happen before
+   * initialization, keeping workflow selection outside the ChiefAgent.
+   */
+  bindRuntime(
+    runtime: ExecutionWorkflowRuntime<
+      TAgentOutput,
+      TConsensus,
+      TResponse
+    >,
+  ): void {
+    if (this.status() !== "created") {
+      throw new Error(
+        "ExecutionWorkflow runtime must be bound before initialization.",
+      );
+    }
+    if (this.runtime) {
+      throw new Error("ExecutionWorkflow runtime is already bound.");
+    }
+    this.runtime = runtime;
   }
 
   protected override async performExecution():
@@ -264,6 +288,10 @@ export class ExecutionWorkflow<
     }
   }
 
+  protected override initialExecutionStage(): WorkflowStage {
+    return WorkflowStage.PLANNING;
+  }
+
   private createEndpoints(
     runtime: ExecutionWorkflowRuntime<
       TAgentOutput,
@@ -365,7 +393,7 @@ export class ExecutionWorkflow<
       this.completeStage(stage, started, summarizeStage(stage, response.payload));
       return response.payload;
     } catch (error) {
-      throw await this.failStage(stage, started, error);
+      throw this.failStage(stage, started, error);
     }
   }
 
@@ -377,7 +405,7 @@ export class ExecutionWorkflow<
     try {
       this.completeStage(stage, started, operation());
     } catch (error) {
-      throw await this.failStage(stage, started, error);
+      throw this.failStage(stage, started, error);
     }
   }
 
@@ -391,7 +419,12 @@ export class ExecutionWorkflow<
       freezeStageMetric(stage, "completed", started, completed),
     );
     this.publish(stage, "completed", details);
-    this.reportProgress(this.mutableMetrics.stages.length);
+    this.reportProgress(
+      this.mutableMetrics.stages.length,
+      progressStage(stage),
+      `Execution stage "${stage}" completed.`,
+      { executionStage: stage },
+    );
   }
 
   private failStage(
@@ -521,6 +554,24 @@ function summarizeStage(stage: ExecutionWorkflowStage, value: unknown): ContextD
     };
   }
   return { finalResponseProduced: value !== undefined };
+}
+
+function progressStage(stage: ExecutionWorkflowStage): WorkflowStage {
+  switch (stage) {
+    case "goal":
+    case "planner":
+    case "execution-plan":
+      return WorkflowStage.PLANNING;
+    case "task-decomposer":
+      return WorkflowStage.DECOMPOSING;
+    case "scheduler":
+      return WorkflowStage.SCHEDULING;
+    case "specialized-agents":
+      return WorkflowStage.EXECUTING;
+    case "consensus":
+    case "chief-agent":
+      return WorkflowStage.REVIEWING;
+  }
 }
 
 function assertPlan(plan: ExecutionPlan, goal: Goal): void {

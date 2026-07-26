@@ -45,7 +45,7 @@ async function source(relativePath) {
   return readFile(new URL(relativePath, ROOT), "utf8");
 }
 
-test("FlowAgent preserva a API publica e entra somente pelo ChiefAgent", async () => {
+test("FlowAgent preserva a API publica e entra pela camada de execucao", async () => {
   const facade = await readFile(FLOW_AGENT_PATH, "utf8");
 
   for (const method of [
@@ -57,7 +57,9 @@ test("FlowAgent preserva a API publica e entra somente pelo ChiefAgent", async (
   }
 
   assert.match(facade, /new ChiefAgent/);
-  assert.match(facade, /chief\.handleTask\(/);
+  assert.match(facade, /new ExecutionLayer/);
+  assert.match(facade, /executionLayer\.execute\(/);
+  assert.doesNotMatch(facade, /chief\.handleTask\(/);
   assert.doesNotMatch(facade, /new Scheduler\(/);
   assert.doesNotMatch(facade, /scheduler\.executeAll\(/);
   assert.match(facade, /new AgentRegistry\(/);

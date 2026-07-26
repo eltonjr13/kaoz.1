@@ -17,6 +17,8 @@ import {
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import { ChiefAgent } from "@/services/agents/chief/chief-agent";
 import { createChatSpecializedAgents } from "@/services/agents/chat/chat-specialized-agents";
+import { ExecutionLayer } from "@/services/agents/execution/execution-layer";
+import { MessageBus } from "@/services/agents/messaging/message-bus";
 import type {
   ExecutionPlanDraft,
   Goal,
@@ -1138,40 +1140,49 @@ export async function chatWithAgent(
   const { agentContextAdapter } = await import(
     "@/services/agents/memory/agent-context.runtime"
   );
+  const messageBus = new MessageBus();
   const chief = new ChiefAgent<ChatAgentResponse>({
     contextAdapter: agentContextAdapter,
+    messageBus,
+  });
+  const executionLayer = new ExecutionLayer({
+    chiefAgent: chief,
+    messageBus,
+    logger: (entry) => console.info("[ExecutionLayer]", entry),
   });
   await chief.initialize();
 
   try {
     const latestUserText = getLatestUserText(messages);
-    const result = await chief.handleTask({
-      executionId: `chat-${globalThis.crypto.randomUUID()}`,
-      objective: latestUserText || "Responder a conversa atual.",
-      contextData: {
-        channel: "flow-chat",
-        messageCount: messages.length,
-        hasReferenceImage: Boolean(referenceImagePath),
-        hasExternalTools: Boolean(options?.hasExternalTools),
-        structuredResponse: shouldUseStructuredChatResponse(
-          options,
-          referenceImagePath,
+    const result = await executionLayer.execute({
+      objective: {
+        executionId: `chat-${globalThis.crypto.randomUUID()}`,
+        objective: latestUserText || "Responder a conversa atual.",
+        contextData: {
+          channel: "flow-chat",
+          messageCount: messages.length,
+          hasReferenceImage: Boolean(referenceImagePath),
+          hasExternalTools: Boolean(options?.hasExternalTools),
+          structuredResponse: shouldUseStructuredChatResponse(
+            options,
+            referenceImagePath,
+            messages,
+          ),
+        },
+        requiredCapability: "chat-response",
+        priority: 50,
+        estimatedCost: 0,
+        estimatedTime: 60_000,
+        confidence: 1,
+        planGenerator: createChatPlanGenerator(messages, options),
+        executionAgents: createChatExecutionAgents(
           messages,
+          avatarPersonality,
+          executeWebQuery,
+          referenceImagePath,
+          options,
         ),
       },
-      requiredCapability: "chat-response",
-      priority: 50,
-      estimatedCost: 0,
-      estimatedTime: 60_000,
-      confidence: 1,
-      planGenerator: createChatPlanGenerator(messages, options),
-      executionAgents: createChatExecutionAgents(
-        messages,
-        avatarPersonality,
-        executeWebQuery,
-        referenceImagePath,
-        options,
-      ),
     });
     return result.response;
   } catch (error) {

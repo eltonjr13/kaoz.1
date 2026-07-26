@@ -8,8 +8,8 @@ IA, não executa tarefas, não usa ferramentas e não chama agentes. No modo
 `EXECUTION`, ele apenas injeta no `ExecutionWorkflow` as portas fornecidas pelo
 chamador.
 
-Nesta etapa, a camada está implementada e exportada, mas não está conectada ao
-`ChiefAgent` nem ao runtime atual.
+O `ChiefAgent` utiliza o `ExecutionWorkflow` para decisões `EXECUTION`. Os
+demais modos ainda preservam seus caminhos existentes.
 
 ## Seleção
 
@@ -106,9 +106,9 @@ interrompe a sequência, registra o erro e mantém `result()` vazio.
 
 ```mermaid
 flowchart LR
-    U["Mensagem do usuário"] -. "integração futura" .-> EC["ExecutionClassifier"]
+    U["Objetivo recebido pelo Chief"] --> EC["ExecutionClassifier"]
     EC --> ED["ExecutionDecision"]
     ED --> WF["WorkflowFactory"]
     WF --> W["BaseWorkflow especializado"]
-    W -. "ainda não conectado ao fluxo público" .-> C["ChiefAgent"]
+    W --> C["ChiefAgent libera a resposta"]
 ```

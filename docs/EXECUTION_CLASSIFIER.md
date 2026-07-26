@@ -6,17 +6,17 @@
 modo adequado para uma mensagem. Ele não responde ao usuário, não executa
 ferramentas, não chama agentes e não inicia workflows.
 
-Nesta etapa, a camada está implementada e exportada, mas não foi conectada às
-rotas, ao `chatWithAgent()` ou ao `ChiefAgent`. Isso preserva integralmente os
-fluxos atuais. A ligação pontilhada no diagrama representa o ponto de integração
-futuro.
+O `ChiefAgent` agora classifica cada objetivo recebido. Decisões `EXECUTION`
+criam uma `ExecutionSession` e entram obrigatoriamente no
+`ExecutionWorkflow`. A camada continua sem alteração direta de rotas ou do
+`chatWithAgent()`.
 
 ## Posição arquitetural
 
 ```mermaid
 flowchart LR
     U["Usuário"] --> M["Mensagem"]
-    M -. "integração futura" .-> EC["ExecutionClassifier"]
+    M --> EC["ExecutionClassifier"]
     EC --> ED["ExecutionDecision"]
     ED --> WF["WorkflowFactory"]
     WF --> MODE{"ExecutionMode"}
@@ -36,9 +36,9 @@ flowchart LR
     D --> S["Scheduler"]
 ```
 
-Quando integrado, o classificador será o primeiro componente interno após o
-recebimento da mensagem e produzirá apenas a decisão usada pelo
-`WorkflowFactory`. As duas camadas continuam desconectadas do runtime atual.
+O classificador é a primeira decisão interna do `ChiefAgent` e produz apenas a
+decisão de execução. No modo `EXECUTION`, a resposta fica bloqueada até o
+workflow terminar.
 
 ## Contratos
 

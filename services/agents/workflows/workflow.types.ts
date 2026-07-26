@@ -1,5 +1,13 @@
 import type { ExecutionDecision } from "../classification/execution-decision.ts";
 import type { ExecutionMode } from "../classification/execution-mode.ts";
+import type {
+  WorkflowEvent,
+  WorkflowEventSubscriber,
+  WorkflowMetrics,
+  WorkflowStage,
+  WorkflowSubscriptionOptions,
+  WorkflowTimeline,
+} from "./progress-engine.types.ts";
 
 export type WorkflowStatus =
   | "created"
@@ -17,6 +25,8 @@ export interface WorkflowProgress {
   readonly completedSteps: number;
   readonly totalSteps: number;
   readonly updatedAt: string;
+  readonly stage?: WorkflowStage;
+  readonly eventSequence?: number;
 }
 
 export interface WorkflowResult {
@@ -50,6 +60,13 @@ export interface WorkflowContract {
   cancel(): Promise<void>;
   status(): WorkflowStatus;
   progress(): WorkflowProgress;
+  events(): readonly WorkflowEvent[];
+  timeline(): WorkflowTimeline;
+  workflowMetrics(): WorkflowMetrics;
+  subscribeProgress(
+    subscriber: WorkflowEventSubscriber,
+    options?: WorkflowSubscriptionOptions,
+  ): () => void;
   result(): WorkflowResult | undefined;
 }
 

@@ -82,10 +82,12 @@ test("BaseWorkflow lifecycle materializes only a structural result", async () =>
   assert.deepEqual(workflow.progress(), {
     workflowId: "workflow-analysis-lifecycle",
     status: "initialized",
+    stage: "Queued",
     percentage: 0,
     completedSteps: 0,
     totalSteps: 2,
     updatedAt: timestamp,
+    eventSequence: 2,
   });
 
   await workflow.pause();
@@ -139,7 +141,7 @@ test("workflow type must match the ExecutionDecision mode", () => {
   );
 });
 
-test("workflow selection stays isolated from LLM, tools and Chief integration", () => {
+test("workflow selection stays isolated from LLM and tools while Chief consumes it", () => {
   const directory = new URL(
     "../services/agents/workflows/",
     import.meta.url,
@@ -184,13 +186,17 @@ test("workflow selection stays isolated from LLM, tools and Chief integration", 
     /ToolExecutionService|generateContent|openai/i,
   );
 
-  const currentFlowSources = [
-    "../lib/ai/gemini.ts",
-    "../services/agents/chief/chief-agent.ts",
-  ].map((path) =>
-    readFileSync(new URL(path, import.meta.url), "utf8")
+  const publicEntrySource = readFileSync(
+    new URL("../lib/ai/gemini.ts", import.meta.url),
+    "utf8",
   );
-  for (const currentSource of currentFlowSources) {
-    assert.doesNotMatch(currentSource, /WorkflowFactory/);
-  }
+  assert.doesNotMatch(publicEntrySource, /WorkflowFactory/);
+  const chiefSource = readFileSync(
+    new URL(
+      "../services/agents/chief/chief-agent.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(chiefSource, /WorkflowFactory/);
 });

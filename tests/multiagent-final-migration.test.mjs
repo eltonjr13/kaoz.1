@@ -32,7 +32,7 @@ test("production code contains no removed monolithic adapter or planner fallback
   assert.deepEqual(matches, []);
 });
 
-test("chatWithAgent and FlowAgent cannot bypass the Chief pipeline", async () => {
+test("chatWithAgent and FlowAgent cannot bypass the execution layer", async () => {
   const [chatSource, flowSource, schedulerSource] = await Promise.all([
     readFile(path.join(ROOT, "lib/ai/gemini.ts"), "utf8"),
     readFile(path.join(ROOT, "src/providers/flow/FlowAgent.ts"), "utf8"),
@@ -43,12 +43,14 @@ test("chatWithAgent and FlowAgent cannot bypass the Chief pipeline", async () =>
   ]);
   const chatFunction = extractFunction(chatSource, "chatWithAgent");
 
-  assert.match(chatFunction, /new ChiefAgent/);
-  assert.match(chatFunction, /chief\.handleTask\(/);
+  assert.match(chatFunction, /new ExecutionLayer/);
+  assert.match(chatFunction, /executionLayer\.execute\(/);
+  assert.doesNotMatch(chatFunction, /chief\.handleTask\(/);
   assert.doesNotMatch(chatFunction, /executeChatResponseWorkflow\(/);
   assert.doesNotMatch(flowSource, /\bnew Scheduler\b|scheduler\.executeAll\(/);
-  assert.match(flowSource, /new ChiefAgent/);
-  assert.match(flowSource, /chief\.handleTask\(/);
+  assert.match(flowSource, /new ExecutionLayer/);
+  assert.match(flowSource, /executionLayer\.execute\(/);
+  assert.doesNotMatch(flowSource, /chief\.handleTask\(/);
   assert.doesNotMatch(schedulerSource, /agent\.handleTask\(/);
   assert.match(
     schedulerSource,
