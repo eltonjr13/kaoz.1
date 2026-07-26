@@ -1,18 +1,18 @@
-import { CreativeDomainAgentBase } from "./creative-domain-agent-base.ts";
+import { CreativeBriefEnrichmentAgent } from "./creative-brief-enrichment-agent.ts";
 
-export class AudienceStrategistAgent extends CreativeDomainAgentBase {
+export class AudienceStrategistAgent extends CreativeBriefEnrichmentAgent {
   constructor() {
     super({
       id: "creative-audience-strategist-agent",
       name: "Audience Strategist Agent",
       kind: "creative-audience-strategist",
       description:
-        "Structural owner of future audience strategy responsibilities.",
+        "Adds an append-only audience strategy contribution to a CreativeBrief.",
+      contributionKind: "audience-strategy",
       capabilities: [
         {
           name: "creative.audience-strategy",
-          description:
-            "Declares future audience strategy responsibility.",
+          description: "Adds structured audience strategy to a CreativeBrief.",
         },
       ],
     });

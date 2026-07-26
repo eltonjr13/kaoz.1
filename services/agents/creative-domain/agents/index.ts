@@ -9,4 +9,5 @@ export * from "./PromptEngineerAgent.ts";
 export * from "./VideoDirectionAgent.ts";
 export * from "./VisualDirectorAgent.ts";
 export * from "./creative-agent-catalog.ts";
+export * from "./creative-brief-enrichment-agent.ts";
 export * from "./creative-domain-agent-base.ts";

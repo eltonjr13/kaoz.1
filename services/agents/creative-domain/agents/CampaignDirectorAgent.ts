@@ -75,13 +75,13 @@ export class CampaignDirectorAgent extends CreativeDomainAgentBase<
     });
   }
 
-  handleTask(
+  async handleTask(
     task: CampaignDirectorTask,
     _context?: AgentContext,
   ): Promise<CreativeBrief> {
     this.assertReady();
-    return Promise.resolve(
-      createCreativeBrief(toCreativeBriefInput(resolveCampaignInput(task))),
+    return createCreativeBrief(
+      toCreativeBriefInput(resolveCampaignInput(task)),
     );
   }
 
@@ -114,7 +114,7 @@ export class CampaignDirectorAgent extends CreativeDomainAgentBase<
 function resolveCampaignInput(
   task: CampaignDirectorTask,
 ): CampaignDirectorBriefInput {
-  if (task.type === "create-campaign-brief") {
+  if (isCreateCampaignBriefTask(task)) {
     return task.campaign;
   }
   const input = task.input;
@@ -139,6 +139,16 @@ function resolveCampaignInput(
   }
   throw new Error(
     `CampaignDirectorAgent task "${task.id}" requires structured campaign input.`,
+  );
+}
+
+function isCreateCampaignBriefTask(
+  task: CampaignDirectorTask,
+): task is CreateCampaignBriefTask {
+  return (
+    "type" in task &&
+    task.type === "create-campaign-brief" &&
+    "campaign" in task
   );
 }
 

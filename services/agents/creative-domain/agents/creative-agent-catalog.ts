@@ -1,4 +1,3 @@
-import type { CreativeDomainAgentBase } from "./creative-domain-agent-base.ts";
 import { AudienceStrategistAgent } from "./AudienceStrategistAgent.ts";
 import { BrandAgent } from "./BrandAgent.ts";
 import { CampaignDirectorAgent } from "./CampaignDirectorAgent.ts";
@@ -10,8 +9,7 @@ import { PromptEngineerAgent } from "./PromptEngineerAgent.ts";
 import { VideoDirectionAgent } from "./VideoDirectionAgent.ts";
 import { VisualDirectorAgent } from "./VisualDirectorAgent.ts";
 
-export function createCreativeAgentCatalog():
-  readonly CreativeDomainAgentBase[] {
+export function createCreativeAgentCatalog() {
   return Object.freeze([
     new CampaignDirectorAgent(),
     new AudienceStrategistAgent(),

@@ -20,10 +20,26 @@ export interface CreativeBrief {
   readonly constraints: readonly string[];
   readonly schedule: readonly CreativeBriefScheduleEntry[];
   readonly kpis: readonly CreativeBriefKpi[];
+  readonly contributions: readonly CreativeBriefContribution[];
   readonly metadata: CreativeData;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export type CreativeBriefContributionKind =
+  | "audience-strategy"
+  | "brand-governance"
+  | "copywriting"
+  | "visual-direction"
+  | "creative-review";
+
+export interface CreativeBriefContribution {
+  readonly id: string;
+  readonly kind: CreativeBriefContributionKind;
+  readonly sourceAgentId: string;
+  readonly content: CreativeData;
+  readonly createdAt: string;
 }
 
 export interface CreativeBriefScheduleEntry {
@@ -52,6 +68,7 @@ export interface CreativeBriefInput {
   readonly constraints?: readonly string[];
   readonly schedule?: readonly CreativeBriefScheduleEntry[];
   readonly kpis?: readonly CreativeBriefKpi[];
+  readonly contributions?: readonly CreativeBriefContribution[];
   readonly metadata?: CreativeData;
   readonly version?: number;
   readonly createdAt?: string;
@@ -113,6 +130,7 @@ export function createCreativeBrief(
       (input.schedule ?? []).map(freezeScheduleEntry),
     ),
     kpis: Object.freeze((input.kpis ?? []).map(freezeKpi)),
+    contributions: freezeContributions(input.contributions ?? []),
     metadata: freezeCreativeData(input.metadata),
     version: normalizeCreativeVersion(
       input.version ?? 1,
@@ -121,6 +139,57 @@ export function createCreativeBrief(
     createdAt,
     updatedAt,
   });
+}
+
+function freezeContributions(
+  contributions: readonly CreativeBriefContribution[],
+): readonly CreativeBriefContribution[] {
+  const frozen = contributions.map((contribution) =>
+    Object.freeze({
+      id: requireCreativeText(
+        contribution.id,
+        "CreativeBrief contribution id",
+      ),
+      kind: normalizeContributionKind(contribution.kind),
+      sourceAgentId: requireCreativeText(
+        contribution.sourceAgentId,
+        "CreativeBrief contribution sourceAgentId",
+      ),
+      content: freezeCreativeData(contribution.content),
+      createdAt: normalizeCreativeTimestamp(
+        contribution.createdAt,
+        "CreativeBrief contribution createdAt",
+      ),
+    }),
+  );
+  if (
+    new Set(frozen.map((contribution) => contribution.id)).size !==
+      frozen.length
+  ) {
+    throw new Error("CreativeBrief contribution ids must be unique.");
+  }
+  if (
+    new Set(frozen.map((contribution) => contribution.kind)).size !==
+      frozen.length
+  ) {
+    throw new Error("CreativeBrief contribution kinds must be unique.");
+  }
+  return Object.freeze(frozen);
+}
+
+function normalizeContributionKind(
+  value: CreativeBriefContributionKind,
+): CreativeBriefContributionKind {
+  if (
+    value !== "audience-strategy" &&
+    value !== "brand-governance" &&
+    value !== "copywriting" &&
+    value !== "visual-direction" &&
+    value !== "creative-review"
+  ) {
+    throw new Error("CreativeBrief contribution kind is invalid.");
+  }
+  return value;
 }
 
 function freezeScheduleEntry(

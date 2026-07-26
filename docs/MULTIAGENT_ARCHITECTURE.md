@@ -127,8 +127,10 @@ Seu catálogo estrutural registra `CampaignDirectorAgent`,
 `AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,
 `VisualDirectorAgent`, `PromptEngineerAgent`, `ImageGenerationAgent`,
 `VideoDirectionAgent`, `MotionAgent` e `CreativeReviewerAgent`. Todos
-implementam o contrato `BaseAgent` por meio de `AbstractAgent`, mas permanecem
-sem execução nesta etapa.
+implementam o contrato `BaseAgent` por meio de `AbstractAgent`.
+`CampaignDirectorAgent` já materializa briefs estruturados por uma transformação
+determinística e devolve o `CreativeBrief` ao Scheduler como resultado do
+comando correlacionado. Os outros nove permanecem sem execução nesta etapa.
 
 A especificação e os diagramas estão em
 [`CREATIVE_DOMAIN.md`](./CREATIVE_DOMAIN.md).

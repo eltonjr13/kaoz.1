@@ -109,7 +109,7 @@ somente para proibi-lo.
 ```mermaid
 flowchart TB
     BASE["CreativeDomainAgentBase<br/>AbstractAgent → BaseAgent"]
-    BASE --> CDIR["CampaignDirectorAgent<br/>creative.campaign-direction"]
+    BASE --> CDIR["CampaignDirectorAgent<br/>creative.campaign-direction<br/>brief estruturado ativo"]
     BASE --> AUD["AudienceStrategistAgent<br/>creative.audience-strategy"]
     BASE --> BRAND["BrandAgent<br/>creative.brand-governance"]
     BASE --> COPY["CopyAgent<br/>creative.copywriting"]
@@ -128,11 +128,31 @@ Todos registram:
 - uma capability especializada;
 - `domainId` `creative` e domínio legível `Creative`;
 - health e heartbeat herdados de `AbstractAgent`;
-- restrição `not-executable`.
+- restrição `not-executable` para os especialistas ainda estruturais.
 
-Os agentes são estruturais. `handleTask()` e `handleMessage()` rejeitam
-execução com `CreativeAgentNotExecutableError`. Como não são inicializados no
-registro, permanecem offline e indisponíveis para seleção operacional.
+O `CampaignDirectorAgent` é a primeira exceção ativa: ele recebe intenção de
+campanha já estruturada e produz um `CreativeBrief`, sem IA, prompts,
+ferramentas ou geração de mídia. Os outros nove agentes continuam estruturais;
+seus `handleTask()` e `handleMessage()` rejeitam execução com
+`CreativeAgentNotExecutableError`.
+
+### Comunicação do CampaignDirector
+
+```mermaid
+sequenceDiagram
+    participant S as Scheduler
+    participant B as MessageBus
+    participant C as CampaignDirectorAgent
+
+    S->>B: Command execute-scheduled-task
+    B->>C: ExecutionTask
+    C->>C: validar e estruturar CreativeBrief
+    C-->>B: Response CreativeBrief
+    B-->>S: SchedulerTaskExecutionResult.output
+```
+
+O agente não conhece uma instância do Scheduler. A resposta correlacionada do
+MessageBus é capturada pelo fluxo normal do Scheduler.
 
 ## Componentes
 
@@ -153,8 +173,9 @@ não substitui nem altera o `SharedContext`.
 
 ### CreativeBrief
 
-Contrato imutável para objetivo, audiência, entregáveis, restrições e metadata
-de uma iniciativa criativa.
+Contrato imutável para objetivo, público-alvo, canais, identidade visual, tom,
+mensagem principal, restrições, entregáveis, cronograma, KPIs e metadata de uma
+iniciativa criativa.
 
 ### CreativeWorkflow
 
@@ -198,13 +219,15 @@ creativeDomain.registerAgent(registry, {
 
 Não foram adicionados:
 
-- geração de imagem, vídeo, texto ou layout;
+- geração de imagem, vídeo, texto publicitário ou layout;
 - execução de `CreativeWorkflow`;
 - comunicação com outros agentes;
 - persistência;
 - rotas ou interface.
 
 O Planner apenas materializa e marca a estrutura para o domínio. As etapas e
-capabilities produzidas pelo `PlanGenerator` existente são preservadas, pois os
-agentes criativos ainda não executam tarefas. Não foram alterados Chief,
-Scheduler, MessageBus, SharedContext, Blackboard nem outros domínios.
+capabilities produzidas pelo `PlanGenerator` existente são preservadas. Apenas
+o `CampaignDirectorAgent` está habilitado para produzir briefs quando receber
+uma tarefa `creative.campaign-direction`; os demais agentes criativos continuam
+inativos. Não foram alterados Chief, Scheduler, MessageBus, SharedContext,
+Blackboard nem outros domínios.

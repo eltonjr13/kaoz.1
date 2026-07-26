@@ -11,6 +11,7 @@ import {
   CREATIVE_DOMAIN_ID,
   CopyAgent,
   CreativeAgentNotExecutableError,
+  CreativeBriefEnrichmentAgent,
   CreativeDomain,
   CreativeReviewerAgent,
   ImageGenerationAgent,
@@ -177,6 +178,10 @@ test("catalog exposes ten BaseAgent specialists with complete descriptors", asyn
         .items.map((capability) => capability.name),
       [capabilityName],
     );
+    const isCampaignDirector = agent instanceof CampaignDirectorAgent;
+    const isEnrichmentAgent =
+      agent instanceof CreativeBriefEnrichmentAgent;
+    const isActive = isCampaignDirector || isEnrichmentAgent;
     assert.equal(
       agent
         .getCapabilities()
@@ -184,7 +189,7 @@ test("catalog exposes ten BaseAgent specialists with complete descriptors", asyn
           (restriction) =>
             restriction.name === "not-executable",
         ),
-      true,
+      !isActive,
     );
 
     const heartbeat = await agent.heartbeat();
@@ -192,20 +197,80 @@ test("catalog exposes ten BaseAgent specialists with complete descriptors", asyn
     assert.equal(heartbeat.agentId, agent.id);
     assert.equal(health.agentId, agent.id);
     assert.equal(health.status, "degraded");
-    await assert.rejects(
-      agent.handleTask({ type: "test" }),
-      (error) =>
-        error instanceof CreativeAgentNotExecutableError,
-    );
-    await assert.rejects(
-      agent.handleMessage({ type: "test" }),
-      (error) =>
-        error instanceof CreativeAgentNotExecutableError,
-    );
+    if (isCampaignDirector) {
+      await assert.rejects(
+        agent.handleTask({
+          type: "create-campaign-brief",
+          campaign: createCampaignDirectorTestInput(),
+        }),
+        /must be ready/,
+      );
+      await assert.rejects(
+        agent.handleMessage({
+          type: "create-campaign-brief",
+          campaign: createCampaignDirectorTestInput(),
+        }),
+        /must be ready/,
+      );
+    } else if (isEnrichmentAgent) {
+      const brief = createCreativeBrief({
+        id: "brief-catalog-enrichment",
+        title: "Catalog enrichment",
+        objective: "Validate active enrichment agents.",
+        createdAt: timestamp,
+      });
+      await assert.rejects(
+        agent.handleTask({
+          type: "enrich-creative-brief",
+          brief,
+          contribution: { catalog: true },
+          createdAt: timestamp,
+        }),
+        /must be ready/,
+      );
+      await assert.rejects(
+        agent.handleMessage({
+          type: "enrich-creative-brief",
+          brief,
+          contribution: { catalog: true },
+          createdAt: timestamp,
+        }),
+        /must be ready/,
+      );
+    } else {
+      await assert.rejects(
+        agent.handleTask({ type: "test" }),
+        (error) =>
+          error instanceof CreativeAgentNotExecutableError,
+      );
+      await assert.rejects(
+        agent.handleMessage({ type: "test" }),
+        (error) =>
+          error instanceof CreativeAgentNotExecutableError,
+      );
+    }
   }
 });
 
-test("AgentRegistry monitors the complete dormant catalog", async () => {
+function createCampaignDirectorTestInput() {
+  return {
+    id: "brief-catalog-test",
+    title: "Catalog campaign",
+    objective: "Validate the active campaign director.",
+    targetAudience: ["Customers"],
+    channels: ["Social"],
+    visualIdentity: ["Existing brand system"],
+    communicationTone: ["Direct"],
+    mainMessage: "Campaign message",
+    constraints: ["No generation"],
+    deliverables: ["Campaign brief"],
+    schedule: [],
+    kpis: [],
+    createdAt: timestamp,
+  } as const;
+}
+
+test("AgentRegistry monitors the complete uninitialized catalog", async () => {
   const registry = new AgentRegistry();
   const domain = new CreativeDomain();
   domain.register(registry);

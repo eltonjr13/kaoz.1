@@ -1,18 +1,18 @@
-import { CreativeDomainAgentBase } from "./creative-domain-agent-base.ts";
+import { CreativeBriefEnrichmentAgent } from "./creative-brief-enrichment-agent.ts";
 
-export class CreativeReviewerAgent extends CreativeDomainAgentBase {
+export class CreativeReviewerAgent extends CreativeBriefEnrichmentAgent {
   constructor() {
     super({
       id: "creative-reviewer-agent",
       name: "Creative Reviewer Agent",
       kind: "creative-reviewer",
       description:
-        "Structural owner of future creative review responsibilities.",
+        "Adds an append-only creative review contribution to a CreativeBrief.",
+      contributionKind: "creative-review",
       capabilities: [
         {
           name: "creative.review",
-          description:
-            "Declares future creative review responsibility.",
+          description: "Adds structured review findings to a CreativeBrief.",
         },
       ],
     });
