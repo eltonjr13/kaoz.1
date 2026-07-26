@@ -3,6 +3,7 @@ export * from "./chat/index.ts";
 export * from "./chief/index.ts";
 export * from "./core/index.ts";
 export * from "./context/index.ts";
+export * from "./creative-domain/index.ts";
 export * from "./decomposition/index.ts";
 export * from "./messaging/index.ts";
 export * from "./memory/index.ts";

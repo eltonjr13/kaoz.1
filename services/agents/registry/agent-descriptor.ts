@@ -4,18 +4,21 @@ import type { AgentId } from "../core/agent-id.ts";
 import type { AgentMetadata } from "../core/agent-metadata.ts";
 import type { AgentState } from "../core/agent-state.ts";
 import type { BaseAgent } from "../core/base-agent.ts";
+import type { AgentDomainId } from "./agent-domain.ts";
 
 export type AgentAvailability = "available" | "busy";
 
 export interface AgentRegistration {
   readonly agent: BaseAgent;
   readonly type: string;
+  readonly domainId?: AgentDomainId;
   readonly availability?: AgentAvailability;
 }
 
 export interface AgentDescriptor {
   readonly id: AgentId;
   readonly type: string;
+  readonly domainId?: AgentDomainId;
   readonly metadata: AgentMetadata;
   readonly capabilities: AgentCapabilities;
   readonly state: Readonly<AgentState>;

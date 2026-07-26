@@ -300,6 +300,7 @@ test("statistics summarize availability, health, type and capabilities", async (
   const statistics = registry.getStatistics();
 
   assert.equal(statistics.total, 3);
+  assert.equal(statistics.domains, 0);
   assert.equal(statistics.online, 2);
   assert.equal(statistics.offline, 1);
   assert.equal(statistics.available, 1);
@@ -309,6 +310,7 @@ test("statistics summarize availability, health, type and capabilities", async (
   assert.equal(statistics.unhealthy, 0);
   assert.equal(statistics.healthUnknown, 0);
   assert.deepEqual(statistics.byType, { worker: 2, observer: 1 });
+  assert.deepEqual(statistics.byDomain, {});
   assert.deepEqual(statistics.byCapability, {
     shared: 3,
     alpha: 1,

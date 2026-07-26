@@ -15,6 +15,13 @@ import type {
 } from "./agent-descriptor.ts";
 import type { AgentDiscovery } from "./agent-discovery.ts";
 import {
+  createAgentDomainId,
+  defineAgentDomain,
+  type AgentDomainDefinition,
+  type AgentDomainDescriptor,
+  type AgentDomainId,
+} from "./agent-domain.ts";
+import {
   findDeclaredCapability,
   rankCapabilityAgents,
   type AgentCapabilitySelection,
@@ -41,10 +48,16 @@ const OFFLINE_STATUSES: ReadonlySet<AgentStatus> = new Set([
 interface RegistryEntry {
   readonly agent: BaseAgent;
   readonly type: string;
+  readonly domainId?: AgentDomainId;
   readonly registeredAt: string;
   availability: AgentAvailability;
   lastHeartbeatAt?: string;
   lastHealth?: AgentHealth;
+}
+
+interface DomainEntry {
+  readonly definition: AgentDomainDefinition;
+  readonly registeredAt: string;
 }
 
 const systemClock: AgentRegistryClock = {
@@ -53,6 +66,7 @@ const systemClock: AgentRegistryClock = {
 
 export class AgentRegistry implements AgentDiscovery {
   private readonly entries = new Map<AgentId, RegistryEntry>();
+  private readonly domains = new Map<AgentDomainId, DomainEntry>();
   private readonly heartbeatTimeoutMs: number;
   private readonly clock: AgentRegistryClock;
 
@@ -78,15 +92,84 @@ export class AgentRegistry implements AgentDiscovery {
     }
 
     const type = normalizeType(registration.type);
+    const domainId = registration.domainId
+      ? createAgentDomainId(registration.domainId)
+      : undefined;
+    if (domainId && !this.domains.has(domainId)) {
+      throw new AgentRegistryError(
+        "DOMAIN_NOT_FOUND",
+        `Agent domain "${domainId}" is not registered.`,
+        agent.id,
+        domainId,
+      );
+    }
     const entry: RegistryEntry = {
       agent,
       type,
+      domainId,
       availability: registration.availability ?? "available",
       registeredAt: this.timestamp(),
     };
     const descriptor = this.toDescriptor(entry);
     this.entries.set(agent.id, entry);
     return descriptor;
+  }
+
+  registerDomain(
+    domain: AgentDomainDefinition,
+  ): AgentDomainDescriptor {
+    const definition = defineAgentDomain(domain);
+    if (this.domains.has(definition.id)) {
+      throw new AgentRegistryError(
+        "DOMAIN_ALREADY_REGISTERED",
+        `Agent domain "${definition.id}" is already registered.`,
+        undefined,
+        definition.id,
+      );
+    }
+    const entry: DomainEntry = {
+      definition,
+      registeredAt: this.timestamp(),
+    };
+    this.domains.set(definition.id, entry);
+    return this.toDomainDescriptor(entry);
+  }
+
+  removeDomain(domainId: AgentDomainId): boolean {
+    const normalizedId = createAgentDomainId(domainId);
+    if (!this.domains.has(normalizedId)) {
+      return false;
+    }
+    if (
+      [...this.entries.values()].some(
+        (entry) => entry.domainId === normalizedId,
+      )
+    ) {
+      throw new AgentRegistryError(
+        "DOMAIN_IN_USE",
+        `Agent domain "${normalizedId}" cannot be removed while it contains registered agents.`,
+        undefined,
+        normalizedId,
+      );
+    }
+    return this.domains.delete(normalizedId);
+  }
+
+  getDomainById(
+    domainId: AgentDomainId,
+  ): AgentDomainDescriptor | undefined {
+    const entry = this.domains.get(createAgentDomainId(domainId));
+    return entry ? this.toDomainDescriptor(entry) : undefined;
+  }
+
+  listDomains(): readonly AgentDomainDescriptor[] {
+    return Object.freeze(
+      [...this.domains.values()]
+        .map((entry) => this.toDomainDescriptor(entry))
+        .sort((left, right) =>
+          String(left.id).localeCompare(String(right.id))
+        ),
+    );
   }
 
   remove(agentId: AgentId): boolean {
@@ -130,6 +213,18 @@ export class AgentRegistry implements AgentDiscovery {
   findByType(type: string): readonly AgentDescriptor[] {
     const normalizedType = normalizeType(type);
     return this.filterEntries((entry) => entry.type === normalizedType);
+  }
+
+  findByDomain(
+    domainId: AgentDomainId,
+  ): readonly AgentDescriptor[] {
+    const normalizedId = createAgentDomainId(domainId);
+    if (!this.domains.has(normalizedId)) {
+      return Object.freeze([]);
+    }
+    return this.filterEntries(
+      (entry) => entry.domainId === normalizedId,
+    );
   }
 
   list(): readonly AgentDescriptor[] {
@@ -229,6 +324,7 @@ export class AgentRegistry implements AgentDiscovery {
     return Object.freeze({
       generatedAt: this.timestamp(),
       total: entries.length,
+      domains: this.domains.size,
       online,
       offline: entries.length - online,
       busy,
@@ -238,6 +334,9 @@ export class AgentRegistry implements AgentDiscovery {
       unhealthy: countValues(healthStatuses, "unhealthy"),
       healthUnknown: healthStatuses.filter((status) => status === undefined).length,
       byType: countBy(entries, (entry) => [entry.type]),
+      byDomain: countBy(entries, (entry) =>
+        entry.domainId ? [entry.domainId] : [],
+      ),
       byCapability: countBy(entries, (entry) =>
         entry.agent.getCapabilities().items.map((capability) => capability.name),
       ),
@@ -290,6 +389,7 @@ export class AgentRegistry implements AgentDiscovery {
     return Object.freeze({
       id: entry.agent.id,
       type: entry.type,
+      domainId: entry.domainId,
       metadata: freezeMetadata(entry.agent.getMetadata()),
       capabilities: freezeCapabilities(entry.agent.getCapabilities()),
       state: freezeState(entry.agent.state),
@@ -298,6 +398,27 @@ export class AgentRegistry implements AgentDiscovery {
       registeredAt: entry.registeredAt,
       lastHeartbeatAt: entry.lastHeartbeatAt,
       lastHealth: entry.lastHealth ? freezeHealth(entry.lastHealth) : undefined,
+    });
+  }
+
+  private toDomainDescriptor(
+    entry: DomainEntry,
+  ): AgentDomainDescriptor {
+    const agentIds = [...this.entries.values()]
+      .filter(
+        (candidate) =>
+          candidate.domainId === entry.definition.id,
+      )
+      .map((candidate) => candidate.agent.id)
+      .sort((left, right) =>
+        String(left).localeCompare(String(right))
+      );
+    return Object.freeze({
+      ...entry.definition,
+      tags: Object.freeze([...entry.definition.tags]),
+      registeredAt: entry.registeredAt,
+      agentIds: Object.freeze(agentIds),
+      agentCount: agentIds.length,
     });
   }
 

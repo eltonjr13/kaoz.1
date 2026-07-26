@@ -1,6 +1,10 @@
 import type { AgentDescriptor } from "./agent-descriptor.ts";
 import type { AgentId } from "../core/agent-id.ts";
 import type {
+  AgentDomainDescriptor,
+  AgentDomainId,
+} from "./agent-domain.ts";
+import type {
   AgentCapabilitySelection,
   CapabilityQueryOptions,
   CapabilitySelectionOptions,
@@ -21,6 +25,11 @@ export interface AgentDiscovery {
     options?: CapabilitySelectionOptions,
   ): AgentCapabilitySelection | undefined;
   findByType(type: string): readonly AgentDescriptor[];
+  findByDomain(domainId: AgentDomainId): readonly AgentDescriptor[];
+  getDomainById(
+    domainId: AgentDomainId,
+  ): AgentDomainDescriptor | undefined;
+  listDomains(): readonly AgentDomainDescriptor[];
   list(): readonly AgentDescriptor[];
   listOnline(): readonly AgentDescriptor[];
   listBusy(): readonly AgentDescriptor[];
