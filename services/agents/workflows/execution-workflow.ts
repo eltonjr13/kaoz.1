@@ -91,7 +91,7 @@ export class ExecutionWorkflow<
   >;
   private readonly blackboard: Blackboard;
   private readonly messageBus: MessageBus;
-  private readonly clock: WorkflowClock;
+  private readonly workflowClock: WorkflowClock;
   private readonly sourceId: AgentId;
   private sequence = 0;
   private readonly mutableMetrics: MutableExecutionMetrics = {
@@ -110,18 +110,18 @@ export class ExecutionWorkflow<
   ) {
     super("execution-workflow", ExecutionMode.EXECUTION, decision, options);
     this.runtime = options.runtime;
-    this.clock = options.clock ?? systemClock;
+    this.workflowClock = options.clock ?? systemClock;
     this.sourceId = createAgentId(this.id);
     this.blackboard =
       options.blackboard ??
       new Blackboard({
-        clock: this.clock,
+        clock: this.workflowClock,
         idGenerator: () => this.nextId("blackboard"),
       });
     this.messageBus =
       options.messageBus ??
       new MessageBus({
-        clock: () => this.clock.now(),
+        clock: () => this.workflowClock.now(),
       });
     this.configureProgress(TOTAL_STAGES);
   }
@@ -164,7 +164,7 @@ export class ExecutionWorkflow<
   protected override async performExecution():
     Promise<WorkflowExecutionMaterialization> {
     const runtime = this.requireRuntime();
-    const started = this.clock.now();
+    const started = this.workflowClock.now();
     this.mutableMetrics.status = "running";
     this.mutableMetrics.startedAt = started.toISOString();
     const endpoints = this.createEndpoints(runtime);
@@ -196,8 +196,8 @@ export class ExecutionWorkflow<
         "workflow.execution.decompose-plan",
         { plan },
         endpoints[2].id,
+        (result) => assertTasks(result, plan),
       );
-      assertTasks(tasks, plan);
       const decisions = await this.requestStage<
         readonly SchedulingDecision[]
       >(
@@ -213,8 +213,8 @@ export class ExecutionWorkflow<
         "workflow.execution.execute-specialized-agents",
         { tasks, decisions },
         endpoints[3].id,
+        (result) => assertExecutionReport(result, tasks),
       );
-      assertExecutionReport(executionReport, tasks);
       const consensus = await this.requestStage<
         ConsensusResult<TConsensus>
       >(
@@ -222,22 +222,21 @@ export class ExecutionWorkflow<
         "workflow.execution.reach-consensus",
         { executionReport },
         endpoints[4].id,
+        assertConsensus,
       );
-      assertConsensus(consensus);
       const response = await this.requestStage<TResponse>(
         "chief-agent",
         "workflow.execution.consolidate-response",
         { goal, plan, tasks, executionReport, consensus },
         endpoints[5].id,
+        (result) => {
+          if (result === undefined) {
+            throw new Error("ChiefAgent returned no final response.");
+          }
+        },
       );
-      if (response === undefined) {
-        throw await this.failAfterStage(
-          "chief-agent",
-          new Error("ChiefAgent returned no final response."),
-        );
-      }
 
-      const completed = this.clock.now();
+      const completed = this.workflowClock.now();
       this.mutableMetrics.status = "completed";
       this.mutableMetrics.completedAt = completed.toISOString();
       this.mutableMetrics.durationMs = durationBetween(started, completed);
@@ -253,7 +252,7 @@ export class ExecutionWorkflow<
         }),
       });
     } catch (error) {
-      const completed = this.clock.now();
+      const completed = this.workflowClock.now();
       this.mutableMetrics.status = "failed";
       this.mutableMetrics.completedAt = completed.toISOString();
       this.mutableMetrics.durationMs = durationBetween(started, completed);
@@ -277,7 +276,7 @@ export class ExecutionWorkflow<
         runtime.goalFactory.create({
           workflowId: this.id,
           objective: requireText(runtime.objective, "Execution objective"),
-          createdAt: this.clock.now().toISOString(),
+          createdAt: this.workflowClock.now().toISOString(),
         })),
       this.endpoint("planner", async (envelope) => {
         const payload = payloadOf<{ readonly goal: Goal }>(envelope);
@@ -341,10 +340,11 @@ export class ExecutionWorkflow<
   private async requestStage<TResult>(
     stage: ExecutionWorkflowStage,
     messageName: string,
-    payload: ContextData,
+    payload: unknown,
     recipientId: AgentId,
+    validate?: (result: TResult) => void,
   ): Promise<TResult> {
-    const started = this.clock.now();
+    const started = this.workflowClock.now();
     try {
       const response = await this.messageBus.request<TResult>(
         createCommand(messageName, payload),
@@ -361,6 +361,7 @@ export class ExecutionWorkflow<
           response.error?.message ?? `${stage} returned a failed response.`,
         );
       }
+      validate?.(response.payload);
       this.completeStage(stage, started, summarizeStage(stage, response.payload));
       return response.payload;
     } catch (error) {
@@ -372,7 +373,7 @@ export class ExecutionWorkflow<
     stage: ExecutionWorkflowStage,
     operation: () => ContextData,
   ): Promise<void> {
-    const started = this.clock.now();
+    const started = this.workflowClock.now();
     try {
       this.completeStage(stage, started, operation());
     } catch (error) {
@@ -385,7 +386,7 @@ export class ExecutionWorkflow<
     started: Date,
     details: ContextData,
   ): void {
-    const completed = this.clock.now();
+    const completed = this.workflowClock.now();
     this.mutableMetrics.stages.push(
       freezeStageMetric(stage, "completed", started, completed),
     );
@@ -402,7 +403,7 @@ export class ExecutionWorkflow<
       error instanceof ExecutionWorkflowError
         ? error
         : new ExecutionWorkflowError(this.id, stage, error);
-    const completed = this.clock.now();
+    const completed = this.workflowClock.now();
     this.mutableMetrics.stages.push(
       freezeStageMetric(
         stage,
@@ -417,13 +418,6 @@ export class ExecutionWorkflow<
       partialResponseProduced: false,
     });
     return failure;
-  }
-
-  private async failAfterStage(
-    stage: ExecutionWorkflowStage,
-    error: unknown,
-  ): Promise<ExecutionWorkflowError> {
-    return this.failStage(stage, this.clock.now(), error);
   }
 
   private publish(
@@ -445,7 +439,7 @@ export class ExecutionWorkflow<
         priority: status === "failed" ? 100 : 50,
         confidence: status === "failed" ? 1 : this.decision.confidence,
         tags: ["execution-workflow", stage, status],
-        createdAt: this.clock.now().toISOString(),
+        createdAt: this.workflowClock.now().toISOString(),
       }),
     );
   }
