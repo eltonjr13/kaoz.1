@@ -67,7 +67,7 @@ const CREATIVE_GOAL_RULES: readonly CreativeGoalRule[] = Object.freeze([
   createRule(
     "image",
     "imagem",
-    /\bimagens?\b/u,
+    /\bimage(?:m|ns)\b/u,
     "creative.image-generation",
     "image",
   ),

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CREATIVE_DOMAIN_ID,
   PlannerAgent,
+  classifyCreativeGoal,
   createAcceptanceCriteria,
   createAgentId,
   createDependencyGraph,
@@ -9,6 +11,7 @@ import {
   createExecutionStep,
   createGoal,
   createPlannerAgentConfig,
+  isCreativeWorkflowPlanningPayload,
   type AgentConfig,
   type ExecutionPlanDraft,
   type Goal,
@@ -224,6 +227,122 @@ test("PlannerAgent transforms a Goal into a canonical immutable plan", async () 
   assert.equal(Object.isFrozen(plan), true);
   assert.equal(Object.isFrozen(plan.steps), true);
   assert.equal(Object.isFrozen(plan.steps[0]?.estimate), true);
+});
+
+test("PlannerAgent creates a CreativeWorkflow for every supported creative intent", async () => {
+  const cases = [
+    ["Lançar campanha de inverno", "creative.campaign-direction", "campaign"],
+    ["Gerar uma imagem do produto", "creative.image-generation", "image"],
+    ["Produzir um vídeo institucional", "creative.video-direction", "video"],
+    ["Definir o branding da empresa", "creative.brand-governance", "brand"],
+    ["Planejar publicidade regional", "creative.campaign-direction", "campaign"],
+    ["Criar calendário de social media", "creative.campaign-direction", "social-media"],
+    ["Preparar um anúncio promocional", "creative.campaign-direction", "advertisement"],
+    ["Estruturar o marketing do lançamento", "creative.campaign-direction", "campaign"],
+  ] as const;
+
+  for (const [objective, capability, artifactKind] of cases) {
+    const generator = new DeterministicGenerator();
+    const agent = new PlannerAgent(generator, {
+      clock: new FixedClock(),
+      idGenerator: () => `plan-${artifactKind}`,
+    });
+    await agent.initialize();
+
+    const goal = createGoal({
+      id: `goal-${artifactKind}`,
+      title: "Novo objetivo",
+      objective,
+      acceptanceCriteria: [
+        {
+          id: `criterion-${artifactKind}`,
+          description: "O resultado atende ao objetivo.",
+          verificationMethod: "Revisão",
+          required: true,
+        },
+      ],
+      createdAt: timestamp,
+    });
+    const plan = await agent.handleTask(goal);
+    const step = plan.steps[0];
+
+    assert.equal(generator.calls, 0, objective);
+    assert.equal(plan.steps.length, 1, objective);
+    assert.equal(step?.capability, capability, objective);
+    assert.equal(
+      isCreativeWorkflowPlanningPayload(step?.input),
+      true,
+      objective,
+    );
+    if (!isCreativeWorkflowPlanningPayload(step?.input)) {
+      assert.fail(`Creative payload was not created for "${objective}".`);
+    }
+    assert.equal(step.input.domainId, CREATIVE_DOMAIN_ID);
+    assert.equal(step.input.brief.objective, objective);
+    assert.equal(
+      step.input.workflow.stages[0]?.requiredCapability,
+      capability,
+    );
+    assert.deepEqual(
+      step.input.workflow.stages[0]?.expectedArtifactKinds,
+      [artifactKind],
+    );
+    assert.equal(Object.isFrozen(step.input.workflow), true);
+    assert.equal(Object.isFrozen(step.input.brief), true);
+  }
+});
+
+test("PlannerAgent leaves every non-creative objective on the existing planning path", async () => {
+  const objectives = [
+    "Preparar relatório financeiro trimestral",
+    "Analisar a performance da aplicação",
+    "Criar uma migração do banco de dados",
+    "Revisar a arquitetura de autenticação",
+    "Estimular a imaginação da equipe",
+    "Configurar a videoconferência corporativa",
+  ];
+
+  for (const [index, objective] of objectives.entries()) {
+    const generator = new DeterministicGenerator();
+    const agent = new PlannerAgent(generator, {
+      clock: new FixedClock(),
+      idGenerator: () => `plan-non-creative-${index}`,
+    });
+    await agent.initialize();
+    const goal = createGoal({
+      id: `goal-non-creative-${index}`,
+      title: "Objetivo operacional",
+      objective,
+      constraints: ["Não produzir imagem nem vídeo"],
+      acceptanceCriteria: [
+        {
+          id: "criterion-goal",
+          description: "O plano cobre o objetivo.",
+          verificationMethod: "Inspeção",
+          required: true,
+        },
+      ],
+      createdAt: timestamp,
+    });
+
+    assert.equal(classifyCreativeGoal(goal), undefined, objective);
+    const plan = await agent.handleTask(goal);
+
+    assert.equal(generator.calls, 1, objective);
+    assert.equal(generator.receivedGoal?.id, goal.id);
+    assert.deepEqual(
+      plan.steps.map((step) => step.capability),
+      ["analysis", "document"],
+      objective,
+    );
+    assert.equal(
+      plan.steps.some((step) =>
+        isCreativeWorkflowPlanningPayload(step.input)
+      ),
+      false,
+      objective,
+    );
+  }
 });
 
 test("PlannerAgent messages only request planning and never expose an executor", async () => {
