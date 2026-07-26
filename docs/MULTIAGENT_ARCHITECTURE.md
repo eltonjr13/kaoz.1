@@ -1,5 +1,26 @@
 # Arquitetura Multiagente do Kaoz.1
 
+## Camada de pré-execução
+
+O `ExecutionClassifier` está implementado como fronteira independente para
+classificar `QUICK`, `ANALYSIS`, `EXECUTION`, `BACKGROUND` ou `STREAMING`.
+O `WorkflowFactory` recebe essa decisão e seleciona um `BaseWorkflow`
+especializado, sem executar tarefas. Quando conectadas, essas camadas ficarão
+entre a mensagem do usuário e a entrada pública atual. Nesta etapa elas não
+foram ligadas ao runtime, preservando o comportamento existente. Consulte
+[`EXECUTION_CLASSIFIER.md`](./EXECUTION_CLASSIFIER.md) e
+[`WORKFLOW_FACTORY.md`](./WORKFLOW_FACTORY.md).
+
+```mermaid
+flowchart LR
+    U0["Usuário"] --> M0["Mensagem"]
+    M0 -. "integração futura" .-> EC0["ExecutionClassifier"]
+    EC0 --> ED0["ExecutionDecision"]
+    ED0 --> WF0["WorkflowFactory"]
+    WF0 --> BW0["BaseWorkflow especializado"]
+    BW0 -. "ainda não conectado" .-> C0["Entrada existente → ChiefAgent"]
+```
+
 ## Estado final
 
 O runtime de conversação e os fluxos do Google Flow usam uma única cadeia de
@@ -98,6 +119,8 @@ sequenceDiagram
 
 | Camada | Responsabilidade |
 | --- | --- |
+| `ExecutionClassifier` | Classificar o modo de execução e produzir estimativas, requisitos e workflow esperado, sem responder nem executar. Ainda não conectado ao runtime. |
+| `WorkflowFactory` | Converter `ExecutionDecision` no workflow correspondente ao modo, sem LLM, ferramentas, agentes ou execução de tarefas. Ainda não conectado ao ChiefAgent. |
 | `ChiefAgent` | Criar contexto e Goal, solicitar plano e decomposição, acionar Scheduler, solicitar supervisão e consolidar a resposta. |
 | `PlannerAgent` | Converter um `Goal` em `ExecutionPlan` estruturado e independente do provedor de IA. |
 | `TaskDecomposerAgent` | Converter passos do plano em tarefas imutáveis, preservando capability, dependências, prioridade, timeout, saída esperada e input. |

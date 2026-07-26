@@ -1,6 +1,7 @@
 export * from "./blackboard/index.ts";
 export * from "./chat/index.ts";
 export * from "./chief/index.ts";
+export * from "./classification/index.ts";
 export * from "./core/index.ts";
 export * from "./context/index.ts";
 export * from "./creative-domain/index.ts";
@@ -11,3 +12,4 @@ export * from "./planning/index.ts";
 export * from "./registry/index.ts";
 export * from "./scheduling/index.ts";
 export * from "./supervision/index.ts";
+export * from "./workflows/index.ts";
