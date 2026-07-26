@@ -5,9 +5,11 @@
 `CreativeDomain` é o limite lógico para agentes, contextos e contratos
 criativos. Ele não é um agente, não executa workflows e não gera artefatos.
 
-O domínio é registrado separadamente no `AgentRegistry`. Agentes criativos
-futuros devem ser registrados por `CreativeDomain.registerAgent()`, que inclui
-automaticamente o `domainId` `creative`.
+O domínio é registrado separadamente no `AgentRegistry`.
+`CreativeDomain.register()` registra também o catálogo estrutural dos dez
+agentes especializados. Agentes criativos adicionais devem ser registrados
+por `CreativeDomain.registerAgent()`, que inclui automaticamente o `domainId`
+`creative`.
 
 ## Arquitetura
 
@@ -17,6 +19,7 @@ flowchart TB
     DD["AgentDomainDescriptor<br/>id: creative"]
     CD["CreativeDomain<br/>agrupador lógico"]
     CA["Future Creative Agents"]
+    CAT["Creative Agent Catalog<br/>10 dormant agents"]
     CB["CreativeBrief"]
     CW["CreativeWorkflow"]
     CC["CreativeDomainContext"]
@@ -24,6 +27,8 @@ flowchart TB
 
     CD -->|"register()"| AR
     AR --> DD
+    CD -->|"register()"| CAT
+    CAT -->|"domainId: creative"| AR
     CD -->|"registerAgent()"| CA
     AR -->|"domainId: creative"| CA
     CD --> CC
@@ -48,7 +53,7 @@ flowchart LR
     subgraph Creative["CreativeDomain — nova estrutura"]
         REG["AgentRegistry"]
         DOM["CreativeDomain"]
-        FUT["Future Creative Agents"]
+        FUT["Creative Agent Catalog"]
         VAL["Brief / Workflow / Context / Artifact"]
         DOM --> REG
         REG --> FUT
@@ -60,6 +65,36 @@ flowchart LR
 
 O vínculo pontilhado representa uma extensão futura. Esta etapa não conecta
 o domínio ao Chief, Planner, Scheduler ou MessageBus.
+
+## Catálogo de agentes
+
+```mermaid
+flowchart TB
+    BASE["CreativeDomainAgentBase<br/>AbstractAgent → BaseAgent"]
+    BASE --> CDIR["CampaignDirectorAgent<br/>creative.campaign-direction"]
+    BASE --> AUD["AudienceStrategistAgent<br/>creative.audience-strategy"]
+    BASE --> BRAND["BrandAgent<br/>creative.brand-governance"]
+    BASE --> COPY["CopyAgent<br/>creative.copywriting"]
+    BASE --> VIS["VisualDirectorAgent<br/>creative.visual-direction"]
+    BASE --> PROMPT["PromptEngineerAgent<br/>creative.prompt-engineering"]
+    BASE --> IMG["ImageGenerationAgent<br/>creative.image-generation"]
+    BASE --> VIDEO["VideoDirectionAgent<br/>creative.video-direction"]
+    BASE --> MOTION["MotionAgent<br/>creative.motion-design"]
+    BASE --> REVIEW["CreativeReviewerAgent<br/>creative.review"]
+```
+
+Todos registram:
+
+- metadata, identificador e tipo próprios;
+- versão `1.0.0`;
+- uma capability especializada;
+- `domainId` `creative` e domínio legível `Creative`;
+- health e heartbeat herdados de `AbstractAgent`;
+- restrição `not-executable`.
+
+Os agentes são estruturais. `handleTask()` e `handleMessage()` rejeitam
+execução com `CreativeAgentNotExecutableError`. Como não são inicializados no
+registro, permanecem offline e indisponíveis para seleção operacional.
 
 ## Componentes
 
@@ -114,7 +149,7 @@ pode ser removido enquanto possuir agentes registrados.
 const registry = new AgentRegistry();
 const creativeDomain = new CreativeDomain();
 
-creativeDomain.register(registry);
+creativeDomain.register(registry); // registra domínio + catálogo
 creativeDomain.registerAgent(registry, {
   agent: futureCreativeAgent,
   type: "creative-layout",

@@ -2,11 +2,24 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  AbstractAgent,
   AgentRegistry,
   AgentRegistryError,
+  AudienceStrategistAgent,
+  BrandAgent,
+  CampaignDirectorAgent,
   CREATIVE_DOMAIN_ID,
+  CopyAgent,
+  CreativeAgentNotExecutableError,
   CreativeDomain,
+  CreativeReviewerAgent,
+  ImageGenerationAgent,
+  MotionAgent,
+  PromptEngineerAgent,
+  VideoDirectionAgent,
+  VisualDirectorAgent,
   createAgentDomainId,
+  createCreativeAgentCatalog,
   createCreativeArtifact,
   createCreativeBrief,
   createCreativeWorkflow,
@@ -26,12 +39,22 @@ test("registers CreativeDomain as an immutable AgentRegistry domain", () => {
 
   assert.equal(registered.id, CREATIVE_DOMAIN_ID);
   assert.equal(registered.name, "Creative Domain");
-  assert.equal(registered.agentCount, 0);
-  assert.deepEqual(registered.agentIds, []);
+  assert.equal(registered.agentCount, 10);
+  assert.equal(registered.agentIds.length, 10);
   assert.equal(registry.getDomainById(CREATIVE_DOMAIN_ID)?.id, domain.id);
   assert.deepEqual(
     registry.listDomains().map((entry) => entry.id),
     [CREATIVE_DOMAIN_ID],
+  );
+  assert.equal(registry.list().length, 10);
+  assert.equal(
+    registry
+      .list()
+      .every(
+        (descriptor) =>
+          descriptor.domainId === CREATIVE_DOMAIN_ID,
+      ),
+    true,
   );
   assert.equal(Object.isFrozen(domain), true);
   assert.equal(Object.isFrozen(registered), true);
@@ -56,16 +79,21 @@ test("registers every future creative agent with domain membership", () => {
   assert.equal(descriptor.domainId, CREATIVE_DOMAIN_ID);
   assert.equal(domain.contains(descriptor), true);
   assert.deepEqual(
-    registry.findByDomain(CREATIVE_DOMAIN_ID).map((entry) => entry.id),
-    [agent.id],
-  );
-  assert.deepEqual(
-    registry.getDomainById(CREATIVE_DOMAIN_ID)?.agentIds,
+    registry
+      .findByDomain(CREATIVE_DOMAIN_ID)
+      .filter((entry) => entry.id === agent.id)
+      .map((entry) => entry.id),
     [agent.id],
   );
   assert.equal(
+    registry
+      .getDomainById(CREATIVE_DOMAIN_ID)
+      ?.agentIds.includes(agent.id),
+    true,
+  );
+  assert.equal(
     registry.getStatistics().byDomain[CREATIVE_DOMAIN_ID],
-    1,
+    11,
   );
 });
 
@@ -73,7 +101,7 @@ test("protects domain membership and lifecycle invariants", () => {
   const registry = new AgentRegistry();
   const domain = new CreativeDomain();
   const agent = new TestExecutionAgent<string>({
-    id: testAgentId("creative-copy-agent"),
+    id: testAgentId("future-creative-copy-agent"),
     capabilities: ["creative.copy"],
     execute: () => Promise.resolve("unused"),
   });
@@ -109,8 +137,92 @@ test("protects domain membership and lifecycle invariants", () => {
       error instanceof AgentRegistryError &&
       error.code === "DOMAIN_IN_USE",
   );
-  registry.remove(agent.id);
+  for (const descriptor of registry.findByDomain(CREATIVE_DOMAIN_ID)) {
+    registry.remove(descriptor.id);
+  }
   assert.equal(registry.removeDomain(CREATIVE_DOMAIN_ID), true);
+});
+
+test("catalog exposes ten BaseAgent specialists with complete descriptors", async () => {
+  const catalog = createCreativeAgentCatalog();
+  const expected = [
+    [CampaignDirectorAgent, "creative.campaign-direction"],
+    [AudienceStrategistAgent, "creative.audience-strategy"],
+    [BrandAgent, "creative.brand-governance"],
+    [CopyAgent, "creative.copywriting"],
+    [VisualDirectorAgent, "creative.visual-direction"],
+    [PromptEngineerAgent, "creative.prompt-engineering"],
+    [ImageGenerationAgent, "creative.image-generation"],
+    [VideoDirectionAgent, "creative.video-direction"],
+    [MotionAgent, "creative.motion-design"],
+    [CreativeReviewerAgent, "creative.review"],
+  ] as const;
+
+  assert.equal(catalog.length, expected.length);
+  for (const [index, [AgentClass, capabilityName]] of expected.entries()) {
+    const agent = catalog[index];
+    assert.ok(agent instanceof AgentClass);
+    assert.ok(agent instanceof AbstractAgent);
+    assert.equal(agent.domain, "Creative");
+    assert.equal(agent.domainId, CREATIVE_DOMAIN_ID);
+    assert.equal(agent.getMetadata().version, "1.0.0");
+    assert.equal(agent.getMetadata().name.endsWith("Agent"), true);
+    assert.equal(
+      agent.getMetadata().tags?.includes("domain:creative"),
+      true,
+    );
+    assert.deepEqual(
+      agent
+        .getCapabilities()
+        .items.map((capability) => capability.name),
+      [capabilityName],
+    );
+    assert.equal(
+      agent
+        .getCapabilities()
+        .items[0]?.restrictions.some(
+          (restriction) =>
+            restriction.name === "not-executable",
+        ),
+      true,
+    );
+
+    const heartbeat = await agent.heartbeat();
+    const health = await agent.health();
+    assert.equal(heartbeat.agentId, agent.id);
+    assert.equal(health.agentId, agent.id);
+    assert.equal(health.status, "degraded");
+    await assert.rejects(
+      agent.handleTask({ type: "test" }),
+      (error) =>
+        error instanceof CreativeAgentNotExecutableError,
+    );
+    await assert.rejects(
+      agent.handleMessage({ type: "test" }),
+      (error) =>
+        error instanceof CreativeAgentNotExecutableError,
+    );
+  }
+});
+
+test("AgentRegistry monitors the complete dormant catalog", async () => {
+  const registry = new AgentRegistry();
+  const domain = new CreativeDomain();
+  domain.register(registry);
+
+  const heartbeats = await registry.heartbeatAll();
+  const health = await registry.healthCheck();
+
+  assert.equal(heartbeats.length, 10);
+  assert.equal(
+    heartbeats.every((result) => result.success),
+    true,
+  );
+  assert.equal(health.total, 10);
+  assert.equal(health.degraded, 10);
+  assert.equal(health.healthy, 0);
+  assert.equal(registry.listOnline().length, 0);
+  assert.equal(registry.listAvailable().length, 0);
 });
 
 test("creates deeply immutable creative value objects without generation logic", () => {

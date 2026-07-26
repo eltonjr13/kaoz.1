@@ -118,6 +118,13 @@ futuros sem participar da execução. Ele é registrado como domínio no
 `AgentRegistry` e reúne os contratos `CreativeDomainContext`,
 `CreativeBrief`, `CreativeWorkflow` e `CreativeArtifact`.
 
+Seu catálogo estrutural registra `CampaignDirectorAgent`,
+`AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,
+`VisualDirectorAgent`, `PromptEngineerAgent`, `ImageGenerationAgent`,
+`VideoDirectionAgent`, `MotionAgent` e `CreativeReviewerAgent`. Todos
+implementam o contrato `BaseAgent` por meio de `AbstractAgent`, mas permanecem
+sem execução nesta etapa.
+
 A especificação e os diagramas estão em
 [`CREATIVE_DOMAIN.md`](./CREATIVE_DOMAIN.md).
 
