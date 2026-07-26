@@ -1,4 +1,5 @@
 import type { AgentDomainId } from "../registry/agent-domain.ts";
+import { CREATIVE_DOMAIN_ID } from "./creative-domain-id.ts";
 import {
   type CreativeData,
   freezeCreativeData,
@@ -24,7 +25,6 @@ export interface CreativeDomainContext {
 
 export interface CreativeDomainContextInput {
   readonly id: string;
-  readonly domainId: AgentDomainId;
   readonly executionId?: string;
   readonly projectId?: string;
   readonly briefId?: string;
@@ -54,7 +54,7 @@ export function createCreativeDomainContext(
   }
   return Object.freeze({
     id: requireCreativeText(input.id, "CreativeDomainContext id"),
-    domainId: input.domainId,
+    domainId: CREATIVE_DOMAIN_ID,
     executionId: optionalText(
       input.executionId,
       "CreativeDomainContext executionId",

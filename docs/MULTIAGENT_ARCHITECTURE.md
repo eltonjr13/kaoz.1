@@ -111,6 +111,16 @@ sequenceDiagram
 | `MemoryService` | Fronteira para leitura/persistência de memória e publicação no Blackboard. |
 | `ToolExecutionService` | Fronteira auditável para permissões, custo, consumo, duração e erros de ferramentas. |
 
+## Domínios especializados
+
+O `CreativeDomain` adiciona um agrupamento lógico para agentes criativos
+futuros sem participar da execução. Ele é registrado como domínio no
+`AgentRegistry` e reúne os contratos `CreativeDomainContext`,
+`CreativeBrief`, `CreativeWorkflow` e `CreativeArtifact`.
+
+A especificação e os diagramas estão em
+[`CREATIVE_DOMAIN.md`](./CREATIVE_DOMAIN.md).
+
 ## Agentes especializados
 
 ### Conversação

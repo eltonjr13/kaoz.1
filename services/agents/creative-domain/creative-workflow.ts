@@ -1,3 +1,4 @@
+import { normalizeCapabilityName } from "../core/agent-capabilities.ts";
 import {
   freezeUniqueTexts,
   normalizeCreativeTimestamp,
@@ -93,10 +94,10 @@ function freezeStage(
       stage.name,
       "CreativeWorkflow stage name",
     ),
-    requiredCapability: requireCreativeText(
+    requiredCapability: normalizeCapabilityName(requireCreativeText(
       stage.requiredCapability,
       "CreativeWorkflow stage requiredCapability",
-    ).toLowerCase(),
+    )),
     dependencyIds: freezeUniqueTexts(
       stage.dependencyIds,
       "CreativeWorkflow stage dependency",

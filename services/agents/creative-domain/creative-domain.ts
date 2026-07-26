@@ -3,7 +3,6 @@ import type {
   AgentRegistration,
 } from "../registry/agent-descriptor.ts";
 import {
-  createAgentDomainId,
   defineAgentDomain,
   type AgentDomainDefinition,
   type AgentDomainDescriptor,
@@ -15,9 +14,7 @@ import {
   type CreativeDomainContext,
   type CreativeDomainContextInput,
 } from "./creative-domain-context.ts";
-
-export const CREATIVE_DOMAIN_ID =
-  createAgentDomainId("creative");
+import { CREATIVE_DOMAIN_ID } from "./creative-domain-id.ts";
 
 /**
  * Logical boundary for creative agents and contracts.
@@ -64,12 +61,9 @@ export class CreativeDomain implements AgentDomainDefinition {
   }
 
   createContext(
-    input: Omit<CreativeDomainContextInput, "domainId">,
+    input: CreativeDomainContextInput,
   ): CreativeDomainContext {
-    return createCreativeDomainContext({
-      ...input,
-      domainId: this.id,
-    });
+    return createCreativeDomainContext(input);
   }
 
   contains(descriptor: AgentDescriptor): boolean {
