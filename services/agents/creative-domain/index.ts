@@ -5,4 +5,6 @@ export * from "./creative-domain-context.ts";
 export * from "./creative-domain-id.ts";
 export * from "./creative-domain-value.ts";
 export * from "./creative-domain.ts";
+export * from "./creative-goal-classifier.ts";
 export * from "./creative-workflow.ts";
+export * from "./creative-workflow-planning.ts";
