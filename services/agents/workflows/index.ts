@@ -2,6 +2,7 @@ export * from "./analysis-workflow.ts";
 export * from "./background-workflow.ts";
 export * from "./base-workflow.ts";
 export * from "./execution-workflow.ts";
+export * from "./execution-workflow.types.ts";
 export * from "./quick-workflow.ts";
 export * from "./streaming-workflow.ts";
 export * from "./workflow-factory.ts";
