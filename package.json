@@ -44,7 +44,7 @@
     "test:agent-infrastructure": "node --experimental-strip-types --no-warnings --test tests/agent-infrastructure.test.ts",
     "test:agent-capabilities": "node --experimental-strip-types --no-warnings --test tests/agent-capabilities.test.ts",
     "test:execution-classifier": "node --experimental-strip-types --no-warnings --test tests/execution-classifier.test.ts",
-    "test:workflow-factory": "node --experimental-strip-types --no-warnings --test tests/workflow-factory.test.ts",
+    "test:workflow-factory": "node --experimental-strip-types --no-warnings --test tests/workflow-factory.test.ts tests/execution-workflow.test.ts",
     "test:agent-registry": "node --experimental-strip-types --no-warnings --test tests/agent-registry.test.ts",
     "test:creative-domain": "node --experimental-strip-types --no-warnings --test tests/creative-domain.test.ts",
     "test:campaign-director": "node --experimental-strip-types --no-warnings --test tests/campaign-director-agent.test.ts",

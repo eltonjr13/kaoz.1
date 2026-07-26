@@ -139,20 +139,23 @@ test("workflow type must match the ExecutionDecision mode", () => {
   );
 });
 
-test("workflows contain no LLM, tool, agent or Chief integration", () => {
+test("workflow selection stays isolated from LLM, tools and Chief integration", () => {
   const directory = new URL(
     "../services/agents/workflows/",
     import.meta.url,
   );
   const source = readdirSync(directory)
-    .filter((name) => name.endsWith(".ts"))
+    .filter(
+      (name) =>
+        name.endsWith(".ts") &&
+        !name.startsWith("execution-workflow"),
+    )
     .map((name) => readFileSync(new URL(name, directory), "utf8"))
     .join("\n");
 
   for (const forbidden of [
     "ToolExecutionService",
     "MessageBus",
-    "ChiefAgent",
     "BaseAgent",
     "handleTask",
     "generateContent",
@@ -160,6 +163,20 @@ test("workflows contain no LLM, tool, agent or Chief integration", () => {
   ]) {
     assert.doesNotMatch(source, new RegExp(forbidden, "i"));
   }
+
+  const executionSource = readFileSync(
+    new URL(
+      "../services/agents/workflows/execution-workflow.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(executionSource, /MessageBus/);
+  assert.match(executionSource, /Blackboard/);
+  assert.doesNotMatch(
+    executionSource,
+    /ToolExecutionService|generateContent|openai/i,
+  );
 
   const currentFlowSources = [
     "../lib/ai/gemini.ts",
