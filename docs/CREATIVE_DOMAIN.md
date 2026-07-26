@@ -110,15 +110,15 @@ somente para proibi-lo.
 flowchart TB
     BASE["CreativeDomainAgentBase<br/>AbstractAgent → BaseAgent"]
     BASE --> CDIR["CampaignDirectorAgent<br/>creative.campaign-direction<br/>brief estruturado ativo"]
-    BASE --> AUD["AudienceStrategistAgent<br/>creative.audience-strategy"]
-    BASE --> BRAND["BrandAgent<br/>creative.brand-governance"]
-    BASE --> COPY["CopyAgent<br/>creative.copywriting"]
-    BASE --> VIS["VisualDirectorAgent<br/>creative.visual-direction"]
+    BASE --> AUD["AudienceStrategistAgent<br/>creative.audience-strategy<br/>enriquecimento ativo"]
+    BASE --> BRAND["BrandAgent<br/>creative.brand-governance<br/>enriquecimento ativo"]
+    BASE --> COPY["CopyAgent<br/>creative.copywriting<br/>enriquecimento ativo"]
+    BASE --> VIS["VisualDirectorAgent<br/>creative.visual-direction<br/>enriquecimento ativo"]
     BASE --> PROMPT["PromptEngineerAgent<br/>creative.prompt-engineering"]
     BASE --> IMG["ImageGenerationAgent<br/>creative.image-generation"]
     BASE --> VIDEO["VideoDirectionAgent<br/>creative.video-direction"]
     BASE --> MOTION["MotionAgent<br/>creative.motion-design"]
-    BASE --> REVIEW["CreativeReviewerAgent<br/>creative.review"]
+    BASE --> REVIEW["CreativeReviewerAgent<br/>creative.review<br/>enriquecimento ativo"]
 ```
 
 Todos registram:
@@ -130,29 +130,61 @@ Todos registram:
 - health e heartbeat herdados de `AbstractAgent`;
 - restrição `not-executable` para os especialistas ainda estruturais.
 
-O `CampaignDirectorAgent` é a primeira exceção ativa: ele recebe intenção de
-campanha já estruturada e produz um `CreativeBrief`, sem IA, prompts,
-ferramentas ou geração de mídia. Os outros nove agentes continuam estruturais;
-seus `handleTask()` e `handleMessage()` rejeitam execução com
-`CreativeAgentNotExecutableError`.
+Seis agentes participam do fluxo de brief. O `CampaignDirectorAgent` cria a
+versão inicial; `AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,
+`VisualDirectorAgent` e `CreativeReviewerAgent` acrescentam contribuições
+append-only. `PromptEngineerAgent`, `ImageGenerationAgent`,
+`VideoDirectionAgent` e `MotionAgent` continuam estruturais e rejeitam execução
+com `CreativeAgentNotExecutableError`.
 
-### Comunicação do CampaignDirector
+### Fluxo completo do CreativeBrief
 
 ```mermaid
 sequenceDiagram
-    participant S as Scheduler
+    participant W as CreativeBriefWorkflow
     participant B as MessageBus
-    participant C as CampaignDirectorAgent
+    participant C as CampaignDirector
+    participant A as AudienceStrategist
+    participant G as BrandAgent
+    participant P as CopyAgent
+    participant V as VisualDirector
+    participant R as CreativeReviewer
+    participant BB as Blackboard
 
-    S->>B: Command execute-scheduled-task
-    B->>C: ExecutionTask
-    C->>C: validar e estruturar CreativeBrief
-    C-->>B: Response CreativeBrief
-    B-->>S: SchedulerTaskExecutionResult.output
+    W->>B: create-campaign-brief
+    B->>C: Command
+    C-->>B: CreativeBrief v1
+    W->>BB: publish v1
+    W->>B: enrich audience
+    B->>A: Command com v1
+    A-->>B: CreativeBrief v2
+    W->>BB: update v2
+    W->>B: enrich brand
+    B->>G: Command com v2
+    G-->>B: CreativeBrief v3
+    W->>BB: update v3
+    W->>B: enrich copy
+    B->>P: Command com v3
+    P-->>B: CreativeBrief v4
+    W->>BB: update v4
+    W->>B: enrich visual
+    B->>V: Command com v4
+    V-->>B: CreativeBrief v5
+    W->>BB: update v5
+    W->>B: review
+    B->>R: Command com v5
+    R-->>B: CreativeBrief v6
+    W->>BB: update v6
 ```
 
-O agente não conhece uma instância do Scheduler. A resposta correlacionada do
-MessageBus é capturada pelo fluxo normal do Scheduler.
+Nenhum agente conhece outro agente. Todas as cinco transições e a criação
+inicial usam Request/Response correlacionados do MessageBus. O Blackboard
+mantém uma entrada com seis versões; cada versão registra o brief completo, a
+etapa e o agente responsável.
+
+Cada enriquecimento adiciona exatamente uma `CreativeBriefContribution`. O
+factory rejeita contribuição repetida, regressão de versão, timestamp anterior
+e qualquer alteração em dados já presentes.
 
 ## Componentes
 
@@ -173,9 +205,9 @@ não substitui nem altera o `SharedContext`.
 
 ### CreativeBrief
 
-Contrato imutável para objetivo, público-alvo, canais, identidade visual, tom,
-mensagem principal, restrições, entregáveis, cronograma, KPIs e metadata de uma
-iniciativa criativa.
+Contrato imutável e versionado para objetivo, público-alvo, canais, identidade
+visual, tom, mensagem principal, restrições, entregáveis, cronograma, KPIs,
+metadata e contribuições append-only de uma iniciativa criativa.
 
 ### CreativeWorkflow
 
@@ -220,14 +252,11 @@ creativeDomain.registerAgent(registry, {
 Não foram adicionados:
 
 - geração de imagem, vídeo, texto publicitário ou layout;
-- execução de `CreativeWorkflow`;
-- comunicação com outros agentes;
 - persistência;
 - rotas ou interface.
 
 O Planner apenas materializa e marca a estrutura para o domínio. As etapas e
-capabilities produzidas pelo `PlanGenerator` existente são preservadas. Apenas
-o `CampaignDirectorAgent` está habilitado para produzir briefs quando receber
-uma tarefa `creative.campaign-direction`; os demais agentes criativos continuam
-inativos. Não foram alterados Chief, Scheduler, MessageBus, SharedContext,
+capabilities produzidas pelo `PlanGenerator` existente são preservadas. O fluxo
+de campanha estrutura e enriquece o brief; não produz mídia nem executa
+ferramentas. Não foram alterados Chief, Scheduler, MessageBus, SharedContext,
 Blackboard nem outros domínios.

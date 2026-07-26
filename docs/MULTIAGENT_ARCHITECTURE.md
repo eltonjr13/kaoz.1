@@ -118,19 +118,22 @@ Ele é registrado como domínio no `AgentRegistry` e reúne os contratos
 `CreativeDomainContext`, `CreativeBrief`, `CreativeWorkflow` e
 `CreativeArtifact`. O Planner reconhece objetivos criativos por regras
 determinísticas, materializa o brief/workflow e produz uma etapa com
-`domainId: creative` no payload. A capability criativa requerida fica no
-estágio do workflow; as etapas executáveis produzidas pelo gerador existente
-são preservadas enquanto os agentes do domínio permanecem inativos. Objetivos
-não criativos continuam exatamente no gerador de planos existente.
+`domainId: creative` no payload. Para campanhas, o workflow contém seis
+estágios dependentes: direção, audiência, marca, copy, direção visual e revisão.
+As etapas executáveis produzidas pelo gerador existente são preservadas.
+Objetivos não criativos continuam exatamente no gerador de planos existente.
 
 Seu catálogo estrutural registra `CampaignDirectorAgent`,
 `AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`,
 `VisualDirectorAgent`, `PromptEngineerAgent`, `ImageGenerationAgent`,
 `VideoDirectionAgent`, `MotionAgent` e `CreativeReviewerAgent`. Todos
 implementam o contrato `BaseAgent` por meio de `AbstractAgent`.
-`CampaignDirectorAgent` já materializa briefs estruturados por uma transformação
-determinística e devolve o `CreativeBrief` ao Scheduler como resultado do
-comando correlacionado. Os outros nove permanecem sem execução nesta etapa.
+`CampaignDirectorAgent` materializa a versão inicial do brief.
+`AudienceStrategistAgent`, `BrandAgent`, `CopyAgent`, `VisualDirectorAgent` e
+`CreativeReviewerAgent` anexam contribuições sem sobrescrever dados anteriores.
+O `CreativeBriefWorkflow` coordena as seis etapas exclusivamente por
+Request/Response no MessageBus e grava cada versão no Blackboard. Os outros
+quatro agentes permanecem sem execução nesta etapa.
 
 A especificação e os diagramas estão em
 [`CREATIVE_DOMAIN.md`](./CREATIVE_DOMAIN.md).
