@@ -120,7 +120,7 @@ sequenceDiagram
 | Camada | Responsabilidade |
 | --- | --- |
 | `ExecutionClassifier` | Classificar o modo de execução e produzir estimativas, requisitos e workflow esperado, sem responder nem executar. Ainda não conectado ao runtime. |
-| `WorkflowFactory` | Converter `ExecutionDecision` no workflow correspondente ao modo, sem LLM, ferramentas, agentes ou execução de tarefas. Ainda não conectado ao ChiefAgent. |
+| `WorkflowFactory` | Converter `ExecutionDecision` no workflow correspondente ao modo, sem executar tarefas. O `ExecutionWorkflow` possui pipeline estrito auditado, mas ainda não está conectado ao fluxo público ou ao ChiefAgent de produção. |
 | `ChiefAgent` | Criar contexto e Goal, solicitar plano e decomposição, acionar Scheduler, solicitar supervisão e consolidar a resposta. |
 | `PlannerAgent` | Converter um `Goal` em `ExecutionPlan` estruturado e independente do provedor de IA. |
 | `TaskDecomposerAgent` | Converter passos do plano em tarefas imutáveis, preservando capability, dependências, prioridade, timeout, saída esperada e input. |

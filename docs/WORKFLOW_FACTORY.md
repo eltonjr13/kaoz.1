@@ -4,7 +4,9 @@
 
 O `WorkflowFactory` recebe uma `ExecutionDecision` e seleciona o tipo de
 workflow correspondente ao `ExecutionMode`. Ele não conversa com modelos de
-IA, não executa tarefas, não usa ferramentas e não chama agentes.
+IA, não executa tarefas, não usa ferramentas e não chama agentes. No modo
+`EXECUTION`, ele apenas injeta no `ExecutionWorkflow` as portas fornecidas pelo
+chamador.
 
 Nesta etapa, a camada está implementada e exportada, mas não está conectada ao
 `ChiefAgent` nem ao runtime atual.
@@ -77,10 +79,28 @@ stateDiagram-v2
     paused --> cancelled: cancel()
 ```
 
-`execute()` representa somente a materialização do resultado estrutural do
-workflow. Ele não percorre as etapas de `expectedWorkflow`, não aciona o
-Scheduler e não executa nenhum trabalho. A execução real continuará sendo
-responsabilidade do runtime quando houver uma integração futura explícita.
+Nos workflows `QUICK`, `ANALYSIS`, `BACKGROUND` e `STREAMING`, `execute()`
+continua representando somente a materialização do resultado estrutural.
+
+No `ExecutionWorkflow`, `execute()` percorre obrigatoriamente o pipeline
+transacional abaixo por meio de portas injetadas. O factory continua sem
+executar qualquer estágio.
+
+```mermaid
+flowchart LR
+    G["1. Goal"] --> P["2. Planner"]
+    P --> EP["3. ExecutionPlan"]
+    EP --> TD["4. TaskDecomposer"]
+    TD --> S["5. Scheduler"]
+    S --> A["6. Agentes especializados"]
+    A --> CO["7. Consensus"]
+    CO --> C["8. ChiefAgent"]
+    C --> U["Usuário"]
+```
+
+Cada fronteira é registrada no `MessageBus`, cada estágio gera um artefato no
+`Blackboard` e as durações ficam disponíveis em `metrics()`. Uma falha
+interrompe a sequência, registra o erro e mantém `result()` vazio.
 
 ## Posição futura
 
@@ -90,5 +110,5 @@ flowchart LR
     EC --> ED["ExecutionDecision"]
     ED --> WF["WorkflowFactory"]
     WF --> W["BaseWorkflow especializado"]
-    W -. "ainda não conectado" .-> C["ChiefAgent"]
+    W -. "ainda não conectado ao fluxo público" .-> C["ChiefAgent"]
 ```

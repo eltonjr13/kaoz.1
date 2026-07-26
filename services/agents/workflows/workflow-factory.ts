@@ -7,11 +7,17 @@ import { AnalysisWorkflow } from "./analysis-workflow.ts";
 import { BackgroundWorkflow } from "./background-workflow.ts";
 import { BaseWorkflow } from "./base-workflow.ts";
 import { ExecutionWorkflow } from "./execution-workflow.ts";
+import type { ExecutionWorkflowOptions } from "./execution-workflow.types.ts";
 import { QuickWorkflow } from "./quick-workflow.ts";
 import { StreamingWorkflow } from "./streaming-workflow.ts";
 import type { BaseWorkflowOptions } from "./workflow.types.ts";
 
-export type WorkflowFactoryOptions = BaseWorkflowOptions;
+export interface WorkflowFactoryOptions extends BaseWorkflowOptions {
+  readonly execution?: Pick<
+    ExecutionWorkflowOptions,
+    "runtime" | "blackboard" | "messageBus"
+  >;
+}
 
 export class WorkflowFactory {
   private readonly options: WorkflowFactoryOptions;
@@ -22,17 +28,21 @@ export class WorkflowFactory {
 
   create(decisionInput: ExecutionDecision): BaseWorkflow {
     const decision = createExecutionDecision(decisionInput);
+    const { execution, ...baseOptions } = this.options;
     switch (decision.mode) {
       case ExecutionMode.QUICK:
-        return new QuickWorkflow(decision, this.options);
+        return new QuickWorkflow(decision, baseOptions);
       case ExecutionMode.ANALYSIS:
-        return new AnalysisWorkflow(decision, this.options);
+        return new AnalysisWorkflow(decision, baseOptions);
       case ExecutionMode.EXECUTION:
-        return new ExecutionWorkflow(decision, this.options);
+        return new ExecutionWorkflow(decision, {
+          ...baseOptions,
+          ...execution,
+        });
       case ExecutionMode.BACKGROUND:
-        return new BackgroundWorkflow(decision, this.options);
+        return new BackgroundWorkflow(decision, baseOptions);
       case ExecutionMode.STREAMING:
-        return new StreamingWorkflow(decision, this.options);
+        return new StreamingWorkflow(decision, baseOptions);
       default:
         return assertNever(decision.mode);
     }
