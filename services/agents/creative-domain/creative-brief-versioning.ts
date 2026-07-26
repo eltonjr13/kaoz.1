@@ -9,6 +9,11 @@ export function appendCreativeBriefContribution(
   contribution: CreativeBriefContribution,
   updatedAt = contribution.createdAt,
 ): CreativeBrief {
+  if (Date.parse(updatedAt) < Date.parse(brief.updatedAt)) {
+    throw new Error(
+      "CreativeBrief enrichment timestamp cannot precede the previous version.",
+    );
+  }
   if (
     brief.contributions.some(
       (existing) =>

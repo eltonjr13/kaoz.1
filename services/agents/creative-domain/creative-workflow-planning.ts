@@ -40,20 +40,23 @@ export function routePlanDraftToCreativeWorkflow(
     updatedAt: createdAt,
   });
   const stageId = `creative-stage-${classification.kind}`;
+  const stages = classification.kind === "campaign"
+    ? createCampaignWorkflowStages(stageId, classification.artifactKind)
+    : [
+        {
+          id: stageId,
+          name: `Creative ${classification.kind}`,
+          requiredCapability: classification.requiredCapability,
+          dependencyIds: [],
+          expectedArtifactKinds: [classification.artifactKind],
+        },
+      ];
   const workflow = createCreativeWorkflow({
     id: `creative-workflow-${goal.id}`,
     briefId: brief.id,
     name: goal.title,
     description: goal.objective,
-    stages: [
-      {
-        id: stageId,
-        name: `Creative ${classification.kind}`,
-        requiredCapability: classification.requiredCapability,
-        dependencyIds: [],
-        expectedArtifactKinds: [classification.artifactKind],
-      },
-    ],
+    stages,
     createdAt,
     updatedAt: createdAt,
   });
@@ -83,6 +86,56 @@ export function routePlanDraftToCreativeWorkflow(
       ),
     ),
   });
+}
+
+function createCampaignWorkflowStages(
+  campaignStageId: string,
+  campaignArtifactKind: string,
+) {
+  return [
+    {
+      id: campaignStageId,
+      name: "Campaign direction",
+      requiredCapability: "creative.campaign-direction",
+      dependencyIds: [],
+      expectedArtifactKinds: [campaignArtifactKind],
+    },
+    {
+      id: "creative-stage-audience-strategy",
+      name: "Audience strategy",
+      requiredCapability: "creative.audience-strategy",
+      dependencyIds: [campaignStageId],
+      expectedArtifactKinds: ["audience-strategy"],
+    },
+    {
+      id: "creative-stage-brand-governance",
+      name: "Brand governance",
+      requiredCapability: "creative.brand-governance",
+      dependencyIds: ["creative-stage-audience-strategy"],
+      expectedArtifactKinds: ["brand-direction"],
+    },
+    {
+      id: "creative-stage-copywriting",
+      name: "Copy direction",
+      requiredCapability: "creative.copywriting",
+      dependencyIds: ["creative-stage-brand-governance"],
+      expectedArtifactKinds: ["copy-direction"],
+    },
+    {
+      id: "creative-stage-visual-direction",
+      name: "Visual direction",
+      requiredCapability: "creative.visual-direction",
+      dependencyIds: ["creative-stage-copywriting"],
+      expectedArtifactKinds: ["visual-direction"],
+    },
+    {
+      id: "creative-stage-review",
+      name: "Creative review",
+      requiredCapability: "creative.review",
+      dependencyIds: ["creative-stage-visual-direction"],
+      expectedArtifactKinds: ["review-decision"],
+    },
+  ] as const;
 }
 
 export function isCreativeWorkflowPlanningPayload(

@@ -292,6 +292,21 @@ test("PlannerAgent creates a CreativeWorkflow for every supported creative inten
       step.input.workflow.stages[0]?.expectedArtifactKinds,
       [artifactKind],
     );
+    if (step.input.classification.kind === "campaign") {
+      assert.deepEqual(
+        step.input.workflow.stages.map(
+          (stage) => stage.requiredCapability,
+        ),
+        [
+          "creative.campaign-direction",
+          "creative.audience-strategy",
+          "creative.brand-governance",
+          "creative.copywriting",
+          "creative.visual-direction",
+          "creative.review",
+        ],
+      );
+    }
     assert.equal(Object.isFrozen(step.input.workflow), true);
     assert.equal(Object.isFrozen(step.input.brief), true);
   }
