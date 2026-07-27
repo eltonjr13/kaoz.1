@@ -2,6 +2,7 @@ export type McpTransportType = "stdio" | "sse";
 
 export interface McpServerConfig {
   id: string;
+  presetId?: string;
   name: string;
   enabled: boolean;
   transport: McpTransportType;
@@ -25,6 +26,7 @@ export interface McpServerStatus {
   connected: boolean;
   error: string | null;
   tools: McpToolSchema[];
+  diagnostic?: Record<string, unknown> | null;
 }
 
 export interface McpSettings {
