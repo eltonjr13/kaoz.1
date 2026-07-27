@@ -146,21 +146,32 @@ function zoomExpression(events: IntelligentEditEvent[]) {
   return expressions.length ? expressions.reduce((left, right) => `max(${left},${right})`) : "1";
 }
 
+function transitionExpression(events: IntelligentEditEvent[]) {
+  const expressions = events
+    .filter((event) => event.kind === "transition")
+    .map((event) => {
+      const half = Math.max(0.12, event.duration / 2);
+      const start = Math.max(0, event.start - half);
+      const middle = event.start;
+      const end = event.start + half;
+      return `if(between(t,${start.toFixed(3)},${middle.toFixed(3)}),(t-${start.toFixed(3)})/${half.toFixed(3)},if(between(t,${middle.toFixed(3)},${end.toFixed(3)}),1-(t-${middle.toFixed(3)})/${half.toFixed(3)},0))`;
+    });
+  return expressions.length
+    ? expressions.reduce((left, right) => `max(${left},${right})`)
+    : "0";
+}
+
 function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
   const zoom = zoomExpression(plan.events);
+  const transition = transitionExpression(plan.events);
   const filters = [
     `scale=w='iw*(${zoom})':h='ih*(${zoom})':eval=frame`,
     `crop=${plan.media.width}:${plan.media.height}:(in_w-out_w)/2:(in_h-out_h)/2`,
-    "eq=contrast=1.025:saturation=1.05:gamma=1.0",
+    `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-0.95*(${transition})':eval=frame`,
     `ass='${filterPath(assPath)}'`,
     "fade=t=in:st=0:d=0.25",
     `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - 0.35).toFixed(3)}:d=0.35`,
   ];
-  for (const event of plan.events.filter((item) => item.kind === "transition")) {
-    const half = Math.max(0.12, event.duration / 2);
-    filters.push(`fade=t=out:st=${Math.max(0, event.start - half).toFixed(3)}:d=${half.toFixed(3)}`);
-    filters.push(`fade=t=in:st=${event.start.toFixed(3)}:d=${half.toFixed(3)}`);
-  }
   for (const event of plan.events.filter(
     (item) => item.kind === "cursor" && item.x !== undefined && item.y !== undefined,
   )) {

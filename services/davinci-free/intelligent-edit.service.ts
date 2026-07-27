@@ -272,6 +272,22 @@ function extractJsonObject(output: string): SemanticDecision | null {
   }
 }
 
+function extractJsonArray(output: string): SemanticDecision["reviewedCaptions"] | null {
+  const fenced = output.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const first = output.indexOf("[");
+  const last = output.lastIndexOf("]");
+  const candidate = fenced || (first >= 0 && last > first ? output.slice(first, last + 1) : "");
+  if (!candidate.trim()) return null;
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    return Array.isArray(parsed)
+      ? parsed as NonNullable<SemanticDecision["reviewedCaptions"]>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function clampTime(value: unknown, duration: number) {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? Math.max(0, Math.min(duration, numeric)) : 0;
@@ -308,6 +324,22 @@ async function semanticPlan(
     const decision = response ? extractJsonObject(response) : null;
     if (!decision) {
       return { decision: null, source: "deterministic-fallback" as const, inputCharacters: prompt.length };
+    }
+    if (decision.reviewedCaptions?.length !== captions.length) {
+      const captionPrompt = [
+        "Revise as legendas em português brasileiro.",
+        `Retorne SOMENTE um array JSON com exatamente ${captions.length} objetos.`,
+        "Preserve start e end exatamente. Corrija apenas ortografia, pontuação e erros óbvios de reconhecimento.",
+        "Não invente palavras quando o sentido estiver incerto.",
+        JSON.stringify(captions),
+      ].join("\n");
+      const captionResponse = await queryConfiguredAgentCli(captionPrompt, {
+        useExternalTools: false,
+      });
+      const reviewed = captionResponse ? extractJsonArray(captionResponse) : null;
+      if (reviewed?.length === captions.length) {
+        decision.reviewedCaptions = reviewed;
+      }
     }
     const identity = await getConfiguredAgentIdentity();
     return {
@@ -451,6 +483,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
+      analysisVersion: 2,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
@@ -518,6 +551,10 @@ export async function analyzeIntelligentEdit(
       provider: semantic.provider,
       model: semantic.model,
       inputCharacters: semantic.inputCharacters,
+      captionReview:
+        semantic.decision?.reviewedCaptions?.length === rawCaptions.length
+          ? "agent"
+          : "asr-only",
     },
     artifacts: { directory, transcriptPath, captionsPath, planPath },
   };

@@ -68,6 +68,7 @@ export interface IntelligentEditPlan {
     provider?: string;
     model?: string;
     inputCharacters: number;
+    captionReview: "agent" | "asr-only";
   };
   artifacts: {
     directory: string;
