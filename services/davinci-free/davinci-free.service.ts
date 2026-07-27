@@ -219,6 +219,26 @@ export async function getDavinciFreeStatus(): Promise<DavinciFreeStatus> {
   };
 }
 
+export async function archivePendingDavinciPlan(input: Record<string, unknown>) {
+  const requestId = validateRequestId(input.requestId);
+  if (!(await exists(PENDING_PATH))) {
+    return { archived: false, reason: "Nenhum plano pendente." };
+  }
+  const pending = JSON.parse(await readFile(PENDING_PATH, "utf8")) as DavinciFreePlan;
+  await mkdir(RESULTS_DIR, { recursive: true });
+  const archivePath = path.join(
+    RESULTS_DIR,
+    `archived-${pending.requestId}-${Date.now()}.plan.json`,
+  );
+  await rename(PENDING_PATH, archivePath);
+  return {
+    archived: true,
+    requestId,
+    archivedPlanRequestId: pending.requestId,
+    archivePath,
+  };
+}
+
 export async function prepareDavinciVoice(input: Record<string, unknown>) {
   const requestId = validateRequestId(input.requestId);
   const source = await secureLocalFile(input.inputPath, "Arquivo de voz", true);

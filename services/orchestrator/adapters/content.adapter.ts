@@ -4,11 +4,20 @@ import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import path from "node:path";
 import crypto from "node:crypto";
 import {
+  archivePendingDavinciPlan,
   createDavinciFreePlan,
   getDavinciFreeStatus,
   installDavinciFreeRunner,
   prepareDavinciVoice,
 } from "../../davinci-free/davinci-free.service";
+import {
+  analyzeIntelligentEdit,
+  readIntelligentEditPlan,
+} from "../../davinci-free/intelligent-edit.service";
+import {
+  approveIntelligentEdit,
+  renderIntelligentEdit,
+} from "../../davinci-free/intelligent-edit.renderer";
 
 export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:get-status": async () => ({
@@ -22,6 +31,23 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:prepare-edit-plan": async (args) => ({
     output: await createDavinciFreePlan(args),
+  }),
+  "davinci-free:analyze-intelligent": async (args) => ({
+    output: await analyzeIntelligentEdit(args),
+  }),
+  "davinci-free:get-intelligent-plan": async (args) => ({
+    output: await readIntelligentEditPlan(
+      typeof args.planId === "string" ? args.planId : undefined,
+    ),
+  }),
+  "davinci-free:render-intelligent": async (args) => ({
+    output: await renderIntelligentEdit(args),
+  }),
+  "davinci-free:approve-intelligent": async (args) => ({
+    output: await approveIntelligentEdit(args),
+  }),
+  "davinci-free:archive-pending": async (args) => ({
+    output: await archivePendingDavinciPlan(args),
   }),
   "content:start-video-pipeline": async (args) => {
     const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
