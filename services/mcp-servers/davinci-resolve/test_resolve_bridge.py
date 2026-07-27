@@ -197,7 +197,9 @@ class ResolveBridgeTests(unittest.TestCase):
         original = project.current
         client = client_for(project)
         first = client.create_timeline("Corte", [], "request-12345678")
-        second = client.create_timeline("Corte", [], "request-12345678")
+        second = client_for(project).create_timeline(
+            "Corte", [], "request-12345678"
+        )
         self.assertTrue(first["created"])
         self.assertTrue(second["idempotentReplay"])
         self.assertEqual(project.media_pool.create_calls, 1)
@@ -228,6 +230,19 @@ class ResolveBridgeTests(unittest.TestCase):
         self.assertEqual(result["renderJobId"], "job-1")
         self.assertFalse(result["renderStarted"])
         self.assertEqual(project.render_started, 0)
+
+    def test_existing_timeline_is_protected_from_mutation(self):
+        client = client_for(FakeProject())
+        with self.assertRaises(ResolveOperationError) as context:
+            client.add_marker(
+                "Original",
+                12,
+                "Review",
+                "",
+                "Blue",
+                "request-marker-1234",
+            )
+        self.assertEqual(context.exception.code, "EXISTING_TIMELINE_PROTECTED")
 
 
 if __name__ == "__main__":

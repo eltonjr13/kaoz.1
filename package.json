@@ -38,6 +38,7 @@
     "test:voice-expression": "node --experimental-strip-types --no-warnings --test tests/agent-voice-expression.test.ts",
     "test:tool-safety": "node --experimental-strip-types --no-warnings --test tests/tool-safety.test.ts",
     "test:tool-execution": "node --experimental-strip-types --no-warnings --test tests/tool-execution-service.test.ts",
+    "test:davinci-resolve": "node --experimental-strip-types --no-warnings --test tests/davinci-resolve-mcp.test.ts",
     "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts tests/telegram-inbound.test.ts tests/telegram-polling-offset.test.ts",
     "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts tests/skills-scripts.test.ts",
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",

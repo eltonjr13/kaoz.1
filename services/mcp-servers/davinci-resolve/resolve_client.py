@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import json
 import os
 import sys
 import threading
@@ -12,6 +13,7 @@ from typing import Any, Callable
 
 from schemas import (
     ValidationError,
+    configured_roots,
     secure_export_path,
     secure_media_path,
 )
@@ -46,6 +48,7 @@ class ResolveClient:
         self._resolve: Any = None
         self._lock = threading.RLock()
         self._idempotency: dict[str, dict[str, Any]] = {}
+        self._idempotency_loaded = False
 
     def status(self) -> dict[str, Any]:
         api_path = os.environ.get("RESOLVE_SCRIPT_API", "").strip()
@@ -237,6 +240,7 @@ class ResolveClient:
             )
             if not timeline:
                 self._missing_timeline()
+            self._assert_kaoz_timeline(timeline)
             appended = self._append_to_timeline(
                 timeline, clips, track_type, track_index
             )
@@ -260,6 +264,7 @@ class ResolveClient:
     ) -> dict[str, Any]:
         def add() -> dict[str, Any]:
             timeline = self._require_timeline(timeline_name)
+            self._assert_kaoz_timeline(timeline)
             markers = _safe_call(timeline, "GetMarkers") or {}
             if frame in markers or str(frame) in markers:
                 raise ResolveOperationError(
@@ -285,6 +290,7 @@ class ResolveClient:
     ) -> dict[str, Any]:
         def add() -> dict[str, Any]:
             timeline = self._require_timeline(timeline_name)
+            self._assert_kaoz_timeline(timeline)
             method = getattr(timeline, "AddSubtitle", None)
             if not callable(method):
                 raise ResolveOperationError(
@@ -671,6 +677,7 @@ class ResolveClient:
     ) -> dict[str, Any]:
         key = f"{operation}:{request_id}"
         with self._lock:
+            self._load_idempotency()
             if key in self._idempotency:
                 cached = copy.deepcopy(self._idempotency[key])
                 cached["idempotentReplay"] = True
@@ -678,7 +685,48 @@ class ResolveClient:
             result = callback()
             result["requestId"] = request_id
             self._idempotency[key] = copy.deepcopy(result)
+            self._save_idempotency()
             return result
+
+    def _load_idempotency(self) -> None:
+        if self._idempotency_loaded:
+            return
+        self._idempotency_loaded = True
+        ledger = self._idempotency_path()
+        if not ledger or not ledger.is_file():
+            return
+        try:
+            payload = json.loads(ledger.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                self._idempotency = {
+                    str(key): value
+                    for key, value in payload.items()
+                    if isinstance(value, dict)
+                }
+        except Exception:
+            self._idempotency = {}
+
+    def _save_idempotency(self) -> None:
+        ledger = self._idempotency_path()
+        if not ledger:
+            return
+        try:
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            temporary = ledger.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps(self._idempotency, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            temporary.replace(ledger)
+        except Exception:
+            # The Resolve mutation already completed. Keep the in-memory ledger and
+            # never leak the authorized root through an error message.
+            return
+
+    @staticmethod
+    def _idempotency_path() -> Path | None:
+        roots = configured_roots("KAOZ_RESOLVE_EXPORT_ROOT")
+        return roots[0] / ".kaoz1-resolve-idempotency.json" if roots else None
 
     @staticmethod
     def _missing_timeline() -> None:
@@ -687,6 +735,16 @@ class ResolveClient:
             "A timeline solicitada não existe no projeto atual.",
             "Liste as timelines e escolha uma referência existente.",
         )
+
+    @staticmethod
+    def _assert_kaoz_timeline(timeline: Any) -> None:
+        name = str(_safe_call(timeline, "GetName") or "")
+        if not name.startswith("Kaoz - "):
+            raise ResolveOperationError(
+                "EXISTING_TIMELINE_PROTECTED",
+                "O MVP não modifica timelines existentes fora do namespace Kaoz.",
+                "Crie uma timeline nova com resolve_create_timeline e use o nome retornado.",
+            )
 
     @staticmethod
     def _restore_project_folder(manager: Any, folder: str) -> None:

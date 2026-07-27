@@ -49,6 +49,13 @@ test("MCP usa ambiente permitido e identificadores seguros", () => {
     toolName: "search.web",
   });
   assert.throws(() => mcpToolId("../server", "tool"), /inválido/);
+
+  const restricted = buildSafeMcpEnvironment(
+    { ALLOWED: "yes", BLOCKED: "no" },
+    { PATH: "bin", SECRET_TOKEN: "não" },
+    ["ALLOWED"],
+  );
+  assert.deepEqual(restricted, { PATH: "bin", ALLOWED: "yes" });
 });
 
 test("parser preserva a ferramenta declarada pela skill", () => {

@@ -509,7 +509,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                           <span>Módulo: {status.diagnostic.moduleLoaded ? "OK" : "não carregado"}</span>
                           <span>Resolve: {resolveOpen ? String(status.diagnostic.resolveVersion || "aberto") : "fechado"}</span>
                         </div>
-                        {status.diagnostic.currentProject && (
+                        {Boolean(status.diagnostic.currentProject) && (
                           <p className="text-[10px] text-zinc-400">
                             Projeto: {String(status.diagnostic.currentProject)}
                             {status.diagnostic.currentTimeline ? ` · Timeline: ${String(status.diagnostic.currentTimeline)}` : ""}
