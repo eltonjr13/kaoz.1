@@ -12,6 +12,8 @@ interface StatusMessage {
 }
 
 interface McpPreset {
+  id?: string;
+  presetId?: string;
   name: string;
   description: string;
   transport: "stdio" | "sse";
@@ -120,6 +122,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
   const [editingServers, setEditingServers] = useState<Record<string, boolean>>({});
   const [showTools, setShowTools] = useState<Record<string, boolean>>({});
   const [showPresets, setShowPresets] = useState(false);
+  const [guidedPresets, setGuidedPresets] = useState<McpPreset[]>([]);
 
   useEffect(() => {
     loadSettings();
@@ -131,6 +134,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
       const data = await res.json();
       if (data.settings) setSettings(data.settings);
       if (data.statuses) setStatuses(data.statuses);
+      if (Array.isArray(data.presets)) setGuidedPresets(data.presets);
     } catch {
       onStatusMessage({ text: "Erro ao carregar configurações MCP.", type: "error" });
     }
@@ -181,7 +185,12 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
         }
       });
 
-      if (data.connected) {
+      if (data.connected && data.diagnostic?.resolveOpen === false) {
+        onStatusMessage({
+          text: `Servidor MCP conectado, mas o Resolve está fechado ou indisponível. ${String(data.diagnostic.recovery || "")}`,
+          type: "info",
+        });
+      } else if (data.connected) {
         onStatusMessage({ text: `Conexão teste com ${server.name} foi bem sucedida. ${data.tools.length} ferramentas encontradas.`, type: "success" });
       } else {
         onStatusMessage({ text: `Falha na conexão teste: ${data.error}`, type: "error" });
@@ -194,10 +203,20 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
   };
 
   const addServerFromPreset = (preset: McpPreset) => {
+    const id = preset.id || crypto.randomUUID();
+    if (settings.servers.some((server) => server.id === id)) {
+      onStatusMessage({
+        text: `${preset.name} já está configurado. Edite o servidor existente.`,
+        type: "info",
+      });
+      setShowPresets(false);
+      return;
+    }
     const newServer: McpServerConfig = {
-      id: crypto.randomUUID(),
+      id,
+      presetId: preset.presetId,
       name: preset.name,
-      enabled: true,
+      enabled: preset.id ? false : true,
       transport: preset.transport,
       command: preset.command || "",
       args: preset.args || [],
@@ -215,6 +234,11 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
       ...settings,
       servers: settings.servers.map(s => s.id === id ? { ...s, ...updates } : s)
     });
+  };
+
+  const updateServerEnv = (id: string, key: string, value: string) => {
+    const server = settings.servers.find((item) => item.id === id);
+    updateServer(id, { env: { ...(server?.env || {}), [key]: value } });
   };
 
   const removeServer = (id: string) => {
@@ -281,7 +305,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                     Selecione um Preset ou Personalizado
                   </div>
                   <div className="max-h-[280px] overflow-y-auto space-y-0.5 pr-1 scrollbar-thin">
-                    {MCP_PRESETS.map((preset) => (
+                    {[...guidedPresets, ...MCP_PRESETS].map((preset) => (
                       <button
                         key={preset.name}
                         onClick={() => addServerFromPreset(preset)}
@@ -329,6 +353,8 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
           const isBusy = busyAction === `test-${server.id}`;
           const isExpanded = !!expandedServers[server.id];
           const isEditing = !!editingServers[server.id];
+          const isResolve = server.id === "davinci-resolve-local";
+          const resolveOpen = status?.diagnostic?.resolveOpen === true;
 
           return (
             <div 
@@ -388,7 +414,9 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                       status.connected ? (
                         <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Conectado ({status.tools?.length || 0} ferramentas)
+                          {isResolve && !resolveOpen
+                            ? "MCP conectado · Resolve fechado"
+                            : `Conectado (${status.tools?.length || 0} ferramentas)`}
                         </span>
                       ) : (
                         <span 
@@ -459,6 +487,43 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                     </div>
                   )}
 
+                  {isResolve && status?.connected && status.diagnostic && (
+                    <div className={`p-3 rounded-lg border text-xs flex gap-2 items-start mt-4 ${
+                      resolveOpen
+                        ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"
+                        : "bg-amber-500/5 border-amber-500/20 text-amber-300"
+                    }`}>
+                      {resolveOpen
+                        ? <CheckCircle size={14} className="shrink-0 mt-0.5" />
+                        : <AlertCircle size={14} className="shrink-0 mt-0.5" />}
+                      <div className="space-y-1.5 min-w-0">
+                        <p className="font-bold text-[10px] uppercase tracking-wide">
+                          Diagnóstico do DaVinci Resolve
+                        </p>
+                        <p className="text-[10px] leading-normal">
+                          {String(status.diagnostic.message || (resolveOpen ? "Resolve disponível." : "Resolve indisponível."))}
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] text-zinc-400">
+                          <span>Python: {status.diagnostic.pythonFound ? "OK" : "não encontrado"}</span>
+                          <span>API: {status.diagnostic.apiPathAccessible ? "OK" : "revisar path"}</span>
+                          <span>Módulo: {status.diagnostic.moduleLoaded ? "OK" : "não carregado"}</span>
+                          <span>Resolve: {resolveOpen ? String(status.diagnostic.resolveVersion || "aberto") : "fechado"}</span>
+                        </div>
+                        {status.diagnostic.currentProject && (
+                          <p className="text-[10px] text-zinc-400">
+                            Projeto: {String(status.diagnostic.currentProject)}
+                            {status.diagnostic.currentTimeline ? ` · Timeline: ${String(status.diagnostic.currentTimeline)}` : ""}
+                          </p>
+                        )}
+                        {!resolveOpen && (
+                          <p className="text-[10px] text-amber-200/80">
+                            {String(status.diagnostic.recovery || "Abra o Resolve, habilite scripting local e teste novamente.")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {isEditing ? (
                     /* EDIT MODE: Form Fields */
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 max-w-4xl">
@@ -484,12 +549,12 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                           <div className="flex flex-col gap-1.5">
                             <label className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
                               <Terminal size={10} />
-                              Comando (ex: npx, node, python)
+                              {isResolve ? "Python (caminho absoluto para python.exe)" : "Comando (ex: npx, node, python)"}
                             </label>
                             <input
                               value={server.command}
                               onChange={(e) => updateServer(server.id, { command: e.target.value })}
-                              placeholder="npx"
+                              placeholder={isResolve ? "C:\\Python312\\python.exe" : "npx"}
                               className="w-full rounded-lg border border-zinc-850 bg-zinc-950 px-3 py-2 text-[11px] font-mono text-zinc-300 focus:border-emerald-500/50 outline-none transition-all"
                             />
                           </div>
@@ -498,17 +563,52 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                           <div className="flex flex-col gap-1.5 md:col-span-2">
                             <label className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
                               <Info size={10} />
-                              Argumentos (Separados por espaço)
+                              {isResolve ? "Servidor Python empacotado (somente leitura)" : "Argumentos (Separados por espaço)"}
                             </label>
                             <input
                               value={server.args?.join(" ")}
                               onChange={(e) => updateServer(server.id, { args: e.target.value.split(" ").filter(Boolean) })}
+                              readOnly={isResolve}
                               placeholder="-y @modelcontextprotocol/server-brave-search"
                               className="w-full rounded-lg border border-zinc-850 bg-zinc-950 px-3 py-2 text-[11px] font-mono text-zinc-300 focus:border-emerald-500/50 outline-none transition-all"
                             />
                           </div>
 
-                          {/* Environment Variables */}
+                          {isResolve ? (
+                            <div className="md:col-span-2 space-y-4 rounded-xl border border-zinc-900 bg-zinc-950/40 p-4">
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-300">Paths oficiais e diretórios autorizados</p>
+                                <p className="text-[9px] text-zinc-500 mt-1">
+                                  Use caminhos locais absolutos. Separe múltiplas raízes de mídia com ponto e vírgula. UNC, curingas e traversal são bloqueados.
+                                </p>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {[
+                                  ["RESOLVE_SCRIPT_API", "Pasta Developer\\Scripting"],
+                                  ["RESOLVE_SCRIPT_LIB", "Arquivo fusionscript.dll"],
+                                  ["RESOLVE_PYTHON_PATH", "Pasta Modules (opcional)"],
+                                  ["KAOZ_RESOLVE_MEDIA_ROOT", "Raízes autorizadas de mídia"],
+                                  ["KAOZ_RESOLVE_EXPORT_ROOT", "Raiz autorizada de exportação"],
+                                ].map(([key, label]) => (
+                                  <label key={key} className={`flex flex-col gap-1.5 ${key.includes("ROOT") ? "md:col-span-2" : ""}`}>
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</span>
+                                    <input
+                                      value={server.env?.[key] || ""}
+                                      onChange={(event) => updateServerEnv(server.id, key, event.target.value)}
+                                      placeholder={key === "RESOLVE_SCRIPT_LIB"
+                                        ? "C:\\Program Files\\Blackmagic Design\\DaVinci Resolve\\fusionscript.dll"
+                                        : "C:\\caminho\\local"}
+                                      className="w-full rounded-lg border border-zinc-850 bg-zinc-950 px-3 py-2 text-[11px] font-mono text-zinc-300 focus:border-emerald-500/50 outline-none transition-all"
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
+                                O Resolve deve estar aberto e com scripting externo em modo Local. Criar um render job nunca inicia o render; iniciar exige outra chamada aprovada. O MVP cria timelines novas e não substitui timelines existentes.
+                              </div>
+                            </div>
+                          ) : (
+                          /* Environment Variables */
                           <div className="flex flex-col gap-1.5 md:col-span-2">
                             <div className="flex items-center justify-between">
                               <label className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
@@ -525,6 +625,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                               className="w-full resize-y rounded-lg border border-zinc-850 bg-zinc-950 px-3 py-2 text-[11px] font-mono text-zinc-300 focus:border-emerald-500/50 outline-none transition-all"
                             />
                           </div>
+                          )}
                         </>
                       ) : (
                         /* URL SSE */
@@ -629,4 +730,3 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
     </div>
   );
 }
-

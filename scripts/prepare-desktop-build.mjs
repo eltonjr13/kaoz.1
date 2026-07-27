@@ -50,4 +50,15 @@ for (const folder of ["scripts", "python", "skills"]) {
   if (fs.existsSync(source)) fs.cpSync(source, path.join(output, folder), { recursive: true });
 }
 
+// Local MCP servers are source assets launched by user-configured runtimes.
+// Python itself and Blackmagic's fusionscript.dll remain external dependencies.
+const mcpServersSource = path.join(root, "services", "mcp-servers");
+if (fs.existsSync(mcpServersSource)) {
+  fs.cpSync(
+    mcpServersSource,
+    path.join(output, "services", "mcp-servers"),
+    { recursive: true },
+  );
+}
+
 console.log(`Desktop server prepared at ${output}`);

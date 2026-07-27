@@ -54,6 +54,16 @@ if (!fs.existsSync(path.join(source, "server.js"))) {
   throw new Error("Runtime desktop nao encontrado. Execute `npm run desktop:prepare` primeiro.");
 }
 validateDesktopRuntimePackages(source);
+const resolveServer = path.join(
+  source,
+  "services",
+  "mcp-servers",
+  "davinci-resolve",
+  "server.py",
+);
+if (!fs.existsSync(resolveServer)) {
+  throw new Error("Servidor MCP do DaVinci Resolve ausente no runtime desktop.");
+}
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kaoz1-desktop-smoke-"));
 const runtime = path.join(tempRoot, "server");
@@ -91,6 +101,20 @@ try {
     throw new Error(
       `Rota /api/mcp/config falhou no runtime desktop com HTTP ${mcpResponse.status}: ${responseBody}\n${output}`,
     );
+  }
+  const mcpPayload = await mcpResponse.json();
+  const resolvePreset = mcpPayload.presets?.find(
+    (preset) => preset.id === "davinci-resolve-local",
+  );
+  if (
+    !resolvePreset ||
+    resolvePreset.transport !== "stdio" ||
+    !path.isAbsolute(resolvePreset.args?.[0] || "") ||
+    !resolvePreset.args[0].endsWith(
+      path.join("services", "mcp-servers", "davinci-resolve", "server.py"),
+    )
+  ) {
+    throw new Error("Preset MCP do DaVinci Resolve inválido no runtime desktop.");
   }
   const goalsResponse = await fetch(`http://127.0.0.1:${port}/api/goals`, {
     signal: AbortSignal.timeout(30_000),
