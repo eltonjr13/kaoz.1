@@ -74,7 +74,7 @@ export const DEFAULT_EXECUTION_POLICY: ExecutionPolicy =
           "publique",
           "remova",
         ],
-        phrases: [],
+        phrases: ["/goal"],
         confidence: 0.94,
         estimatedComplexity: 70,
         estimatedCost: 3,

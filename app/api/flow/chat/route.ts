@@ -26,6 +26,11 @@ import { recallArchivedConversations } from "@/services/conversation-memory/conv
 import { scheduleConversationConsolidation } from "@/services/conversation-memory/conversation-memory.consolidator";
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import type { FlowImageAspectRatio } from "@/lib/ai/image-prompt-engineering";
+import {
+  autonomousGoalStore,
+  parseGoalCommand,
+  type AutonomousGoal,
+} from "@/services/goals";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -50,6 +55,10 @@ type FlowChatRequestBody = {
 };
 
 type StreamSender = (event: string, payload: Record<string, unknown>) => void;
+type FlowChatResult = ChatAgentResponse & {
+  goal?: AutonomousGoal;
+  autoExecute?: boolean;
+};
 type FlowChatModel = 'gemini' | 'chatgpt' | 'claude' | 'deepseek' | 'cerebras' | 'zenmux' | 'iamhc';
 type SpotifyDirectCommand = {
   toolName: string;
@@ -69,6 +78,19 @@ function parseFlowChatRequestBody(body: unknown): FlowChatRequestBody | null {
   }
 
   return body as FlowChatRequestBody;
+}
+
+function replaceLatestUserMessage(messages: ChatMessage[], text: string): ChatMessage[] {
+  const next = [...messages];
+  for (let index = next.length - 1; index >= 0; index--) {
+    if (next[index].role !== "user") continue;
+    next[index] = {
+      ...next[index],
+      parts: [{ text }],
+    };
+    break;
+  }
+  return next;
 }
 
 function resolveFlowChatModel(model?: string): FlowChatModel {
@@ -501,9 +523,9 @@ function attachMemoryReceipt(response: ChatAgentResponse, receipt?: string): Cha
 }
 
 function createChatStreamResponse(
-  runChat: (send: StreamSender) => Promise<ChatAgentResponse>,
+  runChat: (send: StreamSender) => Promise<FlowChatResult>,
   cleanup: () => void,
-  onComplete?: (response: ChatAgentResponse) => void
+  onComplete?: (response: FlowChatResult) => void
 ): Response {
   const encoder = new TextEncoder();
   let cleanedUp = false;
@@ -550,6 +572,8 @@ function createChatStreamResponse(
           action: response.action,
           artifacts: response.artifacts,
           artifactError: response.artifactError,
+          goal: response.goal,
+          autoExecute: response.autoExecute,
         });
 
         if (onComplete) {
@@ -619,15 +643,28 @@ export async function POST(request: Request) {
     const resolvedImageAspectRatio = typeof imageAspectRatio === "string" && IMAGE_ASPECT_RATIOS.has(imageAspectRatio)
       ? imageAspectRatio
       : undefined;
-    const wantsExternalTools = needsExternalTools(messages);
+    const rawLatestUserText = getLatestUserMessageText(messages);
+    const goalCommand = parseGoalCommand(rawLatestUserText);
+    const goalMode = goalCommand?.kind === "create";
+    const latestUserText = goalMode ? goalCommand.objective : rawLatestUserText;
+    const agentMessages = goalMode
+      ? replaceLatestUserMessage(messages, latestUserText)
+      : messages;
+    const wantsExternalTools = needsExternalTools(agentMessages);
     const hasExternalTools = wantsExternalTools;
-    const spotifyDirectCommand = detectSpotifyDirectCommand(messages);
-    const latestUserText = getLatestUserMessageText(messages);
+    const spotifyDirectCommand = detectSpotifyDirectCommand(agentMessages);
     const outputIntent = classifyOutputIntent(latestUserText, getSkillArtifactHint(latestUserText));
-    const actionContinuation = isActionContinuationRequest(messages);
+    const actionContinuation = isActionContinuationRequest(agentMessages);
     const requestedMediaFlow = activeMediaFlow(outputIntent.mediaFlow)
       || ((allowsMediaAction(outputIntent) || actionContinuation) ? requestedFlow : undefined);
-    const immediateContextReference = isImmediateContextReference(messages);
+    const immediateContextReference = isImmediateContextReference(agentMessages);
+    const autonomousGoal = goalMode
+      ? await autonomousGoalStore.create({
+          requestId: archiveContext?.userMessageId,
+          conversationId: sessionId || archiveContext?.conversationId,
+          objective: latestUserText,
+        })
+      : undefined;
     const voiceContext = getAgentVoiceContext(latestUserText, voiceActive === true);
     const archivedUserMessageId = cortexMemoryEnabled ? archiveFlowMessage({ archiveContext, role: 'user', content: latestUserText }) : undefined;
     const memoryOperation = await processChatMemoryBeforeResponse(
@@ -686,7 +723,7 @@ export async function POST(request: Request) {
 
     const runChat = async (onMessageChunk?: (chunk: string) => void) => {
       const response = await chatWithAgent(
-        messages,
+        agentMessages,
         personality,
         async (compiledPrompt: string, imagePath?: string, queryOptions?: {
           onTextChunk?: (chunk: string) => void;
@@ -708,13 +745,29 @@ export async function POST(request: Request) {
           imageOperation: resolvedImageOperation,
           imageAspectRatio: resolvedImageAspectRatio,
           characterRuntime,
+          goalMode,
         }
       );
       const protectedResponse = protectOutputIntent(response, outputIntent, actionContinuation);
       const routedResponse = enforceRequestedFlow(protectedResponse, requestedMediaFlow);
       const finalResponse = await attachRequestedArtifacts(attachMemoryReceipt(routedResponse, memoryOperation.receipt), latestUserText, sessionId);
+      const goal = autonomousGoal
+        ? response.action
+          ? await autonomousGoalStore.setStatus(autonomousGoal.id, "queued", {
+              flow: response.action.flow === "image" || response.action.flow === "video" || response.action.flow === "ad-creative"
+                ? response.action.flow
+                : undefined,
+            }) || autonomousGoal
+          : await autonomousGoalStore.setStatus(autonomousGoal.id, "blocked", {
+              error: "O objetivo não produziu uma ação compatível com as capacidades autônomas instaladas.",
+            }) || autonomousGoal
+        : undefined;
       if (cortexMemoryEnabled) archiveFlowMessage({ archiveContext, role: 'assistant', content: finalResponse.message });
-      return finalResponse;
+      return {
+        ...finalResponse,
+        goal,
+        autoExecute: Boolean(goal && finalResponse.action),
+      };
     };
 
     if (stream === true) {
@@ -746,6 +799,8 @@ export async function POST(request: Request) {
       action: response.action,
       artifacts: response.artifacts,
       artifactError: response.artifactError,
+      goal: response.goal,
+      autoExecute: response.autoExecute,
     });
 
   } catch (err: unknown) {

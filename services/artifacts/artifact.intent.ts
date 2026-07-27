@@ -34,8 +34,8 @@ export function inferRequestedArtifactFormats(requestText: string, skillHint = "
   return uniqueFormats(formats);
 }
 
-const MEDIA_OBJECT = "(?:imagem|imagens|foto|fotos|ilustracao|ilustracoes|desenho|desenhos|video|videos|clipe|clipes|react|thumbnail|thumbnails|logo|logos|criativo|criativos|anuncio|anuncios)";
-const MEDIA_ACTION = "(?:gerar|gera|gere|criar|cria|crie|fazer|faz|faca|produzir|produza|editar|edite|alterar|altere|ajustar|ajuste|corrigir|corrija|refinar|refine|animar|anime)";
+const MEDIA_OBJECT = "(?:imagem|imagens|foto|fotos|ilustracao|ilustracoes|desenho|desenhos|video|videos|clipe|clipes|react|thumbnail|thumbnails|logo|logos|criativo|criativos|anuncio|anuncios|peca|pecas|campanha|campanhas)";
+const MEDIA_ACTION = "(?:gerar|gera|gere|criar|cria|crie|fazer|faz|faca|produzir|produza|desenvolver|desenvolva|montar|monte|construir|construa|lancar|lance|editar|edite|alterar|altere|ajustar|ajuste|corrigir|corrija|refinar|refine|animar|anime)";
 const MEDIA_DESIRE = "(?:quero|preciso|gostaria|desejo)";
 const MEDIA_ACTION_PATTERN = new RegExp(`\\b${MEDIA_ACTION}\\b[^.!?\\n]{0,48}\\b${MEDIA_OBJECT}\\b|\\b${MEDIA_OBJECT}\\b[^.!?\\n]{0,32}\\b${MEDIA_ACTION}\\b|\\b${MEDIA_DESIRE}\\b[^.!?\\n]{0,32}\\b${MEDIA_OBJECT}\\b`, "i");
 const DIRECT_MEDIA_COMMAND_PATTERN = new RegExp(`^\\s*${MEDIA_OBJECT}\\b`, "i");
