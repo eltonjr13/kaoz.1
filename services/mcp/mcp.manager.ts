@@ -9,6 +9,12 @@ import sharp from "sharp";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { redactSecrets } from "@/services/orchestrator/orchestrator.policy";
 import { buildSafeMcpEnvironment } from "./mcp.security";
+import {
+  DAVINCI_RESOLVE_ENV_KEYS,
+  isDavinciResolveConfig,
+  validateMcpServerConfig,
+  validateMcpSettings,
+} from "./davinci-resolve.config";
 
 const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
@@ -45,7 +51,7 @@ export class McpManager {
   public async loadSettings(): Promise<McpSettings> {
     try {
       const data = await readFile(SETTINGS_FILE, "utf8");
-      this.settings = JSON.parse(data) as McpSettings;
+      this.settings = validateMcpSettings(JSON.parse(data) as McpSettings);
     } catch {
       this.settings = { servers: [] };
     }
@@ -53,9 +59,9 @@ export class McpManager {
   }
 
   public async saveSettings(settings: McpSettings): Promise<void> {
-    this.settings = settings;
+    this.settings = validateMcpSettings(settings);
     await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
+    await writeFile(SETTINGS_FILE, JSON.stringify(this.settings, null, 2), "utf8");
     // Reinitialize connections on save
     await this.initializeConnections();
   }
@@ -94,7 +100,8 @@ export class McpManager {
 
   public async testConnection(config: McpServerConfig): Promise<McpServerStatus> {
     try {
-      const { client, transport } = this.createClientAndTransport(config);
+      const validated = validateMcpServerConfig(config);
+      const { client, transport } = this.createClientAndTransport(validated);
       await client.connect(transport);
       const toolsResponse = await client.listTools();
       const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t) => ({
@@ -102,8 +109,17 @@ export class McpManager {
         description: t.description,
         inputSchema: t.inputSchema
       }));
+      const diagnostic = isDavinciResolveConfig(validated)
+        ? await this.getResolveDiagnostic(client)
+        : null;
       await client.close();
-      return { id: config.id, connected: true, error: null, tools };
+      return {
+        id: validated.id,
+        connected: true,
+        error: null,
+        tools,
+        diagnostic,
+      };
     } catch (err: unknown) {
       return { id: config.id, connected: false, error: redactSecrets(err instanceof Error ? err.message : String(err)), tools: [] };
     }
@@ -122,7 +138,13 @@ export class McpManager {
       transport = new StdioClientTransport({
         command: config.command || "npx",
         args: config.args || [],
-        env: buildSafeMcpEnvironment(config.env)
+        env: buildSafeMcpEnvironment(
+          config.env,
+          process.env,
+          isDavinciResolveConfig(config)
+            ? DAVINCI_RESOLVE_ENV_KEYS
+            : undefined,
+        )
       });
     } else {
       transport = new SSEClientTransport(new URL(config.url || ""));
@@ -143,12 +165,16 @@ export class McpManager {
         description: t.description,
         inputSchema: t.inputSchema
       }));
+      const diagnostic = isDavinciResolveConfig(config)
+        ? await this.getResolveDiagnostic(client)
+        : null;
 
       this.statuses.set(config.id, {
         id: config.id,
         connected: true,
         error: null,
-        tools
+        tools,
+        diagnostic,
       });
     } catch (err: unknown) {
       this.statuses.set(config.id, {
@@ -189,6 +215,49 @@ export class McpManager {
     }
 
     return result;
+  }
+
+  private async getResolveDiagnostic(
+    client: Client,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const result = await client.callTool({
+        name: "resolve_get_status",
+        arguments: {},
+      }) as McpToolCallResult;
+      if (
+        result.structuredContent &&
+        typeof result.structuredContent === "object" &&
+        !Array.isArray(result.structuredContent)
+      ) {
+        return result.structuredContent as Record<string, unknown>;
+      }
+      const content = Array.isArray(result.content)
+        ? result.content as Array<{ type?: string; text?: string }>
+        : [];
+      const text = content.find((entry) => entry.type === "text")?.text;
+      if (text) {
+        const parsed = JSON.parse(text) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      }
+    } catch (error) {
+      return {
+        resolveOpen: false,
+        code: "RESOLVE_DIAGNOSTIC_FAILED",
+        message: redactSecrets(
+          error instanceof Error ? error.message : String(error),
+        ),
+        recovery: "Abra o Resolve e teste a conexão novamente.",
+      };
+    }
+    return {
+      resolveOpen: false,
+      code: "RESOLVE_DIAGNOSTIC_INVALID",
+      message: "O servidor MCP não retornou um diagnóstico válido.",
+      recovery: "Revise os paths do Resolve e teste novamente.",
+    };
   }
 
   private async generateAndUploadCover(serverId: string, args: Record<string, unknown>, result: unknown) {
