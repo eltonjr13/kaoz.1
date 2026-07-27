@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
@@ -12,7 +13,12 @@ import {
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 
 function ffmpegPath() {
-  return process.env.FFMPEG_PATH?.trim() || ffmpegStaticPath || "ffmpeg";
+  const candidates = [
+    process.env.FFMPEG_PATH?.trim(),
+    ffmpegStaticPath,
+    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg.exe"),
+  ].filter((value): value is string => Boolean(value));
+  return candidates.find((candidate) => existsSync(candidate)) || "ffmpeg";
 }
 
 function runFfmpeg(args: string[], timeoutMs = 15 * 60_000) {
@@ -324,6 +330,7 @@ export async function renderIntelligentEdit(
   await writeFile(plan.artifacts.planPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
   return {
     planId: plan.id,
+    plan: updated,
     previewPath,
     durationSeconds: plan.media.durationSeconds + 8,
     effectsApplied: {

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
@@ -43,7 +43,12 @@ type SemanticDecision = {
 };
 
 function ffmpegPath() {
-  return process.env.FFMPEG_PATH?.trim() || ffmpegStaticPath || "ffmpeg";
+  const candidates = [
+    process.env.FFMPEG_PATH?.trim(),
+    ffmpegStaticPath,
+    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg.exe"),
+  ].filter((value): value is string => Boolean(value));
+  return candidates.find((candidate) => existsSync(candidate)) || "ffmpeg";
 }
 
 function cleanText(value: unknown, fallback = "") {
@@ -356,7 +361,9 @@ export function buildEditEvents(input: {
   }
   const fallbackEmphasis = input.duration > 25 ? [input.duration * 0.35, input.duration * 0.7] : [input.duration * 0.55];
   const emphasis = input.semantic?.emphasis?.slice(0, input.style === "dynamic" ? 8 : 4);
-  for (const [index, item] of (emphasis?.length ? emphasis : fallbackEmphasis.map((time) => ({ time }))).entries()) {
+  const selectedEmphasis: NonNullable<SemanticDecision["emphasis"]> =
+    emphasis?.length ? emphasis : fallbackEmphasis.map((time) => ({ time }));
+  for (const [index, item] of selectedEmphasis.entries()) {
     events.push({
       id: `zoom-${index + 1}`,
       kind: "zoom",
@@ -523,8 +530,11 @@ export async function analyzeIntelligentEdit(
 }
 
 export async function readIntelligentEditPlan(planId?: string) {
+  if (planId && !/^[a-f0-9]{16}$/.test(planId)) {
+    throw new Error("Identificador da análise inteligente inválido.");
+  }
   const filePath = planId
-    ? path.join(ROOT, safeLabel(planId, 32), "intelligent-edit-plan.json")
+    ? path.join(ROOT, planId, "intelligent-edit-plan.json")
     : LATEST_PATH;
   return readFile(filePath, "utf8")
     .then((raw) => JSON.parse(raw) as IntelligentEditPlan)

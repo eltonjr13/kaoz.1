@@ -13,6 +13,10 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:install-runner",
     "davinci-free:prepare-voice",
     "davinci-free:prepare-edit-plan",
+    "davinci-free:analyze-intelligent",
+    "davinci-free:render-intelligent",
+    "davinci-free:approve-intelligent",
+    "davinci-free:archive-pending",
   ]) {
     assert.match(registry, new RegExp(id.replaceAll("-", "\\-")));
   }
@@ -20,11 +24,37 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:install-runner",
     "davinci-free:prepare-voice",
     "davinci-free:prepare-edit-plan",
+    "davinci-free:analyze-intelligent",
+    "davinci-free:render-intelligent",
+    "davinci-free:approve-intelligent",
+    "davinci-free:archive-pending",
   ]) {
     const start = registry.indexOf(`{id:"${id}"`);
     assert.notEqual(start, -1);
     assert.match(registry.slice(start, registry.indexOf("\n", start)), /approvalMode:"step"/);
   }
+});
+
+test("edição inteligente usa áudio segmentado, agente sem ferramentas e prévia renderizada", async () => {
+  const analysis = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.service.ts"),
+    "utf8",
+  );
+  const renderer = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.renderer.ts"),
+    "utf8",
+  );
+  assert.match(analysis, /silencedetect/);
+  assert.match(analysis, /const speech = getSpeechService\(\)/);
+  assert.match(analysis, /speech\.transcribe/);
+  assert.match(analysis, /useExternalTools:\s*false/);
+  assert.match(analysis, /deterministic-fallback/);
+  assert.match(renderer, /afftdn/);
+  assert.match(renderer, /acompressor/);
+  assert.match(renderer, /loudnorm/);
+  assert.match(renderer, /preview-v1\.mp4/);
+  assert.match(renderer, /event\.x/);
+  assert.match(renderer, /event\.y/);
 });
 
 test("runner interno não abre servidor nem executa código arbitrário", async () => {
