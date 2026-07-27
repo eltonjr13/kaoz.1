@@ -2442,7 +2442,7 @@ export default function FlowDashboardPage() {
         agentMsg.plan = {
           kind: plannedKind, 
           flow: data.action.flow,
-          originalPrompt: message,
+          originalPrompt: goalCommand?.kind === "create" ? goalCommand.objective : message,
           prompt: data.action.optimizedPrompt || message,
           explanation: data.action.explanation || "",
           model: chatModel,
@@ -2461,8 +2461,7 @@ export default function FlowDashboardPage() {
           requires3dBasePreparation: plannedKind === 'image' && image3dMode && Boolean(referenceImageBase64) && !image3dReadyMode,
           quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
           useCortexMemory,
-          adCreativePlan: data.action.adCreativePlan
-          ,
+          adCreativePlan: data.action.adCreativePlan,
           goalId: data.goal?.id,
         };
 
@@ -2476,7 +2475,7 @@ export default function FlowDashboardPage() {
       }
 
       upsertAgentMessage(agentMsg);
-      if (data.autoExecute && agentMsg.plan) {
+      if (data.autoExecute && agentMsg.plan && !agentMsg.plan.requires3dBasePreparation) {
         void handleApplyPlan(agentMsg.id, agentMsg);
       }
     } catch (err) {

@@ -22,8 +22,11 @@ function normalizeOptional(value?: string): string | undefined {
 
 export class AutonomousGoalStore {
   private mutationTail: Promise<unknown> = Promise.resolve();
+  private readonly filePath: string;
 
-  constructor(private readonly filePath = DEFAULT_GOALS_FILE) {}
+  constructor(filePath = DEFAULT_GOALS_FILE) {
+    this.filePath = filePath;
+  }
 
   async list(conversationId?: string): Promise<AutonomousGoal[]> {
     const goals = await this.read();
@@ -118,4 +121,3 @@ export class AutonomousGoalStore {
 }
 
 export const autonomousGoalStore = new AutonomousGoalStore();
-

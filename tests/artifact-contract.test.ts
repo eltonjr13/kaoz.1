@@ -54,6 +54,12 @@ test("separa documentos, mídia e pedidos mistos sem usar o modo visual como int
   assert.equal(video.kind, "media");
   assert.equal(video.mediaFlow, "video");
 
+  const campaign = classifyOutputIntent(
+    "Desenvolva uma campanha completa com 50 peças para redes sociais e anúncios."
+  );
+  assert.equal(campaign.kind, "media");
+  assert.equal(campaign.mediaFlow, "ad-creative");
+
   assert.equal(classifyOutputIntent("Crie um roteiro sobre produtividade").kind, "conversation");
 });
 

@@ -23,6 +23,11 @@ test("classifies every supported execution mode deterministically", () => {
       "execution",
     ],
     [
+      "/goal desenvolva uma campanha visual e gere os criativos.",
+      ExecutionMode.EXECUTION,
+      "execution",
+    ],
+    [
       "Monitore esta operação em segundo plano.",
       ExecutionMode.BACKGROUND,
       "background",

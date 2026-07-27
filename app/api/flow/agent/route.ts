@@ -7,6 +7,7 @@ import {
 } from "@/lib/flow/reference-files";
 import { APP_WORKSPACE_ID } from "@/lib/workspace";
 import type { ImageGenerationOperation, ImageReferenceSource } from "@/src/providers/flow/ImageGenerationContract";
+import { autonomousGoalStore } from "@/services/goals";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,7 @@ export async function POST(request: Request) {
       referenceSource?: unknown;
       referenceXPath?: unknown;
       useCortexMemory?: unknown;
+      goalId?: unknown;
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
@@ -153,6 +155,7 @@ export async function POST(request: Request) {
       ? body.referenceXPath.trim()
       : undefined;
     const useCortexMemory = body?.useCortexMemory !== false;
+    const goalId = typeof body?.goalId === "string" ? body.goalId.trim() : "";
     const requestedImageCount = requestedImageCountFromBody || approvedPlan?.requestedImageCount;
     const canUseReferenceOnly3d = imagePackageMode === "turnaround3d" && Boolean(referenceImageBase64);
     const taskPrompt = prompt || (canUseReferenceOnly3d ? DEFAULT_3D_REFERENCE_PROMPT : "");
@@ -200,6 +203,9 @@ export async function POST(request: Request) {
           { error: "Parametro 'prompt' (tema/ideia) e obrigatorio para criar a execucao." },
           { status: 400 }
         );
+      }
+      if (goalId && !await autonomousGoalStore.find(goalId)) {
+        return NextResponse.json({ error: "Objetivo autônomo não encontrado." }, { status: 404 });
       }
 
       let releaseRequestLock: (() => void) | undefined;
@@ -258,6 +264,9 @@ export async function POST(request: Request) {
       }
       await updateLocalJobStatus(jobId, "researching");
       await createLocalJobEvent(jobId, "job_created", "Projeto do Agente Autonomo inicializado no armazenamento local.");
+      if (goalId) {
+        await autonomousGoalStore.setStatus(goalId, "running", { jobId });
+      }
       const inputReferenceImage = referenceImageBase64
         ? saveBase64ReferenceImage(referenceImageBase64, "agent_ref_image").filePath
         : undefined;
@@ -293,8 +302,25 @@ export async function POST(request: Request) {
         jobId,
         baseUrl,
         approvedPlan
-      }).catch(err => {
+      }).then(async (result) => {
+        if (!goalId) return;
+        if (result.success) {
+          await autonomousGoalStore.setStatus(goalId, "completed", {
+            result: result as unknown as Record<string, unknown>,
+          });
+          return;
+        }
+        await autonomousGoalStore.setStatus(goalId, "failed", {
+          result: result as unknown as Record<string, unknown>,
+          error: result.error || "A execução autônoma não retornou sucesso.",
+        });
+      }).catch(async err => {
         console.error(`[API AGENT] Erro no loop de background do agente para o job ${jobId}:`, err);
+        if (goalId) {
+          await autonomousGoalStore.setStatus(goalId, "failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       });
 
       return NextResponse.json({
