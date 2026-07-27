@@ -68,10 +68,11 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /event\.y/);
   assert.match(renderer, /function transitionExpression/);
   assert.match(renderer, /function focalExpression/);
-  assert.match(renderer, /ImpactPrimary/);
+  assert.match(renderer, /ImpactIcon/);
+  assert.match(renderer, /function impactLayouts/);
   assert.match(renderer, /resolveIntelligentEditDesign/);
   assert.match(renderer, /captionsEnabled/);
-  assert.match(renderer, /preview-v3\.mp4/);
+  assert.match(renderer, /preview-v4\.mp4/);
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
   assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);

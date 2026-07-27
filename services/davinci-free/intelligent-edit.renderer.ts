@@ -95,8 +95,8 @@ function assHeader(plan: IntelligentEditPlan) {
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
     `Style: LowerThird,Segoe UI Semibold,45,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
-    `Style: ImpactPrimary,Segoe UI Semibold,60,${assColor(colors.primary)},&H000000FF,${assColor(colors.background, "20")},&H00000000,-1,0,0,0,100,100,0.5,0,1,2,1,8,80,80,95,1`,
-    `Style: ImpactSecondary,Segoe UI Semibold,60,${assColor(colors.secondary)},&H000000FF,${assColor(colors.background, "20")},&H00000000,-1,0,0,0,100,100,0.5,0,1,2,1,8,80,80,95,1`,
+    `Style: ImpactIcon,Segoe UI Symbol,38,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
+    `Style: ImpactText,Segoe UI Semibold,43,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,0,0,0,1`,
     `Style: CardKicker,Segoe UI Semibold,24,${assColor(colors.secondary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,3,0,1,0,0,7,80,80,80,1`,
     `Style: CardTitle,Segoe UI Semibold,72,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
     `Style: CardSubtitle,Segoe UI,32,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
@@ -104,6 +104,117 @@ function assHeader(plan: IntelligentEditPlan) {
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ].join("\n");
+}
+
+type ImpactLayout = {
+  event: IntelligentEditEvent;
+  start: number;
+  end: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  accent: string;
+  icon: string;
+  label: string;
+  fontSize: number;
+};
+
+function impactLayouts(plan: IntelligentEditPlan): ImpactLayout[] {
+  const design = resolveIntelligentEditDesign(plan);
+  const layouts: ImpactLayout[] = [];
+  let previousImpactEnd = Number.NEGATIVE_INFINITY;
+  for (const event of plan.events.filter((item) => item.kind === "impact-text")) {
+    const overlappingLowerThird = plan.events.find(
+      (candidate) =>
+        candidate.kind === "lower-third" &&
+        event.start < candidate.start + candidate.duration &&
+        event.start + event.duration > candidate.start,
+    );
+    const desiredStart = overlappingLowerThird
+      ? Math.min(
+          plan.media.durationSeconds - event.duration,
+          overlappingLowerThird.start + overlappingLowerThird.duration + 0.2,
+        )
+      : event.start;
+    const start = Math.min(
+      plan.media.durationSeconds - event.duration,
+      Math.max(desiredStart, previousImpactEnd + 0.25),
+    );
+    const end = start + event.duration;
+    previousImpactEnd = end;
+    const focal = plan.events
+      .filter(
+        (candidate) =>
+          (candidate.kind === "zoom" || candidate.kind === "cut") &&
+          candidate.x !== undefined,
+      )
+      .sort((left, right) => Math.abs(left.start - start) - Math.abs(right.start - start))[0];
+    const placeLeft = (focal?.x ?? 0.5) >= 0.48;
+    const accent =
+      event.variant === "action" || event.variant === "stat"
+        ? design.colors.secondary
+        : design.colors.primary;
+    const decoratedLabel =
+      event.variant === "quote"
+        ? `“${event.label}”`
+        : event.variant === "stat"
+          ? event.label.toUpperCase()
+          : event.label;
+    const fontSize =
+      event.variant === "stat"
+        ? 50
+        : event.variant === "quote" || event.label.length > 26
+          ? 38
+          : 43;
+    const shouldWrap = decoratedLabel.length > 30;
+    let label = decoratedLabel;
+    if (shouldWrap) {
+      const words = decoratedLabel.split(/\s+/);
+      let split = 1;
+      let smallestDifference = Number.POSITIVE_INFINITY;
+      for (let index = 1; index < words.length; index += 1) {
+        const difference = Math.abs(
+          words.slice(0, index).join(" ").length -
+          words.slice(index).join(" ").length,
+        );
+        if (difference < smallestDifference) {
+          smallestDifference = difference;
+          split = index;
+        }
+      }
+      label = `${words.slice(0, split).join(" ")}\n${words.slice(split).join(" ")}`;
+    }
+    const longestLine = Math.max(...label.split("\n").map((line) => line.length));
+    const height = shouldWrap ? 142 : event.variant === "stat" ? 118 : 104;
+    const width = Math.max(
+      460,
+      Math.min(760, Math.round(longestLine * fontSize * 0.52 + 150)),
+    );
+    const margin = Math.round(plan.media.width * 0.057);
+    const x = placeLeft ? margin : plan.media.width - margin - width;
+    layouts.push({
+      event,
+      start,
+      end,
+      x,
+      y: Math.round(plan.media.height * 0.085),
+      width,
+      height,
+      accent,
+      icon:
+        event.variant === "action"
+          ? "→"
+          : event.variant === "quote"
+            ? "“"
+            : event.variant === "stat"
+              ? "●"
+              : "◆",
+      label,
+      fontSize,
+    });
+  }
+  return layouts;
 }
 
 function bodyAss(plan: IntelligentEditPlan) {
@@ -121,44 +232,13 @@ function bodyAss(plan: IntelligentEditPlan) {
       `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)\\1c${assColor(design.colors.primary)}&}▌{\\1c${assColor(design.colors.text)}&} ${assText(event.label)}`,
     );
   }
-  let previousImpactEnd = Number.NEGATIVE_INFINITY;
-  for (const [index, event] of plan.events
-    .filter((item) => item.kind === "impact-text")
-    .entries()) {
-    const overlappingLowerThird = plan.events.find(
-      (candidate) =>
-        candidate.kind === "lower-third" &&
-        event.start < candidate.start + candidate.duration &&
-        event.start + event.duration > candidate.start,
-    );
-    const desiredStart = overlappingLowerThird
-      ? Math.min(
-          plan.media.durationSeconds - event.duration,
-          overlappingLowerThird.start + overlappingLowerThird.duration + 0.2,
-        )
-      : event.start;
-    const impactStart = Math.min(
-      plan.media.durationSeconds - event.duration,
-      Math.max(desiredStart, previousImpactEnd + 0.25),
-    );
-    previousImpactEnd = impactStart + event.duration;
-    const impactX = Math.round(plan.media.width * (index % 2 === 0 ? 0.24 : 0.76));
-    const style =
-      event.variant === "action" || event.variant === "stat"
-        ? "ImpactSecondary"
-        : "ImpactPrimary";
-    const startX = Math.round(plan.media.width * (index % 2 === 0 ? 0.18 : 0.82));
-    const fontSize = event.variant === "stat" ? 72 : event.variant === "quote" ? 54 : 60;
-    const decoratedLabel =
-      event.variant === "quote"
-        ? `“${event.label}”`
-        : event.variant === "action"
-          ? `${event.label.toUpperCase()}  →`
-          : event.variant === "stat"
-            ? event.label.toUpperCase()
-            : event.label;
+  for (const layout of impactLayouts(plan)) {
+    const centerY = layout.y + Math.round(layout.height / 2);
     lines.push(
-      `Dialogue: 2,${assTime(impactStart)},${assTime(impactStart + event.duration)},${style},,0,0,0,,{\\an8\\move(${startX},${Math.round(plan.media.height * 0.12)},${impactX},${Math.round(plan.media.height * 0.12)},0,260)\\fad(90,190)\\fs${fontSize}\\fscx82\\fscy82\\t(0,240,\\fscx100\\fscy100)}${assText(decoratedLabel)}`,
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactIcon,,0,0,0,,{\\pos(${layout.x + 42},${centerY})\\fad(80,170)\\1c${assColor(layout.accent)}&}${assText(layout.icon)}`,
+    );
+    lines.push(
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactText,,0,0,0,,{\\an4\\move(${layout.x + 66},${centerY},${layout.x + 82},${centerY},0,240)\\fad(90,180)\\fs${layout.fontSize}}${assText(layout.label)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -243,6 +323,7 @@ function transitionExpression(events: IntelligentEditEvent[]) {
 }
 
 function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
+  const design = resolveIntelligentEditDesign(plan);
   const scale = scaleExpression(plan.events);
   const focusX = focalExpression(plan.events, "x");
   const focusY = focalExpression(plan.events, "y");
@@ -251,10 +332,16 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
     `scale=w='trunc(iw*(${scale})/2)*2':h='trunc(ih*(${scale})/2)*2':eval=frame`,
     `crop=${plan.media.width}:${plan.media.height}:x='${focusX}':y='${focusY}'`,
     `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-0.95*(${transition})':eval=frame`,
-    `ass='${filterPath(assPath)}'`,
-    "fade=t=in:st=0:d=0.25",
-    `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - 0.35).toFixed(3)}:d=0.35`,
   ];
+  for (const layout of impactLayouts(plan)) {
+    const enable = `between(t,${layout.start.toFixed(3)},${layout.end.toFixed(3)})`;
+    filters.push(
+      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=${layout.height}:color=0x${design.colors.surface.slice(1)}@0.90:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=5:color=0x${layout.accent.slice(1)}:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x + 16}:y=${layout.y + Math.round((layout.height - 52) / 2)}:w=52:h=52:color=0x${design.colors.background.slice(1)}@0.72:t=fill:enable='${enable}'`,
+    );
+  }
+  filters.push(`ass='${filterPath(assPath)}'`);
   for (const event of plan.events.filter(
     (item) => item.kind === "cursor" && item.x !== undefined && item.y !== undefined,
   )) {
@@ -263,6 +350,10 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
       `drawbox=x=${Math.round(event.x! - size / 2)}:y=${Math.round(event.y! - size / 2)}:w=${size}:h=${size}:color=yellow@0.75:t=4:enable='between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)})'`,
     );
   }
+  filters.push(
+    "fade=t=in:st=0:d=0.25",
+    `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - 0.35).toFixed(3)}:d=0.35`,
+  );
   return filters.join(",");
 }
 
@@ -418,7 +509,7 @@ export async function renderIntelligentEdit(
   const introPath = path.join(directory, "intro.mp4");
   const bodyPath = path.join(directory, "body-edited.mp4");
   const outroPath = path.join(directory, "outro.mp4");
-  const previewPath = path.join(directory, "preview-v3.mp4");
+  const previewPath = path.join(directory, "preview-v4.mp4");
   await writeFile(bodyAssPath, bodyAss(plan), "utf8");
   await writeFile(introAssPath, titleAss(plan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(plan, "outro"), "utf8");
