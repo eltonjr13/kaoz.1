@@ -92,6 +92,15 @@ try {
       `Rota /api/mcp/config falhou no runtime desktop com HTTP ${mcpResponse.status}: ${responseBody}\n${output}`,
     );
   }
+  const goalsResponse = await fetch(`http://127.0.0.1:${port}/api/goals`, {
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (goalsResponse.status !== 200) {
+    const responseBody = await goalsResponse.text();
+    throw new Error(
+      `Rota /api/goals falhou no runtime desktop com HTTP ${goalsResponse.status}: ${responseBody}\n${output}`,
+    );
+  }
   for (const route of [
     { path: "/api/flow/auth", body: { action: "desktop-runtime-smoke" } },
     { path: "/api/flow/chat", body: {} },
@@ -110,7 +119,7 @@ try {
     }
   }
   console.log(
-    `Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas MCP config e Flow auth/chat.`,
+    `Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas MCP config, goals e Flow auth/chat.`,
   );
 } finally {
   if (child && child.exitCode === null) child.kill();
