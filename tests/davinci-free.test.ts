@@ -70,6 +70,8 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(batch, /item\.status = "failed"/);
   assert.match(batch, /item\.previewPath = rendered\.previewPath/);
   assert.match(panel, /Editar curso inteiro em lote/);
+  assert.match(panel, /chooseCourseFolder/);
+  assert.match(panel, /const selected = await window\.kaoz1Desktop\.chooseCourseFolder/);
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
 });

@@ -259,7 +259,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function discoverBatch() {
-    const result = await action("discover-batch", { folderPath: batchFolder });
+    let folderPath = batchFolder;
+    if (window.kaoz1Desktop?.chooseCourseFolder) {
+      const selected = await window.kaoz1Desktop.chooseCourseFolder();
+      if (!selected) return;
+      folderPath = selected;
+      setBatchFolder(selected);
+      setBatchDiscovery(null);
+    }
+    if (!folderPath) {
+      onStatusMessage({
+        text: "Selecione ou informe a pasta do curso.",
+        type: "error",
+      });
+      return;
+    }
+    const result = await action("discover-batch", { folderPath });
     if (result?.videos) {
       setBatchDiscovery(result as BatchDiscovery);
       onStatusMessage({
@@ -386,7 +401,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </label>
           <div className="flex items-end">
             <button
-              disabled={!!busy || !batchFolder}
+              disabled={!!busy}
               onClick={discoverBatch}
               className="flex items-center gap-2 rounded-lg border border-violet-400/30 px-4 py-2 text-xs font-semibold text-violet-200 disabled:opacity-40"
             >

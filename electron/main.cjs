@@ -215,6 +215,17 @@ ipcMain.handle("kaoz1-desktop:set-close-to-tray", (event, enabled) => {
   return { closeToTray: updated.closeToTray };
 });
 
+ipcMain.handle("kaoz1-desktop:choose-course-folder", async (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return null;
+  const selection = await dialog.showOpenDialog(target, {
+    title: "Selecionar pasta do curso",
+    buttonLabel: "Usar esta pasta",
+    properties: ["openDirectory"],
+  });
+  return selection.canceled ? null : selection.filePaths[0] || null;
+});
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {

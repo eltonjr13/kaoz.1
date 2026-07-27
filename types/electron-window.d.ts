@@ -20,6 +20,7 @@ declare global {
       isMaximized: () => Promise<boolean>;
       getDesktopPreferences: () => Promise<{ closeToTray: boolean } | null>;
       setCloseToTray: (enabled: boolean) => Promise<{ closeToTray: boolean } | null>;
+      chooseCourseFolder: () => Promise<string | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       getUpdateStatus: () => Promise<Kaoz1UpdateStatus>;
       checkForUpdates: () => Promise<Kaoz1UpdateStatus>;

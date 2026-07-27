@@ -8,6 +8,7 @@ if (process.platform === "win32") {
     isMaximized: () => ipcRenderer.invoke("kaoz1-window:is-maximized"),
     getDesktopPreferences: () => ipcRenderer.invoke("kaoz1-desktop:get-preferences"),
     setCloseToTray: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-close-to-tray", enabled),
+    chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("kaoz1-update:download"),
