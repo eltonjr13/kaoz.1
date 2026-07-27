@@ -53,6 +53,8 @@ import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.typ
 import type { SkillToolDefinition } from "@/services/skills/skill.types";
 import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
 import { ArtifactCards } from "@/components/artifacts/artifact-viewer";
+import { goalHelpText, parseGoalCommand } from "@/services/goals/goal-command";
+import type { AutonomousGoal } from "@/services/goals/goal.types";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -179,6 +181,7 @@ interface PendingPlan {
       visualPrompt: string;
     }[];
   } | null;
+  goalId?: string;
 }
 
 interface FlowChatAction {
@@ -200,6 +203,8 @@ interface FlowChatResponse {
   error?: string;
   artifacts?: ExecutionArtifact[];
   artifactError?: string;
+  goal?: AutonomousGoal;
+  autoExecute?: boolean;
 }
 
 interface FlowChatStreamPayload extends FlowChatResponse {
@@ -231,6 +236,7 @@ export interface ChatMessageState {
   feedback?: 'good' | 'bad' | null;
   artifacts?: ExecutionArtifact[];
   artifactError?: string;
+  goal?: AutonomousGoal;
   skillDraft?: {
     id: string;
     name: string;
@@ -1936,6 +1942,51 @@ export default function FlowDashboardPage() {
       return;
     }
 
+    const goalCommand = parseGoalCommand(message);
+    if (goalCommand?.kind === "help" || goalCommand?.kind === "status") {
+      const userMessage: ChatMessageState = {
+        id: Date.now().toString(),
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+      };
+      setChatMessages((previous) => [...previous, userMessage]);
+      setIsLoading(true);
+      try {
+        let content = goalHelpText();
+        if (goalCommand.kind === "status") {
+          const query = goalCommand.goalId
+            ? `id=${encodeURIComponent(goalCommand.goalId)}`
+            : `conversationId=${encodeURIComponent(activeConversationId)}`;
+          const response = await fetch(`/api/goals?${query}`, { cache: "no-store" });
+          const data = await response.json() as {
+            message?: string;
+            goal?: AutonomousGoal;
+            goals?: AutonomousGoal[];
+            error?: string;
+          };
+          if (!response.ok) throw new Error(data.error || "Não foi possível consultar o objetivo.");
+          content = data.message || content;
+        }
+        setChatMessages((previous) => [...previous, {
+          id: createChatId("assistant"),
+          role: "assistant",
+          content,
+          timestamp: new Date().toISOString(),
+        }]);
+      } catch (error) {
+        setChatMessages((previous) => [...previous, {
+          id: createChatId("assistant"),
+          role: "assistant",
+          content: `Não consegui consultar o objetivo: ${error instanceof Error ? error.message : String(error)}`,
+          timestamp: new Date().toISOString(),
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     let content = message;
     if (pastedContent.length > 0) {
       content += "\n\n" + pastedContent.map((p: any) => p.content).join("\n\n");
@@ -2378,6 +2429,7 @@ export default function FlowDashboardPage() {
         timestamp: new Date().toISOString(),
         artifacts: data.artifacts,
         artifactError: data.artifactError,
+        goal: data.goal,
       };
 
       if (data.action && data.action.flow) {
@@ -2410,6 +2462,8 @@ export default function FlowDashboardPage() {
           quantity: (plannedKind === 'image' || isAdCreative) ? imageQty : videoQty,
           useCortexMemory,
           adCreativePlan: data.action.adCreativePlan
+          ,
+          goalId: data.goal?.id,
         };
 
         if (plannedKind === 'image' && image3dMode && referenceImageBase64 && image3dReadyMode) {
@@ -2422,6 +2476,9 @@ export default function FlowDashboardPage() {
       }
 
       upsertAgentMessage(agentMsg);
+      if (data.autoExecute && agentMsg.plan) {
+        void handleApplyPlan(agentMsg.id, agentMsg);
+      }
     } catch (err) {
        console.error(err);
        const errorMessage = err instanceof Error ? err.message : String(err);
@@ -2658,9 +2715,9 @@ export default function FlowDashboardPage() {
     }
   };
 
-  const handleApplyPlan = async (msgId: string) => {
+  const handleApplyPlan = async (msgId: string, sourceMessage?: ChatMessageState) => {
     if (applyingPlanIdsRef.current.has(msgId)) return;
-    const msg = chatMessages.find((message) => message.id === msgId);
+    const msg = sourceMessage || chatMessages.find((message) => message.id === msgId);
     if (!msg?.plan || msg.jobId || msg.jobStatus === 'running') return;
 
     applyingPlanIdsRef.current.add(msgId);
@@ -2682,6 +2739,7 @@ export default function FlowDashboardPage() {
         body: JSON.stringify({
           action: "create-project",
           requestId: msg.id,
+          goalId: msg.plan.goalId,
           prompt: msg.plan.originalPrompt,
           imageOperation: msg.plan.imageOperation,
           referenceSource: msg.plan.referenceSource,
@@ -3724,6 +3782,14 @@ export default function FlowDashboardPage() {
                            </a>
                          </div>
                        </div>
+                    )}
+
+                    {msg.goal && (
+                      <div className="mt-1 flex max-w-[760px] items-center gap-2 rounded-xl border border-[#9D7CFF]/25 bg-[#9D7CFF]/5 px-3 py-2 text-[10px] text-white/60">
+                        <span className="font-bold uppercase tracking-wider text-[#9D7CFF]">Goal</span>
+                        <code className="text-white/45">{msg.goal.id.slice(0, 8)}</code>
+                        <span className="ml-auto">{msg.jobStatus || msg.goal.status}</span>
+                      </div>
                     )}
 
                     {/* Job failed error */}

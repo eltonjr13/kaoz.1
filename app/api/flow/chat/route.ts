@@ -752,10 +752,10 @@ export async function POST(request: Request) {
       const routedResponse = enforceRequestedFlow(protectedResponse, requestedMediaFlow);
       const finalResponse = await attachRequestedArtifacts(attachMemoryReceipt(routedResponse, memoryOperation.receipt), latestUserText, sessionId);
       const goal = autonomousGoal
-        ? response.action
+        ? finalResponse.action
           ? await autonomousGoalStore.setStatus(autonomousGoal.id, "queued", {
-              flow: response.action.flow === "image" || response.action.flow === "video" || response.action.flow === "ad-creative"
-                ? response.action.flow
+              flow: finalResponse.action.flow === "image" || finalResponse.action.flow === "video" || finalResponse.action.flow === "ad-creative"
+                ? finalResponse.action.flow
                 : undefined,
             }) || autonomousGoal
           : await autonomousGoalStore.setStatus(autonomousGoal.id, "blocked", {
