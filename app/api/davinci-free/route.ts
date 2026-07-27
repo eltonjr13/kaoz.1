@@ -9,6 +9,11 @@ const TOOL_BY_ACTION = {
   install: "davinci-free:install-runner",
   "prepare-voice": "davinci-free:prepare-voice",
   "prepare-plan": "davinci-free:prepare-edit-plan",
+  analyze: "davinci-free:analyze-intelligent",
+  "get-analysis": "davinci-free:get-intelligent-plan",
+  "render-preview": "davinci-free:render-intelligent",
+  "approve-intelligent": "davinci-free:approve-intelligent",
+  "archive-pending": "davinci-free:archive-pending",
 } as const;
 
 type Action = keyof typeof TOOL_BY_ACTION;
@@ -23,11 +28,14 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
       planId: `settings:${action}`,
       runId: crypto.randomUUID(),
       stepId: action,
-      signal: AbortSignal.timeout(125_000),
+      signal: AbortSignal.timeout(
+        action === "analyze" || action === "render-preview" ? 15 * 60_000 : 125_000,
+      ),
     },
     permissions: {
       allowedToolIds: [toolId],
-      approvalMode: action === "status" ? "never" : "step",
+      approvalMode:
+        action === "status" || action === "get-analysis" ? "never" : "step",
       reason: "Ação solicitada diretamente pelo usuário na tela Resolve Free.",
     },
   });
@@ -49,7 +57,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const action = typeof body.action === "string" ? body.action as Action : "status";
-    if (!(action in TOOL_BY_ACTION) || action === "status") {
+    if (!(action in TOOL_BY_ACTION) || action === "status" || action === "get-analysis") {
       return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
     }
     const { action: _action, ...arguments_ } = body;
