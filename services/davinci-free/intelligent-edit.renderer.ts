@@ -10,6 +10,7 @@ import {
   type IntelligentEditEvent,
   type IntelligentEditPlan,
 } from "./intelligent-edit.types";
+import { resolveIntelligentEditDesign } from "./intelligent-edit.design";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 
 function ffmpegPath() {
@@ -75,21 +76,30 @@ function wrapCaption(value: string) {
   return `${words.slice(0, bestIndex).join(" ")}\n${words.slice(bestIndex).join(" ")}`;
 }
 
-function assHeader(width: number, height: number) {
+function assColor(hex: string, alpha = "00") {
+  const normalized = hex.replace("#", "").padEnd(6, "0").slice(0, 6);
+  const [red, green, blue] = normalized.match(/.{2}/g) || ["FF", "FF", "FF"];
+  return `&H${alpha}${blue}${green}${red}`.toUpperCase();
+}
+
+function assHeader(plan: IntelligentEditPlan) {
+  const { colors } = resolveIntelligentEditDesign(plan);
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
-    `PlayResX: ${width}`,
-    `PlayResY: ${height}`,
+    `PlayResX: ${plan.media.width}`,
+    `PlayResY: ${plan.media.height}`,
     "ScaledBorderAndShadow: yes",
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    "Style: Caption,Segoe UI,54,&H00FFFFFF,&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1",
-    "Style: LowerThird,Segoe UI Semibold,48,&H00FFFFFF,&H000000FF,&H00101010,&HC0101010,-1,0,0,0,100,100,0,0,3,1,0,1,70,70,105,1",
-    "Style: ImpactText,Segoe UI Semibold,62,&H003BE8FF,&H000000FF,&H00101010,&HC0101010,-1,0,0,0,100,100,0,0,3,2,0,8,80,80,95,1",
-    "Style: CardTitle,Segoe UI Semibold,72,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,80,80,80,1",
-    "Style: CardSubtitle,Segoe UI,34,&H00B8C7D9,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,5,80,80,80,1",
+    `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
+    `Style: LowerThird,Segoe UI Semibold,45,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
+    `Style: ImpactPrimary,Segoe UI Semibold,60,${assColor(colors.primary)},&H000000FF,${assColor(colors.background, "20")},&H00000000,-1,0,0,0,100,100,0.5,0,1,2,1,8,80,80,95,1`,
+    `Style: ImpactSecondary,Segoe UI Semibold,60,${assColor(colors.secondary)},&H000000FF,${assColor(colors.background, "20")},&H00000000,-1,0,0,0,100,100,0.5,0,1,2,1,8,80,80,95,1`,
+    `Style: CardKicker,Segoe UI Semibold,24,${assColor(colors.secondary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,3,0,1,0,0,7,80,80,80,1`,
+    `Style: CardTitle,Segoe UI Semibold,72,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
+    `Style: CardSubtitle,Segoe UI,32,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -97,15 +107,18 @@ function assHeader(width: number, height: number) {
 }
 
 function bodyAss(plan: IntelligentEditPlan) {
-  const lines = [assHeader(plan.media.width, plan.media.height)];
-  for (const caption of plan.captions) {
-    lines.push(
-      `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},Caption,,0,0,0,,${assText(wrapCaption(caption.text))}`,
-    );
+  const design = resolveIntelligentEditDesign(plan);
+  const lines = [assHeader(plan)];
+  if (design.captionsEnabled) {
+    for (const caption of plan.captions) {
+      lines.push(
+        `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},Caption,,0,0,0,,${assText(wrapCaption(caption.text))}`,
+      );
+    }
   }
   for (const event of plan.events.filter((item) => item.kind === "lower-third")) {
     lines.push(
-      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)}${assText(event.label)}`,
+      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)\\1c${assColor(design.colors.primary)}&}▌{\\1c${assColor(design.colors.text)}&} ${assText(event.label)}`,
     );
   }
   let previousImpactEnd = Number.NEGATIVE_INFINITY;
@@ -130,8 +143,22 @@ function bodyAss(plan: IntelligentEditPlan) {
     );
     previousImpactEnd = impactStart + event.duration;
     const impactX = Math.round(plan.media.width * (index % 2 === 0 ? 0.24 : 0.76));
+    const style =
+      event.variant === "action" || event.variant === "stat"
+        ? "ImpactSecondary"
+        : "ImpactPrimary";
+    const startX = Math.round(plan.media.width * (index % 2 === 0 ? 0.18 : 0.82));
+    const fontSize = event.variant === "stat" ? 72 : event.variant === "quote" ? 54 : 60;
+    const decoratedLabel =
+      event.variant === "quote"
+        ? `“${event.label}”`
+        : event.variant === "action"
+          ? `${event.label.toUpperCase()}  →`
+          : event.variant === "stat"
+            ? event.label.toUpperCase()
+            : event.label;
     lines.push(
-      `Dialogue: 2,${assTime(impactStart)},${assTime(impactStart + event.duration)},ImpactText,,0,0,0,,{\\an8\\pos(${impactX},${Math.round(plan.media.height * 0.12)})\\fad(100,180)\\fscx68\\fscy68\\t(0,230,\\fscx100\\fscy100)}${assText(event.label)}`,
+      `Dialogue: 2,${assTime(impactStart)},${assTime(impactStart + event.duration)},${style},,0,0,0,,{\\an8\\move(${startX},${Math.round(plan.media.height * 0.12)},${impactX},${Math.round(plan.media.height * 0.12)},0,260)\\fad(90,190)\\fs${fontSize}\\fscx82\\fscy82\\t(0,240,\\fscx100\\fscy100)}${assText(decoratedLabel)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -143,15 +170,17 @@ function titleAss(
 ) {
   const event = plan.events.find((item) => item.kind === kind);
   const duration = event?.duration || 4;
-  const title = kind === "intro" ? plan.moduleName : event?.label || "Próxima aula";
+  const title = event?.label || (kind === "intro" ? plan.moduleName : "Próxima aula");
   const subtitle =
-    kind === "intro"
+    event?.subtitle || (kind === "intro"
       ? plan.courseName || "Curso"
-      : plan.courseName || plan.moduleName;
+      : plan.courseName || plan.moduleName);
+  const kicker = kind === "intro" ? plan.courseName || "NESTA AULA" : "PRÓXIMO PASSO";
   return [
-    assHeader(plan.media.width, plan.media.height),
-    `Dialogue: 0,${assTime(0.45)},${assTime(duration - 0.35)},CardTitle,,0,0,25,,${assText(title)}`,
-    `Dialogue: 0,${assTime(1.1)},${assTime(duration - 0.35)},CardSubtitle,,0,0,-75,,${assText(subtitle)}`,
+    assHeader(plan),
+    `Dialogue: 0,${assTime(0.25)},${assTime(duration - 0.3)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.29)})\\fad(100,180)}${assText(kicker.toUpperCase())}`,
+    `Dialogue: 0,${assTime(0.45)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.46)})\\fad(120,180)\\fscx86\\fscy86\\t(0,300,\\fscx100\\fscy100)}${assText(title)}`,
+    `Dialogue: 0,${assTime(0.9)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.62)})\\fad(140,180)}${assText(subtitle)}`,
     "",
   ].join("\n");
 }
@@ -258,18 +287,27 @@ async function renderCard(
   outputPath: string,
 ) {
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
+  const { colors } = resolveIntelligentEditDesign(plan);
+  const cardFilter = [
+    `drawbox=x=0:y=0:w=iw*0.018:h=ih:color=0x${colors.primary.slice(1)}:t=fill`,
+    `drawbox=x=iw*0.76:y=0:w=iw*0.24:h=ih:color=0x${colors.surface.slice(1)}@0.88:t=fill`,
+    `drawbox=x=iw*0.12:y=ih*0.34:w=iw*0.08:h=5:color=0x${colors.secondary.slice(1)}:t=fill`,
+    `ass='${filterPath(assPath)}'`,
+    "fade=t=in:st=0:d=0.35",
+    `fade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
+  ].join(",");
   await runFfmpeg([
     "-y",
     "-f",
     "lavfi",
     "-i",
-    `color=c=0x10141c:s=${plan.media.width}x${plan.media.height}:r=${plan.media.fps.toFixed(3)}:d=${duration}`,
+    `color=c=0x${colors.background.slice(1)}:s=${plan.media.width}x${plan.media.height}:r=${plan.media.fps.toFixed(3)}:d=${duration}`,
     "-f",
     "lavfi",
     "-i",
     `anullsrc=channel_layout=stereo:sample_rate=48000:d=${duration}`,
     "-vf",
-    `ass='${filterPath(assPath)}',fade=t=in:st=0:d=0.35,fade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
+    cardFilter,
     "-af",
     `afade=t=in:st=0:d=0.35,afade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
     "-t",
@@ -380,7 +418,7 @@ export async function renderIntelligentEdit(
   const introPath = path.join(directory, "intro.mp4");
   const bodyPath = path.join(directory, "body-edited.mp4");
   const outroPath = path.join(directory, "outro.mp4");
-  const previewPath = path.join(directory, "preview-v2.mp4");
+  const previewPath = path.join(directory, "preview-v3.mp4");
   await writeFile(bodyAssPath, bodyAss(plan), "utf8");
   await writeFile(introAssPath, titleAss(plan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(plan, "outro"), "utf8");
@@ -407,7 +445,10 @@ export async function renderIntelligentEdit(
       cuts: plan.events.filter((item) => item.kind === "cut").length,
       cursorHighlights: plan.events.filter((item) => item.kind === "cursor").length,
       transitions: plan.events.filter((item) => item.kind === "transition").length + 2,
-      captions: plan.captions.length,
+      captions: resolveIntelligentEditDesign(plan).captionsEnabled ? plan.captions.length : 0,
+      palette: resolveIntelligentEditDesign(plan).palette,
+      courseTheme: plan.courseTheme?.label,
+      courseThemeReused: plan.courseTheme?.reused,
       colorCorrection: true,
       voiceProcessing: true,
       backgroundMusic: Boolean(plan.media.musicPath),

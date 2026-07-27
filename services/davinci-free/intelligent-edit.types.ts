@@ -1,6 +1,45 @@
 export const INTELLIGENT_EDIT_PLAN_VERSION = 1 as const;
 
 export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic";
+export type IntelligentEditPalette =
+  | "kaoz"
+  | "electric"
+  | "premium"
+  | "coral"
+  | "course-theme";
+export type IntelligentEditTextVariant = "concept" | "stat" | "action" | "quote";
+export type IntelligentCourseThemeKey =
+  | "ancestral"
+  | "performance"
+  | "wellness"
+  | "business"
+  | "technology"
+  | "creative";
+
+export interface IntelligentEditDesign {
+  palette: IntelligentEditPalette;
+  captionsEnabled: boolean;
+  colors: {
+    background: string;
+    surface: string;
+    primary: string;
+    secondary: string;
+    text: string;
+    muted: string;
+  };
+}
+
+export interface IntelligentCourseThemeProfile {
+  id: string;
+  courseName: string;
+  key: IntelligentCourseThemeKey;
+  label: string;
+  rationale: string;
+  tone: string;
+  createdAt: string;
+  updatedAt: string;
+  colors: IntelligentEditDesign["colors"];
+}
 
 export interface TimedTranscriptSegment {
   start: number;
@@ -29,7 +68,9 @@ export interface IntelligentEditEvent {
   start: number;
   duration: number;
   label: string;
+  subtitle?: string;
   reason: string;
+  variant?: IntelligentEditTextVariant;
   scale?: number;
   x?: number;
   y?: number;
@@ -43,6 +84,8 @@ export interface IntelligentEditPlan {
   sourcePath: string;
   createdAt: string;
   style: IntelligentEditStyle;
+  design?: IntelligentEditDesign;
+  courseTheme?: IntelligentCourseThemeProfile & { reused: boolean };
   courseName?: string;
   moduleName: string;
   media: {
@@ -99,6 +142,9 @@ export interface IntelligentEditAnalysisInput {
   courseName?: string;
   moduleName: string;
   style?: IntelligentEditStyle;
+  palette?: IntelligentEditPalette;
+  captionsEnabled?: boolean;
+  reuseCourseTheme?: boolean;
   musicPath?: string;
   musicDb?: number;
   useAgent?: boolean;

@@ -45,6 +45,19 @@ type Analysis = {
   events: EditEvent[];
   cursorAnalysis: { status: string; message: string };
   semantic: { source: "agent" | "deterministic-fallback"; provider?: string; model?: string };
+  design?: {
+    palette: "kaoz" | "electric" | "premium" | "coral" | "course-theme";
+    captionsEnabled: boolean;
+    colors: Record<string, string>;
+  };
+  courseTheme?: {
+    id: string;
+    key: string;
+    label: string;
+    rationale: string;
+    tone: string;
+    reused: boolean;
+  };
   artifacts: { previewPath?: string; captionsPath: string; planPath: string };
 };
 
@@ -80,6 +93,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     courseName: "",
     moduleName: "Módulo 1 — Boas-vindas",
     style: "balanced",
+    captionsEnabled: true,
+    reuseCourseTheme: true,
     musicPath: "",
     musicDb: "-38",
   });
@@ -127,6 +142,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       courseName: form.courseName,
       moduleName: form.moduleName,
       style: form.style,
+      captionsEnabled: form.captionsEnabled,
+      reuseCourseTheme: form.reuseCourseTheme,
       musicPath: form.musicPath,
       musicDb: Number(form.musicDb),
       useAgent: true,
@@ -252,7 +269,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           />
         </label>
         <label className="space-y-1 text-xs text-zinc-400">
-          Nome do curso
+          Nome do curso (identidade compartilhada)
           <input className={fieldClass} value={form.courseName} onChange={update("courseName")} />
         </label>
         <label className="space-y-1 text-xs text-zinc-400">
@@ -267,6 +284,44 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <option value="dynamic">Dinâmico</option>
           </select>
         </label>
+        <label className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-300">
+          <input
+            type="checkbox"
+            checked={form.reuseCourseTheme}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                reuseCourseTheme: event.target.checked,
+              }))
+            }
+            className="h-4 w-4 accent-emerald-500"
+          />
+          <span>
+            <strong className="block text-zinc-100">Manter identidade do curso</strong>
+            <span className="text-[11px] text-zinc-500">
+              Cria o tema no primeiro vídeo e reutiliza nas próximas aulas.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-300 md:col-span-2">
+          <input
+            type="checkbox"
+            checked={form.captionsEnabled}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                captionsEnabled: event.target.checked,
+              }))
+            }
+            className="h-4 w-4 accent-emerald-500"
+          />
+          <span>
+            <strong className="block text-zinc-100">Incluir legendas no vídeo</strong>
+            <span className="text-[11px] text-zinc-500">
+              A transcrição continua sendo analisada mesmo quando as legendas estão desativadas.
+            </span>
+          </span>
+        </label>
         <label className="space-y-1 text-xs text-zinc-400">
           Música ambiente opcional
           <input className={fieldClass} value={form.musicPath} onChange={update("musicPath")} />
@@ -277,7 +332,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </label>
         <div className="flex items-end">
           <button
-            disabled={!!busy || !form.sourcePath || !form.moduleName}
+            disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName}
             onClick={analyze}
             className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black disabled:opacity-40"
           >
@@ -299,6 +354,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               Decisões: {analysis.semantic.source === "agent" ? "agente semântico" : "fallback local"}
               {analysis.semantic.model ? ` · ${analysis.semantic.model}` : ""}
             </p>
+            {analysis.courseTheme && (
+              <p className="mt-2 max-w-3xl text-xs leading-relaxed text-emerald-300">
+                Identidade {analysis.courseTheme.reused ? "reutilizada" : "criada"}:{" "}
+                <strong>{analysis.courseTheme.label}</strong> · {analysis.courseTheme.tone}.
+                <span className="block text-zinc-500">{analysis.courseTheme.rationale}</span>
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -311,7 +373,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </span>
             ))}
             <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-zinc-300">
-              Legendas: {analysis.captions.length}
+              Legendas: {analysis.design?.captionsEnabled === false ? "desativadas" : analysis.captions.length}
+            </span>
+            <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-zinc-300">
+              Tema: {analysis.courseTheme?.label || "automático"}
             </span>
           </div>
 

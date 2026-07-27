@@ -44,6 +44,18 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
     path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.renderer.ts"),
     "utf8",
   );
+  const design = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.design.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  const courseTheme = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-theme.service.ts"),
+    "utf8",
+  );
   assert.match(analysis, /silencedetect/);
   assert.match(analysis, /const speech = getSpeechService\(\)/);
   assert.match(analysis, /speech\.transcribe/);
@@ -52,17 +64,31 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /afftdn/);
   assert.match(renderer, /acompressor/);
   assert.match(renderer, /loudnorm/);
-  assert.match(renderer, /preview-v1\.mp4/);
   assert.match(renderer, /event\.x/);
   assert.match(renderer, /event\.y/);
   assert.match(renderer, /function transitionExpression/);
   assert.match(renderer, /function focalExpression/);
-  assert.match(renderer, /ImpactText/);
-  assert.match(renderer, /preview-v2\.mp4/);
+  assert.match(renderer, /ImpactPrimary/);
+  assert.match(renderer, /resolveIntelligentEditDesign/);
+  assert.match(renderer, /captionsEnabled/);
+  assert.match(renderer, /preview-v3\.mp4/);
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
   assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);
   assert.match(analysis, /kind:\s*"cut"/);
+  assert.match(analysis, /analysisVersion:\s*6/);
+  assert.match(analysis, /captionsEnabled/);
+  assert.match(analysis, /courseThemeDesign/);
+  assert.match(analysis, /resolveCourseTheme/);
+  for (const palette of ["kaoz", "electric", "premium", "coral"]) {
+    assert.match(design, new RegExp(`${palette}:`));
+  }
+  assert.match(panel, /Manter identidade do curso/);
+  assert.match(panel, /type="checkbox"/);
+  assert.match(panel, /captionsEnabled/);
+  assert.match(panel, /reuseCourseTheme/);
+  assert.match(courseTheme, /course-themes/);
+  assert.match(courseTheme, /reused:\s*true/);
 });
 
 test("runner interno não abre servidor nem executa código arbitrário", async () => {

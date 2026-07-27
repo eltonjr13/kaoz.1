@@ -18,8 +18,11 @@ import {
   type IntelligentEditEvent,
   type IntelligentEditPlan,
   type IntelligentEditStyle,
+  type IntelligentEditTextVariant,
   type TimedTranscriptSegment,
 } from "./intelligent-edit.types";
+import { courseThemeDesign } from "./intelligent-edit.design";
+import { resolveCourseTheme } from "./course-theme.service";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
@@ -36,10 +39,24 @@ type MediaInfo = {
 
 type SemanticDecision = {
   moduleTitle?: string;
+  courseTheme?: {
+    key?: string;
+    rationale?: string;
+    tone?: string;
+  };
+  introTitle?: string;
+  introSubtitle?: string;
+  outroTitle?: string;
+  outroSubtitle?: string;
   lowerThirds?: Array<{ time: number; title: string; reason?: string }>;
   emphasis?: Array<{ time: number; label?: string; reason?: string }>;
   transitions?: Array<{ time: number; label?: string; reason?: string }>;
-  onScreenText?: Array<{ time: number; text: string; reason?: string }>;
+  onScreenText?: Array<{
+    time: number;
+    text: string;
+    variant?: IntelligentEditTextVariant;
+    reason?: string;
+  }>;
   reviewedCaptions?: Array<{ start: number; end: number; text: string }>;
 };
 
@@ -316,8 +333,11 @@ async function semanticPlan(
     "Analise apenas a transcrição temporal abaixo e retorne SOMENTE JSON válido.",
     "Crie ritmo moderno e impactante, mas profissional. Use efeitos somente quando semanticamente justificados.",
     "Formato obrigatório:",
-    '{"moduleTitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"onScreenText":[{"time":12.5,"text":"2 a 5 palavras","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
-    "Escolha de 4 a 7 textos de impacto com 2 a 5 palavras, diferentes da legenda corrida.",
+    '{"moduleTitle":"...","courseTheme":{"key":"ancestral|performance|wellness|business|technology|creative","rationale":"...","tone":"..."},"introTitle":"...","introSubtitle":"...","outroTitle":"...","outroSubtitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"onScreenText":[{"time":12.5,"text":"2 a 6 palavras","variant":"concept|stat|action|quote","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
+    "Escolha courseTheme pelo assunto central, público, promessa e linguagem recorrente do curso — não pelo gosto visual desta aula isolada.",
+    "A abertura e o encerramento devem refletir a promessa e a próxima ação específicas desta aula; evite frases genéricas.",
+    "Escolha de 4 a 7 textos de impacto com 2 a 6 palavras, diferentes da legenda corrida.",
+    "Classifique cada texto como concept, stat, action ou quote conforme sua função narrativa.",
     "Não altere timestamps das legendas. Corrija somente ortografia e pontuação.",
     `Curso: ${input.courseName || "não informado"}`,
     `Módulo: ${input.moduleName}`,
@@ -375,8 +395,15 @@ export function buildEditEvents(input: {
       kind: "intro",
       start: 0,
       duration: 4,
-      label: input.semantic?.moduleTitle || input.moduleName,
-      reason: "Abertura padronizada do módulo.",
+      label: safeLabel(
+        input.semantic?.introTitle || input.semantic?.moduleTitle || input.moduleName,
+        72,
+      ),
+      subtitle: safeLabel(
+        input.semantic?.introSubtitle || "O que você vai aprender nesta aula",
+        100,
+      ),
+      reason: "Abertura contextual criada a partir da promessa da aula.",
     },
     {
       id: "lower-third-start",
@@ -419,6 +446,7 @@ export function buildEditEvents(input: {
     selectedEmphasis.slice(0, 6).map((item) => ({
       time: item.time,
       text: item.label || "Ponto importante",
+      variant: "concept" as const,
       reason: item.reason,
     }));
   for (const [index, item] of impactTexts.entries()) {
@@ -430,6 +458,9 @@ export function buildEditEvents(input: {
       duration: input.style === "dynamic" ? 2.15 : 1.85,
       label: safeLabel(item.text || "Ponto importante", 44),
       reason: cleanText(item.reason, "Conceito principal identificado na fala."),
+      variant: (["concept", "stat", "action", "quote"].includes(String(item.variant))
+        ? item.variant
+        : "concept") as IntelligentEditTextVariant,
     });
   }
   const transitions = input.semantic?.transitions?.slice(0, 5) || [];
@@ -448,8 +479,12 @@ export function buildEditEvents(input: {
     kind: "outro",
     start: input.duration,
     duration: 4,
-    label: "Continue para a próxima aula",
-    reason: "Encerramento padronizado.",
+    label: safeLabel(input.semantic?.outroTitle || "Coloque esta ideia em prática", 72),
+    subtitle: safeLabel(
+      input.semantic?.outroSubtitle || "Continue para a próxima etapa",
+      100,
+    ),
+    reason: "Encerramento contextual e orientado à próxima ação.",
   });
   return events.sort((a, b) => a.start - b.start);
 }
@@ -652,6 +687,8 @@ export async function analyzeIntelligentEdit(
     style: (["subtle", "balanced", "dynamic"].includes(String(rawInput.style))
       ? rawInput.style
       : "subtle") as IntelligentEditStyle,
+    captionsEnabled: rawInput.captionsEnabled !== false,
+    reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
     musicDb: Math.min(-35, Math.max(-40, Number(rawInput.musicDb) || -38)),
     useAgent: rawInput.useAgent !== false,
@@ -661,10 +698,12 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 4,
+      analysisVersion: 6,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
+      captionsEnabled: input.captionsEnabled,
+      reuseCourseTheme: input.reuseCourseTheme,
       musicPath: input.musicPath,
       musicDb: input.musicDb,
     }))
@@ -687,6 +726,14 @@ export async function analyzeIntelligentEdit(
   const rawCaptions = wordsToCaptions(transcript);
   const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);
   const captions = reviewedCaptions(rawCaptions, semantic.decision, media.durationSeconds);
+  const courseTheme = await resolveCourseTheme({
+    courseName: input.courseName,
+    transcript: transcript.map((segment) => segment.text).join("\n"),
+    suggestedKey: semantic.decision?.courseTheme?.key,
+    rationale: semantic.decision?.courseTheme?.rationale,
+    tone: semantic.decision?.courseTheme?.tone,
+    reuse: input.reuseCourseTheme !== false,
+  });
   const baseEvents = buildEditEvents({
     moduleName: input.moduleName,
     duration: media.durationSeconds,
@@ -709,6 +756,11 @@ export async function analyzeIntelligentEdit(
     sourcePath: input.sourcePath,
     createdAt: new Date().toISOString(),
     style: input.style || "subtle",
+    design: courseThemeDesign(
+      courseTheme.profile,
+      input.captionsEnabled !== false,
+    ),
+    courseTheme: { ...courseTheme.profile, reused: courseTheme.reused },
     courseName: input.courseName,
     moduleName: semantic.decision?.moduleTitle || input.moduleName,
     media: {
