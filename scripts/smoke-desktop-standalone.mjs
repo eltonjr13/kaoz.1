@@ -64,6 +64,16 @@ const resolveServer = path.join(
 if (!fs.existsSync(resolveServer)) {
   throw new Error("Servidor MCP do DaVinci Resolve ausente no runtime desktop.");
 }
+const resolveFreeRunner = path.join(
+  source,
+  "services",
+  "davinci-free",
+  "runner",
+  "Kaoz1ApplyPlan.py",
+);
+if (!fs.existsSync(resolveFreeRunner)) {
+  throw new Error("Runner interno do DaVinci Resolve Free ausente no runtime desktop.");
+}
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kaoz1-desktop-smoke-"));
 const runtime = path.join(tempRoot, "server");
@@ -116,6 +126,23 @@ try {
   ) {
     throw new Error("Preset MCP do DaVinci Resolve inválido no runtime desktop.");
   }
+  const resolveFreeResponse = await fetch(
+    `http://127.0.0.1:${port}/api/davinci-free`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+  if (resolveFreeResponse.status !== 200) {
+    const responseBody = await resolveFreeResponse.text();
+    throw new Error(
+      `Rota /api/davinci-free falhou no runtime desktop com HTTP ${resolveFreeResponse.status}: ${responseBody}\n${output}`,
+    );
+  }
+  const resolveFreePayload = await resolveFreeResponse.json();
+  if (
+    typeof resolveFreePayload.runnerInstalled !== "boolean" ||
+    !Array.isArray(resolveFreePayload.instructions)
+  ) {
+    throw new Error("Status do DaVinci Resolve Free inválido no runtime desktop.");
+  }
   const goalsResponse = await fetch(`http://127.0.0.1:${port}/api/goals`, {
     signal: AbortSignal.timeout(30_000),
   });
@@ -143,7 +170,7 @@ try {
     }
   }
   console.log(
-    `Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas MCP config, goals e Flow auth/chat.`,
+    `Standalone desktop iniciou isolado com HTTP ${status} e carregou as rotas MCP config, Resolve Free, goals e Flow auth/chat.`,
   );
 } finally {
   if (child && child.exitCode === null) child.kill();

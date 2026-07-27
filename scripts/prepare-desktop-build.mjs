@@ -61,4 +61,14 @@ if (fs.existsSync(mcpServersSource)) {
   );
 }
 
+// Internal one-shot runner used from Workspace > Scripts in Resolve Free.
+const davinciFreeSource = path.join(root, "services", "davinci-free", "runner");
+if (fs.existsSync(davinciFreeSource)) {
+  fs.cpSync(
+    davinciFreeSource,
+    path.join(output, "services", "davinci-free", "runner"),
+    { recursive: true },
+  );
+}
+
 console.log(`Desktop server prepared at ${output}`);

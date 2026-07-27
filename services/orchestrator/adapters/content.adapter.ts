@@ -3,8 +3,26 @@ import type { ToolHandler } from "../../tools/tool.types";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import path from "node:path";
 import crypto from "node:crypto";
+import {
+  createDavinciFreePlan,
+  getDavinciFreeStatus,
+  installDavinciFreeRunner,
+  prepareDavinciVoice,
+} from "../../davinci-free/davinci-free.service";
 
 export const contentHandlers: Record<string, ToolHandler> = {
+  "davinci-free:get-status": async () => ({
+    output: await getDavinciFreeStatus(),
+  }),
+  "davinci-free:install-runner": async () => ({
+    output: await installDavinciFreeRunner(),
+  }),
+  "davinci-free:prepare-voice": async (args) => ({
+    output: await prepareDavinciVoice(args),
+  }),
+  "davinci-free:prepare-edit-plan": async (args) => ({
+    output: await createDavinciFreePlan(args),
+  }),
   "content:start-video-pipeline": async (args) => {
     const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
     if (!jobId) throw new Error("A Skill de vídeo requer um jobId existente; crie o job com avatar e tema antes de aprovar esta etapa.");
