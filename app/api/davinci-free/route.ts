@@ -14,9 +14,19 @@ const TOOL_BY_ACTION = {
   "render-preview": "davinci-free:render-intelligent",
   "approve-intelligent": "davinci-free:approve-intelligent",
   "archive-pending": "davinci-free:archive-pending",
+  "discover-batch": "davinci-free:discover-batch",
+  "start-batch": "davinci-free:start-batch",
+  "batch-status": "davinci-free:get-batch",
+  "retry-batch": "davinci-free:retry-batch",
 } as const;
 
 type Action = keyof typeof TOOL_BY_ACTION;
+const READ_ACTIONS = new Set<Action>([
+  "status",
+  "get-analysis",
+  "discover-batch",
+  "batch-status",
+]);
 
 async function execute(action: Action, arguments_: Record<string, unknown>) {
   const toolId = TOOL_BY_ACTION[action];
@@ -34,8 +44,7 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
     },
     permissions: {
       allowedToolIds: [toolId],
-      approvalMode:
-        action === "status" || action === "get-analysis" ? "never" : "step",
+      approvalMode: READ_ACTIONS.has(action) ? "never" : "step",
       reason: "Ação solicitada diretamente pelo usuário na tela Resolve Free.",
     },
   });

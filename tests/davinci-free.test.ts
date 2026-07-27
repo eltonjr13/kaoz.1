@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { sortCourseVideoPaths } from "../services/davinci-free/course-batch.order.ts";
 
 test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação por etapa", async () => {
   const registry = await readFile(
@@ -17,6 +18,10 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:render-intelligent",
     "davinci-free:approve-intelligent",
     "davinci-free:archive-pending",
+    "davinci-free:discover-batch",
+    "davinci-free:start-batch",
+    "davinci-free:get-batch",
+    "davinci-free:retry-batch",
   ]) {
     assert.match(registry, new RegExp(id.replaceAll("-", "\\-")));
   }
@@ -28,11 +33,45 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:render-intelligent",
     "davinci-free:approve-intelligent",
     "davinci-free:archive-pending",
+    "davinci-free:start-batch",
+    "davinci-free:retry-batch",
   ]) {
     const start = registry.indexOf(`{id:"${id}"`);
     assert.notEqual(start, -1);
     assert.match(registry.slice(start, registry.indexOf("\n", start)), /approvalMode:"step"/);
   }
+});
+
+test("lote do curso usa ordem natural, identidade compartilhada e fila persistente", async () => {
+  assert.deepEqual(
+    sortCourseVideoPaths([
+      String.raw`Módulo 2\Aula 1.mp4`,
+      String.raw`Módulo 1\Aula 10.mp4`,
+      String.raw`Módulo 1\Aula 2.mp4`,
+    ]),
+    [
+      String.raw`Módulo 1\Aula 2.mp4`,
+      String.raw`Módulo 1\Aula 10.mp4`,
+      String.raw`Módulo 2\Aula 1.mp4`,
+    ],
+  );
+
+  const batch = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  assert.match(batch, /course-batches/);
+  assert.match(batch, /reuseCourseTheme:\s*true/);
+  assert.match(batch, /activeJobs/);
+  assert.match(batch, /item\.status = "failed"/);
+  assert.match(batch, /item\.previewPath = rendered\.previewPath/);
+  assert.match(panel, /Editar curso inteiro em lote/);
+  assert.match(panel, /window\.setInterval/);
+  assert.match(panel, /Repetir falhas/);
 });
 
 test("edição inteligente usa áudio segmentado, agente sem ferramentas e prévia renderizada", async () => {

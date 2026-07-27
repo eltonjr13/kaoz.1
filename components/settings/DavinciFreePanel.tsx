@@ -6,8 +6,11 @@ import {
   CheckCircle,
   Download,
   Film,
+  FolderSearch,
+  ListVideo,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   WandSparkles,
 } from "lucide-react";
@@ -61,6 +64,37 @@ type Analysis = {
   artifacts: { previewPath?: string; captionsPath: string; planPath: string };
 };
 
+type BatchDiscovery = {
+  folderPath: string;
+  total: number;
+  videos: Array<{
+    index: number;
+    sourcePath: string;
+    relativePath: string;
+    moduleName: string;
+  }>;
+};
+
+type BatchJob = {
+  id: string;
+  status: "queued" | "running" | "completed" | "completed-with-errors";
+  folderPath: string;
+  courseName: string;
+  total: number;
+  completed: number;
+  failed: number;
+  currentItemId?: string;
+  items: Array<{
+    id: string;
+    index: number;
+    relativePath: string;
+    moduleName: string;
+    status: "pending" | "analyzing" | "rendering" | "completed" | "failed";
+    previewPath?: string;
+    error?: string;
+  }>;
+};
+
 type Props = {
   onStatusMessage: (message: { text: string; type: "success" | "error" | "info" }) => void;
 };
@@ -87,6 +121,9 @@ function clock(seconds: number) {
 export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [status, setStatus] = useState<Status | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [batchFolder, setBatchFolder] = useState("");
+  const [batchDiscovery, setBatchDiscovery] = useState<BatchDiscovery | null>(null);
+  const [batch, setBatch] = useState<BatchJob | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState({
     sourcePath: "",
@@ -111,6 +148,32 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       onStatusMessage({ text: String(error), type: "error" }),
     );
   }, [onStatusMessage, refresh]);
+
+  const fetchBatch = useCallback(async (batchId?: string) => {
+    const response = await fetch("/api/davinci-free", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "batch-status", batchId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Falha ao consultar o lote.");
+    if (data?.id) setBatch(data as BatchJob);
+    return data as BatchJob | null;
+  }, []);
+
+  useEffect(() => {
+    fetchBatch().catch(() => undefined);
+  }, [fetchBatch]);
+
+  useEffect(() => {
+    if (!batch || !["queued", "running"].includes(batch.status)) return;
+    const timer = window.setInterval(() => {
+      fetchBatch(batch.id).catch((error) =>
+        onStatusMessage({ text: String(error), type: "error" }),
+      );
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [batch, fetchBatch, onStatusMessage]);
 
   async function action(name: string, payload: Record<string, unknown>) {
     setBusy(name);
@@ -195,6 +258,43 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  async function discoverBatch() {
+    const result = await action("discover-batch", { folderPath: batchFolder });
+    if (result?.videos) {
+      setBatchDiscovery(result as BatchDiscovery);
+      onStatusMessage({
+        text: `${String(result.total)} aulas encontradas e ordenadas.`,
+        type: "success",
+      });
+    }
+  }
+
+  async function startBatch() {
+    const result = await action("start-batch", {
+      requestId: `course-batch-${crypto.randomUUID()}`,
+      folderPath: batchFolder,
+      courseName: form.courseName,
+      style: form.style,
+      captionsEnabled: form.captionsEnabled,
+      musicPath: form.musicPath,
+      musicDb: Number(form.musicDb),
+      useAgent: true,
+    });
+    if (result?.id) {
+      setBatch(result as BatchJob);
+      onStatusMessage({
+        text: "Lote iniciado. O processamento continuará em segundo plano, uma aula por vez.",
+        type: "success",
+      });
+    }
+  }
+
+  async function retryBatch() {
+    if (!batch) return;
+    const result = await action("retry-batch", { batchId: batch.id });
+    if (result?.id) setBatch(result as BatchJob);
+  }
+
   const eventCounts = useMemo(() => {
     const counts: Partial<Record<EditEvent["kind"], number>> = {};
     for (const event of analysis?.events || []) {
@@ -255,6 +355,154 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             )}
             Instalar runner no Resolve
           </button>
+        )}
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-5">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-bold text-zinc-100">
+            <ListVideo size={16} className="text-violet-300" />
+            Editar curso inteiro em lote
+          </h3>
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-400">
+            Localiza aulas em pastas e subpastas, ordena os nomes naturalmente e gera
+            uma prévia por vídeo com a mesma identidade do curso. Nenhuma aula é enviada
+            automaticamente ao Resolve.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <label className="space-y-1 text-xs text-zinc-400">
+            Pasta raiz do curso
+            <input
+              className={fieldClass}
+              placeholder="C:\Cursos\Meu curso"
+              value={batchFolder}
+              onChange={(event) => {
+                setBatchFolder(event.target.value);
+                setBatchDiscovery(null);
+              }}
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              disabled={!!busy || !batchFolder}
+              onClick={discoverBatch}
+              className="flex items-center gap-2 rounded-lg border border-violet-400/30 px-4 py-2 text-xs font-semibold text-violet-200 disabled:opacity-40"
+            >
+              {busy === "discover-batch" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <FolderSearch size={14} />
+              )}
+              Localizar aulas
+            </button>
+          </div>
+        </div>
+
+        {batchDiscovery && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-emerald-300">
+                {batchDiscovery.total} aulas encontradas na ordem abaixo.
+              </p>
+              <button
+                disabled={!!busy || !form.courseName}
+                onClick={startBatch}
+                className="flex items-center gap-2 rounded-lg bg-violet-400 px-4 py-2 text-xs font-bold text-black disabled:opacity-40"
+              >
+                {busy === "start-batch" ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                Processar curso inteiro
+              </button>
+            </div>
+            {!form.courseName && (
+              <p className="text-[11px] text-amber-300">
+                Preencha o nome do curso abaixo para criar a identidade compartilhada.
+              </p>
+            )}
+            <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3">
+              {batchDiscovery.videos.map((video) => (
+                <div key={video.sourcePath} className="flex gap-3 text-[11px]">
+                  <span className="w-7 shrink-0 text-right text-violet-300">
+                    {video.index}.
+                  </span>
+                  <span className="text-zinc-300">{video.moduleName}</span>
+                  <span className="truncate text-zinc-600">{video.relativePath}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {batch && (
+          <div className="space-y-3 rounded-lg border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-zinc-100">
+                  {batch.courseName} · {batch.completed}/{batch.total} concluídas
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Estado: {batch.status}
+                  {batch.failed > 0 ? ` · ${batch.failed} com falha` : ""}
+                </p>
+              </div>
+              {batch.failed > 0 && !["queued", "running"].includes(batch.status) && (
+                <button
+                  disabled={!!busy}
+                  onClick={retryBatch}
+                  className="flex items-center gap-2 rounded-lg border border-amber-400/30 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40"
+                >
+                  <RotateCcw size={13} />
+                  Repetir falhas
+                </button>
+              )}
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-400 transition-all"
+                style={{
+                  width: `${batch.total ? Math.round(((batch.completed + batch.failed) / batch.total) * 100) : 0}%`,
+                }}
+              />
+            </div>
+            <div className="max-h-56 space-y-2 overflow-y-auto">
+              {batch.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-md border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-zinc-300">
+                      {item.index}. {item.moduleName}
+                    </span>
+                    <span
+                      className={
+                        item.status === "completed"
+                          ? "text-emerald-300"
+                          : item.status === "failed"
+                            ? "text-red-300"
+                            : item.status === "analyzing" || item.status === "rendering"
+                              ? "text-violet-300"
+                              : "text-zinc-500"
+                      }
+                    >
+                      {item.status}
+                    </span>
+                  </div>
+                  {item.previewPath && (
+                    <p className="mt-1 break-all text-emerald-500">{item.previewPath}</p>
+                  )}
+                  {item.error && (
+                    <p className="mt-1 text-red-300">{item.error}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

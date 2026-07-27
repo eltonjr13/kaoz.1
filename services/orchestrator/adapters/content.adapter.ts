@@ -18,6 +18,12 @@ import {
   approveIntelligentEdit,
   renderIntelligentEdit,
 } from "../../davinci-free/intelligent-edit.renderer";
+import {
+  discoverCourseBatch,
+  readCourseBatch,
+  retryCourseBatch,
+  startCourseBatch,
+} from "../../davinci-free/course-batch.service";
 
 export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:get-status": async () => ({
@@ -48,6 +54,18 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:archive-pending": async (args) => ({
     output: await archivePendingDavinciPlan(args),
+  }),
+  "davinci-free:discover-batch": async (args) => ({
+    output: await discoverCourseBatch(args),
+  }),
+  "davinci-free:start-batch": async (args) => ({
+    output: await startCourseBatch(args),
+  }),
+  "davinci-free:get-batch": async (args) => ({
+    output: await readCourseBatch(args),
+  }),
+  "davinci-free:retry-batch": async (args) => ({
+    output: await retryCourseBatch(args),
   }),
   "content:start-video-pipeline": async (args) => {
     const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
