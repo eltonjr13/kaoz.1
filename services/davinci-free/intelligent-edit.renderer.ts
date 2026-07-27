@@ -108,9 +108,30 @@ function bodyAss(plan: IntelligentEditPlan) {
       `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)}${assText(event.label)}`,
     );
   }
-  for (const event of plan.events.filter((item) => item.kind === "impact-text")) {
+  let previousImpactEnd = Number.NEGATIVE_INFINITY;
+  for (const [index, event] of plan.events
+    .filter((item) => item.kind === "impact-text")
+    .entries()) {
+    const overlappingLowerThird = plan.events.find(
+      (candidate) =>
+        candidate.kind === "lower-third" &&
+        event.start < candidate.start + candidate.duration &&
+        event.start + event.duration > candidate.start,
+    );
+    const desiredStart = overlappingLowerThird
+      ? Math.min(
+          plan.media.durationSeconds - event.duration,
+          overlappingLowerThird.start + overlappingLowerThird.duration + 0.2,
+        )
+      : event.start;
+    const impactStart = Math.min(
+      plan.media.durationSeconds - event.duration,
+      Math.max(desiredStart, previousImpactEnd + 0.25),
+    );
+    previousImpactEnd = impactStart + event.duration;
+    const impactX = Math.round(plan.media.width * (index % 2 === 0 ? 0.24 : 0.76));
     lines.push(
-      `Dialogue: 2,${assTime(event.start)},${assTime(event.start + event.duration)},ImpactText,,0,0,0,,{\\an8\\pos(${Math.round(plan.media.width / 2)},${Math.round(plan.media.height * 0.105)})\\fad(100,180)\\fscx68\\fscy68\\t(0,230,\\fscx100\\fscy100)}${assText(event.label)}`,
+      `Dialogue: 2,${assTime(impactStart)},${assTime(impactStart + event.duration)},ImpactText,,0,0,0,,{\\an8\\pos(${impactX},${Math.round(plan.media.height * 0.12)})\\fad(100,180)\\fscx68\\fscy68\\t(0,230,\\fscx100\\fscy100)}${assText(event.label)}`,
     );
   }
   return `${lines.join("\n")}\n`;
