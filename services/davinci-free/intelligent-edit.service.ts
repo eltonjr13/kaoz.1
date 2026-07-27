@@ -39,7 +39,15 @@ type SemanticDecision = {
   lowerThirds?: Array<{ time: number; title: string; reason?: string }>;
   emphasis?: Array<{ time: number; label?: string; reason?: string }>;
   transitions?: Array<{ time: number; label?: string; reason?: string }>;
+  onScreenText?: Array<{ time: number; text: string; reason?: string }>;
   reviewedCaptions?: Array<{ start: number; end: number; text: string }>;
+};
+
+type VisualAnchor = {
+  index: number;
+  x: number;
+  y: number;
+  confidence?: number;
 };
 
 function ffmpegPath() {
@@ -306,9 +314,10 @@ async function semanticPlan(
   const prompt = [
     "Você é um editor profissional de vídeos educacionais.",
     "Analise apenas a transcrição temporal abaixo e retorne SOMENTE JSON válido.",
-    "Seja discreto: poucos efeitos, somente quando semanticamente justificados.",
+    "Crie ritmo moderno e impactante, mas profissional. Use efeitos somente quando semanticamente justificados.",
     "Formato obrigatório:",
-    '{"moduleTitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
+    '{"moduleTitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"onScreenText":[{"time":12.5,"text":"2 a 5 palavras","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
+    "Escolha de 4 a 7 textos de impacto com 2 a 5 palavras, diferentes da legenda corrida.",
     "Não altere timestamps das legendas. Corrija somente ortografia e pontuação.",
     `Curso: ${input.courseName || "não informado"}`,
     `Módulo: ${input.moduleName}`,
@@ -405,6 +414,24 @@ export function buildEditEvents(input: {
       reason: cleanText(item.reason, "Momento de ênfase identificado pela fala."),
     });
   }
+  const impactTexts =
+    input.semantic?.onScreenText?.slice(0, 7) ||
+    selectedEmphasis.slice(0, 6).map((item) => ({
+      time: item.time,
+      text: item.label || "Ponto importante",
+      reason: item.reason,
+    }));
+  for (const [index, item] of impactTexts.entries()) {
+    const requestedTime = clampTime(item.time, input.duration);
+    events.push({
+      id: `impact-text-${index + 1}`,
+      kind: "impact-text",
+      start: requestedTime < 2 ? Math.min(5.2, input.duration - 1.8) : requestedTime,
+      duration: input.style === "dynamic" ? 2.15 : 1.85,
+      label: safeLabel(item.text || "Ponto importante", 44),
+      reason: cleanText(item.reason, "Conceito principal identificado na fala."),
+    });
+  }
   const transitions = input.semantic?.transitions?.slice(0, 5) || [];
   for (const [index, item] of transitions.entries()) {
     events.push({
@@ -425,6 +452,153 @@ export function buildEditEvents(input: {
     reason: "Encerramento padronizado.",
   });
   return events.sort((a, b) => a.start - b.start);
+}
+
+function extractVisualAnchors(output: string): VisualAnchor[] {
+  const fenced = output.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const candidate = fenced || output.slice(output.indexOf("{"), output.lastIndexOf("}") + 1);
+  if (!candidate.trim()) return [];
+  try {
+    const parsed = JSON.parse(candidate) as { anchors?: unknown };
+    if (!Array.isArray(parsed.anchors)) return [];
+    return parsed.anchors.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const item = entry as Record<string, unknown>;
+      const index = Number(item.index);
+      const x = Number(item.x);
+      const y = Number(item.y);
+      const confidence = Number(item.confidence);
+      if (!Number.isInteger(index) || !Number.isFinite(x) || !Number.isFinite(y)) return [];
+      return [{
+        index,
+        x: Math.max(0.25, Math.min(0.75, x)),
+        y: Math.max(0.2, Math.min(0.72, y)),
+        confidence: Number.isFinite(confidence) ? confidence : undefined,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function visualEditPlan(input: {
+  sourcePath: string;
+  directory: string;
+  duration: number;
+  events: IntelligentEditEvent[];
+}) {
+  const zoomEvents = input.events.filter((event) => event.kind === "zoom").slice(0, 4);
+  const sampleEvents = zoomEvents.length
+    ? zoomEvents
+    : input.events.filter((event) => event.kind === "lower-third").slice(0, 4);
+  if (!sampleEvents.length) {
+    return {
+      events: input.events,
+      visual: {
+        source: "safe-center-fallback" as const,
+        sampledFrames: 0,
+      },
+    };
+  }
+
+  const paddedEvents = Array.from({ length: 4 }, (_, index) =>
+    sampleEvents[index] || sampleEvents[sampleEvents.length - 1]);
+  const framePaths: string[] = [];
+  for (const [index, event] of paddedEvents.entries()) {
+    const framePath = path.join(input.directory, `visual-frame-${index + 1}.jpg`);
+    await runProcess(ffmpegPath(), [
+      "-y",
+      "-ss",
+      Math.max(0, Math.min(input.duration - 0.1, event.start + 0.35)).toFixed(3),
+      "-i",
+      input.sourcePath,
+      "-frames:v",
+      "1",
+      "-q:v",
+      "3",
+      framePath,
+    ], { timeoutMs: 45_000 });
+    framePaths.push(framePath);
+  }
+
+  const contactSheetPath = path.join(input.directory, "visual-contact-sheet.jpg");
+  const contactArgs = ["-y"];
+  for (const framePath of framePaths) contactArgs.push("-i", framePath);
+  contactArgs.push(
+    "-filter_complex",
+    "[0:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2[v0];[1:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2[v1];[2:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2[v2];[3:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2[v3];[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|640_0|0_360|640_360[out]",
+    "-map",
+    "[out]",
+    "-frames:v",
+    "1",
+    contactSheetPath,
+  );
+  await runProcess(ffmpegPath(), contactArgs, { timeoutMs: 60_000 });
+
+  let anchors: VisualAnchor[] = [];
+  try {
+    const identity = await getConfiguredAgentIdentity();
+    if (identity.provider === "codex-cli") {
+      const prompt = [
+        "Analise esta folha 2x2 de quadros de um vídeo educacional.",
+        "Os painéis seguem a ordem: 1 superior esquerdo, 2 superior direito, 3 inferior esquerdo, 4 inferior direito.",
+        "Para cada painel, localize o ponto focal que deve permanecer no centro de um zoom: normalmente o centro do rosto, levemente abaixo dos olhos.",
+        "Retorne SOMENTE JSON no formato:",
+        '{"anchors":[{"index":1,"x":0.5,"y":0.4,"confidence":0.95}]}',
+        "x e y são coordenadas normalizadas de 0 a 1.",
+      ].join("\n");
+      const response = await queryConfiguredAgentCli(prompt, {
+        useExternalTools: false,
+        referenceImagePath: contactSheetPath,
+      });
+      anchors = response ? extractVisualAnchors(response) : [];
+    }
+  } catch {
+    anchors = [];
+  }
+
+  const enriched = input.events.map((event) => ({ ...event }));
+  for (const [index, event] of zoomEvents.entries()) {
+    const target = enriched.find((candidate) => candidate.id === event.id);
+    if (!target) continue;
+    const anchor = anchors.find((candidate) => candidate.index === index + 1);
+    target.x = anchor?.x ?? 0.5;
+    target.y = anchor?.y ?? 0.42;
+    target.scale = 1.12;
+  }
+
+  const transitions = enriched
+    .filter((event) => event.kind === "transition")
+    .sort((a, b) => a.start - b.start);
+  const scales = [1.055, 1.095, 1.045, 1.085, 1.06];
+  for (const [index, transition] of transitions.entries()) {
+    const nextStart = transitions[index + 1]?.start ?? input.duration;
+    const nearest = enriched
+      .filter((event) => event.kind === "zoom" && event.x !== undefined)
+      .sort((a, b) => Math.abs(a.start - transition.start) - Math.abs(b.start - transition.start))[0];
+    enriched.push({
+      id: `cut-${index + 1}`,
+      kind: "cut",
+      start: transition.start,
+      duration: Math.max(1.5, nextStart - transition.start),
+      label: transition.label,
+      reason: `Mudança de enquadramento: ${transition.reason}`,
+      scale: scales[index % scales.length],
+      x: nearest?.x ?? 0.5,
+      y: nearest?.y ?? 0.42,
+    });
+  }
+
+  return {
+    events: enriched.sort((a, b) => a.start - b.start),
+    visual: {
+      source: anchors.length >= sampleEvents.length
+        ? "agent-contact-sheet" as const
+        : "safe-center-fallback" as const,
+      contactSheetPath,
+      sampledFrames: sampleEvents.length,
+    },
+  };
 }
 
 function reviewedCaptions(
@@ -483,7 +657,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 2,
+      analysisVersion: 3,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
@@ -509,6 +683,18 @@ export async function analyzeIntelligentEdit(
   const rawCaptions = wordsToCaptions(transcript);
   const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);
   const captions = reviewedCaptions(rawCaptions, semantic.decision, media.durationSeconds);
+  const baseEvents = buildEditEvents({
+    moduleName: input.moduleName,
+    duration: media.durationSeconds,
+    style: input.style || "subtle",
+    semantic: semantic.decision,
+  });
+  const visual = await visualEditPlan({
+    sourcePath: input.sourcePath,
+    directory,
+    duration: media.durationSeconds,
+    events: baseEvents,
+  });
   const transcriptPath = path.join(directory, "transcript.json");
   const captionsPath = path.join(directory, "captions-reviewed.srt");
   const plan: IntelligentEditPlan = {
@@ -528,12 +714,7 @@ export async function analyzeIntelligentEdit(
     },
     transcript,
     captions,
-    events: buildEditEvents({
-      moduleName: input.moduleName,
-      duration: media.durationSeconds,
-      style: input.style || "subtle",
-      semantic: semantic.decision,
-    }),
+    events: visual.events,
     audio: {
       noiseReduction: true,
       equalization: true,
@@ -556,6 +737,7 @@ export async function analyzeIntelligentEdit(
           ? "agent"
           : "asr-only",
     },
+    visual: visual.visual,
     artifacts: { directory, transcriptPath, captionsPath, planPath },
   };
   await writeFile(transcriptPath, `${JSON.stringify(transcript, null, 2)}\n`, "utf8");

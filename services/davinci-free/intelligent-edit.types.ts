@@ -17,11 +17,20 @@ export interface IntelligentCaption {
 
 export interface IntelligentEditEvent {
   id: string;
-  kind: "intro" | "outro" | "lower-third" | "zoom" | "cursor" | "transition";
+  kind:
+    | "intro"
+    | "outro"
+    | "lower-third"
+    | "impact-text"
+    | "zoom"
+    | "cut"
+    | "cursor"
+    | "transition";
   start: number;
   duration: number;
   label: string;
   reason: string;
+  scale?: number;
   x?: number;
   y?: number;
 }
@@ -69,6 +78,11 @@ export interface IntelligentEditPlan {
     model?: string;
     inputCharacters: number;
     captionReview: "agent" | "asr-only";
+  };
+  visual: {
+    source: "agent-contact-sheet" | "safe-center-fallback";
+    contactSheetPath?: string;
+    sampledFrames: number;
   };
   artifacts: {
     directory: string;
