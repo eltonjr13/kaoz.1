@@ -87,6 +87,7 @@ function assHeader(width: number, height: number) {
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     "Style: Caption,Segoe UI,54,&H00FFFFFF,&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1",
     "Style: LowerThird,Segoe UI Semibold,48,&H00FFFFFF,&H000000FF,&H00101010,&HC0101010,-1,0,0,0,100,100,0,0,3,1,0,1,70,70,105,1",
+    "Style: ImpactText,Segoe UI Semibold,62,&H003BE8FF,&H000000FF,&H00101010,&HC0101010,-1,0,0,0,100,100,0,0,3,2,0,8,80,80,95,1",
     "Style: CardTitle,Segoe UI Semibold,72,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,80,80,80,1",
     "Style: CardSubtitle,Segoe UI,34,&H00B8C7D9,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,5,80,80,80,1",
     "",
@@ -104,7 +105,12 @@ function bodyAss(plan: IntelligentEditPlan) {
   }
   for (const event of plan.events.filter((item) => item.kind === "lower-third")) {
     lines.push(
-      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,${assText(event.label)}`,
+      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)}${assText(event.label)}`,
+    );
+  }
+  for (const event of plan.events.filter((item) => item.kind === "impact-text")) {
+    lines.push(
+      `Dialogue: 2,${assTime(event.start)},${assTime(event.start + event.duration)},ImpactText,,0,0,0,,{\\an8\\pos(${Math.round(plan.media.width / 2)},${Math.round(plan.media.height * 0.105)})\\fad(100,180)\\fscx68\\fscy68\\t(0,230,\\fscx100\\fscy100)}${assText(event.label)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -133,17 +139,42 @@ function filterPath(filePath: string) {
   return filePath.replaceAll("\\", "/").replace(":", "\\:");
 }
 
-function zoomExpression(events: IntelligentEditEvent[]) {
-  const expressions = events
+function scaleExpression(events: IntelligentEditEvent[]) {
+  const zoomExpressions = events
     .filter((event) => event.kind === "zoom")
     .map((event) => {
+      const peak = Math.max(1.04, Math.min(1.16, event.scale || 1.12));
+      const delta = peak - 1;
       const start = event.start.toFixed(3);
-      const rampEnd = (event.start + 0.45).toFixed(3);
-      const holdEnd = (event.start + Math.max(0.9, event.duration - 0.45)).toFixed(3);
+      const rampEnd = (event.start + 0.34).toFixed(3);
+      const holdEnd = (event.start + Math.max(0.75, event.duration - 0.34)).toFixed(3);
       const end = (event.start + event.duration).toFixed(3);
-      return `if(between(t,${start},${rampEnd}),1+0.09*(t-${start})/0.45,if(between(t,${rampEnd},${holdEnd}),1.09,if(between(t,${holdEnd},${end}),1.09-0.09*(t-${holdEnd})/0.45,1)))`;
+      return `if(between(t,${start},${rampEnd}),1+${delta.toFixed(4)}*(t-${start})/0.34,if(between(t,${rampEnd},${holdEnd}),${peak.toFixed(4)},if(between(t,${holdEnd},${end}),${peak.toFixed(4)}-${delta.toFixed(4)}*(t-${holdEnd})/0.34,1)))`;
     });
+  const cutExpressions = events
+    .filter((event) => event.kind === "cut")
+    .map((event) =>
+      `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${Math.max(1, Math.min(1.14, event.scale || 1.055)).toFixed(4)},1)`,
+    );
+  const expressions = [...zoomExpressions, ...cutExpressions];
   return expressions.length ? expressions.reduce((left, right) => `max(${left},${right})`) : "1";
+}
+
+function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
+  const candidates = [
+    ...events.filter((event) => event.kind === "zoom"),
+    ...events.filter((event) => event.kind === "cut"),
+  ].filter((event) => event[axis] !== undefined);
+  const defaultValue = axis === "x" ? "(in_w-out_w)/2" : "(in_h-out_h)/2";
+  const inputSize = axis === "x" ? "in_w" : "in_h";
+  const outputSize = axis === "x" ? "out_w" : "out_h";
+  let expression = defaultValue;
+  for (const event of [...candidates].reverse()) {
+    const coordinate = Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
+    const focused = `${coordinate}*${inputSize}-${outputSize}/2`;
+    expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${focused},${expression})`;
+  }
+  return `max(0,min(${inputSize}-${outputSize},${expression}))`;
 }
 
 function transitionExpression(events: IntelligentEditEvent[]) {
@@ -162,11 +193,13 @@ function transitionExpression(events: IntelligentEditEvent[]) {
 }
 
 function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
-  const zoom = zoomExpression(plan.events);
+  const scale = scaleExpression(plan.events);
+  const focusX = focalExpression(plan.events, "x");
+  const focusY = focalExpression(plan.events, "y");
   const transition = transitionExpression(plan.events);
   const filters = [
-    `scale=w='iw*(${zoom})':h='ih*(${zoom})':eval=frame`,
-    `crop=${plan.media.width}:${plan.media.height}:(in_w-out_w)/2:(in_h-out_h)/2`,
+    `scale=w='trunc(iw*(${scale})/2)*2':h='trunc(ih*(${scale})/2)*2':eval=frame`,
+    `crop=${plan.media.width}:${plan.media.height}:x='${focusX}':y='${focusY}'`,
     `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-0.95*(${transition})':eval=frame`,
     `ass='${filterPath(assPath)}'`,
     "fade=t=in:st=0:d=0.25",
@@ -326,7 +359,7 @@ export async function renderIntelligentEdit(
   const introPath = path.join(directory, "intro.mp4");
   const bodyPath = path.join(directory, "body-edited.mp4");
   const outroPath = path.join(directory, "outro.mp4");
-  const previewPath = path.join(directory, "preview-v1.mp4");
+  const previewPath = path.join(directory, "preview-v2.mp4");
   await writeFile(bodyAssPath, bodyAss(plan), "utf8");
   await writeFile(introAssPath, titleAss(plan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(plan, "outro"), "utf8");
@@ -348,13 +381,16 @@ export async function renderIntelligentEdit(
       intro: true,
       outro: true,
       lowerThirds: plan.events.filter((item) => item.kind === "lower-third").length,
+      impactTexts: plan.events.filter((item) => item.kind === "impact-text").length,
       zooms: plan.events.filter((item) => item.kind === "zoom").length,
+      cuts: plan.events.filter((item) => item.kind === "cut").length,
       cursorHighlights: plan.events.filter((item) => item.kind === "cursor").length,
       transitions: plan.events.filter((item) => item.kind === "transition").length + 2,
       captions: plan.captions.length,
       colorCorrection: true,
       voiceProcessing: true,
       backgroundMusic: Boolean(plan.media.musicPath),
+      visualAnalysis: plan.visual.source,
     },
   };
 }

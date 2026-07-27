@@ -22,7 +22,15 @@ type Status = {
 
 type EditEvent = {
   id: string;
-  kind: "intro" | "outro" | "lower-third" | "zoom" | "cursor" | "transition";
+  kind:
+    | "intro"
+    | "outro"
+    | "lower-third"
+    | "impact-text"
+    | "zoom"
+    | "cut"
+    | "cursor"
+    | "transition";
   start: number;
   duration: number;
   label: string;
@@ -51,7 +59,9 @@ const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
   outro: "Encerramento",
   "lower-third": "Lower third",
+  "impact-text": "Texto de impacto",
   zoom: "Zoom",
+  cut: "Corte de plano",
   cursor: "Cursor",
   transition: "Transição",
 };

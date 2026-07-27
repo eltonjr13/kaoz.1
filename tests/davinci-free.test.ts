@@ -56,7 +56,13 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /event\.x/);
   assert.match(renderer, /event\.y/);
   assert.match(renderer, /function transitionExpression/);
+  assert.match(renderer, /function focalExpression/);
+  assert.match(renderer, /ImpactText/);
+  assert.match(renderer, /preview-v2\.mp4/);
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
+  assert.match(analysis, /visual-contact-sheet\.jpg/);
+  assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);
+  assert.match(analysis, /kind:\s*"cut"/);
 });
 
 test("runner interno não abre servidor nem executa código arbitrário", async () => {

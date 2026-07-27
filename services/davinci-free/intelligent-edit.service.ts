@@ -471,8 +471,8 @@ function extractVisualAnchors(output: string): VisualAnchor[] {
       if (!Number.isInteger(index) || !Number.isFinite(x) || !Number.isFinite(y)) return [];
       return [{
         index,
-        x: Math.max(0.25, Math.min(0.75, x)),
-        y: Math.max(0.2, Math.min(0.72, y)),
+        x: Math.max(0, Math.min(1, x)),
+        y: Math.max(0, Math.min(1, y)),
         confidence: Number.isFinite(confidence) ? confidence : undefined,
       }];
     });
@@ -545,7 +545,7 @@ async function visualEditPlan(input: {
         "Para cada painel, localize o ponto focal que deve permanecer no centro de um zoom: normalmente o centro do rosto, levemente abaixo dos olhos.",
         "Retorne SOMENTE JSON no formato:",
         '{"anchors":[{"index":1,"x":0.5,"y":0.4,"confidence":0.95}]}',
-        "x e y são coordenadas normalizadas de 0 a 1.",
+        "x e y são coordenadas normalizadas de 0 a 1 relativas à FOLHA INTEIRA, não ao painel individual.",
       ].join("\n");
       const response = await queryConfiguredAgentCli(prompt, {
         useExternalTools: false,
@@ -562,8 +562,12 @@ async function visualEditPlan(input: {
     const target = enriched.find((candidate) => candidate.id === event.id);
     if (!target) continue;
     const anchor = anchors.find((candidate) => candidate.index === index + 1);
-    target.x = anchor?.x ?? 0.5;
-    target.y = anchor?.y ?? 0.42;
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const localX = anchor ? (anchor.x - column * 0.5) * 2 : 0.5;
+    const localY = anchor ? (anchor.y - row * 0.5) * 2 : 0.42;
+    target.x = Math.max(0.25, Math.min(0.75, localX));
+    target.y = Math.max(0.2, Math.min(0.72, localY));
     target.scale = 1.12;
   }
 
@@ -657,7 +661,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 3,
+      analysisVersion: 4,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
