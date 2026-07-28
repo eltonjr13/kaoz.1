@@ -14,6 +14,7 @@ const TOOL_BY_ACTION = {
   "render-preview": "davinci-free:render-intelligent",
   "approve-intelligent": "davinci-free:approve-intelligent",
   "archive-pending": "davinci-free:archive-pending",
+  "choose-folder": "davinci-free:choose-course-folder",
   "discover-batch": "davinci-free:discover-batch",
   "start-batch": "davinci-free:start-batch",
   "batch-status": "davinci-free:get-batch",
@@ -39,7 +40,9 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
       runId: crypto.randomUUID(),
       stepId: action,
       signal: AbortSignal.timeout(
-        action === "analyze" || action === "render-preview" ? 15 * 60_000 : 125_000,
+        action === "analyze" || action === "render-preview" || action === "choose-folder"
+          ? 15 * 60_000
+          : 125_000,
       ),
     },
     permissions: {

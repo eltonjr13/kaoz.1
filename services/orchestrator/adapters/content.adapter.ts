@@ -19,6 +19,7 @@ import {
   renderIntelligentEdit,
 } from "../../davinci-free/intelligent-edit.renderer";
 import {
+  chooseCourseFolder,
   discoverCourseBatch,
   readCourseBatch,
   retryCourseBatch,
@@ -54,6 +55,9 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:archive-pending": async (args) => ({
     output: await archivePendingDavinciPlan(args),
+  }),
+  "davinci-free:choose-course-folder": async () => ({
+    output: await chooseCourseFolder(),
   }),
   "davinci-free:discover-batch": async (args) => ({
     output: await discoverCourseBatch(args),

@@ -18,6 +18,7 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:render-intelligent",
     "davinci-free:approve-intelligent",
     "davinci-free:archive-pending",
+    "davinci-free:choose-course-folder",
     "davinci-free:discover-batch",
     "davinci-free:start-batch",
     "davinci-free:get-batch",
@@ -33,6 +34,7 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     "davinci-free:render-intelligent",
     "davinci-free:approve-intelligent",
     "davinci-free:archive-pending",
+    "davinci-free:choose-course-folder",
     "davinci-free:start-batch",
     "davinci-free:retry-batch",
   ]) {
@@ -65,6 +67,8 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
     "utf8",
   );
   assert.match(batch, /course-batches/);
+  assert.match(batch, /FolderBrowserDialog/);
+  assert.match(batch, /powershell\.exe/);
   assert.match(batch, /reuseCourseTheme:\s*true/);
   assert.match(batch, /activeJobs/);
   assert.match(batch, /item\.status = "failed"/);

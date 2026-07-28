@@ -266,6 +266,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       folderPath = selected;
       setBatchFolder(selected);
       setBatchDiscovery(null);
+    } else {
+      const selected = await action("choose-folder", {});
+      if (!selected?.folderPath) return;
+      folderPath = String(selected.folderPath);
+      setBatchFolder(folderPath);
+      setBatchDiscovery(null);
     }
     if (!folderPath) {
       onStatusMessage({
@@ -405,7 +411,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               onClick={discoverBatch}
               className="flex items-center gap-2 rounded-lg border border-violet-400/30 px-4 py-2 text-xs font-semibold text-violet-200 disabled:opacity-40"
             >
-              {busy === "discover-batch" ? (
+              {busy === "discover-batch" || busy === "choose-folder" ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <FolderSearch size={14} />

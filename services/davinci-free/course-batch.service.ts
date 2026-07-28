@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { promisify } from "node:util";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { analyzeIntelligentEdit } from "./intelligent-edit.service";
@@ -23,6 +25,7 @@ const VIDEO_EXTENSIONS = new Set([
 ]);
 const MAX_BATCH_VIDEOS = 500;
 const activeJobs = new Map<string, Promise<void>>();
+const execFileAsync = promisify(execFile);
 
 export type CourseBatchItemStatus =
   | "pending"
@@ -107,6 +110,35 @@ async function localDirectory(value: unknown) {
     throw new Error("A pasta do curso não foi encontrada.");
   }
   return normalized;
+}
+
+export async function chooseCourseFolder() {
+  if (process.platform !== "win32") {
+    throw new Error("O seletor de pastas está disponível somente no Windows.");
+  }
+  const script = [
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+    "$dialog.Description = 'Selecione a pasta do curso'",
+    "$dialog.ShowNewFolderButton = $false",
+    "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }",
+  ].join("; ");
+  const { stdout } = await execFileAsync(
+    "powershell.exe",
+    ["-NoProfile", "-STA", "-NonInteractive", "-Command", script],
+    {
+      encoding: "utf8",
+      timeout: 10 * 60_000,
+      windowsHide: false,
+    },
+  );
+  const selected = stdout.trim();
+  if (!selected) return { canceled: true, folderPath: null };
+  return {
+    canceled: false,
+    folderPath: await localDirectory(selected),
+  };
 }
 
 async function walkVideos(root: string, current = root): Promise<string[]> {
