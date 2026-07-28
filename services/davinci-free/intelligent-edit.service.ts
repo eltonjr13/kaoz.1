@@ -186,7 +186,11 @@ async function sha256(filePath: string) {
   });
 }
 
-async function detectSilenceEnds(sourcePath: string) {
+async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
+  const timeoutMs = Math.min(
+    60 * 60_000,
+    Math.max(120_000, Math.ceil(durationSeconds * 1_000)),
+  );
   const result = await runProcess(
     ffmpegPath(),
     [
@@ -199,7 +203,7 @@ async function detectSilenceEnds(sourcePath: string) {
       "null",
       "NUL",
     ],
-    { acceptNonZero: true, timeoutMs: 120_000 },
+    { acceptNonZero: true, timeoutMs },
   );
   return [...result.stderr.matchAll(/silence_end:\s*([\d.]+)/g)]
     .map((match) => Number(match[1]))
@@ -720,7 +724,10 @@ export async function analyzeIntelligentEdit(
   await mkdir(directory, { recursive: true });
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
-  const silenceEnds = await detectSilenceEnds(input.sourcePath);
+  const silenceEnds = await detectSilenceEnds(
+    input.sourcePath,
+    media.durationSeconds,
+  );
   const chunks = buildAudioChunks(media.durationSeconds, silenceEnds);
   const transcript = await transcribeChunks(input.sourcePath, directory, chunks);
   const rawCaptions = wordsToCaptions(transcript);

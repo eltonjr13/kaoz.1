@@ -106,6 +106,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
     "utf8",
   );
   assert.match(analysis, /silencedetect/);
+  assert.match(analysis, /durationSeconds \* 1_000/);
   assert.match(analysis, /const speech = getSpeechService\(\)/);
   assert.match(analysis, /speech\.transcribe/);
   assert.match(analysis, /useExternalTools:\s*false/);
