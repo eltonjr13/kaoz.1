@@ -66,6 +66,7 @@ type Analysis = {
 
 type BatchDiscovery = {
   folderPath: string;
+  suggestedCourseName: string;
   total: number;
   videos: Array<{
     index: number;
@@ -157,7 +158,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Falha ao consultar o lote.");
-    if (data?.id) setBatch(data as BatchJob);
+    if (data?.id) {
+      const restored = data as BatchJob;
+      setBatch(restored);
+      setBatchFolder(restored.folderPath);
+      setForm((current) => ({
+        ...current,
+        courseName: restored.courseName,
+      }));
+    }
     return data as BatchJob | null;
   }, []);
 
@@ -259,7 +268,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function discoverBatch() {
-    let folderPath = batchFolder;
+    let folderPath = "";
     if (window.kaoz1Desktop?.chooseCourseFolder) {
       const selected = await window.kaoz1Desktop.chooseCourseFolder();
       if (!selected) return;
@@ -273,28 +282,27 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       setBatchFolder(folderPath);
       setBatchDiscovery(null);
     }
-    if (!folderPath) {
-      onStatusMessage({
-        text: "Selecione ou informe a pasta do curso.",
-        type: "error",
-      });
-      return;
-    }
     const result = await action("discover-batch", { folderPath });
     if (result?.videos) {
-      setBatchDiscovery(result as BatchDiscovery);
+      const discovery = result as BatchDiscovery;
+      setBatchDiscovery(discovery);
+      setForm((current) => ({
+        ...current,
+        courseName: discovery.suggestedCourseName,
+      }));
       onStatusMessage({
-        text: `${String(result.total)} aulas encontradas e ordenadas.`,
-        type: "success",
+        text: `${String(result.total)} aulas encontradas. Iniciando o processamento automático.`,
+        type: "info",
       });
+      await startBatch(folderPath, discovery.suggestedCourseName);
     }
   }
 
-  async function startBatch() {
+  async function startBatch(folderPath = batchFolder, courseName = form.courseName) {
     const result = await action("start-batch", {
       requestId: `course-batch-${crypto.randomUUID()}`,
-      folderPath: batchFolder,
-      courseName: form.courseName,
+      folderPath,
+      courseName,
       style: form.style,
       captionsEnabled: form.captionsEnabled,
       musicPath: form.musicPath,
@@ -393,30 +401,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </div>
 
         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-          <label className="space-y-1 text-xs text-zinc-400">
-            Pasta raiz do curso
-            <input
-              className={fieldClass}
-              placeholder="C:\Cursos\Meu curso"
-              value={batchFolder}
-              onChange={(event) => {
-                setBatchFolder(event.target.value);
-                setBatchDiscovery(null);
-              }}
-            />
-          </label>
+          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <p className="text-[11px] text-zinc-500">Pasta selecionada</p>
+            <p className="mt-1 truncate text-xs text-zinc-200">
+              {batchFolder || "Clique no botão para escolher a pasta no Explorador do Windows."}
+            </p>
+          </div>
           <div className="flex items-end">
             <button
-              disabled={!!busy}
+              disabled={!!busy || ["queued", "running"].includes(batch?.status || "")}
               onClick={discoverBatch}
-              className="flex items-center gap-2 rounded-lg border border-violet-400/30 px-4 py-2 text-xs font-semibold text-violet-200 disabled:opacity-40"
+              className="flex items-center gap-2 rounded-lg bg-violet-400 px-4 py-2 text-xs font-bold text-black disabled:opacity-40"
             >
-              {busy === "discover-batch" || busy === "choose-folder" ? (
+              {busy === "discover-batch" || busy === "choose-folder" || busy === "start-batch" ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <FolderSearch size={14} />
               )}
-              Localizar aulas
+              Selecionar pasta e processar
             </button>
           </div>
         </div>
@@ -425,26 +427,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-emerald-300">
-                {batchDiscovery.total} aulas encontradas na ordem abaixo.
+                {batchDiscovery.total} aulas encontradas e enviadas para a fila.
               </p>
-              <button
-                disabled={!!busy || !form.courseName}
-                onClick={startBatch}
-                className="flex items-center gap-2 rounded-lg bg-violet-400 px-4 py-2 text-xs font-bold text-black disabled:opacity-40"
-              >
-                {busy === "start-batch" ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Sparkles size={14} />
-                )}
-                Processar curso inteiro
-              </button>
             </div>
-            {!form.courseName && (
-              <p className="text-[11px] text-amber-300">
-                Preencha o nome do curso abaixo para criar a identidade compartilhada.
-              </p>
-            )}
             <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3">
               {batchDiscovery.videos.map((video) => (
                 <div key={video.sourcePath} className="flex gap-3 text-[11px]">

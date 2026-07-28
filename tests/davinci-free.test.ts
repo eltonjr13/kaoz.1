@@ -67,8 +67,10 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
     "utf8",
   );
   assert.match(batch, /course-batches/);
-  assert.match(batch, /FolderBrowserDialog/);
-  assert.match(batch, /powershell\.exe/);
+  assert.match(batch, /Shell\.Application/);
+  assert.match(batch, /BrowseForFolder/);
+  assert.match(batch, /explorer\.exe/);
+  assert.match(batch, /suggestedCourseName/);
   assert.match(batch, /reuseCourseTheme:\s*true/);
   assert.match(batch, /activeJobs/);
   assert.match(batch, /item\.status = "failed"/);
@@ -76,6 +78,8 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(panel, /Editar curso inteiro em lote/);
   assert.match(panel, /chooseCourseFolder/);
   assert.match(panel, /const selected = await window\.kaoz1Desktop\.chooseCourseFolder/);
+  assert.match(panel, /Selecionar pasta e processar/);
+  assert.match(panel, /await startBatch\(folderPath, discovery\.suggestedCourseName\)/);
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
 });

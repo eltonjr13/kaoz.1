@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile, mkdir, unlink } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
@@ -116,29 +116,54 @@ export async function chooseCourseFolder() {
   if (process.platform !== "win32") {
     throw new Error("O seletor de pastas está disponível somente no Windows.");
   }
+  const pickerDirectory = path.join(ROOT, "folder-picker");
+  await mkdir(pickerDirectory, { recursive: true });
+  const token = crypto.randomBytes(12).toString("hex");
+  const scriptPath = path.join(pickerDirectory, `${token}.vbs`);
+  const resultPath = path.join(pickerDirectory, `${token}.result`);
+  const escapedResultPath = resultPath.replaceAll('"', '""');
   const script = [
-    "Add-Type -AssemblyName System.Windows.Forms",
-    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
-    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
-    "$dialog.Description = 'Selecione a pasta do curso'",
-    "$dialog.ShowNewFolderButton = $false",
-    "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }",
-  ].join("; ");
-  const { stdout } = await execFileAsync(
-    "powershell.exe",
-    ["-NoProfile", "-STA", "-NonInteractive", "-Command", script],
-    {
-      encoding: "utf8",
-      timeout: 10 * 60_000,
+    "Option Explicit",
+    "Dim shell, folder, fso, output",
+    'Set shell = CreateObject("Shell.Application")',
+    'Set folder = shell.BrowseForFolder(0, "Selecione a pasta do curso", &H41, 0)',
+    'Set fso = CreateObject("Scripting.FileSystemObject")',
+    `Set output = fso.CreateTextFile("${escapedResultPath}", True, True)`,
+    'If folder Is Nothing Then',
+    '  output.Write "CANCEL"',
+    "Else",
+    "  output.Write folder.Self.Path",
+    "End If",
+    "output.Close",
+  ].join("\r\n");
+  await writeFile(scriptPath, script, "utf8");
+  try {
+    await execFileAsync("explorer.exe", [scriptPath], {
+      timeout: 30_000,
       windowsHide: false,
-    },
-  );
-  const selected = stdout.trim();
-  if (!selected) return { canceled: true, folderPath: null };
-  return {
-    canceled: false,
-    folderPath: await localDirectory(selected),
-  };
+    });
+    const deadline = Date.now() + 10 * 60_000;
+    let selected = "";
+    while (Date.now() < deadline) {
+      const raw = await readFile(resultPath, "utf16le").catch(() => "");
+      if (raw) {
+        selected = raw.replace(/^\uFEFF/, "").trim();
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!selected) throw new Error("O seletor de pasta expirou sem resposta.");
+    if (selected === "CANCEL") return { canceled: true, folderPath: null };
+    return {
+      canceled: false,
+      folderPath: await localDirectory(selected),
+    };
+  } finally {
+    await Promise.all([
+      unlink(scriptPath).catch(() => undefined),
+      unlink(resultPath).catch(() => undefined),
+    ]);
+  }
 }
 
 async function walkVideos(root: string, current = root): Promise<string[]> {
@@ -173,6 +198,19 @@ function moduleName(relativePath: string) {
     .slice(0, 100);
 }
 
+function suggestedCourseName(folderPath: string) {
+  const leaf = path.win32.basename(folderPath);
+  const parent = path.win32.basename(path.win32.dirname(folderPath));
+  const source = /^(m[oó]dulo|module)\s*\d*/i.test(leaf) && parent
+    ? parent
+    : leaf;
+  return source
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100) || "Curso";
+}
+
 export async function discoverCourseBatch(rawInput: Record<string, unknown>) {
   const folderPath = await localDirectory(rawInput.folderPath);
   const paths = sortCourseVideoPaths(await walkVideos(folderPath));
@@ -184,6 +222,7 @@ export async function discoverCourseBatch(rawInput: Record<string, unknown>) {
   }
   return {
     folderPath,
+    suggestedCourseName: suggestedCourseName(folderPath),
     total: paths.length,
     videos: paths.map((sourcePath, index) => {
       const relativePath = path.relative(folderPath, sourcePath);
@@ -288,8 +327,9 @@ export async function startCourseBatch(rawInput: Record<string, unknown>) {
     return existing;
   }
   const discovered = await discoverCourseBatch(rawInput);
-  const courseName = cleanText(rawInput.courseName).slice(0, 100);
-  if (!courseName) throw new Error("O nome do curso é obrigatório.");
+  const courseName = (
+    cleanText(rawInput.courseName) || discovered.suggestedCourseName
+  ).slice(0, 100);
   const now = new Date().toISOString();
   const style = (["subtle", "balanced", "dynamic"].includes(String(rawInput.style))
     ? rawInput.style
