@@ -122,6 +122,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /function impactLayouts/);
   assert.match(renderer, /resolveIntelligentEditDesign/);
   assert.match(renderer, /captionsEnabled/);
+  assert.match(renderer, /timeoutMs = 60 \* 60_000/);
   assert.match(renderer, /preview-v4\.mp4/);
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
