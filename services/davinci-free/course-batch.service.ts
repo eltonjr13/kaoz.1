@@ -5,10 +5,18 @@ import { readdir, readFile, stat, writeFile, mkdir, unlink } from "node:fs/promi
 import { promisify } from "node:util";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
-import { analyzeIntelligentEdit } from "./intelligent-edit.service";
+import {
+  analyzeIntelligentEdit,
+  applyCourseIdentity,
+  readIntelligentEditPlan,
+} from "./intelligent-edit.service";
 import { renderIntelligentEdit } from "./intelligent-edit.renderer";
-import type { IntelligentEditStyle } from "./intelligent-edit.types";
+import type {
+  IntelligentCourseIdentity,
+  IntelligentEditStyle,
+} from "./intelligent-edit.types";
 import { sortCourseVideoPaths } from "./course-batch.order";
+import { analyzeCourseIdentity } from "./course-identity.service";
 
 const ROOT = path.join(
   getLocalDataDir(),
@@ -24,7 +32,10 @@ const VIDEO_EXTENSIONS = new Set([
   ".webm",
 ]);
 const MAX_BATCH_VIDEOS = 500;
-const activeJobs = new Map<string, Promise<void>>();
+const processState = globalThis as typeof globalThis & {
+  __kaozDavinciBatchJobs?: Map<string, Promise<void>>;
+};
+const activeJobs = processState.__kaozDavinciBatchJobs ||= new Map();
 const execFileAsync = promisify(execFile);
 
 export type CourseBatchItemStatus =
@@ -67,6 +78,7 @@ export interface CourseBatchJob {
   musicPath?: string;
   musicDb: number;
   useAgent: boolean;
+  courseIdentity?: IntelligentCourseIdentity;
   createdAt: string;
   updatedAt: string;
   currentItemId?: string;
@@ -242,6 +254,98 @@ async function saveJob(job: CourseBatchJob) {
   await writeFile(jobPath(job.id), `${JSON.stringify(job, null, 2)}\n`, "utf8");
 }
 
+async function analyzeBatchItems(job: CourseBatchJob) {
+  for (const item of job.items) {
+    if (item.status === "completed" || item.planId) continue;
+    job.currentItemId = item.id;
+    item.status = "analyzing";
+    item.error = undefined;
+    item.startedAt = new Date().toISOString();
+    await saveJob(job);
+    try {
+      const plan = await analyzeIntelligentEdit({
+        requestId: `batch-${job.id}-${String(item.index).padStart(3, "0")}`,
+        sourcePath: item.sourcePath,
+        courseName: job.courseName,
+        moduleName: item.moduleName,
+        style: job.style,
+        captionsEnabled: job.captionsEnabled,
+        reuseCourseTheme: false,
+        musicPath: job.musicPath,
+        musicDb: job.musicDb,
+        useAgent: job.useAgent,
+      });
+      item.planId = plan.id;
+    } catch (error) {
+      item.status = "failed";
+      item.error = error instanceof Error ? error.message.slice(0, 1_000) : String(error);
+      item.completedAt = new Date().toISOString();
+      job.failed += 1;
+    }
+    await saveJob(job);
+  }
+}
+
+async function analyzedPlans(job: CourseBatchJob) {
+  const entries = await Promise.all(
+    job.items
+      .filter((item) => item.planId && item.status !== "failed")
+      .map(async (item) => ({
+        item,
+        plan: await readIntelligentEditPlan(item.planId),
+      })),
+  );
+  const valid = entries.filter(
+    (entry): entry is typeof entry & { plan: NonNullable<typeof entry.plan> } =>
+      Boolean(entry.plan),
+  );
+  return {
+    available: valid.map((entry) => entry.item),
+    plans: valid.map((entry) => entry.plan),
+  };
+}
+
+async function resolveBatchIdentity(job: CourseBatchJob) {
+  const { plans } = await analyzedPlans(job);
+  if (plans.length === 0) throw new Error("Nenhuma aula pôde ser analisada para definir a identidade.");
+  const identity = await analyzeCourseIdentity({
+    courseName: job.courseName,
+    folderName: path.win32.basename(job.folderPath),
+    lessons: plans,
+    useAgent: job.useAgent,
+  });
+  job.courseIdentity = identity;
+  await saveJob(job);
+  return identity;
+}
+
+async function renderBatchItems(
+  job: CourseBatchJob,
+  identity: IntelligentCourseIdentity,
+) {
+  const { available, plans } = await analyzedPlans(job);
+  for (const [index, item] of available.entries()) {
+    if (item.status === "completed") continue;
+    job.currentItemId = item.id;
+    item.status = "rendering";
+    await saveJob(job);
+    try {
+      const standardized = await applyCourseIdentity(plans[index], identity, item.index);
+      const rendered = await renderIntelligentEdit({ planId: standardized.id });
+      item.previewPath = rendered.previewPath;
+      item.status = "completed";
+      item.completedAt = new Date().toISOString();
+    } catch (error) {
+      item.status = "failed";
+      item.error = error instanceof Error ? error.message.slice(0, 1_000) : String(error);
+      item.completedAt = new Date().toISOString();
+    }
+    job.completed = job.items.filter((candidate) => candidate.status === "completed").length;
+    job.failed = job.items.filter((candidate) => candidate.status === "failed").length;
+    await saveJob(job);
+  }
+}
+
 export async function readCourseBatch(rawInput: Record<string, unknown>) {
   const id = cleanText(rawInput.batchId);
   if (!id) {
@@ -269,42 +373,9 @@ async function executeBatch(id: string) {
   if (!job) return;
   job.status = "running";
   await saveJob(job);
-  for (const item of job.items) {
-    if (item.status === "completed") continue;
-    job.currentItemId = item.id;
-    item.status = "analyzing";
-    item.error = undefined;
-    item.startedAt = new Date().toISOString();
-    await saveJob(job);
-    try {
-      const plan = await analyzeIntelligentEdit({
-        requestId: `batch-${job.id}-${String(item.index).padStart(3, "0")}`,
-        sourcePath: item.sourcePath,
-        courseName: job.courseName,
-        moduleName: item.moduleName,
-        style: job.style,
-        captionsEnabled: job.captionsEnabled,
-        reuseCourseTheme: true,
-        musicPath: job.musicPath,
-        musicDb: job.musicDb,
-        useAgent: job.useAgent,
-      });
-      item.planId = plan.id;
-      item.status = "rendering";
-      await saveJob(job);
-      const rendered = await renderIntelligentEdit({ planId: plan.id });
-      item.previewPath = rendered.previewPath;
-      item.status = "completed";
-      item.completedAt = new Date().toISOString();
-    } catch (error) {
-      item.status = "failed";
-      item.error = error instanceof Error ? error.message.slice(0, 1_000) : String(error);
-      item.completedAt = new Date().toISOString();
-    }
-    job.completed = job.items.filter((candidate) => candidate.status === "completed").length;
-    job.failed = job.items.filter((candidate) => candidate.status === "failed").length;
-    await saveJob(job);
-  }
+  await analyzeBatchItems(job);
+  const identity = await resolveBatchIdentity(job);
+  await renderBatchItems(job, identity);
   job.currentItemId = undefined;
   job.status = job.failed > 0 ? "completed-with-errors" : "completed";
   await saveJob(job);

@@ -3,6 +3,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { sortCourseVideoPaths } from "../services/davinci-free/course-batch.order.ts";
+import {
+  analyzeCourseIdentity,
+  cleanLessonTitle,
+  lessonSubtitle,
+  narrativeHighlights,
+} from "../services/davinci-free/course-identity.service.ts";
 
 test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação por etapa", async () => {
   const registry = await readFile(
@@ -73,8 +79,12 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(batch, /suggestedCourseName/);
   assert.match(batch, /reuseCourseTheme:\s*true/);
   assert.match(batch, /activeJobs/);
+  assert.match(batch, /__kaozDavinciBatchJobs/);
   assert.match(batch, /item\.status = "failed"/);
   assert.match(batch, /item\.previewPath = rendered\.previewPath/);
+  assert.match(batch, /analyzeBatchItems/);
+  assert.match(batch, /resolveBatchIdentity/);
+  assert.match(batch, /applyCourseIdentity/);
   assert.match(panel, /Editar curso inteiro em lote/);
   assert.match(panel, /chooseCourseFolder/);
   assert.match(panel, /const selected = await window\.kaoz1Desktop\.chooseCourseFolder/);
@@ -82,6 +92,68 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(panel, /await startBatch\(folderPath, discovery\.suggestedCourseName\)/);
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
+});
+
+test("identidade semântica padroniza o plano de 30 dias sem duplicar aulas", async () => {
+  const transcript = [{
+    start: 12,
+    end: 16,
+    text: "A primeira semana é de limpeza e adaptação. Limpe a sua casa.",
+    source: "local-asr" as const,
+  }, {
+    start: 42,
+    end: 46,
+    text: "Escolha comida de verdade e proteja os seus resultados.",
+    source: "local-asr" as const,
+  }];
+  const identity = await analyzeCourseIdentity({
+    courseName: "videos curso",
+    folderName: "modulo 7",
+    useAgent: false,
+    lessons: [
+      {
+        moduleName: "1. Semana 1 limpeza e adaptação — Semana 1 limpeza e adaptação",
+        transcript,
+      },
+      {
+        moduleName: "5. Como continuar depois dos 30 dias — 5. Como continuar depois dos 30 dias",
+        transcript: [{
+          ...transcript[0],
+          text: "Depois dos 30 dias, transforme isso em um estilo de vida.",
+        }],
+      },
+    ],
+  });
+  assert.equal(identity.title, "Plano de 30 Dias");
+  assert.equal(identity.eyebrow, "Módulo 7");
+  assert.equal(identity.layout, "roadmap");
+  assert.equal(
+    identity.lessons[0].subtitle,
+    "Prepare o ambiente e atravesse a fase de adaptação",
+  );
+  assert.equal(
+    identity.lessons[1].subtitle,
+    "Transforme o plano em um estilo de vida",
+  );
+  assert.deepEqual(
+    identity.lessons.map((lesson) => lesson.title),
+    ["Semana 1 · Limpeza e Adaptação", "Como Continuar Depois dos 30 Dias"],
+  );
+  assert.equal(
+    cleanLessonTitle("2. Semana 2 consistência — Semana 2 consistência"),
+    "Semana 2 · Consistência",
+  );
+  assert.equal(
+    lessonSubtitle(
+      "Semana 2 · Consistência",
+      "Na primeira semana houve adaptação. Agora evite o comodismo.",
+    ),
+    "Transforme os primeiros resultados em consistência",
+  );
+  assert.deepEqual(
+    narrativeHighlights(transcript, 90).map((highlight) => highlight.text),
+    ["Prepare o ambiente", "Comida de verdade"],
+  );
 });
 
 test("edição inteligente usa áudio segmentado, agente sem ferramentas e prévia renderizada", async () => {
@@ -109,6 +181,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /durationSeconds \* 1_000/);
   assert.match(analysis, /const speech = getSpeechService\(\)/);
   assert.match(analysis, /speech\.transcribe/);
+  assert.match(analysis, /findReusableTranscript/);
   assert.match(analysis, /useExternalTools:\s*false/);
   assert.match(analysis, /deterministic-fallback/);
   assert.match(renderer, /afftdn/);
@@ -119,6 +192,14 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /function transitionExpression/);
   assert.match(renderer, /function focalExpression/);
   assert.match(renderer, /ImpactIcon/);
+  assert.match(renderer, /ImpactMeta/);
+  assert.match(renderer, /CardNumber/);
+  assert.match(renderer, /cardProgressFilters/);
+  assert.match(renderer, /cardFrameworkFilters/);
+  assert.match(renderer, /cardEditorialFilters/);
+  assert.match(renderer, /cardLayoutFilters/);
+  assert.match(renderer, /PRÓXIMA AÇÃO/);
+  assert.match(renderer, /Math\.min\(identity\.lessonIndex \+ 1/);
   assert.match(renderer, /function impactLayouts/);
   assert.match(renderer, /resolveIntelligentEditDesign/);
   assert.match(renderer, /captionsEnabled/);
@@ -128,10 +209,11 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /visual-contact-sheet\.jpg/);
   assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*6/);
+  assert.match(analysis, /analysisVersion:\s*7/);
   assert.match(analysis, /captionsEnabled/);
   assert.match(analysis, /courseThemeDesign/);
   assert.match(analysis, /resolveCourseTheme/);
+  assert.match(analysis, /Próxima aula\\n/);
   for (const palette of ["kaoz", "electric", "premium", "coral"]) {
     assert.match(design, new RegExp(`${palette}:`));
   }

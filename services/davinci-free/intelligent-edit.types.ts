@@ -8,6 +8,7 @@ export type IntelligentEditPalette =
   | "coral"
   | "course-theme";
 export type IntelligentEditTextVariant = "concept" | "stat" | "action" | "quote";
+export type IntelligentCourseLayout = "roadmap" | "framework" | "editorial";
 export type IntelligentCourseThemeKey =
   | "ancestral"
   | "performance"
@@ -39,6 +40,19 @@ export interface IntelligentCourseThemeProfile {
   createdAt: string;
   updatedAt: string;
   colors: IntelligentEditDesign["colors"];
+}
+
+export interface IntelligentCourseIdentity {
+  title: string;
+  eyebrow: string;
+  promise: string;
+  layout: IntelligentCourseLayout;
+  source: "agent" | "deterministic-fallback";
+  lessons: Array<{
+    index: number;
+    title: string;
+    subtitle: string;
+  }>;
 }
 
 export interface TimedTranscriptSegment {
@@ -86,6 +100,10 @@ export interface IntelligentEditPlan {
   style: IntelligentEditStyle;
   design?: IntelligentEditDesign;
   courseTheme?: IntelligentCourseThemeProfile & { reused: boolean };
+  courseIdentity?: IntelligentCourseIdentity & {
+    lessonIndex: number;
+    lessonTotal: number;
+  };
   courseName?: string;
   moduleName: string;
   media: {

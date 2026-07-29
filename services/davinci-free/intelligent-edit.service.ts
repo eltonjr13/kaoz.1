@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -14,6 +14,7 @@ import {
 import {
   INTELLIGENT_EDIT_PLAN_VERSION,
   type IntelligentCaption,
+  type IntelligentCourseIdentity,
   type IntelligentEditAnalysisInput,
   type IntelligentEditEvent,
   type IntelligentEditPlan,
@@ -23,6 +24,11 @@ import {
 } from "./intelligent-edit.types";
 import { courseThemeDesign } from "./intelligent-edit.design";
 import { resolveCourseTheme } from "./course-theme.service";
+import {
+  cleanLessonTitle,
+  lessonSubtitle,
+  narrativeHighlights,
+} from "./course-identity.service";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
@@ -290,6 +296,36 @@ function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption
   });
 }
 
+async function findReusableTranscript(sourceHash: string) {
+  const entries = await readdir(ROOT, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^[a-f0-9]{16}$/.test(entry.name)) continue;
+    const candidate = await readFile(
+      path.join(ROOT, entry.name, "intelligent-edit-plan.json"),
+      "utf8",
+    )
+      .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
+      .catch(() => null);
+    if (candidate?.sourceHash === sourceHash && candidate.transcript.length > 0) {
+      return candidate.transcript;
+    }
+  }
+  return null;
+}
+
+async function transcriptForAnalysis(
+  sourcePath: string,
+  directory: string,
+  durationSeconds: number,
+  sourceHash: string,
+) {
+  const reusable = await findReusableTranscript(sourceHash);
+  if (reusable) return reusable;
+  const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
+  const chunks = buildAudioChunks(durationSeconds, silenceEnds);
+  return transcribeChunks(sourcePath, directory, chunks);
+}
+
 function extractJsonObject(output: string): SemanticDecision | null {
   const fenced = output.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const candidate = fenced || output.slice(output.indexOf("{"), output.lastIndexOf("}") + 1);
@@ -349,14 +385,23 @@ async function semanticPlan(
     `Duração: ${duration.toFixed(1)} segundos`,
     transcript,
   ].join("\n");
+  const fallbackDecision = deterministicSemanticDecision(segments, input, duration);
   if (input.useAgent === false) {
-    return { decision: null, source: "deterministic-fallback" as const, inputCharacters: prompt.length };
+    return {
+      decision: fallbackDecision,
+      source: "deterministic-fallback" as const,
+      inputCharacters: prompt.length,
+    };
   }
   try {
     const response = await queryConfiguredAgentCli(prompt, { useExternalTools: false });
     const decision = response ? extractJsonObject(response) : null;
     if (!decision) {
-      return { decision: null, source: "deterministic-fallback" as const, inputCharacters: prompt.length };
+      return {
+        decision: fallbackDecision,
+        source: "deterministic-fallback" as const,
+        inputCharacters: prompt.length,
+      };
     }
     if (decision.reviewedCaptions?.length !== captions.length) {
       const captionPrompt = [
@@ -383,8 +428,40 @@ async function semanticPlan(
       inputCharacters: prompt.length,
     };
   } catch {
-    return { decision: null, source: "deterministic-fallback" as const, inputCharacters: prompt.length };
+    return {
+      decision: fallbackDecision,
+      source: "deterministic-fallback" as const,
+      inputCharacters: prompt.length,
+    };
   }
+}
+
+function deterministicSemanticDecision(
+  segments: TimedTranscriptSegment[],
+  input: IntelligentEditAnalysisInput,
+  duration: number,
+): SemanticDecision {
+  const title = cleanLessonTitle(input.moduleName);
+  const transcript = segments.map((segment) => segment.text).join(" ");
+  const highlights = narrativeHighlights(segments, duration);
+  return {
+    moduleTitle: title,
+    introTitle: title,
+    introSubtitle: lessonSubtitle(title, transcript),
+    outroTitle: "Aplique antes de avançar",
+    outroSubtitle: "Leve esta etapa para a próxima aula",
+    emphasis: highlights.map((highlight) => ({
+      time: highlight.time,
+      label: highlight.text,
+      reason: "Momento relevante identificado na transcrição.",
+    })),
+    onScreenText: highlights.map((highlight) => ({
+      time: highlight.time,
+      text: highlight.text,
+      variant: highlight.variant,
+      reason: "Síntese semântica extraída da fala.",
+    })),
+  };
 }
 
 export function buildEditEvents(input: {
@@ -702,7 +779,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 6,
+      analysisVersion: 7,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
@@ -724,12 +801,12 @@ export async function analyzeIntelligentEdit(
   await mkdir(directory, { recursive: true });
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
-  const silenceEnds = await detectSilenceEnds(
+  const transcript = await transcriptForAnalysis(
     input.sourcePath,
+    directory,
     media.durationSeconds,
+    sourceHash,
   );
-  const chunks = buildAudioChunks(media.durationSeconds, silenceEnds);
-  const transcript = await transcribeChunks(input.sourcePath, directory, chunks);
   const rawCaptions = wordsToCaptions(transcript);
   const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);
   const captions = reviewedCaptions(rawCaptions, semantic.decision, media.durationSeconds);
@@ -809,6 +886,104 @@ export async function analyzeIntelligentEdit(
   await mkdir(ROOT, { recursive: true });
   await writeFile(LATEST_PATH, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   return plan;
+}
+
+function sharedIdentityEvents(
+  plan: IntelligentEditPlan,
+  identity: IntelligentCourseIdentity,
+  lessonIndex: number,
+) {
+  const lesson = identity.lessons[lessonIndex - 1];
+  const nextLesson = identity.lessons[lessonIndex];
+  const generatedHighlights = narrativeHighlights(
+    plan.transcript,
+    plan.media.durationSeconds,
+  );
+  const preserved = plan.events.filter((event) => {
+    if (event.kind === "intro" || event.kind === "outro") return false;
+    if (event.id === "lower-third-start") return false;
+    return !(plan.semantic.source === "deterministic-fallback" && event.kind === "impact-text");
+  });
+  if (plan.semantic.source === "deterministic-fallback") {
+    preserved.push(...generatedHighlights.map((highlight, index) => ({
+      id: `impact-text-${index + 1}`,
+      kind: "impact-text" as const,
+      start: highlight.time,
+      duration: plan.style === "dynamic" ? 2.4 : 2.1,
+      label: highlight.text,
+      variant: highlight.variant,
+      reason: "Síntese semântica compartilhada do módulo.",
+    })));
+  }
+  return [
+    ...preserved,
+    {
+      id: "intro",
+      kind: "intro" as const,
+      start: 0,
+      duration: 4,
+      label: lesson.title,
+      subtitle: lesson.subtitle,
+      reason: "Abertura padronizada pela identidade semântica do módulo.",
+    },
+    {
+      id: "lower-third-start",
+      kind: "lower-third" as const,
+      start: 0.6,
+      duration: 4,
+      label: `${identity.title} • ${lesson.title}`.slice(0, 100),
+      reason: "Identificação consistente da série e da aula.",
+    },
+    {
+      id: "outro",
+      kind: "outro" as const,
+      start: plan.media.durationSeconds,
+      duration: 4,
+      label: nextLesson
+        ? `Próxima aula\n${nextLesson.title.replace(" · ", ": ")}`.slice(0, 72)
+        : "Plano concluído",
+      subtitle: nextLesson?.subtitle || identity.promise,
+      reason: "Encerramento conectado à progressão do módulo.",
+    },
+  ].sort((left, right) => left.start - right.start);
+}
+
+export async function applyCourseIdentity(
+  plan: IntelligentEditPlan,
+  identity: IntelligentCourseIdentity,
+  lessonIndex: number,
+) {
+  const lesson = identity.lessons[lessonIndex - 1];
+  if (!lesson) throw new Error("A identidade do curso não contém esta aula.");
+  const transcript = plan.transcript.map((segment) => segment.text).join("\n");
+  const theme = await resolveCourseTheme({
+    courseName: identity.title,
+    transcript,
+    rationale: `Identidade visual compartilhada da série ${identity.title}.`,
+    tone: identity.layout === "roadmap"
+      ? "progressivo, enérgico e orientado à evolução"
+      : undefined,
+    reuse: true,
+  });
+  const updated: IntelligentEditPlan = {
+    ...plan,
+    courseName: identity.title,
+    moduleName: lesson.title,
+    courseIdentity: {
+      ...identity,
+      lessonIndex,
+      lessonTotal: identity.lessons.length,
+    },
+    courseTheme: { ...theme.profile, reused: theme.reused },
+    design: courseThemeDesign(
+      theme.profile,
+      plan.design?.captionsEnabled !== false,
+    ),
+  };
+  updated.events = sharedIdentityEvents(updated, identity, lessonIndex);
+  await writeFile(updated.artifacts.planPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+  await writeFile(LATEST_PATH, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+  return updated;
 }
 
 export async function readIntelligentEditPlan(planId?: string) {

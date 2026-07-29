@@ -76,6 +76,17 @@ function wrapCaption(value: string) {
   return `${words.slice(0, bestIndex).join(" ")}\n${words.slice(bestIndex).join(" ")}`;
 }
 
+function wrapCardTitle(value: string) {
+  if (value.includes("\n")) return value;
+  const words = value.split(/\s+/);
+  if (value.length <= 30 || words.length < 3) return value;
+  let split = Math.ceil(words.length / 2);
+  while (split > 2 && words.slice(0, split).join(" ").length > 34) {
+    split -= 1;
+  }
+  return `${words.slice(0, split).join(" ")}\n${words.slice(split).join(" ")}`;
+}
+
 function assColor(hex: string, alpha = "00") {
   const normalized = hex.replace("#", "").padEnd(6, "0").slice(0, 6);
   const [red, green, blue] = normalized.match(/.{2}/g) || ["FF", "FF", "FF"];
@@ -94,12 +105,15 @@ function assHeader(plan: IntelligentEditPlan) {
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
-    `Style: LowerThird,Segoe UI Semibold,45,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
-    `Style: ImpactIcon,Segoe UI Symbol,38,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
-    `Style: ImpactText,Segoe UI Semibold,43,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,0,0,0,1`,
-    `Style: CardKicker,Segoe UI Semibold,24,${assColor(colors.secondary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,3,0,1,0,0,7,80,80,80,1`,
-    `Style: CardTitle,Segoe UI Semibold,72,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
-    `Style: CardSubtitle,Segoe UI,32,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
+    `Style: LowerThird,Segoe UI Semibold,40,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
+    `Style: ImpactIcon,Segoe UI Semibold,24,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,0,0,5,0,0,0,1`,
+    `Style: ImpactMeta,Segoe UI Semibold,18,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,0,0,4,0,0,0,1`,
+    `Style: ImpactText,Segoe UI Semibold,42,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,0,0,0,1`,
+    `Style: CardKicker,Segoe UI Semibold,22,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,3,0,1,0,0,7,80,80,80,1`,
+    `Style: CardTitle,Segoe UI Semibold,66,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,0,0,4,80,80,80,1`,
+    `Style: CardSubtitle,Segoe UI,30,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,4,80,80,80,1`,
+    `Style: CardIndex,Segoe UI Semibold,21,${assColor(colors.secondary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,0,0,4,80,80,80,1`,
+    `Style: CardNumber,Segoe UI Semibold,170,${assColor(colors.muted, "C8")},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-4,0,1,0,0,5,0,0,0,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -118,6 +132,7 @@ type ImpactLayout = {
   icon: string;
   label: string;
   fontSize: number;
+  meta: string;
 };
 
 function impactLayouts(plan: IntelligentEditPlan): ImpactLayout[] {
@@ -198,20 +213,23 @@ function impactLayouts(plan: IntelligentEditPlan): ImpactLayout[] {
       start,
       end,
       x,
-      y: Math.round(plan.media.height * 0.085),
+      y: Math.round(
+        plan.media.height * (event.variant === "action" ? 0.16 : 0.085),
+      ),
       width,
       height,
       accent,
-      icon:
-        event.variant === "action"
-          ? "→"
-          : event.variant === "quote"
-            ? "“"
-            : event.variant === "stat"
-              ? "●"
-              : "◆",
+      icon: event.variant === "action" ? "GO" : event.variant === "stat" ? "01" : "•",
       label,
       fontSize,
+      meta:
+        event.variant === "action"
+          ? "PRÓXIMA AÇÃO"
+          : event.variant === "stat"
+            ? "MARCO"
+            : event.variant === "quote"
+              ? "IDEIA-CHAVE"
+              : "CONCEITO",
     });
   }
   return layouts;
@@ -235,10 +253,13 @@ function bodyAss(plan: IntelligentEditPlan) {
   for (const layout of impactLayouts(plan)) {
     const centerY = layout.y + Math.round(layout.height / 2);
     lines.push(
-      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactIcon,,0,0,0,,{\\pos(${layout.x + 42},${centerY})\\fad(80,170)\\1c${assColor(layout.accent)}&}${assText(layout.icon)}`,
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactIcon,,0,0,0,,{\\pos(${layout.x + 44},${centerY})\\fad(80,170)\\1c${assColor(layout.accent)}&}${assText(layout.icon)}`,
     );
     lines.push(
-      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactText,,0,0,0,,{\\an4\\move(${layout.x + 66},${centerY},${layout.x + 82},${centerY},0,240)\\fad(90,180)\\fs${layout.fontSize}}${assText(layout.label)}`,
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactMeta,,0,0,0,,{\\an4\\move(${layout.x + 88},${layout.y + 27},${layout.x + 98},${layout.y + 27},0,220)\\fad(70,160)\\1c${assColor(layout.accent)}&}${assText(layout.meta)}`,
+    );
+    lines.push(
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactText,,0,0,0,,{\\an4\\move(${layout.x + 88},${centerY + 13},${layout.x + 98},${centerY + 13},0,240)\\fad(90,180)\\fs${layout.fontSize}}${assText(layout.label)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -255,12 +276,31 @@ function titleAss(
     event?.subtitle || (kind === "intro"
       ? plan.courseName || "Curso"
       : plan.courseName || plan.moduleName);
-  const kicker = kind === "intro" ? plan.courseName || "NESTA AULA" : "PRÓXIMO PASSO";
+  const identity = plan.courseIdentity;
+  const kicker = kind === "intro"
+    ? identity
+      ? `${identity.eyebrow}  /  ${identity.title}`
+      : plan.courseName || "NESTA AULA"
+    : identity?.title || "PRÓXIMO PASSO";
+  const index = kind === "intro" && identity
+    ? `AULA ${String(identity.lessonIndex).padStart(2, "0")}  /  ${String(identity.lessonTotal).padStart(2, "0")}`
+    : kind === "outro"
+      ? "ENCERRAMENTO"
+      : "NESTA AULA";
+  const number = identity
+    ? String(
+        kind === "intro"
+          ? identity.lessonIndex
+          : Math.min(identity.lessonIndex + 1, identity.lessonTotal),
+      ).padStart(2, "0")
+    : "01";
   return [
     assHeader(plan),
-    `Dialogue: 0,${assTime(0.25)},${assTime(duration - 0.3)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.29)})\\fad(100,180)}${assText(kicker.toUpperCase())}`,
-    `Dialogue: 0,${assTime(0.45)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.46)})\\fad(120,180)\\fscx86\\fscy86\\t(0,300,\\fscx100\\fscy100)}${assText(title)}`,
-    `Dialogue: 0,${assTime(0.9)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.12)},${Math.round(plan.media.height * 0.62)})\\fad(140,180)}${assText(subtitle)}`,
+    `Dialogue: 0,${assTime(0.2)},${assTime(duration - 0.3)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.22)})\\fad(100,180)}${assText(kicker.toUpperCase())}`,
+    `Dialogue: 0,${assTime(0.38)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.43)})\\fad(120,180)\\fscx90\\fscy90\\t(0,320,\\fscx100\\fscy100)}${assText(wrapCardTitle(title))}`,
+    `Dialogue: 0,${assTime(0.78)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.63)})\\fad(140,180)}${assText(subtitle)}`,
+    `Dialogue: 0,${assTime(0.95)},${assTime(duration - 0.3)},CardIndex,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.78)})\\fad(150,180)}${assText(index)}`,
+    `Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`,
     "",
   ].join("\n");
 }
@@ -335,10 +375,13 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
   ];
   for (const layout of impactLayouts(plan)) {
     const enable = `between(t,${layout.start.toFixed(3)},${layout.end.toFixed(3)})`;
+    const edgeWidth = layout.event.variant === "quote" ? 7 : 5;
     filters.push(
-      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=${layout.height}:color=0x${design.colors.surface.slice(1)}@0.90:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=5:color=0x${layout.accent.slice(1)}:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x + 16}:y=${layout.y + Math.round((layout.height - 52) / 2)}:w=52:h=52:color=0x${design.colors.background.slice(1)}@0.72:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x + 10}:y=${layout.y + 10}:w=${layout.width}:h=${layout.height}:color=black@0.22:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=${layout.height}:color=0x${design.colors.surface.slice(1)}@0.92:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x}:y=${layout.y}:w=${edgeWidth}:h=${layout.height}:color=0x${layout.accent.slice(1)}:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x + 18}:y=${layout.y + Math.round((layout.height - 54) / 2)}:w=54:h=54:color=0x${design.colors.background.slice(1)}@0.84:t=fill:enable='${enable}'`,
+      `drawbox=x=${layout.x + 92}:y=${layout.y + 45}:w=${Math.min(120, layout.width - 120)}:h=2:color=0x${layout.accent.slice(1)}@0.72:t=fill:enable='${enable}'`,
     );
   }
   filters.push(`ass='${filterPath(assPath)}'`);
@@ -355,6 +398,75 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
     `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - 0.35).toFixed(3)}:d=0.35`,
   );
   return filters.join(",");
+}
+
+function cardProgressFilters(
+  plan: IntelligentEditPlan,
+  kind: "intro" | "outro",
+) {
+  const identity = plan.courseIdentity;
+  if (!identity) return [];
+  const { colors } = resolveIntelligentEditDesign(plan);
+  const total = Math.min(identity.lessonTotal, 10);
+  const active = kind === "outro"
+    ? Math.min(identity.lessonIndex + 1, total)
+    : identity.lessonIndex;
+  const width = Math.round(plan.media.width * 0.12);
+  const gap = Math.round(plan.media.height * 0.045);
+  const startX = Math.round(plan.media.width * 0.79);
+  const startY = Math.round(plan.media.height * 0.68);
+  return Array.from({ length: total }, (_, index) => {
+    const color = index < active ? colors.primary : colors.muted;
+    const alpha = index < active ? "" : "@0.25";
+    return `drawbox=x=${startX}:y=${startY + index * gap}:w=${width}:h=4:color=0x${color.slice(1)}${alpha}:t=fill`;
+  });
+}
+
+function cardFrameworkFilters(
+  plan: IntelligentEditPlan,
+  kind: "intro" | "outro",
+) {
+  const identity = plan.courseIdentity;
+  if (!identity) return [];
+  const { colors } = resolveIntelligentEditDesign(plan);
+  const total = Math.min(identity.lessonTotal, 6);
+  const active = kind === "outro"
+    ? Math.min(identity.lessonIndex + 1, total)
+    : identity.lessonIndex;
+  const size = Math.round(plan.media.height * 0.055);
+  const gap = Math.round(plan.media.width * 0.018);
+  const startX = Math.round(plan.media.width * 0.79);
+  const startY = Math.round(plan.media.height * 0.67);
+  return Array.from({ length: total }, (_, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const color = index < active ? colors.primary : colors.muted;
+    const alpha = index < active ? "@0.82" : "@0.16";
+    return `drawbox=x=${startX + column * (size + gap)}:y=${startY + row * (size + gap)}:w=${size}:h=${size}:color=0x${color.slice(1)}${alpha}:t=fill`;
+  });
+}
+
+function cardEditorialFilters(plan: IntelligentEditPlan) {
+  const { colors } = resolveIntelligentEditDesign(plan);
+  const startX = Math.round(plan.media.width * 0.8);
+  const startY = Math.round(plan.media.height * 0.69);
+  const gap = Math.round(plan.media.height * 0.05);
+  return [0.14, 0.09, 0.12].map((width, index) =>
+    `drawbox=x=${startX}:y=${startY + index * gap}:w=${Math.round(plan.media.width * width)}:h=${index === 0 ? 5 : 3}:color=0x${(index === 0 ? colors.primary : colors.muted).slice(1)}@${index === 0 ? "0.82" : "0.28"}:t=fill`,
+  );
+}
+
+function cardLayoutFilters(
+  plan: IntelligentEditPlan,
+  kind: "intro" | "outro",
+) {
+  if (plan.courseIdentity?.layout === "framework") {
+    return cardFrameworkFilters(plan, kind);
+  }
+  if (plan.courseIdentity?.layout === "editorial") {
+    return cardEditorialFilters(plan);
+  }
+  return cardProgressFilters(plan, kind);
 }
 
 function audioFilter() {
@@ -380,9 +492,12 @@ async function renderCard(
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
   const { colors } = resolveIntelligentEditDesign(plan);
   const cardFilter = [
-    `drawbox=x=0:y=0:w=iw*0.018:h=ih:color=0x${colors.primary.slice(1)}:t=fill`,
-    `drawbox=x=iw*0.76:y=0:w=iw*0.24:h=ih:color=0x${colors.surface.slice(1)}@0.88:t=fill`,
-    `drawbox=x=iw*0.12:y=ih*0.34:w=iw*0.08:h=5:color=0x${colors.secondary.slice(1)}:t=fill`,
+    `drawbox=x=0:y=0:w=iw*0.009:h=ih:color=0x${colors.primary.slice(1)}:t=fill`,
+    `drawbox=x=iw*0.72:y=0:w=iw*0.28:h=ih:color=0x${colors.surface.slice(1)}@0.90:t=fill`,
+    `drawbox=x=iw*0.08:y=ih*0.13:w=3:h=ih*0.74:color=0x${colors.surface.slice(1)}:t=fill`,
+    `drawbox=x=iw*0.11:y=ih*0.28:w=iw*0.065:h=4:color=0x${colors.secondary.slice(1)}:t=fill`,
+    `drawbox=x=iw*0.76:y=ih*0.15:w=iw*0.17:h=2:color=0x${colors.muted.slice(1)}@0.24:t=fill`,
+    ...cardLayoutFilters(plan, kind),
     `ass='${filterPath(assPath)}'`,
     "fade=t=in:st=0:d=0.35",
     `fade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,

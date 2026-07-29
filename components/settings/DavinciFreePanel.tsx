@@ -85,6 +85,13 @@ type BatchJob = {
   completed: number;
   failed: number;
   currentItemId?: string;
+  courseIdentity?: {
+    title: string;
+    eyebrow: string;
+    promise: string;
+    layout: "roadmap" | "framework" | "editorial";
+    source: "agent" | "deterministic-fallback";
+  };
   items: Array<{
     id: string;
     index: number;
@@ -394,8 +401,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             Editar curso inteiro em lote
           </h3>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-400">
-            Localiza aulas em pastas e subpastas, ordena os nomes naturalmente e gera
-            uma prévia por vídeo com a mesma identidade do curso. Nenhuma aula é enviada
+            Analisa todas as aulas primeiro, identifica o tema e a progressão do módulo e
+            só então gera cada prévia com a mesma identidade. Nenhuma aula é enviada
             automaticamente ao Resolve.
           </p>
         </div>
@@ -449,7 +456,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-zinc-100">
-                  {batch.courseName} · {batch.completed}/{batch.total} concluídas
+                  {batch.courseIdentity?.title || batch.courseName} · {batch.completed}/{batch.total} concluídas
                 </p>
                 <p className="text-[11px] text-zinc-500">
                   Estado: {batch.status}
@@ -475,6 +482,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 }}
               />
             </div>
+            {batch.courseIdentity && (
+              <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                  {batch.courseIdentity.eyebrow} · identidade{" "}
+                  {batch.courseIdentity.source === "agent" ? "do agente" : "local"}
+                </p>
+                <p className="mt-1 text-sm font-bold text-zinc-100">
+                  {batch.courseIdentity.title}
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  {batch.courseIdentity.promise}
+                </p>
+              </div>
+            )}
             <div className="max-h-56 space-y-2 overflow-y-auto">
               {batch.items.map((item) => (
                 <div
