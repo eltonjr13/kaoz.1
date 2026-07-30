@@ -37,16 +37,28 @@ type EditEvent = {
   start: number;
   duration: number;
   label: string;
+  subtitle?: string;
   reason: string;
+  scale?: number;
+  x?: number;
+  y?: number;
+};
+
+type EditorialReview = {
+  captionsEnabled?: boolean;
+  events: Array<Partial<EditEvent> & { id: string; enabled?: boolean }>;
+  captions: Array<{ index: number; enabled?: boolean; start?: number; end?: number; text?: string }>;
 };
 
 type Analysis = {
   id: string;
+  courseName?: string;
   moduleName: string;
   transcript: Array<{ start: number; end: number; text: string }>;
   captions: Array<{ start: number; end: number; text: string }>;
   events: EditEvent[];
   cursorAnalysis: { status: string; message: string };
+  visual: { source: "agent-contact-sheet" | "safe-center-fallback"; sampledFrames: number };
   semantic: { source: "agent" | "deterministic-fallback"; provider?: string; model?: string };
   design?: {
     palette: "kaoz" | "electric" | "premium" | "coral" | "course-theme";
@@ -129,6 +141,7 @@ function clock(seconds: number) {
 export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [status, setStatus] = useState<Status | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [review, setReview] = useState<EditorialReview>({ events: [], captions: [] });
   const [batchFolder, setBatchFolder] = useState("");
   const [batchDiscovery, setBatchDiscovery] = useState<BatchDiscovery | null>(null);
   const [batch, setBatch] = useState<BatchJob | null>(null);
@@ -229,6 +242,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     });
     if (result?.id) {
       setAnalysis(result as Analysis);
+      setReview({ events: [], captions: [] });
       onStatusMessage({
         text: "Áudio transcrito e decisões de edição preparadas para revisão.",
         type: "success",
@@ -238,14 +252,58 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function renderPreview() {
     if (!analysis) return;
+    const saved = await action("save-editorial-review", { planId: analysis.id, review });
+    if (!saved) return;
     const result = await action("render-preview", { planId: analysis.id });
     if (result?.plan) {
-      setAnalysis(result.plan as Analysis);
+      setAnalysis((current) => current ? {
+        ...current,
+        artifacts: (result.plan as Analysis).artifacts,
+      } : result.plan as Analysis);
       onStatusMessage({
         text: `Prévia renderizada em ${String(result.previewPath)}`,
         type: "success",
       });
     }
+  }
+
+  function eventReview(event: EditEvent) {
+    return review.events.find((item) => item.id === event.id) || { id: event.id };
+  }
+
+  function updateEvent(event: EditEvent, patch: Partial<EditEvent> & { enabled?: boolean }) {
+    setReview((current) => ({
+      ...current,
+      events: [...current.events.filter((item) => item.id !== event.id), { ...eventReview(event), ...patch, id: event.id }],
+    }));
+  }
+
+  function captionReview(index: number) {
+    return review.captions.find((item) => item.index === index) || { index };
+  }
+
+  function updateCaption(index: number, patch: Partial<EditorialReview["captions"][number]>) {
+    setReview((current) => ({
+      ...current,
+      captions: [...current.captions.filter((item) => item.index !== index), { ...captionReview(index), ...patch, index }],
+    }));
+  }
+
+  async function restoreAutomatic() {
+    if (!analysis) return;
+    const result = await action("reset-editorial-review", { planId: analysis.id });
+    if (result) {
+      setReview({ events: [], captions: [] });
+      onStatusMessage({ text: "Decisões automáticas restauradas. Renderize a prévia quando quiser conferir.", type: "success" });
+    }
+  }
+
+  async function saveCourseStandard() {
+    if (!analysis) return;
+    const saved = await action("save-editorial-review", { planId: analysis.id, review });
+    if (!saved) return;
+    const result = await action("save-course-editorial-standard", { planId: analysis.id });
+    if (result) onStatusMessage({ text: "Padrão editorial salvo para as próximas aulas do curso.", type: "success" });
   }
 
   async function approve() {
@@ -654,6 +712,60 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               Tema: {analysis.courseTheme?.label || "automático"}
             </span>
           </div>
+
+          <div className="space-y-3 rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-bold text-zinc-100">Timeline editorial</h4>
+                <p className="text-[11px] text-zinc-500">Ajustes ficam pendentes até você renderizar uma nova prévia.</p>
+              </div>
+              <div className="flex gap-2">
+                <button disabled={!!busy} onClick={restoreAutomatic} className="rounded-md border border-white/15 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-40">Restaurar automático</button>
+                <button disabled={!!busy || !analysis.courseName} onClick={saveCourseStandard} className="rounded-md border border-cyan-400/30 px-2 py-1 text-[11px] text-cyan-200 disabled:opacity-40">Salvar padrão do curso</button>
+              </div>
+            </div>
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {analysis.events.map((event) => {
+                const change = eventReview(event);
+                const enabled = change.enabled !== false;
+                return <div key={`edit-${event.id}`} className={`rounded-md border p-3 ${enabled ? "border-white/10 bg-white/[0.02]" : "border-white/5 opacity-50"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-1 text-[11px] text-zinc-300"><input type="checkbox" checked={enabled} onChange={(input) => updateEvent(event, { enabled: input.target.checked })} />Ativo</label>
+                    <span className="font-semibold text-cyan-300">{kindLabel[event.kind]}</span>
+                    <span className="text-[11px] text-zinc-500">{event.reason}</span>
+                  </div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-4">
+                    <label className="text-[11px] text-zinc-400">Início (s)<input className={fieldClass} type="number" min="0" step="0.1" value={change.start ?? event.start} onChange={(input) => updateEvent(event, { start: Number(input.target.value) })} /></label>
+                    <label className="text-[11px] text-zinc-400">Duração (s)<input className={fieldClass} type="number" min="0.1" max="12" step="0.1" value={change.duration ?? event.duration} onChange={(input) => updateEvent(event, { duration: Number(input.target.value) })} /></label>
+                    <label className="text-[11px] text-zinc-400 md:col-span-2">Texto<input className={fieldClass} value={change.label ?? event.label} onChange={(input) => updateEvent(event, { label: input.target.value })} /></label>
+                  </div>
+                  {event.kind === "zoom" && <div className="mt-2 grid gap-2 md:grid-cols-3">
+                    <label className="text-[11px] text-zinc-400">Intensidade<input className={fieldClass} type="number" min="1" max="1.14" step="0.01" value={change.scale ?? event.scale ?? 1.12} onChange={(input) => updateEvent(event, { scale: Number(input.target.value) })} /></label>
+                    <label className="text-[11px] text-zinc-400">Foco horizontal<input className={fieldClass} type="number" min="0.28" max="0.72" step="0.01" value={change.x ?? event.x ?? 0.5} onChange={(input) => updateEvent(event, { x: Number(input.target.value) })} /></label>
+                    <label className="text-[11px] text-zinc-400">Foco vertical<input className={fieldClass} type="number" min="0.24" max="0.62" step="0.01" value={change.y ?? event.y ?? 0.4} onChange={(input) => updateEvent(event, { y: Number(input.target.value) })} /></label>
+                  </div>}
+                </div>;
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+            <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200"><input type="checkbox" checked={review.captionsEnabled ?? (analysis.design?.captionsEnabled !== false)} onChange={(input) => setReview((current) => ({ ...current, captionsEnabled: input.target.checked }))} />Exibir legendas</label>
+            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              {analysis.captions.map((caption, index) => {
+                const change = captionReview(index);
+                const enabled = change.enabled !== false;
+                return <div key={`caption-${index}`} className={`grid gap-2 rounded-md border p-2 md:grid-cols-[auto_1fr_90px_90px] ${enabled ? "border-white/10" : "border-white/5 opacity-50"}`}>
+                  <label className="flex items-center gap-1 text-[11px] text-zinc-300"><input type="checkbox" checked={enabled} onChange={(input) => updateCaption(index, { enabled: input.target.checked })} />Ativa</label>
+                  <input className={fieldClass} value={change.text ?? caption.text} onChange={(input) => updateCaption(index, { text: input.target.value })} />
+                  <input className={fieldClass} type="number" step="0.1" value={change.start ?? caption.start} onChange={(input) => updateCaption(index, { start: Number(input.target.value) })} />
+                  <input className={fieldClass} type="number" step="0.1" value={change.end ?? caption.end} onChange={(input) => updateCaption(index, { end: Number(input.target.value) })} />
+                </div>;
+              })}
+            </div>
+          </div>
+
+          <p className={`text-xs ${analysis.visual.source === "agent-contact-sheet" ? "text-emerald-300" : "text-amber-300"}`}>Enquadramento: {analysis.visual.source === "agent-contact-sheet" ? "apresentador identificado visualmente" : "foco central seguro (sem confiança visual suficiente)"}.</p>
 
           <div className="max-h-52 space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3">
             {analysis.events.map((event) => (

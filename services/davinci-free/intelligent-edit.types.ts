@@ -90,6 +90,45 @@ export interface IntelligentEditEvent {
   y?: number;
 }
 
+export interface IntelligentEditorialEventOverride {
+  id: string;
+  enabled?: boolean;
+  start?: number;
+  duration?: number;
+  label?: string;
+  subtitle?: string;
+  scale?: number;
+  x?: number;
+  y?: number;
+}
+
+export interface IntelligentEditorialCaptionOverride {
+  index: number;
+  enabled?: boolean;
+  start?: number;
+  end?: number;
+  text?: string;
+}
+
+export interface IntelligentEditorialReview {
+  version: 1;
+  planId: string;
+  updatedAt: string;
+  captionsEnabled?: boolean;
+  events: IntelligentEditorialEventOverride[];
+  captions: IntelligentEditorialCaptionOverride[];
+  previewPath?: string;
+}
+
+export interface IntelligentCourseEditorialStandard {
+  version: 1;
+  courseName: string;
+  updatedAt: string;
+  captionsEnabled: boolean;
+  enabledKinds: Partial<Record<IntelligentEditEvent["kind"], boolean>>;
+  zoomScale?: number;
+}
+
 export interface IntelligentEditPlan {
   version: typeof INTELLIGENT_EDIT_PLAN_VERSION;
   id: string;
@@ -144,6 +183,12 @@ export interface IntelligentEditPlan {
     source: "agent-contact-sheet" | "safe-center-fallback";
     contactSheetPath?: string;
     sampledFrames: number;
+  };
+  editorial?: {
+    version: 1;
+    updatedAt: string;
+    modifiedEventIds: string[];
+    modifiedCaptionIndexes: number[];
   };
   artifacts: {
     directory: string;

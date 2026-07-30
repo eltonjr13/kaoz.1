@@ -9,6 +9,7 @@ import {
   readIntelligentEditPlan,
 } from "./intelligent-edit.service";
 import { renderIntelligentEdit } from "./intelligent-edit.renderer";
+import { applyCourseEditorialStandard } from "./intelligent-edit.review";
 import type {
   IntelligentCourseIdentity,
   IntelligentEditStyle,
@@ -273,6 +274,7 @@ async function renderBatchItems(
     await saveJob(job);
     try {
       const standardized = await applyCourseIdentity(plans[index], identity, item.index);
+      await applyCourseEditorialStandard(standardized);
       const rendered = await renderIntelligentEdit({ planId: standardized.id });
       item.previewPath = rendered.previewPath;
       item.status = "completed";

@@ -12,6 +12,7 @@ import {
 } from "./intelligent-edit.types";
 import { resolveIntelligentEditDesign } from "./intelligent-edit.design";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
+import { recordEditorialPreview } from "./intelligent-edit.review";
 
 function ffmpegPath() {
   const candidates = [
@@ -636,7 +637,7 @@ export async function renderIntelligentEdit(
     ...plan,
     artifacts: { ...plan.artifacts, previewPath },
   };
-  await writeFile(plan.artifacts.planPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+  await recordEditorialPreview(plan, previewPath);
   return {
     planId: plan.id,
     plan: updated,

@@ -326,6 +326,31 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(courseTheme, /reused:\s*true/);
 });
 
+test("revisão editorial preserva o plano automático e reaplica apenas regras seguras ao curso", async () => {
+  const review = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.review.ts"),
+    "utf8",
+  );
+  const renderer = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.renderer.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  assert.match(review, /editorial-review\.json/);
+  assert.match(review, /applyEditorialReview/);
+  assert.match(review, /enabledKinds/);
+  assert.match(review, /zoomScale/);
+  assert.match(review, /recordEditorialPreview/);
+  assert.match(renderer, /recordEditorialPreview/);
+  assert.match(panel, /Timeline editorial/);
+  assert.match(panel, /Salvar padrão do curso/);
+  assert.match(panel, /Exibir legendas/);
+  assert.match(panel, /Restaurar automático/);
+});
+
 test("runner interno não abre servidor nem executa código arbitrário", async () => {
   const runner = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "runner", "Kaoz1ApplyPlan.py"),

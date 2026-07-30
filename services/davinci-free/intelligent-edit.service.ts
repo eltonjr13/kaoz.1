@@ -982,7 +982,7 @@ export async function applyCourseIdentity(
   return updated;
 }
 
-export async function readIntelligentEditPlan(planId?: string) {
+export async function loadIntelligentEditPlan(planId?: string) {
   if (planId && !/^[a-f0-9]{16}$/.test(planId)) {
     throw new Error("Identificador da análise inteligente inválido.");
   }
@@ -992,4 +992,11 @@ export async function readIntelligentEditPlan(planId?: string) {
   return readFile(filePath, "utf8")
     .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
     .catch(() => null);
+}
+
+export async function readIntelligentEditPlan(planId?: string) {
+  const plan = await loadIntelligentEditPlan(planId);
+  if (!plan) return null;
+  const { applyEditorialReview, readEditorialReview } = await import("./intelligent-edit.review");
+  return applyEditorialReview(plan, await readEditorialReview(plan));
 }

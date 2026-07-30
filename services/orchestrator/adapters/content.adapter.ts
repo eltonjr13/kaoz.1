@@ -15,6 +15,11 @@ import {
   readIntelligentEditPlan,
 } from "../../davinci-free/intelligent-edit.service";
 import {
+  resetEditorialReview,
+  saveCourseEditorialStandard,
+  saveEditorialReview,
+} from "../../davinci-free/intelligent-edit.review";
+import {
   approveIntelligentEdit,
   renderIntelligentEdit,
 } from "../../davinci-free/intelligent-edit.renderer";
@@ -47,6 +52,9 @@ export const contentHandlers: Record<string, ToolHandler> = {
       typeof args.planId === "string" ? args.planId : undefined,
     ),
   }),
+  "davinci-free:save-editorial-review": async (args) => ({ output: await saveEditorialReview(args) }),
+  "davinci-free:reset-editorial-review": async (args) => ({ output: await resetEditorialReview(args) }),
+  "davinci-free:save-course-editorial-standard": async (args) => ({ output: await saveCourseEditorialStandard(args) }),
   "davinci-free:render-intelligent": async (args) => ({
     output: await renderIntelligentEdit(args),
   }),
