@@ -1091,8 +1091,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <div className="relative z-10 flex h-full flex-col gap-2 pointer-events-none">
 
                 {/* Track V1 (Video Clips) */}
-                <div className="h-10 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
-                  <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">V1</span>
+                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
+                  <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">V1</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {activeMediaAsset === "preview" && (
                       <div
@@ -1126,8 +1126,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track FX (AI Efficacy Event Clips) */}
-                <div className="h-9 bg-zinc-950/60 rounded-lg border border-white/10 flex relative items-center px-2">
-                  <span className="text-[10px] font-mono font-bold text-violet-400 w-8 shrink-0">FX</span>
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/60 pointer-events-auto">
+                  <span className="pl-2 text-[10px] font-mono font-bold text-violet-400">FX</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {analysis?.events.length ? (
                       analysis.events.map((evt) => {
@@ -1171,8 +1171,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track A1 (Audio Waveform) */}
-                <div className="h-9 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
-                  <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">A1</span>
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
+                  <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">A1</span>
                   <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                     {waveformBusy && !waveform.length ? (
                       <span className="flex items-center gap-1 text-[9px] text-zinc-500">
@@ -1196,8 +1196,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 </div>
                 {musicWaveform.length > 0 && (
-                  <div className="h-8 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
-                    <span className="text-[10px] font-mono font-bold text-cyan-500 w-8 shrink-0">A2</span>
+                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
+                    <span className="pl-2 text-[10px] font-mono font-bold text-cyan-500">A2</span>
                     <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                       {musicWaveform.map((peak, index) => (
                         <div
@@ -1212,6 +1212,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 )}
                 </div>
               </div>
+            </div>
+            </div>
             </div>
           </main>
 
