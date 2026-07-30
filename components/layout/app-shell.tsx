@@ -11,6 +11,7 @@ import {
   Settings,
   Shirt,
   Sparkles,
+  Video,
   X,
   Brain,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/flow", label: "Kaoz.1", icon: Sparkles },
   { href: "/supervision", label: "Supervisor", icon: Activity },
   { href: "/cortex", label: "Córtex", icon: Brain },
+  { href: "/video", label: "Edição de vídeo", icon: Video },
   { href: "/patterns", label: "Estampas", icon: Shirt },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

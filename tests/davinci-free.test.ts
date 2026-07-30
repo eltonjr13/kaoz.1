@@ -351,6 +351,19 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /Restaurar automático/);
 });
 
+test("edição de vídeo possui área própria na navegação, fora das configurações", async () => {
+  const shell = await readFile(path.join(process.cwd(), "components", "layout", "app-shell.tsx"), "utf8");
+  const page = await readFile(path.join(process.cwd(), "app", "(dashboard)", "video", "page.tsx"), "utf8");
+  const editor = await readFile(path.join(process.cwd(), "components", "video", "video-editor-client.tsx"), "utf8");
+  const settings = await readFile(path.join(process.cwd(), "app", "(dashboard)", "settings", "page.tsx"), "utf8");
+  assert.match(shell, /href: "\/video"/);
+  assert.match(shell, /Edição de vídeo/);
+  assert.match(page, /VideoEditorClient/);
+  assert.match(editor, /DavinciFreePanel/);
+  assert.doesNotMatch(settings, /DavinciFreePanel/);
+  assert.doesNotMatch(settings, /davinci-free/);
+});
+
 test("runner interno não abre servidor nem executa código arbitrário", async () => {
   const runner = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "runner", "Kaoz1ApplyPlan.py"),

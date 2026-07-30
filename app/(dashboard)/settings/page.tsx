@@ -28,8 +28,7 @@ import {
   Activity,
   Server,
   PlugZap,
-  Download,
-  Film
+  Download
 } from "lucide-react";
 import { TTSProviderCard, type TTSOption } from "@/components/settings/TTSProviderCard";
 import type { TTSConfig, TTSProviderName } from "@/services/tts/tts.types";
@@ -40,7 +39,6 @@ import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
 import { DesktopBehaviorPanel } from "@/components/settings/DesktopBehaviorPanel";
-import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1633,7 +1631,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice" | "davinci-free" | "mcp" | "skills" | "connectors" | "updates";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors" | "updates";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1887,17 +1885,6 @@ export default function SettingsPage() {
             Conectores
           </button>
           <button
-            onClick={() => setActiveTab("davinci-free")}
-            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
-              activeTab === "davinci-free"
-                ? "border-emerald-500 text-emerald-400"
-                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
-            }`}
-          >
-            <Film size={14} className={activeTab === "davinci-free" ? "text-emerald-400" : "text-zinc-500"} />
-            Resolve Free
-          </button>
-          <button
             onClick={() => setActiveTab("mcp")}
             className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
               activeTab === "mcp"
@@ -2001,13 +1988,6 @@ export default function SettingsPage() {
         {activeTab === "omnivoice" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <OmniVoiceSettingsPanel onStatusMessage={setStatusMessage} />
-          </div>
-        )}
-
-        {/* TAB: MCP */}
-        {activeTab === "davinci-free" && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <DavinciFreePanel onStatusMessage={setStatusMessage} />
           </div>
         )}
 
