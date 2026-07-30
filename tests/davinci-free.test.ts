@@ -372,6 +372,12 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /api\/davinci-free\/media/);
   assert.match(panel, /musicWaveform/);
   assert.match(panel, /addedEvents/);
+  assert.match(panel, /grid items-start gap-4 lg:grid-cols-12/);
+  assert.doesNotMatch(panel, /min-h-\[640px\]/);
+  assert.match(panel, /handlePlayerSeek/);
+  assert.match(panel, /grid-cols-\[40px_minmax\(0,1fr\)\]/);
+  assert.match(panel, /left-\[52px\] right-3/);
+  assert.match(panel, /tick \/ timelineDuration/);
 });
 
 test("edição de vídeo possui área própria na navegação, fora das configurações", async () => {

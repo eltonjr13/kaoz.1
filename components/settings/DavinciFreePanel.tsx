@@ -494,14 +494,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const rulerTicks = useMemo(() => {
     const ticks: number[] = [];
-    const step = timelineDuration > 300 ? 60 : timelineDuration > 120 ? 30 : timelineDuration > 60 ? 15 : 5;
+    const visibleDuration = timelineDuration / timelineScale;
+    const step = visibleDuration > 300 ? 60 : visibleDuration > 120 ? 30 : visibleDuration > 60 ? 15 : 5;
     for (let i = 0; i <= timelineDuration; i += step) {
       ticks.push(i);
     }
     const lastWholeSecond = Math.floor(timelineDuration);
     if (ticks.at(-1) !== lastWholeSecond) ticks.push(lastWholeSecond);
     return ticks;
-  }, [timelineDuration]);
+  }, [timelineDuration, timelineScale]);
 
   const videoMediaSrc = useMemo(() => {
     if (!analysis) return "";
@@ -1032,7 +1033,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <ZoomIn size={14} />
                   </button>
                   <button
-                    onClick={() => setTimelineScale((s) => Math.max(0.5, s - 0.25))}
+                    onClick={() => setTimelineScale((s) => Math.max(1, s - 0.25))}
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
                     title="Zoom Out"
                   >
