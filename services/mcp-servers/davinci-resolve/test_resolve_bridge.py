@@ -762,7 +762,7 @@ ResolveClient()._once(
             project.current.export_calls,
             [
                 (
-                    str(destination),
+                    str(destination.resolve(strict=False)),
                     FakeResolve.EXPORT_DRT,
                     FakeResolve.EXPORT_NONE,
                 )
