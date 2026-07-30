@@ -16,6 +16,34 @@ import {
   lessonSubtitle,
   narrativeHighlights,
 } from "../services/davinci-free/course-identity.service.ts";
+import {
+  DEFAULT_SUBJECT_ANCHOR,
+  isReliableVisualAnchor,
+  stabilizeSubjectAnchor,
+} from "../services/davinci-free/visual-anchor.ts";
+
+test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
+  const first = stabilizeSubjectAnchor({
+    index: 1,
+    x: 0.5,
+    y: 0.4,
+    confidence: 0.95,
+  });
+  const second = stabilizeSubjectAnchor({
+    index: 2,
+    x: 0.08,
+    y: 0.96,
+    confidence: 0.95,
+  }, first);
+
+  assert.deepEqual(first, DEFAULT_SUBJECT_ANCHOR);
+  assert.equal(second.x, 0.28);
+  assert.equal(second.y, 0.62);
+  assert.equal(
+    isReliableVisualAnchor({ index: 3, x: 0.5, y: 0.4, confidence: 0.4 }),
+    false,
+  );
+});
 
 test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação por etapa", async () => {
   const registry = await readFile(
@@ -278,6 +306,8 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
   assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);
+  assert.match(analysis, /relativos somente ao painel indicado/);
+  assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
   assert.match(analysis, /analysisVersion:\s*7/);
   assert.match(analysis, /captionsEnabled/);

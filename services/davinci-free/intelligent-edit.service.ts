@@ -29,6 +29,12 @@ import {
   lessonSubtitle,
   narrativeHighlights,
 } from "./course-identity.service";
+import {
+  DEFAULT_SUBJECT_ANCHOR,
+  isReliableVisualAnchor,
+  stabilizeSubjectAnchor,
+  type VisualAnchor,
+} from "./visual-anchor";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
@@ -64,13 +70,6 @@ type SemanticDecision = {
     reason?: string;
   }>;
   reviewedCaptions?: Array<{ start: number; end: number; text: string }>;
-};
-
-type VisualAnchor = {
-  index: number;
-  x: number;
-  y: number;
-  confidence?: number;
 };
 
 function ffmpegPath() {
@@ -661,7 +660,8 @@ async function visualEditPlan(input: {
         "Para cada painel, localize o ponto focal que deve permanecer no centro de um zoom: normalmente o centro do rosto, levemente abaixo dos olhos.",
         "Retorne SOMENTE JSON no formato:",
         '{"anchors":[{"index":1,"x":0.5,"y":0.4,"confidence":0.95}]}',
-        "x e y são coordenadas normalizadas de 0 a 1 relativas à FOLHA INTEIRA, não ao painel individual.",
+        "Prioridade: x e y devem ser relativos somente ao painel indicado. Ignore a posicao do painel na folha 2x2.",
+        "Localize o apresentador principal e ignore textos, computador, fundo e outros objetos.",
       ].join("\n");
       const response = await queryConfiguredAgentCli(prompt, {
         useExternalTools: false,
@@ -674,16 +674,14 @@ async function visualEditPlan(input: {
   }
 
   const enriched = input.events.map((event) => ({ ...event }));
+  let previousSubjectAnchor = DEFAULT_SUBJECT_ANCHOR;
   for (const [index, event] of zoomEvents.entries()) {
     const target = enriched.find((candidate) => candidate.id === event.id);
     if (!target) continue;
     const anchor = anchors.find((candidate) => candidate.index === index + 1);
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const localX = anchor ? (anchor.x - column * 0.5) * 2 : 0.5;
-    const localY = anchor ? (anchor.y - row * 0.5) * 2 : 0.42;
-    target.x = Math.max(0.25, Math.min(0.75, localX));
-    target.y = Math.max(0.2, Math.min(0.72, localY));
+    previousSubjectAnchor = stabilizeSubjectAnchor(anchor, previousSubjectAnchor);
+    target.x = previousSubjectAnchor.x;
+    target.y = previousSubjectAnchor.y;
     target.scale = 1.12;
   }
 
@@ -712,7 +710,7 @@ async function visualEditPlan(input: {
   return {
     events: enriched.sort((a, b) => a.start - b.start),
     visual: {
-      source: anchors.length >= sampleEvents.length
+      source: anchors.filter(isReliableVisualAnchor).length >= sampleEvents.length
         ? "agent-contact-sheet" as const
         : "safe-center-fallback" as const,
       contactSheetPath,
