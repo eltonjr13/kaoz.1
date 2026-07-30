@@ -1,27 +1,81 @@
 "use client";
 
 import { useState } from "react";
-import { Video } from "lucide-react";
+import { Video, Sparkles, Cpu, CheckCircle2 } from "lucide-react";
 import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
 
 export function VideoEditorClient() {
   const [status, setStatus] = useState<StatusMessage | null>(null);
+
   return (
-    <div className="h-full overflow-y-auto px-5 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
-          <div>
-            <p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-violet-300"><Video size={14} /> Estúdio de conteúdo</p>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Edição de vídeo</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">Analise, revise e renderize aulas com decisões editoriais antes de enviá-las ao DaVinci Resolve.</p>
+    <div className="h-full overflow-y-auto bg-[#0b0b0c] px-5 py-6 text-zinc-100 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header Principal - Studio Dark */}
+        <header className="relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60 p-6 backdrop-blur-xl shadow-2xl">
+          <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-violet-600/10 blur-3xl" />
+          <div className="absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-emerald-600/10 blur-3xl" />
+
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-violet-400">
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-500/15 text-violet-300">
+                  <Video size={13} />
+                </span>
+                Estúdio de conteúdo
+              </div>
+              <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
+                Edição de vídeo
+              </h1>
+              <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-400 md:text-sm">
+                Analise, revise e renderize aulas com decisões editoriais inteligentes antes de enviá-las ao DaVinci Resolve.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-semibold text-emerald-300 shadow-sm backdrop-blur-md">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+                DaVinci Resolve Free
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3.5 py-1.5 text-xs font-semibold text-violet-300 shadow-sm backdrop-blur-md">
+                <Cpu size={13} />
+                Diretor AI Kaoz.1
+              </span>
+            </div>
           </div>
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1 text-xs font-medium text-emerald-300">DaVinci Resolve Free</span>
         </header>
-        {status && <div className={`rounded-lg border px-4 py-3 text-sm ${status.type === "error" ? "border-red-400/25 bg-red-400/5 text-red-200" : status.type === "success" ? "border-emerald-400/25 bg-emerald-400/5 text-emerald-200" : "border-cyan-400/25 bg-cyan-400/5 text-cyan-200"}`}>{status.text}</div>}
+
+        {/* Notificação de Status */}
+        {status && (
+          <div
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 text-xs font-medium shadow-lg backdrop-blur-md transition-all ${
+              status.type === "error"
+                ? "border-red-500/30 bg-red-500/10 text-red-200"
+                : status.type === "success"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                  : "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+            }`}
+          >
+            {status.type === "success" ? (
+              <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+            ) : status.type === "error" ? (
+              <span className="shrink-0 font-bold text-red-400">⚠️</span>
+            ) : (
+              <Sparkles size={16} className="shrink-0 text-cyan-400" />
+            )}
+            <span className="leading-snug">{status.text}</span>
+          </div>
+        )}
+
+        {/* Painel Principal */}
         <DavinciFreePanel onStatusMessage={setStatus} />
       </div>
     </div>
   );
 }
+
