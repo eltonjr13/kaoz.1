@@ -377,6 +377,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!analysis) return;
     const result = await action("reset-editorial-review", { planId: analysis.id });
     if (result) {
+      setAnalysis(result as Analysis);
       setReview({ events: [], captions: [] });
       setPreviewStale(true);
       onStatusMessage({ text: "Decisões automáticas restauradas. Renderize a prévia quando quiser conferir.", type: "success" });
@@ -1039,12 +1040,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
 
               {/* Tracks Area */}
-              <div
-                ref={timelineTrackRef}
-                onClick={handleTimelineClick}
-                className="flex-1 overflow-x-auto p-3 flex flex-col gap-2 relative bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%] cursor-crosshair"
-                style={{ width: `${100 * timelineScale}%` }}
-              >
+              <div className="flex-1 overflow-x-auto overflow-y-hidden">
+                <div
+                  ref={timelineTrackRef}
+                  onClick={handleTimelineClick}
+                  className="h-full min-w-full p-3 flex flex-col gap-2 relative bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%] cursor-crosshair"
+                  style={{ width: `${100 * timelineScale}%` }}
+                >
                 {/* Playhead */}
                 <div
                   className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
@@ -1057,15 +1059,34 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <div className="h-10 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
                   <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">V1</span>
                   <div className="flex-1 relative h-full flex items-center">
-                    <div className="absolute left-0 w-[12%] h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate">
-                      Intro Sequence
-                    </div>
-                    <div className="absolute left-[13%] w-[55%] h-7 bg-emerald-950/60 border border-emerald-500 rounded px-2 flex items-center text-[10px] text-emerald-300 font-mono truncate font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)_inset]">
+                    {activeMediaAsset === "preview" && (
+                      <div
+                        className="absolute h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate"
+                        style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
+                      >
+                        Intro
+                      </div>
+                    )}
+                    <div
+                      className="absolute h-7 bg-emerald-950/60 border border-emerald-500 rounded px-2 flex items-center text-[10px] text-emerald-300 font-mono truncate font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)_inset]"
+                      style={{
+                        left: `${activeMediaAsset === "preview" ? (4 / timelineDuration) * 100 : 0}%`,
+                        width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
+                      }}
+                    >
                       A-Roll ({form.moduleName || "Ativo"})
                     </div>
-                    <div className="absolute left-[69%] w-[25%] h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate">
-                      Outro Cut
-                    </div>
+                    {activeMediaAsset === "preview" && (
+                      <div
+                        className="absolute h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate"
+                        style={{
+                          left: `${(((analysis?.media.durationSeconds || 0) + 4) / timelineDuration) * 100}%`,
+                          width: `${(4 / timelineDuration) * 100}%`,
+                        }}
+                      >
+                        Outro
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1154,6 +1175,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <span className="ml-2 text-[8px] text-cyan-400">{analysis?.media.musicDb} dB</span>
                   </div>
                 )}
+                </div>
               </div>
             </div>
           </main>

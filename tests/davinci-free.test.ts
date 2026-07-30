@@ -362,11 +362,16 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(review, /enabledKinds/);
   assert.match(review, /zoomScale/);
   assert.match(review, /recordEditorialPreview/);
+  assert.match(review, /addedEvents/);
+  assert.match(review, /custom-evt-/);
   assert.match(renderer, /recordEditorialPreview/);
   assert.match(panel, /Timeline editorial/);
   assert.match(panel, /Salvar padrão do curso/);
   assert.match(panel, /Exibir legendas/);
   assert.match(panel, /Restaurar automático/);
+  assert.match(panel, /api\/davinci-free\/media/);
+  assert.match(panel, /musicWaveform/);
+  assert.match(panel, /addedEvents/);
 });
 
 test("edição de vídeo possui área própria na navegação, fora das configurações", async () => {
