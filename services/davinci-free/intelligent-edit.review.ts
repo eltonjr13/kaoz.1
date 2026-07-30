@@ -4,6 +4,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { loadIntelligentEditPlan } from "./intelligent-edit.service";
+import {
+  sanitizeEditorialPreviewPath,
+  sanitizeEditorialReviewTimestamp,
+} from "./editorial-review-metadata";
 import type {
   IntelligentCourseEditorialStandard,
   IntelligentEditorialCaptionOverride,
@@ -160,6 +164,7 @@ function captionOverrideEntry(
 
 function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditorialReview {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const now = new Date().toISOString();
   const allowedEvents = new Map(plan.events.map((event) => [event.id, event]));
   const events = Array.isArray(raw.events)
     ? raw.events.flatMap((item) => eventOverrideEntry(plan, allowedEvents, item))
@@ -170,14 +175,19 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
   const captions = Array.isArray(raw.captions)
     ? raw.captions.flatMap((item) => captionOverrideEntry(plan, item))
     : [];
+  const previewPath = sanitizeEditorialPreviewPath(
+    plan.artifacts.directory,
+    raw.previewPath,
+  );
   return {
     version: 1,
     planId: plan.id,
-    updatedAt: new Date().toISOString(),
+    updatedAt: sanitizeEditorialReviewTimestamp(raw.updatedAt, now),
     ...(typeof raw.captionsEnabled === "boolean" ? { captionsEnabled: raw.captionsEnabled } : {}),
     events,
     addedEvents,
     captions,
+    ...(previewPath ? { previewPath } : {}),
   };
 }
 

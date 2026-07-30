@@ -23,6 +23,10 @@ import {
 } from "../services/davinci-free/visual-anchor.ts";
 import { parseMediaByteRange } from "../services/davinci-free/media-range.ts";
 import { createAudioWaveformPeaks } from "../services/davinci-free/audio-waveform.ts";
+import {
+  sanitizeEditorialPreviewPath,
+  sanitizeEditorialReviewTimestamp,
+} from "../services/davinci-free/editorial-review-metadata.ts";
 
 test("stream de mídia interpreta ranges usados pelo player sem carregar o arquivo inteiro", () => {
   assert.deepEqual(parseMediaByteRange(null, 1_000), null);
@@ -56,6 +60,34 @@ test("waveform preserva silêncio e não achata a fala por causa de um pico isol
   );
   assert.equal(Math.max(...peaks), 1);
   assert.deepEqual(peaks.slice(85), Array.from({ length: 15 }, () => 0));
+});
+
+test("metadados da revisão preservam apenas prévia local segura e timestamp válido", () => {
+  const artifactDirectory = path.resolve("D:", "kaoz-tests", "plan-id");
+  const previewPath = path.join(artifactDirectory, "preview-v4.mp4");
+  assert.equal(
+    sanitizeEditorialPreviewPath(artifactDirectory, previewPath),
+    previewPath,
+  );
+  assert.equal(
+    sanitizeEditorialPreviewPath(
+      artifactDirectory,
+      path.join(artifactDirectory, "..", "other", "preview.mp4"),
+    ),
+    undefined,
+  );
+  assert.equal(
+    sanitizeEditorialPreviewPath(
+      artifactDirectory,
+      path.join(artifactDirectory, "editorial-review.json"),
+    ),
+    undefined,
+  );
+  assert.equal(
+    sanitizeEditorialReviewTimestamp("2026-07-30T19:25:22.756Z", "fallback"),
+    "2026-07-30T19:25:22.756Z",
+  );
+  assert.equal(sanitizeEditorialReviewTimestamp("invalid", "fallback"), "fallback");
 });
 
 test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
