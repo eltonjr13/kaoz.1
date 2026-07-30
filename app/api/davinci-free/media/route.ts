@@ -40,7 +40,7 @@ async function waveformResponse(
 ) {
   const points = Number(request.nextUrl.searchParams.get("points") || 360);
   return NextResponse.json(await readIntelligentAudioWaveform(descriptor, points), {
-    headers: { "Cache-Control": "private, max-age=300" },
+    headers: { "Cache-Control": "private, no-cache" },
   });
 }
 

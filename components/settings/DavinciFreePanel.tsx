@@ -173,6 +173,10 @@ function clock(seconds: number) {
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }
 
+function waveformBarHeight(peak: number, maximumPercent: number) {
+  return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
+}
+
 export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [status, setStatus] = useState<Status | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -508,6 +512,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!analysis) return "";
     return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
   }, [activeMediaAsset, analysis]);
+  const waveformPointCount = Math.min(720, Math.round(360 * timelineScale));
 
   useEffect(() => {
     setPlayerDuration(0);
@@ -525,7 +530,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setWaveformBusy(true);
     const load = async (asset: "source" | "preview" | "music") => {
       const response = await fetch(
-        `/api/davinci-free/media?planId=${analysis.id}&asset=${asset}&waveform=true&points=360`,
+        `/api/davinci-free/media?planId=${analysis.id}&asset=${asset}&waveform=true&points=${waveformPointCount}`,
         { cache: "no-store", signal: controller.signal },
       );
       const data = await response.json();
@@ -551,7 +556,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         if (!controller.signal.aborted) setWaveformBusy(false);
       });
     return () => controller.abort();
-  }, [activeMediaAsset, analysis, onStatusMessage]);
+  }, [activeMediaAsset, analysis, onStatusMessage, waveformPointCount]);
 
   function eventPlayerTime(event: EditEvent, sourceTime: number) {
     if (activeMediaAsset !== "preview") return sourceTime;
@@ -1188,7 +1193,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                           className={`min-w-px flex-1 rounded-full ${
                             pointTime <= playheadTime ? "bg-emerald-300" : "bg-emerald-700"
                           }`}
-                          style={{ height: `${Math.max(8, peak * 90)}%` }}
+                          style={{ height: waveformBarHeight(peak, 92) }}
                         />
                       );
                     }) : (
@@ -1204,7 +1209,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         <div
                           key={index}
                           className="min-w-px flex-1 rounded-full bg-cyan-700"
-                          style={{ height: `${Math.max(6, peak * 78)}%` }}
+                          style={{ height: waveformBarHeight(peak, 82) }}
                         />
                       ))}
                     </div>

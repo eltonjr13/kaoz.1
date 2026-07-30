@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
+import { createAudioWaveformPeaks } from "./audio-waveform";
 
 export type IntelligentMediaAsset = "source" | "preview" | "music";
 
@@ -170,21 +171,6 @@ function extractMonoSamples(filePath: string) {
   });
 }
 
-function waveformPeaks(samples: Float32Array, pointCount: number) {
-  if (!samples.length) return Array.from({ length: pointCount }, () => 0);
-  const peaks = Array.from({ length: pointCount }, (_, pointIndex) => {
-    const start = Math.floor((pointIndex * samples.length) / pointCount);
-    const end = Math.max(start + 1, Math.floor(((pointIndex + 1) * samples.length) / pointCount));
-    let peak = 0;
-    for (let index = start; index < Math.min(end, samples.length); index += 1) {
-      peak = Math.max(peak, Math.abs(samples[index] || 0));
-    }
-    return peak;
-  });
-  const maximum = Math.max(...peaks, 0.0001);
-  return peaks.map((peak) => Number((peak / maximum).toFixed(4)));
-}
-
 export async function readIntelligentAudioWaveform(
   descriptor: IntelligentMediaDescriptor,
   pointCount = 360,
@@ -193,7 +179,7 @@ export async function readIntelligentAudioWaveform(
   const safePointCount = Math.min(720, Math.max(120, Math.round(pointCount)));
   const cachePath = path.join(
     descriptor.cacheDirectory,
-    `waveform-${descriptor.asset}-${safePointCount}-v1.json`,
+    `waveform-${descriptor.asset}-${safePointCount}-v2.json`,
   );
   const cached = await readFile(cachePath, "utf8")
     .then((raw) => JSON.parse(raw) as CachedWaveform)
@@ -212,7 +198,7 @@ export async function readIntelligentAudioWaveform(
   const waveform: CachedWaveform = {
     asset: descriptor.asset,
     durationSeconds: descriptor.durationSeconds,
-    peaks: waveformPeaks(samples, safePointCount),
+    peaks: createAudioWaveformPeaks(samples, safePointCount),
     generatedAt: new Date().toISOString(),
     sourceSize: descriptor.size,
     sourceModifiedAt: descriptor.modifiedAt,
