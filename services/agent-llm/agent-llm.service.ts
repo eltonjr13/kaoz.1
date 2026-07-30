@@ -798,6 +798,18 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   return runAgentCli(settings, prompt, options);
 }
 
+/**
+ * Runs the locally configured Codex CLI independently from the general text
+ * provider. This is reserved for flows that need the CLI image argument.
+ */
+export async function queryConfiguredCodexCli(
+  prompt: string,
+  options: QueryOptions = {},
+): Promise<string> {
+  const settings = await readAgentLLMSettings();
+  return runCodexCli(settings, prompt, options);
+}
+
 export async function getConfiguredAgentIdentity(agent?: QueryOptions["agent"]): Promise<{ provider: string; model: string }> {
   if (agent) return { provider: agent.provider, model: agent.model };
   const settings = await readAgentLLMSettings();

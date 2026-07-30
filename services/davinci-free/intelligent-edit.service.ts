@@ -9,6 +9,7 @@ import { getLocalDataDir } from "@/lib/runtime-paths";
 import { getSpeechService } from "@/services/speech/speech.service";
 import {
   getConfiguredAgentIdentity,
+  queryConfiguredCodexCli,
   queryConfiguredAgentCli,
 } from "@/services/agent-llm/agent-llm.service";
 import {
@@ -652,23 +653,20 @@ async function visualEditPlan(input: {
 
   let anchors: VisualAnchor[] = [];
   try {
-    const identity = await getConfiguredAgentIdentity();
-    if (identity.provider === "codex-cli") {
-      const prompt = [
-        "Analise esta folha 2x2 de quadros de um vídeo educacional.",
-        "Os painéis seguem a ordem: 1 superior esquerdo, 2 superior direito, 3 inferior esquerdo, 4 inferior direito.",
-        "Para cada painel, localize o ponto focal que deve permanecer no centro de um zoom: normalmente o centro do rosto, levemente abaixo dos olhos.",
-        "Retorne SOMENTE JSON no formato:",
-        '{"anchors":[{"index":1,"x":0.5,"y":0.4,"confidence":0.95}]}',
-        "Prioridade: x e y devem ser relativos somente ao painel indicado. Ignore a posicao do painel na folha 2x2.",
-        "Localize o apresentador principal e ignore textos, computador, fundo e outros objetos.",
-      ].join("\n");
-      const response = await queryConfiguredAgentCli(prompt, {
-        useExternalTools: false,
-        referenceImagePath: contactSheetPath,
-      });
-      anchors = response ? extractVisualAnchors(response) : [];
-    }
+    const prompt = [
+      "Analise esta folha 2x2 de quadros de um vídeo educacional.",
+      "Os painéis seguem a ordem: 1 superior esquerdo, 2 superior direito, 3 inferior esquerdo, 4 inferior direito.",
+      "Para cada painel, localize o ponto focal que deve permanecer no centro de um zoom: normalmente o centro do rosto, levemente abaixo dos olhos.",
+      "Retorne SOMENTE JSON no formato:",
+      '{"anchors":[{"index":1,"x":0.5,"y":0.4,"confidence":0.95}]}',
+      "Prioridade: x e y devem ser relativos somente ao painel indicado. Ignore a posicao do painel na folha 2x2.",
+      "Localize o apresentador principal e ignore textos, computador, fundo e outros objetos.",
+    ].join("\n");
+    const response = await queryConfiguredCodexCli(prompt, {
+      useExternalTools: false,
+      referenceImagePath: contactSheetPath,
+    });
+    anchors = extractVisualAnchors(response);
   } catch {
     anchors = [];
   }

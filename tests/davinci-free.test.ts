@@ -306,6 +306,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
   assert.match(analysis, /referenceImagePath:\s*contactSheetPath/);
+  assert.match(analysis, /queryConfiguredCodexCli/);
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
