@@ -20,8 +20,16 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Instalar dependências
         run: npm ci
+
+      - name: Validar integração DaVinci Resolve
+        run: npm run test:davinci-resolve
 
       - name: Gerar instalador e metadados
         run: npm run desktop:build

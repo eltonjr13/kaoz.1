@@ -6,8 +6,13 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { formatSpotifyToolResponse } from "../spotify/spotify-response-format.ts";
 import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
+import {
+  executeApprovedMcpToolFromIntent,
+  extractToolApprovalToken,
+  requestMcpToolApproval,
+} from "../tools/tool-approval.service.ts";
+import { presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -814,6 +819,48 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   const connectorProvider = connectorPublishProvider(normalizedPrompt);
   const connectorPublishIntent = connectorProvider !== null;
+
+  if (extractToolApprovalToken(toolIntentPrompt)) {
+    let approved: Awaited<
+      ReturnType<typeof executeApprovedMcpToolFromIntent>
+    > = null;
+    try {
+      approved = await executeApprovedMcpToolFromIntent(
+        toolIntentPrompt,
+        allTools,
+        async (tool, storedArguments, approvalGrant) => {
+          const execution = await toolExecutionService.execute({
+            agentId: CHAT_TOOL_AGENT_ID,
+            toolId: tool.id,
+            arguments: { ...storedArguments },
+            context: {
+              planId: "chat-approved",
+              runId: "chat-approved",
+              stepId: "chat-approved",
+              signal: AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS),
+            },
+            permissions: {
+              allowedToolIds: Object.freeze([tool.id]),
+              approvalMode: "step",
+              reason: "Token de aprovação humana explícita consumido.",
+            },
+            approvalGrant,
+            correlationId: `chat-tool-approved-${crypto.randomUUID()}`,
+          });
+          return execution.result;
+        },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return JSON.stringify({
+        message: `Não foi possível executar a aprovação: ${message}`,
+        action: null,
+      });
+    }
+    if (approved) {
+      return presentApprovedMcpResult(prompt, approved.result, executor);
+    }
+  }
   
   let relevantTools = connectorProvider
     ? allTools.filter((tool) => tool.id === `social:${connectorProvider}:publish`)
@@ -871,6 +918,13 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       const tool = relevantTools.find((candidate) => candidate.id === toolId);
       if (!tool) throw new Error(`Ferramenta '${toolId}' não encontrada.`);
       const args = call.args || {};
+      if (tool.source === "mcp") {
+        const pending = await requestMcpToolApproval(tool, args);
+        return JSON.stringify({
+          message: pending.message,
+          action: null,
+        });
+      }
       const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
       const execution = await toolExecutionService.execute({
         agentId: CHAT_TOOL_AGENT_ID,

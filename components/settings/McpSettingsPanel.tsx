@@ -112,6 +112,29 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isRenderableMcpServer(value: unknown): value is McpServerConfig {
+  if (!value || typeof value !== "object") return false;
+  const server = value as Partial<McpServerConfig>;
+  return (
+    typeof server.id === "string" &&
+    typeof server.name === "string" &&
+    typeof server.enabled === "boolean" &&
+    (server.transport === "stdio" || server.transport === "sse")
+  );
+}
+
+async function readApiResponse<T>(response: Response): Promise<T> {
+  const data = await response.json() as T & { error?: unknown };
+  if (!response.ok) {
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : `A API MCP respondeu com status ${response.status}.`,
+    );
+  }
+  return data;
+}
+
 export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
   const [settings, setSettings] = useState<McpSettings>({ servers: [] });
   const [statuses, setStatuses] = useState<McpServerStatus[]>([]);
@@ -131,12 +154,19 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
   async function loadSettings() {
     try {
       const res = await fetch("/api/mcp/config");
-      const data = await res.json();
+      const data = await readApiResponse<{
+        settings?: McpSettings;
+        statuses?: McpServerStatus[];
+        presets?: McpPreset[];
+      }>(res);
       if (data.settings) setSettings(data.settings);
       if (data.statuses) setStatuses(data.statuses);
       if (Array.isArray(data.presets)) setGuidedPresets(data.presets);
-    } catch {
-      onStatusMessage({ text: "Erro ao carregar configurações MCP.", type: "error" });
+    } catch (error) {
+      onStatusMessage({
+        text: `Erro ao carregar configurações MCP: ${getErrorMessage(error)}`,
+        type: "error",
+      });
     }
   }
 
@@ -148,8 +178,8 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSettings)
       });
-      if (!res.ok) throw new Error("Falha ao salvar");
-      setSettings(newSettings);
+      const data = await readApiResponse<{ settings: McpSettings }>(res);
+      setSettings(data.settings);
       
       // Clear edit mode for all servers after saving
       setEditingServers({});
@@ -171,7 +201,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(server)
       });
-      const data = await res.json() as McpServerStatus;
+      const data = await readApiResponse<McpServerStatus>(res);
       
       // Update statuses list locally
       setStatuses(prev => {
@@ -348,7 +378,23 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
       )}
 
       <div className="space-y-3">
-        {settings.servers.map(server => {
+        {settings.servers.map((server, index) => {
+          if (!isRenderableMcpServer(server)) {
+            return (
+              <div
+                key={`invalid-mcp-config-${index + 1}`}
+                className="flex items-start gap-3 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-rose-300"
+              >
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[11px] font-bold">Configuração MCP inválida</p>
+                  <p className="mt-1 text-[10px] text-rose-200/70">
+                    Esta entrada não pôde ser exibida. Remova ou corrija o arquivo de configuração MCP.
+                  </p>
+                </div>
+              </div>
+            );
+          }
           const status = statuses.find(s => s.id === server.id);
           const isBusy = busyAction === `test-${server.id}`;
           const isExpanded = !!expandedServers[server.id];
@@ -536,6 +582,7 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
                         <select
                           value={server.transport}
                           onChange={(e) => updateServer(server.id, { transport: e.target.value as McpServerConfig["transport"] })}
+                          disabled={isResolve}
                           className="w-full rounded-lg border border-zinc-850 bg-zinc-950 px-3 py-2 text-[11px] font-semibold text-zinc-300 focus:border-emerald-500/50 outline-none transition-all cursor-pointer"
                         >
                           <option value="stdio">stdio (Comando Local)</option>

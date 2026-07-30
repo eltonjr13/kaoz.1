@@ -47,6 +47,173 @@ function waitForHttp(url, child, output, timeoutMs = 30_000) {
   });
 }
 
+function resolveMcpSmokePython() {
+  const candidates = [
+    process.env.KAOZ_TEST_PYTHON?.trim(),
+    path.join(
+      process.cwd(),
+      "build",
+      "runtime",
+      "parakeet",
+      "python",
+      process.platform === "win32" ? "python.exe" : "python",
+    ),
+  ].filter(Boolean);
+  const python = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!python) {
+    throw new Error(
+      "Python ausente para o smoke do MCP DaVinci. Defina KAOZ_TEST_PYTHON " +
+        "ou execute desktop:prepare para preparar o runtime local.",
+    );
+  }
+  return python;
+}
+
+function assertResolveMcpSmokeOutput(stdout) {
+  const responses = stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const tools = responses.find((item) => item.id === 2)?.result?.tools;
+  const status = responses.find((item) => item.id === 3)
+    ?.result?.structuredContent;
+  if (
+    responses.length !== 3 ||
+    !Array.isArray(tools) ||
+    tools.length !== 14 ||
+    typeof status?.pythonFound !== "boolean"
+  ) {
+    throw new Error(
+      `Protocolo MCP DaVinci inválido no runtime: ${stdout.slice(-2_000)}`,
+    );
+  }
+}
+
+function smokeResolveMcp(serverPath, tempRoot) {
+  const python = resolveMcpSmokePython();
+  const mediaRoot = path.join(tempRoot, "mcp-media");
+  const exportRoot = path.join(tempRoot, "mcp-exports");
+  fs.mkdirSync(mediaRoot, { recursive: true });
+  fs.mkdirSync(exportRoot, { recursive: true });
+  const env = {
+    ...process.env,
+    KAOZ_RESOLVE_MEDIA_ROOT: mediaRoot,
+    KAOZ_RESOLVE_EXPORT_ROOT: exportRoot,
+  };
+  delete env.RESOLVE_SCRIPT_API;
+  delete env.RESOLVE_SCRIPT_LIB;
+  delete env.RESOLVE_PYTHON_PATH;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(python, [serverPath], {
+      cwd: path.dirname(serverPath),
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("Servidor MCP DaVinci excedeu 15s no smoke desktop."));
+    }, 15_000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) {
+        reject(
+          new Error(
+            `Servidor MCP DaVinci encerrou com ${code}: ${stderr.slice(-2_000)}`,
+          ),
+        );
+        return;
+      }
+      try {
+        assertResolveMcpSmokeOutput(stdout);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.stdin.end(
+      [
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "desktop-smoke", version: "1.0.0" },
+          },
+        }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "resolve_get_status", arguments: {} },
+        }),
+      ].join("\n") + "\n",
+    );
+  });
+}
+
+async function smokeResolveMcpThroughApi(baseUrl, serverPath, tempRoot, output) {
+  const mediaRoot = path.join(tempRoot, "mcp-api-media");
+  const exportRoot = path.join(tempRoot, "mcp-api-exports");
+  fs.mkdirSync(mediaRoot, { recursive: true });
+  fs.mkdirSync(exportRoot, { recursive: true });
+
+  const response = await fetch(`${baseUrl}/api/mcp/test`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      id: "davinci-resolve-local",
+      presetId: "davinci-resolve-local",
+      name: "DaVinci Resolve (local)",
+      enabled: true,
+      transport: "stdio",
+      command: resolveMcpSmokePython(),
+      args: [serverPath],
+      env: {
+        RESOLVE_SCRIPT_API: "",
+        RESOLVE_SCRIPT_LIB: "",
+        RESOLVE_PYTHON_PATH: "",
+        KAOZ_RESOLVE_MEDIA_ROOT: mediaRoot,
+        KAOZ_RESOLVE_EXPORT_ROOT: exportRoot,
+      },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const payload = await response.json();
+  if (
+    response.status !== 200 ||
+    payload.connected !== true ||
+    !Array.isArray(payload.tools) ||
+    payload.tools.length !== 14 ||
+    typeof payload.diagnostic?.resolveOpen !== "boolean"
+  ) {
+    throw new Error(
+      `Rota /api/mcp/test retornou um smoke DaVinci invalido com HTTP ${response.status}: ${JSON.stringify(payload)}\n${output()}`,
+    );
+  }
+}
+
 const source = process.argv[2]
   ? path.resolve(process.argv[2])
   : path.join(process.cwd(), "dist", "standalone");
@@ -83,6 +250,19 @@ let output = "";
 try {
   fs.cpSync(source, runtime, { recursive: true });
   console.log("Runtime desktop copiado para o smoke isolado.");
+  await smokeResolveMcp(
+    path.join(
+      runtime,
+      "services",
+      "mcp-servers",
+      "davinci-resolve",
+      "server.py",
+    ),
+    tempRoot,
+  );
+  console.log(
+    "Servidor MCP DaVinci iniciou no runtime isolado, listou 14 ferramentas e respondeu ao diagnóstico.",
+  );
   const port = await reservePort();
   child = spawn(process.execPath, [path.join(runtime, "server.js")], {
     cwd: runtime,
@@ -103,6 +283,21 @@ try {
   child.stderr.on("data", appendOutput);
 
   const status = await waitForHttp(`http://127.0.0.1:${port}`, child, () => output);
+  await smokeResolveMcpThroughApi(
+    `http://127.0.0.1:${port}`,
+    path.join(
+      runtime,
+      "services",
+      "mcp-servers",
+      "davinci-resolve",
+      "server.py",
+    ),
+    tempRoot,
+    () => output,
+  );
+  console.log(
+    "Rota real /api/mcp/test conectou ao MCP DaVinci, listou 14 ferramentas e retornou o diagnostico.",
+  );
   const mcpResponse = await fetch(`http://127.0.0.1:${port}/api/mcp/config`, {
     signal: AbortSignal.timeout(30_000),
   });

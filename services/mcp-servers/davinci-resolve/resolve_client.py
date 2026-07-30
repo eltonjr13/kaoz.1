@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib
 import json
 import os
+import platform
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,7 +19,26 @@ from schemas import (
     configured_roots,
     secure_export_path,
     secure_media_path,
+    validate_clip_reference,
 )
+
+_IDEMPOTENT_OPERATIONS = frozenset(
+    {
+        "open_project",
+        "create_timeline",
+        "import_media",
+        "append_clips",
+        "add_marker",
+        "add_subtitles",
+        "export_timeline",
+        "create_render_job",
+        "start_render",
+    }
+)
+_PRIVATE_LEDGER_METADATA = "_kaozLedgerMetadata"
+_LEDGER_LOCK_TIMEOUT_SECONDS = 5.0
+_LEDGER_LOCK_POLL_SECONDS = 0.025
+_LEDGER_LOCK_STALE_SECONDS = 60.0
 
 
 class ResolveOperationError(Exception):
@@ -32,6 +54,107 @@ class ResolveOperationError(Exception):
         self.message = message
         self.recovery = recovery
         self.details = details or {}
+
+
+class _InterprocessLedgerLock:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.handle: Any = None
+
+    def __enter__(self) -> "_InterprocessLedgerLock":
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor = os.open(
+                self.path,
+                os.O_RDWR | os.O_CREAT,
+                0o600,
+            )
+            self.handle = os.fdopen(descriptor, "r+b", buffering=0)
+            if os.fstat(descriptor).st_size == 0:
+                self.handle.write(b"\0")
+                self.handle.flush()
+        except Exception as error:
+            self._close()
+            raise ResolveOperationError(
+                "IDEMPOTENCY_LOCK_UNAVAILABLE",
+                "O lock do ledger não pôde ser preparado com segurança.",
+                "Verifique as permissões da raiz de exportação antes de tentar novamente.",
+                {"errorType": type(error).__name__},
+            ) from None
+
+        deadline = time.monotonic() + _LEDGER_LOCK_TIMEOUT_SECONDS
+        while True:
+            if _try_lock_file(self.handle):
+                self._write_owner_metadata()
+                return self
+            if time.monotonic() >= deadline:
+                owner = self._read_owner_metadata()
+                self._close()
+                raise ResolveOperationError(
+                    "IDEMPOTENCY_LOCK_TIMEOUT",
+                    "O ledger está ocupado por outra instância do MCP.",
+                    "Aguarde a operação atual terminar. Se o processo anterior encerrou, "
+                    "tente novamente; locks órfãos do sistema são recuperados automaticamente.",
+                    {
+                        "ownerPid": owner.get("pid"),
+                        "staleMetadata": _lock_metadata_is_stale(owner),
+                    },
+                )
+            time.sleep(_LEDGER_LOCK_POLL_SECONDS)
+
+    def __exit__(self, _error_type: Any, _error: Any, _traceback: Any) -> None:
+        if self.handle is None:
+            return
+        try:
+            self.handle.seek(0)
+            self.handle.write(b"\0")
+            self.handle.truncate(1)
+            self.handle.flush()
+        except Exception:
+            pass
+        try:
+            _unlock_file(self.handle)
+        finally:
+            self._close()
+
+    def _write_owner_metadata(self) -> None:
+        payload = json.dumps(
+            {"pid": os.getpid(), "acquiredAt": time.time()},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        try:
+            self.handle.seek(0)
+            self.handle.write(payload)
+            self.handle.truncate(len(payload))
+            self.handle.flush()
+        except Exception as error:
+            try:
+                _unlock_file(self.handle)
+            finally:
+                self._close()
+            raise ResolveOperationError(
+                "IDEMPOTENCY_LOCK_UNAVAILABLE",
+                "O proprietário do lock não pôde ser registrado com segurança.",
+                "Verifique as permissões da raiz de exportação antes de tentar novamente.",
+                {"errorType": type(error).__name__},
+            ) from None
+
+    def _read_owner_metadata(self) -> dict[str, Any]:
+        if self.handle is None:
+            return {}
+        try:
+            self.handle.seek(0)
+            payload = json.loads(self.handle.read().decode("utf-8"))
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    def _close(self) -> None:
+        if self.handle is not None:
+            try:
+                self.handle.close()
+            finally:
+                self.handle = None
 
 
 class ResolveClient:
@@ -54,10 +177,21 @@ class ResolveClient:
         api_path = os.environ.get("RESOLVE_SCRIPT_API", "").strip()
         library_path = os.environ.get("RESOLVE_SCRIPT_LIB", "").strip()
         python_path = os.environ.get("RESOLVE_PYTHON_PATH", "").strip()
+        api_modules_path = Path(api_path) / "Modules" if api_path else None
         result: dict[str, Any] = {
             "pythonFound": bool(sys.executable),
-            "pythonExecutableConfigured": bool(python_path or sys.executable),
+            "pythonExecutableConfigured": bool(sys.executable),
+            "pythonVersion": platform.python_version(),
+            "pythonImplementation": platform.python_implementation(),
+            "pythonArchitecture": platform.architecture()[0],
+            "apiPathConfigured": bool(api_path),
             "apiPathAccessible": bool(api_path and Path(api_path).is_dir()),
+            "pythonModulePathConfigured": bool(python_path),
+            "pythonModulePathAccessible": bool(
+                (python_path and Path(python_path).is_dir())
+                or (api_modules_path and api_modules_path.is_dir())
+            ),
+            "scriptLibraryConfigured": bool(library_path),
             "scriptLibraryAccessible": bool(
                 library_path and Path(library_path).is_file()
             ),
@@ -70,20 +204,49 @@ class ResolveClient:
         try:
             self._module = self._module or self._module_loader()
             result["moduleLoaded"] = True
-        except Exception:
+        except Exception as error:
             result["code"] = "RESOLVE_MODULE_UNAVAILABLE"
             result["message"] = (
                 "DaVinciResolveScript não pôde ser carregado com os paths configurados."
             )
             result["recovery"] = (
-                "Revise RESOLVE_SCRIPT_API, RESOLVE_SCRIPT_LIB e reinicie o teste."
+                "Confirme RESOLVE_SCRIPT_API/Modules ou RESOLVE_PYTHON_PATH, "
+                "RESOLVE_SCRIPT_LIB e a versão de Python exigida pelo README.txt "
+                "instalado com o Resolve."
             )
+            result["details"] = {
+                "stage": "import DaVinciResolveScript",
+                "errorType": type(error).__name__,
+                "pythonVersion": result["pythonVersion"],
+                "apiPathAccessible": result["apiPathAccessible"],
+                "pythonModulePathAccessible": result[
+                    "pythonModulePathAccessible"
+                ],
+                "scriptLibraryAccessible": result["scriptLibraryAccessible"],
+                "nextChecks": [
+                    "compatibilidade entre Python e a API instalada",
+                    "External scripting configurado como Local",
+                    "Resolve aberto na mesma sessão do usuário",
+                ],
+            }
             return result
         try:
             self._resolve = self._resolve or self._resolve_factory(self._module)
-        except Exception:
+        except Exception as error:
             self._resolve = None
+            result["details"] = {
+                "stage": 'scriptapp("Resolve")',
+                "errorType": type(error).__name__,
+                "pythonVersion": result["pythonVersion"],
+            }
         if self._resolve is None:
+            result.setdefault(
+                "details",
+                {
+                    "stage": 'scriptapp("Resolve")',
+                    "pythonVersion": result["pythonVersion"],
+                },
+            )
             result["code"] = "RESOLVE_NOT_RUNNING"
             result["message"] = "O DaVinci Resolve não está aberto ou não respondeu."
             result["recovery"] = (
@@ -103,7 +266,7 @@ class ResolveClient:
 
     def list_projects(self, folder: str | None = None) -> dict[str, Any]:
         manager = self._project_manager()
-        original_folder = _safe_call(manager, "GetCurrentFolder")
+        entered_child = False
         if folder:
             if not _safe_call(manager, "OpenFolder", folder):
                 raise ResolveOperationError(
@@ -111,18 +274,20 @@ class ResolveClient:
                     "A pasta de projetos solicitada não existe.",
                     "Revise o nome da pasta e tente novamente.",
                 )
+            entered_child = True
         try:
             projects = _safe_call(manager, "GetProjectListInCurrentFolder") or []
             current = _safe_call(manager, "GetCurrentFolder")
             return {"folder": current, "projects": list(projects)}
         finally:
-            if folder and original_folder:
-                self._restore_project_folder(manager, str(original_folder))
+            if entered_child:
+                self._restore_project_folder(manager)
 
     def open_project(self, project_name: str, request_id: str) -> dict[str, Any]:
         return self._once(
             "open_project",
             request_id,
+            {"projectName": project_name},
             lambda: self._open_project(project_name),
         )
 
@@ -151,17 +316,18 @@ class ResolveClient:
     ) -> dict[str, Any]:
         def create() -> dict[str, Any]:
             project = self._project()
+            project_identity = self._project_identity(project)
             media_pool = self._media_pool(project)
             previous = _safe_call(project, "GetCurrentTimeline")
-            trace_name = f"Kaoz - {name} - {request_id[:8]}"
+            trace_token = hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:12]
+            trace_name = f"Kaoz - {name} - {trace_token}"
             if self._find_timeline(project, name=trace_name):
-                timeline = self._find_timeline(project, name=trace_name)
-                return {
-                    "timelineId": _timeline_id(timeline),
-                    "timelineName": trace_name,
-                    "created": False,
-                    "idempotent": True,
-                }
+                raise ResolveOperationError(
+                    "TIMELINE_NAME_CONFLICT",
+                    "Já existe uma timeline com o token rastreável desta solicitação.",
+                    "Não repita a mutação sem o ledger correspondente; use um novo requestId.",
+                    {"traceToken": trace_token},
+                )
             timeline = _safe_call(media_pool, "CreateEmptyTimeline", trace_name)
             if not timeline:
                 raise ResolveOperationError(
@@ -175,16 +341,35 @@ class ResolveClient:
                         timeline, clips, "video", 1, media_pool=media_pool
                     )
             finally:
-                if previous and previous is not timeline:
-                    _safe_call(project, "SetCurrentTimeline", previous)
+                self._restore_timeline(project, previous, timeline)
+            timeline_id = _timeline_id(timeline)
+            if not timeline_id:
+                raise ResolveOperationError(
+                    "TIMELINE_IDENTITY_UNAVAILABLE",
+                    "A timeline foi criada, mas o Resolve não forneceu sua identidade.",
+                    "Não tente modificá-la pelo MCP. Inspecione a timeline e use um novo "
+                    "requestId somente após decidir como recuperar a operação.",
+                )
+            timeline_name = _safe_call(timeline, "GetName") or trace_name
             return {
-                "timelineId": _timeline_id(timeline),
-                "timelineName": _safe_call(timeline, "GetName") or trace_name,
+                "timelineId": timeline_id,
+                "timelineName": timeline_name,
                 "created": True,
                 "clipCount": len(clips),
+                _PRIVATE_LEDGER_METADATA: {
+                    "resourceType": "timeline",
+                    **project_identity,
+                    "timelineId": timeline_id,
+                    "timelineName": str(timeline_name),
+                },
             }
 
-        return self._once("create_timeline", request_id, create)
+        return self._once(
+            "create_timeline",
+            request_id,
+            {"name": name, "clips": clips},
+            create,
+        )
 
     def import_media(
         self, paths: list[str], request_id: str
@@ -222,7 +407,12 @@ class ResolveClient:
                     )
             return {"imported": imported, "rejected": rejected}
 
-        return self._once("import_media", request_id, import_items)
+        return self._once(
+            "import_media",
+            request_id,
+            {"paths": paths},
+            import_items,
+        )
 
     def append_clips(
         self,
@@ -240,7 +430,7 @@ class ResolveClient:
             )
             if not timeline:
                 self._missing_timeline()
-            self._assert_kaoz_timeline(timeline)
+            self._assert_mcp_timeline(project, timeline)
             appended = self._append_to_timeline(
                 timeline, clips, track_type, track_index
             )
@@ -251,7 +441,18 @@ class ResolveClient:
                 "estimatedDurationFrames": _timeline_duration(timeline),
             }
 
-        return self._once("append_clips", request_id, append)
+        return self._once(
+            "append_clips",
+            request_id,
+            {
+                "timelineName": timeline_name,
+                "timelineId": timeline_id,
+                "clips": clips,
+                "trackType": track_type,
+                "trackIndex": track_index,
+            },
+            append,
+        )
 
     def add_marker(
         self,
@@ -263,8 +464,9 @@ class ResolveClient:
         request_id: str,
     ) -> dict[str, Any]:
         def add() -> dict[str, Any]:
-            timeline = self._require_timeline(timeline_name)
-            self._assert_kaoz_timeline(timeline)
+            project = self._project()
+            timeline = self._require_timeline(timeline_name, project=project)
+            self._assert_mcp_timeline(project, timeline)
             markers = _safe_call(timeline, "GetMarkers") or {}
             if frame in markers or str(frame) in markers:
                 raise ResolveOperationError(
@@ -283,38 +485,38 @@ class ResolveClient:
                 )
             return {"timelineName": timeline_name, "frame": frame, "added": True}
 
-        return self._once("add_marker", request_id, add)
+        return self._once(
+            "add_marker",
+            request_id,
+            {
+                "timelineName": timeline_name,
+                "frame": frame,
+                "name": name,
+                "note": note,
+                "color": color,
+            },
+            add,
+        )
 
     def add_subtitles(
         self, timeline_name: str, subtitles: list[dict[str, Any]], request_id: str
     ) -> dict[str, Any]:
-        def add() -> dict[str, Any]:
-            timeline = self._require_timeline(timeline_name)
-            self._assert_kaoz_timeline(timeline)
-            method = getattr(timeline, "AddSubtitle", None)
-            if not callable(method):
-                raise ResolveOperationError(
-                    "SUBTITLE_API_UNAVAILABLE",
-                    "Esta versão da API oficial não expõe inserção de texto de legenda.",
-                    "Importe uma faixa SRT manualmente ou use uma versão do Resolve cuja "
-                    "API exponha AddSubtitle; nenhuma timeline foi modificada.",
-                )
-            inserted = 0
-            rejected = []
-            for index, item in enumerate(subtitles):
-                if method(item["text"], item["start"], item["end"]):
-                    inserted += 1
-                else:
-                    rejected.append(
-                        {
-                            "index": index,
-                            "code": "SUBTITLE_INSERT_FAILED",
-                            "message": "O Resolve rejeitou o item.",
-                        }
-                    )
-            return {"timelineName": timeline_name, "inserted": inserted, "rejected": rejected}
-
-        return self._once("add_subtitles", request_id, add)
+        project = self._project()
+        timeline = self._require_timeline(timeline_name, project=project)
+        self._assert_mcp_timeline(project, timeline)
+        raise ResolveOperationError(
+            "SUBTITLE_API_UNAVAILABLE",
+            "A API oficial de scripting instalada não oferece um método para "
+            "inserir itens de legenda na timeline.",
+            "Exporte as legendas revisadas como SRT e importe a faixa manualmente "
+            "no Resolve; nenhuma timeline foi modificada.",
+            {
+                "timelineName": timeline_name,
+                "requestId": request_id,
+                "validatedItems": len(subtitles),
+                "mutationAttempted": False,
+            },
+        )
 
     def export_timeline(
         self,
@@ -332,24 +534,27 @@ class ResolveClient:
                     "Escolha outro nome ou aprove explicitamente overwrite=true.",
                 )
             destination.parent.mkdir(parents=True, exist_ok=True)
-            project = self._project()
             timeline = self._require_timeline(timeline_name)
-            previous = _safe_call(project, "GetCurrentTimeline")
-            try:
-                if timeline is not previous:
-                    if not _safe_call(project, "SetCurrentTimeline", timeline):
-                        raise ResolveOperationError(
-                            "TIMELINE_SELECT_FAILED",
-                            "O Resolve não selecionou a timeline para exportação.",
-                            "Abra o projeto e tente novamente.",
-                        )
-                export_type = getattr(project, "EXPORT_DRT", None) or "DRT"
-                ok = _safe_call(
-                    project, "ExportCurrentTimeline", str(destination), export_type
+            resolve = self._connect()
+            export_type = getattr(resolve, "EXPORT_DRT", None)
+            export_subtype = getattr(resolve, "EXPORT_NONE", None)
+            if export_type is None or export_subtype is None:
+                raise ResolveOperationError(
+                    "TIMELINE_EXPORT_UNAVAILABLE",
+                    "A sessão do Resolve não expõe as constantes oficiais de exportação DRT.",
+                    "Confirme a versão da API instalada e reinicie o Resolve.",
+                    {
+                        "exportDrtAvailable": export_type is not None,
+                        "exportNoneAvailable": export_subtype is not None,
+                    },
                 )
-            finally:
-                if previous and previous is not timeline:
-                    _safe_call(project, "SetCurrentTimeline", previous)
+            ok = _safe_call(
+                timeline,
+                "Export",
+                str(destination),
+                export_type,
+                export_subtype,
+            )
             if not ok:
                 raise ResolveOperationError(
                     "TIMELINE_EXPORT_FAILED",
@@ -362,7 +567,16 @@ class ResolveClient:
                 "exported": True,
             }
 
-        return self._once("export_timeline", request_id, export)
+        return self._once(
+            "export_timeline",
+            request_id,
+            {
+                "timelineName": timeline_name,
+                "outputPath": output_path,
+                "overwrite": overwrite,
+            },
+            export,
+        )
 
     def create_render_job(
         self,
@@ -376,14 +590,15 @@ class ResolveClient:
             directory = secure_export_path(output_directory)
             directory.mkdir(parents=True, exist_ok=True)
             final_stem = directory / file_name
-            if any(directory.glob(f"{file_name}.*")):
+            if _render_output_exists(directory, file_name):
                 raise ResolveOperationError(
                     "RENDER_OUTPUT_EXISTS",
                     "Já existe uma saída com esse nome.",
                     "Escolha outro fileName; o MCP não sobrescreve renders.",
                 )
             project = self._project()
-            timeline = self._require_timeline(timeline_name)
+            project_identity = self._project_identity(project)
+            timeline = self._require_timeline(timeline_name, project=project)
             previous = _safe_call(project, "GetCurrentTimeline")
             try:
                 if timeline is not previous:
@@ -402,7 +617,11 @@ class ResolveClient:
                 if not _safe_call(
                     project,
                     "SetRenderSettings",
-                    {"TargetDir": str(directory), "CustomName": file_name},
+                    {
+                        "TargetDir": str(directory),
+                        "CustomName": file_name,
+                        "UniqueFilenameStyle": 1,
+                    },
                 ):
                     raise ResolveOperationError(
                         "RENDER_SETTINGS_FAILED",
@@ -411,8 +630,7 @@ class ResolveClient:
                     )
                 job_id = _safe_call(project, "AddRenderJob")
             finally:
-                if previous and previous is not timeline:
-                    _safe_call(project, "SetCurrentTimeline", previous)
+                self._restore_timeline(project, previous, timeline)
             if not job_id:
                 raise ResolveOperationError(
                     "RENDER_JOB_FAILED",
@@ -424,9 +642,25 @@ class ResolveClient:
                 "preset": preset,
                 "destination": str(final_stem.name),
                 "renderStarted": False,
+                _PRIVATE_LEDGER_METADATA: {
+                    "resourceType": "renderJob",
+                    **project_identity,
+                    "renderJobId": str(job_id),
+                    "renderTarget": str(final_stem),
+                },
             }
 
-        return self._once("create_render_job", request_id, create)
+        return self._once(
+            "create_render_job",
+            request_id,
+            {
+                "timelineName": timeline_name,
+                "preset": preset,
+                "outputDirectory": output_directory,
+                "fileName": file_name,
+            },
+            create,
+        )
 
     def get_render_status(self, render_job_id: str | None = None) -> dict[str, Any]:
         project = self._project()
@@ -438,9 +672,15 @@ class ResolveClient:
                     "O render job solicitado não existe.",
                     "Liste a fila novamente ou confirme o ID.",
                 )
-            return {"renderJobId": render_job_id, "status": status}
+            return {
+                "renderJobId": render_job_id,
+                "status": _public_render_status(status),
+            }
         jobs = _safe_call(project, "GetRenderJobList") or []
-        return {"jobs": list(jobs), "rendering": bool(_safe_call(project, "IsRenderingInProgress"))}
+        return {
+            "jobs": [_public_render_job(job) for job in jobs],
+            "rendering": bool(_safe_call(project, "IsRenderingInProgress")),
+        }
 
     def start_render(
         self, render_job_id: str, request_id: str
@@ -453,6 +693,7 @@ class ResolveClient:
                     "O render job solicitado não existe.",
                     "Confirme o ID antes de aprovar o início.",
                 )
+            self._assert_render_target_available(project, render_job_id)
             if not _safe_call(project, "StartRendering", render_job_id):
                 raise ResolveOperationError(
                     "RENDER_START_FAILED",
@@ -465,7 +706,59 @@ class ResolveClient:
                 "next": "Consulte resolve_get_render_status para acompanhar o progresso.",
             }
 
-        return self._once("start_render", request_id, start)
+        return self._once(
+            "start_render",
+            request_id,
+            {"renderJobId": render_job_id},
+            start,
+        )
+
+    def _assert_render_target_available(
+        self,
+        project: Any,
+        render_job_id: str,
+    ) -> None:
+        target = self._render_target_from_ledger(project, render_job_id)
+        if target is None:
+            raise ResolveOperationError(
+                "RENDER_JOB_PROVENANCE_REQUIRED",
+                "O render job não possui proveniência válida no ledger do MCP.",
+                "Crie novamente o render job pelo MCP no projeto atual antes de "
+                "aprovar o início; jobs preexistentes nunca são iniciados.",
+                {"renderJobId": render_job_id},
+            )
+        if _render_output_exists(target.parent, target.name):
+            raise ResolveOperationError(
+                "RENDER_OUTPUT_EXISTS",
+                "Já existe uma saída com o nome reservado para este render job.",
+                "Escolha outro fileName e crie um novo render job; nada foi iniciado.",
+            )
+
+    def _render_target_from_ledger(
+        self,
+        project: Any,
+        render_job_id: str,
+    ) -> Path | None:
+        project_id = self._project_identity(project)["projectId"]
+        for entry in self._idempotency.values():
+            if (
+                entry.get("operation") != "create_render_job"
+                or entry.get("state") != "completed"
+            ):
+                continue
+            result = entry.get("result")
+            metadata = entry.get("metadata")
+            if (
+                isinstance(result, dict)
+                and str(result.get("renderJobId") or "") == render_job_id
+                and isinstance(metadata, dict)
+                and metadata.get("resourceType") == "renderJob"
+                and metadata.get("projectId") == project_id
+                and metadata.get("renderJobId") == render_job_id
+                and isinstance(metadata.get("renderTarget"), str)
+            ):
+                return secure_export_path(metadata["renderTarget"])
+        return None
 
     def _load_module(self) -> Any:
         api_path = os.environ.get("RESOLVE_SCRIPT_API", "").strip()
@@ -486,12 +779,14 @@ class ResolveClient:
                 "RESOLVE_MODULE_UNAVAILABLE",
                 str(status.get("message")),
                 str(status.get("recovery")),
+                dict(status.get("details") or {}),
             )
         if not status.get("resolveOpen"):
             raise ResolveOperationError(
                 "RESOLVE_NOT_RUNNING",
                 str(status.get("message")),
                 str(status.get("recovery")),
+                dict(status.get("details") or {}),
             )
         return self._resolve
 
@@ -539,8 +834,8 @@ class ResolveClient:
             self._missing_timeline()
         return timeline
 
-    def _require_timeline(self, name: str) -> Any:
-        timeline = self._find_timeline(self._project(), name=name)
+    def _require_timeline(self, name: str, *, project: Any | None = None) -> Any:
+        timeline = self._find_timeline(project or self._project(), name=name)
         if not timeline:
             self._missing_timeline()
         return timeline
@@ -574,7 +869,7 @@ class ResolveClient:
     ) -> int:
         project = self._project()
         media_pool = media_pool or self._media_pool(project)
-        items = self._resolve_clip_items(media_pool, clips)
+        resolved_clips = self._resolve_clip_items(media_pool, clips)
         previous = _safe_call(project, "GetCurrentTimeline")
         try:
             if timeline is not previous:
@@ -584,18 +879,22 @@ class ResolveClient:
                         "O Resolve não selecionou a timeline de destino.",
                         "Confirme a timeline e tente novamente.",
                     )
-            clip_infos = [
-                {
+            clip_infos = []
+            for item, clip in resolved_clips:
+                clip_info = {
                     "mediaPoolItem": item,
                     "mediaType": 1 if track_type == "video" else 2,
                     "trackIndex": track_index,
                 }
-                for item in items
-            ]
+                if isinstance(clip, dict):
+                    if "startFrame" in clip:
+                        clip_info["startFrame"] = clip["startFrame"]
+                    if "endFrame" in clip:
+                        clip_info["endFrame"] = clip["endFrame"]
+                clip_infos.append(clip_info)
             appended = _safe_call(media_pool, "AppendToTimeline", clip_infos)
         finally:
-            if previous and previous is not timeline:
-                _safe_call(project, "SetCurrentTimeline", previous)
+            self._restore_timeline(project, previous, timeline)
         if not appended:
             raise ResolveOperationError(
                 "APPEND_FAILED",
@@ -604,11 +903,14 @@ class ResolveClient:
             )
         return len(list(appended))
 
-    def _resolve_clip_items(self, media_pool: Any, clips: list[Any]) -> list[Any]:
+    def _resolve_clip_items(
+        self, media_pool: Any, clips: list[Any]
+    ) -> list[tuple[Any, Any]]:
         root = _safe_call(media_pool, "GetRootFolder")
         all_items = list(_walk_media_items(root))
-        resolved: list[Any] = []
-        for clip in clips:
+        resolved: list[tuple[Any, Any]] = []
+        for raw_clip in clips:
+            clip = validate_clip_reference(raw_clip)
             path_value = clip if isinstance(clip, str) else clip.get("path")
             item_id = None if isinstance(clip, str) else clip.get("mediaPoolId")
             match = None
@@ -630,7 +932,7 @@ class ResolveClient:
                     "Uma referência de mídia não foi encontrada no Media Pool.",
                     "Importe a mídia antes de anexá-la à timeline.",
                 )
-            resolved.append(match)
+            resolved.append((match, clip))
         return resolved
 
     def _media_pool(self, project: Any) -> Any:
@@ -673,55 +975,198 @@ class ResolveClient:
         }
 
     def _once(
-        self, operation: str, request_id: str, callback: Callable[[], dict[str, Any]]
+        self,
+        operation: str,
+        request_id: str,
+        arguments: dict[str, Any],
+        callback: Callable[[], dict[str, Any]],
     ) -> dict[str, Any]:
-        key = f"{operation}:{request_id}"
+        fingerprint = _operation_fingerprint(operation, arguments)
         with self._lock:
-            self._load_idempotency()
-            if key in self._idempotency:
-                cached = copy.deepcopy(self._idempotency[key])
-                cached["idempotentReplay"] = True
-                return cached
+            with self._ledger_file_lock():
+                self._refresh_idempotency_locked()
+                existing = self._idempotency.get(request_id)
+                if existing:
+                    if (
+                        existing.get("legacy")
+                        and existing.get("operation") == operation
+                    ):
+                        raise ResolveOperationError(
+                            "IDEMPOTENCY_PENDING",
+                            "A solicitação existe em um ledger legado sem fingerprint verificável.",
+                            "Inspecione o Resolve e use um novo requestId; o MCP migrou a "
+                            "entrada como pendente e não repetirá a mutação.",
+                            {"requestId": request_id, "operation": operation},
+                        )
+                    if (
+                        existing.get("operation") != operation
+                        or existing.get("fingerprint") != fingerprint
+                    ):
+                        raise ResolveOperationError(
+                            "REQUEST_ID_CONFLICT",
+                            "O requestId já foi usado com outra operação ou argumentos.",
+                            "Gere um novo requestId para esta intenção; não reutilize IDs.",
+                            {
+                                "requestId": request_id,
+                                "existingOperation": existing.get("operation"),
+                                "requestedOperation": operation,
+                            },
+                        )
+                    state = existing.get("state")
+                    if state == "completed" and isinstance(
+                        existing.get("result"), dict
+                    ):
+                        cached = copy.deepcopy(existing["result"])
+                        cached["idempotentReplay"] = True
+                        return cached
+                    if state == "pending":
+                        raise ResolveOperationError(
+                            "IDEMPOTENCY_PENDING",
+                            "A solicitação possui estado pendente e pode ter sido interrompida.",
+                            "Inspecione o Resolve antes de decidir o próximo passo e use um "
+                            "novo requestId; o MCP não repetirá uma mutação incerta.",
+                            {"requestId": request_id, "operation": operation},
+                        )
+                    raise ResolveOperationError(
+                        "IDEMPOTENCY_LEDGER_CORRUPT",
+                        "O registro persistente da solicitação é inválido.",
+                        "Preserve o ledger para diagnóstico e corrija-o antes de mutar o Resolve.",
+                        {"requestId": request_id},
+                    )
+
+                self._idempotency[request_id] = {
+                    "operation": operation,
+                    "fingerprint": fingerprint,
+                    "state": "pending",
+                }
+                self._save_idempotency()
+
             result = callback()
+            metadata = result.pop(_PRIVATE_LEDGER_METADATA, None)
             result["requestId"] = request_id
-            self._idempotency[key] = copy.deepcopy(result)
-            self._save_idempotency()
+            completed_entry = {
+                "operation": operation,
+                "fingerprint": fingerprint,
+                "state": "completed",
+                "result": copy.deepcopy(result),
+            }
+            if metadata is not None:
+                completed_entry["metadata"] = copy.deepcopy(metadata)
+            with self._ledger_file_lock():
+                self._refresh_idempotency_locked()
+                persisted = self._idempotency.get(request_id)
+                if (
+                    not isinstance(persisted, dict)
+                    or persisted.get("operation") != operation
+                    or persisted.get("fingerprint") != fingerprint
+                    or persisted.get("state") != "pending"
+                ):
+                    raise ResolveOperationError(
+                        "IDEMPOTENCY_STATE_DIVERGED",
+                        "O estado persistente mudou durante a mutação.",
+                        "Não repita a solicitação. Inspecione o Resolve e o ledger antes "
+                        "de usar um novo requestId.",
+                        {"requestId": request_id, "operation": operation},
+                    )
+                self._idempotency[request_id] = completed_entry
+                try:
+                    self._save_idempotency()
+                except ResolveOperationError:
+                    self._idempotency[request_id] = {
+                        "operation": operation,
+                        "fingerprint": fingerprint,
+                        "state": "pending",
+                    }
+                    raise
             return result
 
     def _load_idempotency(self) -> None:
-        if self._idempotency_loaded:
-            return
-        self._idempotency_loaded = True
+        with self._ledger_file_lock():
+            self._refresh_idempotency_locked()
+
+    def _refresh_idempotency_locked(self) -> None:
         ledger = self._idempotency_path()
+        disk_entries: dict[str, dict[str, Any]] = {}
         if not ledger or not ledger.is_file():
+            self._idempotency = _merge_idempotency_entries(
+                disk_entries,
+                self._idempotency,
+            )
+            self._idempotency_loaded = True
             return
         try:
             payload = json.loads(ledger.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                self._idempotency = {
-                    str(key): value
-                    for key, value in payload.items()
-                    if isinstance(value, dict)
-                }
-        except Exception:
-            self._idempotency = {}
+            if (
+                isinstance(payload, dict)
+                and payload.get("version") == 1
+                and isinstance(payload.get("entries"), dict)
+            ):
+                entries = payload["entries"]
+            elif isinstance(payload, dict):
+                entries = _migrate_legacy_entries(payload)
+            else:
+                raise ValueError("unsupported ledger shape")
+            if not _valid_idempotency_entries(entries):
+                raise ValueError("invalid ledger entries")
+            disk_entries = copy.deepcopy(entries)
+            self._idempotency = _merge_idempotency_entries(
+                disk_entries,
+                self._idempotency,
+            )
+            self._idempotency_loaded = True
+        except ResolveOperationError:
+            raise
+        except Exception as error:
+            raise ResolveOperationError(
+                "IDEMPOTENCY_LEDGER_CORRUPT",
+                "O ledger persistente de idempotência não pôde ser validado.",
+                "Preserve o arquivo para diagnóstico e corrija ou mova o ledger antes "
+                "de executar novas mutações.",
+                {"errorType": type(error).__name__},
+            ) from None
 
     def _save_idempotency(self) -> None:
         ledger = self._idempotency_path()
         if not ledger:
-            return
+            raise ResolveOperationError(
+                "IDEMPOTENCY_ROOT_NOT_CONFIGURED",
+                "Não há raiz segura configurada para persistir idempotência.",
+                "Configure KAOZ_RESOLVE_EXPORT_ROOT antes de executar mutações.",
+            )
         try:
             ledger.parent.mkdir(parents=True, exist_ok=True)
             temporary = ledger.with_suffix(".tmp")
-            temporary.write_text(
-                json.dumps(self._idempotency, ensure_ascii=False, separators=(",", ":")),
-                encoding="utf-8",
+            if not _valid_idempotency_entries(self._idempotency):
+                raise ValueError("invalid in-memory ledger")
+            serialized = json.dumps(
+                {"version": 1, "entries": self._idempotency},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
             )
+            with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(serialized)
+                handle.flush()
+                os.fsync(handle.fileno())
             temporary.replace(ledger)
-        except Exception:
-            # The Resolve mutation already completed. Keep the in-memory ledger and
-            # never leak the authorized root through an error message.
-            return
+        except Exception as error:
+            raise ResolveOperationError(
+                "IDEMPOTENCY_LEDGER_WRITE_FAILED",
+                "O estado de idempotência não pôde ser persistido com segurança.",
+                "Não repita a solicitação. Verifique a permissão da raiz de exportação "
+                "e inspecione o Resolve antes de usar um novo requestId.",
+                {"errorType": type(error).__name__},
+            ) from None
+
+    def _ledger_file_lock(self) -> _InterprocessLedgerLock:
+        ledger = self._idempotency_path()
+        if not ledger:
+            raise ResolveOperationError(
+                "IDEMPOTENCY_ROOT_NOT_CONFIGURED",
+                "Não há raiz segura configurada para persistir idempotência.",
+                "Configure KAOZ_RESOLVE_EXPORT_ROOT antes de executar mutações.",
+            )
+        return _InterprocessLedgerLock(ledger.with_suffix(".lock"))
 
     @staticmethod
     def _idempotency_path() -> Path | None:
@@ -736,8 +1181,7 @@ class ResolveClient:
             "Liste as timelines e escolha uma referência existente.",
         )
 
-    @staticmethod
-    def _assert_kaoz_timeline(timeline: Any) -> None:
+    def _assert_mcp_timeline(self, project: Any, timeline: Any) -> None:
         name = str(_safe_call(timeline, "GetName") or "")
         if not name.startswith("Kaoz - "):
             raise ResolveOperationError(
@@ -745,14 +1189,74 @@ class ResolveClient:
                 "O MVP não modifica timelines existentes fora do namespace Kaoz.",
                 "Crie uma timeline nova com resolve_create_timeline e use o nome retornado.",
             )
+        timeline_id = _timeline_id(timeline)
+        project_id = self._project_identity(project)["projectId"]
+        with self._lock:
+            self._load_idempotency()
+            if timeline_id:
+                for entry in self._idempotency.values():
+                    if (
+                        entry.get("operation") != "create_timeline"
+                        or entry.get("state") != "completed"
+                    ):
+                        continue
+                    result = entry.get("result")
+                    metadata = entry.get("metadata")
+                    if (
+                        isinstance(result, dict)
+                        and result.get("timelineId") == timeline_id
+                        and isinstance(metadata, dict)
+                        and metadata.get("resourceType") == "timeline"
+                        and metadata.get("projectId") == project_id
+                        and metadata.get("timelineId") == timeline_id
+                    ):
+                        return
+        raise ResolveOperationError(
+            "TIMELINE_PROVENANCE_REQUIRED",
+            "A timeline não possui proveniência válida no ledger do MCP para este projeto.",
+            "Crie uma timeline nova com resolve_create_timeline no projeto atual; "
+            "um nome com prefixo Kaoz não concede autorização.",
+            {
+                "timelineId": timeline_id,
+                "projectId": project_id,
+            },
+        )
 
     @staticmethod
-    def _restore_project_folder(manager: Any, folder: str) -> None:
-        _safe_call(manager, "GotoRootFolder")
-        parts = [part for part in folder.replace("\\", "/").split("/") if part]
-        for part in parts:
-            if not _safe_call(manager, "OpenFolder", part):
-                break
+    def _project_identity(project: Any) -> dict[str, str]:
+        project_id = _safe_call(project, "GetUniqueId")
+        if not project_id:
+            raise ResolveOperationError(
+                "PROJECT_IDENTITY_UNAVAILABLE",
+                "O Resolve não forneceu a identidade estável do projeto atual.",
+                "Reabra o projeto e confirme a versão da API antes de executar mutações.",
+            )
+        return {
+            "projectId": str(project_id),
+            "projectName": str(_safe_call(project, "GetName") or ""),
+        }
+
+    @staticmethod
+    def _restore_project_folder(manager: Any) -> None:
+        if not _safe_call(manager, "GotoParentFolder"):
+            raise ResolveOperationError(
+                "PROJECT_FOLDER_RESTORE_FAILED",
+                "O Resolve não restaurou a pasta de projetos anterior.",
+                "Volte manualmente à pasta anterior no Project Manager antes de continuar.",
+            )
+
+    @staticmethod
+    def _restore_timeline(project: Any, previous: Any, temporary: Any) -> None:
+        if (
+            previous
+            and previous is not temporary
+            and not _safe_call(project, "SetCurrentTimeline", previous)
+        ):
+            raise ResolveOperationError(
+                "TIMELINE_RESTORE_FAILED",
+                "O Resolve não restaurou a timeline ativa anterior.",
+                "Restaure a timeline manualmente e inspecione a operação antes de continuar.",
+            )
 
 
 def operation_error(error: ResolveOperationError) -> dict[str, Any]:
@@ -761,6 +1265,158 @@ def operation_error(error: ResolveOperationError) -> dict[str, Any]:
         "message": error.message,
         "details": error.details,
         "recovery": error.recovery,
+    }
+
+
+def _operation_fingerprint(operation: str, arguments: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        {"operation": operation, "arguments": arguments},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _migrate_legacy_entries(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    migrated: dict[str, dict[str, Any]] = {}
+    for legacy_key, result in payload.items():
+        if not isinstance(legacy_key, str) or not isinstance(result, dict):
+            raise ValueError("invalid legacy ledger entry")
+        operation, separator, request_id = legacy_key.partition(":")
+        if (
+            not separator
+            or operation not in _IDEMPOTENT_OPERATIONS
+            or not request_id
+            or request_id in migrated
+        ):
+            raise ValueError("invalid legacy ledger key")
+        migrated[request_id] = {
+            "operation": operation,
+            "fingerprint": hashlib.sha256(
+                f"legacy:{legacy_key}".encode("utf-8")
+            ).hexdigest(),
+            "state": "pending",
+            "legacy": True,
+        }
+    return migrated
+
+
+def _valid_idempotency_entries(entries: Any) -> bool:
+    if not isinstance(entries, dict):
+        return False
+    for request_id, entry in entries.items():
+        if not isinstance(request_id, str) or not isinstance(entry, dict):
+            return False
+        operation = entry.get("operation")
+        fingerprint = entry.get("fingerprint")
+        state = entry.get("state")
+        if operation not in _IDEMPOTENT_OPERATIONS:
+            return False
+        if (
+            not isinstance(fingerprint, str)
+            or len(fingerprint) != 64
+            or any(character not in "0123456789abcdef" for character in fingerprint)
+        ):
+            return False
+        if state not in {"pending", "completed"}:
+            return False
+        if state == "completed" and not isinstance(entry.get("result"), dict):
+            return False
+        if not _valid_provenance_metadata(operation, entry.get("metadata")):
+            return False
+        if "legacy" in entry and entry["legacy"] is not True:
+            return False
+    return True
+
+
+def _valid_provenance_metadata(operation: Any, metadata: Any) -> bool:
+    if metadata is None:
+        return True
+    if not isinstance(metadata, dict):
+        return False
+    if operation == "create_timeline":
+        return (
+            set(metadata)
+            == {
+                "resourceType",
+                "projectId",
+                "projectName",
+                "timelineId",
+                "timelineName",
+            }
+            and metadata.get("resourceType") == "timeline"
+            and all(
+                isinstance(metadata.get(key), str) and bool(metadata.get(key))
+                for key in ("projectId", "timelineId", "timelineName")
+            )
+            and isinstance(metadata.get("projectName"), str)
+        )
+    if operation == "create_render_job":
+        if set(metadata) == {"renderTarget"}:
+            return isinstance(metadata.get("renderTarget"), str)
+        return (
+            set(metadata)
+            == {
+                "resourceType",
+                "projectId",
+                "projectName",
+                "renderJobId",
+                "renderTarget",
+            }
+            and metadata.get("resourceType") == "renderJob"
+            and all(
+                isinstance(metadata.get(key), str) and bool(metadata.get(key))
+                for key in ("projectId", "renderJobId", "renderTarget")
+            )
+            and isinstance(metadata.get("projectName"), str)
+        )
+    return False
+
+
+def _render_output_exists(directory: Path, file_name: str) -> bool:
+    normalized = file_name.casefold()
+    return any(
+        item.is_file()
+        and (
+            item.name.casefold() == normalized
+            or item.name.casefold().startswith(f"{normalized}.")
+        )
+        for item in directory.iterdir()
+    )
+
+
+def _public_render_job(job: Any) -> dict[str, Any]:
+    if not isinstance(job, dict):
+        return {}
+    aliases = {
+        "JobId": "renderJobId",
+        "TimelineName": "timelineName",
+        "RenderPreset": "preset",
+        "Format": "format",
+        "VideoCodec": "videoCodec",
+        "AudioCodec": "audioCodec",
+    }
+    return {
+        public_key: job[source_key]
+        for source_key, public_key in aliases.items()
+        if isinstance(job.get(source_key), (str, int, float, bool))
+    }
+
+
+def _public_render_status(status: Any) -> dict[str, Any]:
+    if not isinstance(status, dict):
+        return {}
+    allowed = {
+        "JobStatus",
+        "CompletionPercentage",
+        "TimeTakenToRenderInMs",
+        "EstimatedTimeRemainingInMs",
+    }
+    return {
+        key: value
+        for key, value in status.items()
+        if key in allowed and isinstance(value, (str, int, float, bool))
     }
 
 

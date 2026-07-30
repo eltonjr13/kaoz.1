@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfiguredAgentIdentity, queryConfiguredAgentCli } from "../agent-llm/agent-llm.service.ts";
-import { skillRegistry } from "../skills/skill.registry.ts";
 import { connectorStore } from "./connector.store.ts";
 import { archiveConnectorReply, prepareConnectorConversation, resetConnectorConversation } from "../conversation-memory/conversation-memory.connector.ts";
 import { connectorVault } from "./connector.vault.ts";
@@ -12,6 +11,7 @@ import type { ConnectorInboundHistoryEntry, DiscordGatewayRuntimeStatus, StoredC
 import { buildDiscordAgentPrompt, discordImageOperation, discordInboundEnabled, evaluateDiscordInbound, getDiscordImageAttachment, normalizeDiscordAgentResponse, parseSnowflakeList, requestsDiscordImageGeneration, type DiscordImageAttachment, type DiscordInboundMessage } from "./discord.inbound.ts";
 import { formatDiscordMessage } from "./message-format.ts";
 import { optimizeConnectorImagePrompt } from "./image-prompt.ts";
+import { connectorShouldUseExternalTools } from "./connector-tool-intent.ts";
 
 const DEFAULT_GATEWAY = "wss://gateway.discord.gg";
 const GATEWAY_VERSION = 10;
@@ -429,8 +429,7 @@ export class DiscordGatewayManager {
           text = "Aqui está a imagem que você pediu.";
           reply = await this.postImageReply(message.channel_id, message.id, text, imagePath);
         } else {
-        const selectedSkill = skillRegistry.select(decision.prompt);
-        const useTools = Boolean(selectedSkill.tools?.length || selectedSkill.preferredTools.length) && selectedSkill.id !== "general.execute-goal";
+        const useTools = connectorShouldUseExternalTools(decision.prompt);
         const selectedAgent = await connectorModelSelectionStore.get({ channel: "discord", accountId: this.account.id, externalConversationId: archiveConversationId });
         const agentIdentity = await getConfiguredAgentIdentity(selectedAgent || undefined);
         const response = await queryConfiguredAgentCli(buildDiscordAgentPrompt({ prompt: decision.prompt, username: decision.username, agentIdentity, recent, memoryContext: prepared.memoryContext }), {

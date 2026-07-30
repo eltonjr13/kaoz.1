@@ -11,6 +11,7 @@ import { skillRegistry } from "../services/skills/skill.registry.ts";
 import { connectorHandlers } from "../services/orchestrator/adapters/connector.adapter.ts";
 import type { StoredConnectorAccount } from "../services/connectors/connector.types.ts";
 import { formatDiscordMessage, formatTelegramMessage } from "../services/connectors/message-format.ts";
+import { connectorShouldUseExternalTools } from "../services/connectors/connector-tool-intent.ts";
 
 function account(provider: "discord" | "bluesky" | "telegram"): StoredConnectorAccount {
   const now = new Date().toISOString();
@@ -188,4 +189,21 @@ test("intenção de publicação seleciona a skill social", () => {
   assert.equal(skillRegistry.select("publique no Discord: lançamento amanhã").id, "social.publish");
   assert.equal(skillRegistry.select("poste no Bluesky esta novidade").id, "social.publish");
   assert.equal(skillRegistry.select("envie no Telegram esta novidade").id, "social.publish");
+});
+
+test("Discord e Telegram encaminham pedidos e aprovações MCP ao gate central", () => {
+  assert.equal(
+    connectorShouldUseExternalTools(
+      "No DaVinci Resolve, liste as timelines deste projeto.",
+    ),
+    true,
+  );
+  assert.equal(
+    connectorShouldUseExternalTools("aprovar ABCDEF123456"),
+    true,
+  );
+  assert.equal(
+    connectorShouldUseExternalTools("como está o meu dia?"),
+    false,
+  );
 });

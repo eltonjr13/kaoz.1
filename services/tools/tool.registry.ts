@@ -72,7 +72,7 @@ export class ToolRegistry {
   } 
 
   handler(id:string):ToolHandler|undefined { 
-      if(id.startsWith("mcp:")) return async(args)=>executeMcpTool(id,args); 
+      if(id.startsWith("mcp:")) return async(args,context)=>executeMcpTool(id,args,context);
       if(id.startsWith("skill:")) {
           // Precisamos achar qual script pertence a essa tool.
           const skill = skillRegistry.list().find(s => s.tools?.some(t => t.id === id));

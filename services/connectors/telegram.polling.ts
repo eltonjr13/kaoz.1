@@ -12,6 +12,7 @@ import { executeDiscordCommand, parseDiscordCommand, TELEGRAM_BOT_COMMANDS } fro
 import { optimizeConnectorImagePrompt } from "./image-prompt.ts";
 import { getConfigurableAgentCatalog, type ConfigurableAgentProvider } from "./connector-model-catalog.ts";
 import { connectorModelSelectionStore } from "./connector-model-selection.ts";
+import { connectorShouldUseExternalTools } from "./connector-tool-intent.ts";
 
 const API_ROOT = "https://api.telegram.org";
 const MAX_CONVERSATION_TURNS = 6;
@@ -319,7 +320,20 @@ export class TelegramPollingManager {
         await this.sendChatAction(chatId, "typing");
         const selectedAgent = await connectorModelSelectionStore.get({ channel: "telegram", accountId: this.account.id, externalConversationId: archiveConversationId });
         const identity = await getConfiguredAgentIdentity(selectedAgent || undefined);
-        const response = await queryConfiguredAgentCli(buildTelegramAgentPrompt({ prompt, username: audit.username, identity, recent, memoryContext: prepared.memoryContext }), { toolIntentText: prompt, agent: selectedAgent || undefined });
+        const response = await queryConfiguredAgentCli(
+          buildTelegramAgentPrompt({
+            prompt,
+            username: audit.username,
+            identity,
+            recent,
+            memoryContext: prepared.memoryContext,
+          }),
+          {
+            useExternalTools: connectorShouldUseExternalTools(prompt),
+            toolIntentText: prompt,
+            agent: selectedAgent || undefined,
+          },
+        );
         if (!response) throw new Error("O provedor Browser não pode responder mensagens do Telegram em segundo plano. Selecione um provedor CLI ou API em Agente LLM.");
         text = normalizeAgentResponse(response);
         replyId = await this.sendMessage(chatId, text, message.message_id);

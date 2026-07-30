@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 from resolve_client import ResolveClient, ResolveOperationError, operation_error
-from schemas import ValidationError, safe_result_error, validate_arguments
+from schemas import (
+    MARKER_COLORS,
+    SAFE_RENDER_PRESETS,
+    ValidationError,
+    safe_result_error,
+    validate_arguments,
+)
 
 SERVER_NAME = "kaoz1-davinci-resolve"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 MUTATING_TOOLS = frozenset(
     {
         "resolve_open_project",
@@ -29,16 +40,31 @@ MUTATING_TOOLS = frozenset(
 def _schema(
     properties: dict[str, Any] | None = None,
     required: list[str] | None = None,
+    *,
+    any_of: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {
+    schema = {
         "type": "object",
         "properties": properties or {},
         "required": required or [],
         "additionalProperties": False,
     }
+    if any_of:
+        schema["anyOf"] = any_of
+    return schema
 
 
 TEXT = {"type": "string", "minLength": 1}
+PROJECT_FOLDER = {
+    "type": "string",
+    "minLength": 1,
+    "pattern": r"^(?!\.{1,2}$)[^/\\]+$",
+}
+SAFE_FILE_NAME = {
+    "type": "string",
+    "minLength": 1,
+    "pattern": r'^(?!\.{1,2}$)(?!.*[. ]$)[^<>:"/\\|?*\[\]\x00-\x1F]+$',
+}
 REQUEST_ID = {
     "type": "string",
     "minLength": 8,
@@ -54,7 +80,11 @@ CLIP = {
                 "mediaPoolId": TEXT,
                 "startFrame": {"type": "integer", "minimum": 0},
                 "endFrame": {"type": "integer", "minimum": 1},
-            }
+            },
+            any_of=[
+                {"required": ["path"]},
+                {"required": ["mediaPoolId"]},
+            ],
         ),
     ]
 }
@@ -68,7 +98,7 @@ TOOLS = [
     {
         "name": "resolve_list_projects",
         "description": "Lista projetos da pasta atual ou indicada sem criar projetos.",
-        "inputSchema": _schema({"folder": TEXT}),
+        "inputSchema": _schema({"folder": PROJECT_FOLDER}),
     },
     {
         "name": "resolve_open_project",
@@ -117,7 +147,7 @@ TOOLS = [
     },
     {
         "name": "resolve_append_clips",
-        "description": "Anexa clipes sem sobrescrever itens existentes. Exige aprovação e requestId.",
+        "description": "Anexa clipes apenas a timeline criada pelo MCP e registrada para o projeto atual. Exige aprovação e requestId.",
         "inputSchema": _schema(
             {
                 "timelineName": TEXT,
@@ -128,18 +158,26 @@ TOOLS = [
                 "requestId": REQUEST_ID,
             },
             ["clips", "trackType", "trackIndex", "requestId"],
+            any_of=[
+                {"required": ["timelineName"]},
+                {"required": ["timelineId"]},
+            ],
         ),
     },
     {
         "name": "resolve_add_marker",
-        "description": "Adiciona marcador sem sobrescrever marcador existente. Exige aprovação e requestId.",
+        "description": "Adiciona marcador apenas a timeline criada pelo MCP e registrada para o projeto atual. Exige aprovação e requestId.",
         "inputSchema": _schema(
             {
                 "timelineName": TEXT,
                 "frame": {"type": "integer", "minimum": 0},
                 "name": TEXT,
                 "note": {"type": "string"},
-                "color": {"type": "string"},
+                "color": {
+                    "type": "string",
+                    "enum": sorted(MARKER_COLORS),
+                    "default": "Blue",
+                },
                 "requestId": REQUEST_ID,
             },
             ["timelineName", "frame", "name", "requestId"],
@@ -147,7 +185,7 @@ TOOLS = [
     },
     {
         "name": "resolve_add_subtitles",
-        "description": "Valida e insere legendas quando a versão da API oficial oferece AddSubtitle. Exige aprovação e requestId.",
+        "description": "Valida proveniência da timeline e retorna uma limitação estruturada: a API oficial não oferece inserção de itens de legenda. Não modifica a timeline.",
         "inputSchema": _schema(
             {
                 "timelineName": TEXT,
@@ -189,15 +227,10 @@ TOOLS = [
                 "timelineName": TEXT,
                 "preset": {
                     "type": "string",
-                    "enum": [
-                        "H.264 Master",
-                        "H.265 Master",
-                        "ProRes Master",
-                        "YouTube 1080p",
-                    ],
+                    "enum": sorted(SAFE_RENDER_PRESETS),
                 },
                 "outputDirectory": TEXT,
-                "fileName": TEXT,
+                "fileName": SAFE_FILE_NAME,
                 "requestId": REQUEST_ID,
             },
             [
@@ -216,7 +249,7 @@ TOOLS = [
     },
     {
         "name": "resolve_start_render",
-        "description": "Inicia somente o render job explicitamente indicado. Exige aprovação por etapa e requestId.",
+        "description": "Inicia somente render job criado pelo MCP e registrado para o projeto atual. Exige aprovação por etapa e requestId.",
         "inputSchema": _schema(
             {"renderJobId": TEXT, "requestId": REQUEST_ID},
             ["renderJobId", "requestId"],
@@ -297,8 +330,8 @@ class ResolveMcpServer:
             "resolve_open_project": lambda: self.client.open_project(
                 args["projectName"], args["requestId"]
             ),
-            "resolve_get_current_timeline": self.client.current_timeline,
-            "resolve_list_timelines": self.client.list_timelines,
+            "resolve_get_current_timeline": lambda: self.client.current_timeline(),
+            "resolve_list_timelines": lambda: self.client.list_timelines(),
             "resolve_create_timeline": lambda: self.client.create_timeline(
                 args["name"], args["clips"], args["requestId"]
             ),

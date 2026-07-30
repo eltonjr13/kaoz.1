@@ -41,6 +41,11 @@ MARKER_COLORS = frozenset(
     {"Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia", "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream"}
 )
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
+WINDOWS_RESERVED_FILE_STEMS = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 
 
 class ValidationError(Exception):
@@ -95,6 +100,11 @@ def validate_arguments(tool_name: str, raw: Any) -> dict[str, Any]:
             "Atualize a descoberta de ferramentas MCP.",
         )
     return validator(args)
+
+
+def validate_clip_reference(value: Any) -> Any:
+    """Validate and normalize one clip reference for schema and bridge callers."""
+    return _clip_reference(value)
 
 
 def secure_media_path(candidate: str, *, must_exist: bool = True) -> Path:
@@ -166,6 +176,10 @@ def _no_arguments(args: dict[str, Any]) -> dict[str, Any]:
 def _list_projects(args: dict[str, Any]) -> dict[str, Any]:
     _only(args, {"folder"})
     folder = _optional_text(args, "folder")
+    if folder and (
+        folder in {".", ".."} or "/" in folder or "\\" in folder
+    ):
+        _invalid("folder", "nome direto de uma pasta, sem traversal ou separadores")
     return {"folder": folder} if folder else {}
 
 
@@ -184,7 +198,7 @@ def _create_timeline(args: dict[str, Any]) -> dict[str, Any]:
         _invalid("clips", "lista")
     return {
         "name": _text(args, "name"),
-        "clips": [_clip_reference(item) for item in clips],
+        "clips": [validate_clip_reference(item) for item in clips],
         "requestId": _request_id(args),
     }
 
@@ -210,16 +224,16 @@ def _append_clips(args: dict[str, Any]) -> dict[str, Any]:
     clips = args.get("clips")
     if not isinstance(clips, list) or not clips:
         _invalid("clips", "lista não vazia")
-    track_type = args.get("trackType", "video")
+    track_type = args.get("trackType")
     if track_type not in {"video", "audio"}:
         _invalid("trackType", "video ou audio")
-    track_index = args.get("trackIndex", 1)
+    track_index = args.get("trackIndex")
     if not isinstance(track_index, int) or isinstance(track_index, bool) or track_index < 1:
         _invalid("trackIndex", "inteiro positivo")
     return {
         "timelineName": _optional_text(args, "timelineName"),
         "timelineId": _optional_text(args, "timelineId"),
-        "clips": [_clip_reference(item) for item in clips],
+        "clips": [validate_clip_reference(item) for item in clips],
         "trackType": track_type,
         "trackIndex": track_index,
         "requestId": _request_id(args),
@@ -299,8 +313,22 @@ def _create_render_job(args: dict[str, Any]) -> dict[str, Any]:
     preset = _text(args, "preset")
     if preset not in SAFE_RENDER_PRESETS:
         _invalid("preset", "preset seguro permitido")
-    file_name = _text(args, "fileName")
-    if any(char in file_name for char in '<>:"/\\|?*'):
+    raw_file_name = args.get("fileName")
+    if (
+        not isinstance(raw_file_name, str)
+        or not raw_file_name
+        or raw_file_name != raw_file_name.strip()
+    ):
+        _invalid("fileName", "nome Windows não vazio, sem espaços externos")
+    file_name = raw_file_name
+    reserved_stem = file_name.split(".", 1)[0].upper()
+    if (
+        file_name in {".", ".."}
+        or file_name.endswith((".", " "))
+        or reserved_stem in WINDOWS_RESERVED_FILE_STEMS
+        or any(char in file_name for char in '<>:"/\\|?*[]')
+        or any(ord(char) < 32 for char in file_name)
+    ):
         _invalid("fileName", "nome de arquivo sem separadores ou curingas")
     return {
         "timelineName": _text(args, "timelineName"),
@@ -338,9 +366,33 @@ def _clip_reference(value: Any) -> Any:
     if isinstance(value, dict):
         allowed = {"path", "mediaPoolId", "startFrame", "endFrame"}
         _only(value, allowed)
-        if not _optional_text(value, "path") and not _optional_text(value, "mediaPoolId"):
+        path = _optional_text(value, "path")
+        item_id = _optional_text(value, "mediaPoolId")
+        if not path and not item_id:
             _invalid("clip", "path ou mediaPoolId")
-        return dict(value)
+        normalized: dict[str, Any] = {}
+        if path:
+            normalized["path"] = path
+        if item_id:
+            normalized["mediaPoolId"] = item_id
+        for key, minimum in (("startFrame", 0), ("endFrame", 1)):
+            frame = value.get(key)
+            if frame is None:
+                continue
+            if (
+                not isinstance(frame, int)
+                or isinstance(frame, bool)
+                or frame < minimum
+            ):
+                _invalid(key, f"inteiro maior ou igual a {minimum}")
+            normalized[key] = frame
+        if (
+            "startFrame" in normalized
+            and "endFrame" in normalized
+            and normalized["endFrame"] <= normalized["startFrame"]
+        ):
+            _invalid("endFrame", "inteiro maior que startFrame")
+        return normalized
     _invalid("clip", "caminho ou referência importada")
 
 
@@ -386,13 +438,19 @@ def _absolute_local_path(candidate: str, label: str) -> Path:
     if not isinstance(candidate, str) or not candidate.strip():
         _invalid(label, "caminho absoluto")
     value = candidate.strip()
-    if value.startswith("\\\\") or "*" in value or "?" in value:
+    if value.startswith(("\\\\", "//")) or "*" in value or "?" in value:
         raise ValidationError(
             "UNSAFE_PATH",
             f"{label} não aceita UNC ou curingas.",
             "Use um caminho local absoluto dentro da allowlist.",
         )
     path = Path(value)
+    if any(part == ".." for part in path.parts):
+        raise ValidationError(
+            "UNSAFE_PATH",
+            f"{label} não aceita traversal bruto.",
+            "Use um caminho absoluto normalizado dentro da allowlist.",
+        )
     if not path.is_absolute():
         raise ValidationError(
             "UNSAFE_PATH",

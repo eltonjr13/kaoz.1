@@ -28,6 +28,7 @@ export interface ToolExecutionRequest {
   readonly arguments: Readonly<Record<string, unknown>>;
   readonly context: ToolContext;
   readonly permissions: ToolPermissionGrant;
+  readonly approvalGrant?: unknown;
   readonly correlationId?: string;
   readonly timeoutMs?: number;
 }

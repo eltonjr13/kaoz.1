@@ -9,8 +9,13 @@ import {
   createDavinciResolvePreset,
   getDavinciResolveServerPath,
   validateMcpServerConfig,
+  validateMcpSettingsLenient,
 } from "../services/mcp/davinci-resolve.config.ts";
 import type { McpServerConfig } from "../services/mcp/mcp.types.ts";
+import {
+  createMcpKaozTool,
+  MCP_TOOL_TIMEOUT_MS,
+} from "../services/orchestrator/adapters/mcp.adapter.ts";
 
 const MUTATING_TOOLS = [
   "resolve_open_project",
@@ -88,11 +93,157 @@ test("configuração guiada aceita somente Python e paths locais autorizados", (
     () =>
       validateMcpServerConfig(
         validConfig({
+          env: {
+            ...validConfig().env,
+            KAOZ_RESOLVE_MEDIA_ROOT: "//server/media",
+          },
+        }),
+      ),
+    /UNC/,
+  );
+  assert.throws(
+    () =>
+      validateMcpServerConfig(
+        validConfig({
           args: [getDavinciResolveServerPath(), "-c", "print('unsafe')"],
         }),
       ),
     /argumentos extras/,
   );
+});
+
+test("validação rejeita traversal bruto antes da normalização Windows", () => {
+  assert.throws(
+    () =>
+      validateMcpServerConfig(
+        validConfig({
+          env: {
+            ...validConfig().env,
+            KAOZ_RESOLVE_MEDIA_ROOT: "D:\\Media\\..\\Segredos",
+          },
+        }),
+      ),
+    /traversal/,
+  );
+  assert.throws(
+    () =>
+      validateMcpServerConfig(
+        validConfig({
+          env: {
+            ...validConfig().env,
+            KAOZ_RESOLVE_EXPORT_ROOT: "D:/Exports/../Outside",
+          },
+        }),
+      ),
+    /traversal/,
+  );
+});
+
+test("carregamento leniente preserva config inválida e libera servidores válidos", () => {
+  const invalid = validConfig({
+    env: {
+      ...validConfig().env,
+      KAOZ_RESOLVE_MEDIA_ROOT: "D:\\Media\\..\\Segredos",
+    },
+  });
+  const healthy: McpServerConfig = {
+    id: "healthy-local",
+    name: "Healthy local",
+    enabled: true,
+    transport: "stdio",
+    command: "node",
+    args: ["server.mjs"],
+  };
+
+  const loaded = validateMcpSettingsLenient({
+    servers: [invalid, healthy],
+  });
+
+  assert.equal(loaded.settings.servers.length, 2);
+  assert.equal(
+    loaded.settings.servers[0]?.env?.KAOZ_RESOLVE_MEDIA_ROOT,
+    "D:\\Media\\..\\Segredos",
+  );
+  assert.deepEqual(
+    loaded.validServers.map((server) => server.id),
+    ["healthy-local"],
+  );
+  assert.equal(loaded.issues.length, 1);
+  assert.equal(loaded.issues[0]?.id, DAVINCI_RESOLVE_SERVER_ID);
+  assert.match(loaded.issues[0]?.error || "", /traversal/);
+});
+
+test("carregamento leniente materializa null sem bloquear servidor válido", () => {
+  const healthy: McpServerConfig = {
+    id: "healthy-after-null",
+    name: "Healthy after null",
+    enabled: true,
+    transport: "stdio",
+    command: "node",
+    args: ["server.mjs"],
+  };
+
+  const loaded = validateMcpSettingsLenient({
+    servers: [null, healthy],
+  });
+
+  assert.deepEqual(
+    loaded.validServers.map((server) => server.id),
+    ["healthy-after-null"],
+  );
+  assert.equal(loaded.settings.servers.length, 2);
+  assert.deepEqual(
+    loaded.settings.servers.map((server) => server.id),
+    ["invalid-mcp-config-1", "healthy-after-null"],
+  );
+  assert.equal(loaded.settings.servers[0]?.enabled, false);
+  assert.equal(loaded.settings.servers[0]?.transport, "stdio");
+  assert.equal(loaded.issues.length, 1);
+  assert.equal(loaded.issues[0]?.id, "invalid-mcp-config-1");
+  assert.match(loaded.issues[0]?.error || "", /Configuração MCP inválida/);
+});
+
+test("carregamento leniente não conecta ID duplicado após uma entrada inválida", () => {
+  const invalid = validConfig({
+    env: {
+      ...validConfig().env,
+      KAOZ_RESOLVE_MEDIA_ROOT: "D:\\Media\\..\\Segredos",
+    },
+  });
+  const duplicate: McpServerConfig = {
+    id: DAVINCI_RESOLVE_SERVER_ID,
+    name: "Servidor mascarado",
+    enabled: true,
+    transport: "stdio",
+    command: "node",
+    args: ["server.mjs"],
+  };
+
+  const loaded = validateMcpSettingsLenient({
+    servers: [invalid, duplicate],
+  });
+
+  assert.deepEqual(loaded.validServers, []);
+  assert.equal(loaded.issues.length, 1);
+  assert.equal(loaded.issues[0]?.id, DAVINCI_RESOLVE_SERVER_ID);
+  assert.match(loaded.issues[0]?.error || "", /traversal/);
+  assert.match(loaded.issues[0]?.error || "", /duplicado/);
+});
+
+test("factory MCP mantém ID rastreável e aprovação obrigatória por etapa", () => {
+  const tool = createMcpKaozTool("resolve-server", {
+    name: "resolve_create_timeline",
+    description: "Cria timeline",
+    inputSchema: { type: "object" },
+  });
+
+  assert.equal(
+    tool.id,
+    "mcp:resolve-server:resolve_create_timeline",
+  );
+  assert.equal(tool.effect, "external");
+  assert.equal(tool.approvalMode, "step");
+  assert.equal(tool.timeoutMs, MCP_TOOL_TIMEOUT_MS);
 });
 
 test("schemas exigem requestId em toda mutação e não expõem execução arbitrária", async () => {
@@ -116,17 +267,7 @@ test("schemas exigem requestId em toda mutação e não expõem execução arbit
   assert.doesNotMatch(`${server}\n${client}`, /\b(?:eval|exec|subprocess|os\.system)\s*\(/);
 });
 
-test("integração preserva aprovação por etapa e inclui o bridge no desktop", async () => {
-  const adapter = await readFile(
-    path.join(
-      process.cwd(),
-      "services",
-      "orchestrator",
-      "adapters",
-      "mcp.adapter.ts",
-    ),
-    "utf8",
-  );
+test("integração inclui o bridge MCP no desktop", async () => {
   const prepare = await readFile(
     path.join(process.cwd(), "scripts", "prepare-desktop-build.mjs"),
     "utf8",
@@ -135,7 +276,6 @@ test("integração preserva aprovação por etapa e inclui o bridge no desktop",
     path.join(process.cwd(), "scripts", "smoke-desktop-standalone.mjs"),
     "utf8",
   );
-  assert.match(adapter, /effect:"external",approvalMode:"step"/);
   assert.match(prepare, /services", "mcp-servers/);
   assert.match(smoke, /davinci-resolve/);
 });

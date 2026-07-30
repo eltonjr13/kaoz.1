@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { sortCourseVideoPaths } from "../services/davinci-free/course-batch.order.ts";
+import { chooseCourseFolder } from "../services/davinci-free/course-batch.service.ts";
 import {
   analyzeCourseIdentity,
   cleanLessonTitle,
@@ -75,7 +82,13 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(batch, /course-batches/);
   assert.match(batch, /Shell\.Application/);
   assert.match(batch, /BrowseForFolder/);
-  assert.match(batch, /explorer\.exe/);
+  assert.match(batch, /wscript\.exe/);
+  assert.equal(
+    path.win32.normalize("//server/course").startsWith("\\\\"),
+    true,
+  );
+  assert.match(batch, /const normalized = path\.win32\.normalize\(raw\)/);
+  assert.match(batch, /normalized\.startsWith\("\\\\\\\\"\)/);
   assert.match(batch, /suggestedCourseName/);
   assert.match(batch, /reuseCourseTheme:\s*true/);
   assert.match(batch, /activeJobs/);
@@ -93,6 +106,55 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
 });
+
+test(
+  "seletor do Windows executa o script, retorna a pasta, cancela e expira com segurança",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const selectedDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "kaoz-course-picker-"),
+    );
+    try {
+      const selected = await chooseCourseFolder({
+        runScript: async (scriptPath, resultPath) => {
+          const script = await readFile(scriptPath, "utf8");
+          assert.match(script, /Shell\.Application/);
+          assert.match(script, /BrowseForFolder/);
+          await writeFile(resultPath, selectedDirectory, "utf16le");
+        },
+        responseTimeoutMs: 100,
+        pollIntervalMs: 1,
+      });
+      assert.deepEqual(selected, {
+        canceled: false,
+        folderPath: path.win32.normalize(selectedDirectory),
+      });
+
+      const canceled = await chooseCourseFolder({
+        runScript: async (_scriptPath, resultPath) => {
+          await writeFile(resultPath, "CANCEL", "utf16le");
+        },
+        responseTimeoutMs: 100,
+        pollIntervalMs: 1,
+      });
+      assert.deepEqual(canceled, {
+        canceled: true,
+        folderPath: null,
+      });
+
+      await assert.rejects(
+        chooseCourseFolder({
+          runScript: async () => undefined,
+          responseTimeoutMs: 5,
+          pollIntervalMs: 1,
+        }),
+        /expirou sem resposta/,
+      );
+    } finally {
+      await rm(selectedDirectory, { recursive: true, force: true });
+    }
+  },
+);
 
 test("identidade semântica padroniza o plano de 30 dias sem duplicar aulas", async () => {
   const transcript = [{

@@ -37,6 +37,32 @@ test("seleciona skill específica por intenção e respeita comando explícito",
   assert.equal(skillRegistry.select("crie uma skill para organizar despesas").id, "build-skills");
 });
 
+test("roteia pedidos do DaVinci para as 14 ferramentas MCP protegidas", () => {
+  const skill = skillRegistry.select(
+    "No DaVinci Resolve, liste as timelines e crie uma nova para esta aula.",
+  );
+  assert.equal(skill.id, "davinci.resolve");
+  assert.equal(skill.approvalMode, "step");
+  assert.equal(skill.preferredTools.length, 14);
+  assert.equal(
+    skill.preferredTools.every((toolId) =>
+      toolId.startsWith("mcp:davinci-resolve-local:resolve_"),
+    ),
+    true,
+  );
+});
+
+test("não confunde o verbo resolver com o editor DaVinci Resolve", () => {
+  assert.notEqual(
+    skillRegistry.select("resolve esse erro no meu projeto").id,
+    "davinci.resolve",
+  );
+  assert.equal(
+    skillRegistry.select("teste esta aula no Resolve Studio").id,
+    "davinci.resolve",
+  );
+});
+
 test("rejeita rede sem capacidade web", () => {
   const skill = textSkill("1.0.0");
   skill.tools = [{

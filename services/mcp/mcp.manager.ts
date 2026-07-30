@@ -5,26 +5,41 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { McpServerConfig, McpServerStatus, McpSettings, McpToolCallResult, McpToolSchema } from "./mcp.types";
-import sharp from "sharp";
-import { flowProvider } from "@/src/providers/flow/FlowProvider";
 import { redactSecrets } from "@/services/orchestrator/orchestrator.policy";
 import { buildSafeMcpEnvironment } from "./mcp.security";
+import { consumeMcpCallAuthorization } from "./mcp-call.authorization";
+import { mcpToolId } from "./mcp-tool-id";
 import {
   DAVINCI_RESOLVE_ENV_KEYS,
   isDavinciResolveConfig,
   validateMcpServerConfig,
   validateMcpSettings,
+  validateMcpSettingsLenient,
 } from "./davinci-resolve.config";
 
 const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
+const MCP_CONNECT_TIMEOUT_MS = 15_000;
+const MCP_DISCOVERY_TIMEOUT_MS = 15_000;
+const MCP_DIAGNOSTIC_TIMEOUT_MS = 10_000;
+const MCP_TOOL_TIMEOUT_MS = 45_000;
+const MCP_CLOSE_TIMEOUT_MS = 5_000;
+
+export type McpToolCallOptions = Readonly<{
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  authorization?: unknown;
+}>;
 
 export class McpManager {
   private static instance: McpManager;
   private static initializationPromise: Promise<McpManager> | null = null;
   private settings: McpSettings = { servers: [] };
+  private connectableServers: McpServerConfig[] = [];
+  private invalidStatuses: McpServerStatus[] = [];
   private clients: Map<string, Client> = new Map();
   private statuses: Map<string, McpServerStatus> = new Map();
+  private connectionGeneration = 0;
 
   private constructor() {}
 
@@ -51,15 +66,27 @@ export class McpManager {
   public async loadSettings(): Promise<McpSettings> {
     try {
       const data = await readFile(SETTINGS_FILE, "utf8");
-      this.settings = validateMcpSettings(JSON.parse(data) as McpSettings);
+      const loaded = validateMcpSettingsLenient(JSON.parse(data));
+      this.settings = loaded.settings;
+      this.connectableServers = loaded.validServers;
+      this.invalidStatuses = loaded.issues.map((issue) => ({
+        id: issue.id,
+        connected: false,
+        error: redactSecrets(issue.error),
+        tools: [],
+      }));
     } catch {
       this.settings = { servers: [] };
+      this.connectableServers = [];
+      this.invalidStatuses = [];
     }
     return this.settings;
   }
 
   public async saveSettings(settings: McpSettings): Promise<void> {
     this.settings = validateMcpSettings(settings);
+    this.connectableServers = this.settings.servers;
+    this.invalidStatuses = [];
     await mkdir(DATA_DIR, { recursive: true });
     await writeFile(SETTINGS_FILE, JSON.stringify(this.settings, null, 2), "utf8");
     // Reinitialize connections on save
@@ -71,7 +98,7 @@ export class McpManager {
   }
 
   public getStatuses(): McpServerStatus[] {
-    return Array.from(this.statuses.values());
+    return [...this.invalidStatuses, ...this.statuses.values()];
   }
 
   public async refreshConnections(): Promise<void> {
@@ -80,30 +107,40 @@ export class McpManager {
   }
 
   private async initializeConnections() {
-    // Close existing connections
-    for (const [id, client] of this.clients.entries()) {
-      try {
-        await client.close();
-      } catch (e) {
-        console.error(`Error closing client ${id}:`, e);
-      }
-    }
+    const generation = ++this.connectionGeneration;
+    const existingClients = [...this.clients.entries()];
     this.clients.clear();
     this.statuses.clear();
 
-    for (const config of this.settings.servers) {
-      if (!config.enabled) continue;
-      this.statuses.set(config.id, { id: config.id, connected: false, error: null, tools: [] });
-      await this.connectServer(config);
+    await Promise.allSettled(
+      existingClients.map(([id, client]) => this.closeClient(client, id)),
+    );
+    if (generation !== this.connectionGeneration) {
+      return;
     }
+
+    const enabledServers = this.connectableServers.filter(
+      (config) => config.enabled,
+    );
+    for (const config of enabledServers) {
+      this.statuses.set(config.id, { id: config.id, connected: false, error: null, tools: [] });
+    }
+    await Promise.allSettled(
+      enabledServers.map((config) => this.connectServer(config, generation)),
+    );
   }
 
   public async testConnection(config: McpServerConfig): Promise<McpServerStatus> {
+    let client: Client | undefined;
     try {
       const validated = validateMcpServerConfig(config);
-      const { client, transport } = this.createClientAndTransport(validated);
-      await client.connect(transport);
-      const toolsResponse = await client.listTools();
+      const created = this.createClientAndTransport(validated);
+      client = created.client;
+      await client.connect(created.transport, requestOptions(MCP_CONNECT_TIMEOUT_MS));
+      const toolsResponse = await client.listTools(
+        undefined,
+        requestOptions(MCP_DISCOVERY_TIMEOUT_MS),
+      );
       const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t) => ({
         name: t.name,
         description: t.description,
@@ -112,7 +149,6 @@ export class McpManager {
       const diagnostic = isDavinciResolveConfig(validated)
         ? await this.getResolveDiagnostic(client)
         : null;
-      await client.close();
       return {
         id: validated.id,
         connected: true,
@@ -122,17 +158,14 @@ export class McpManager {
       };
     } catch (err: unknown) {
       return { id: config.id, connected: false, error: redactSecrets(err instanceof Error ? err.message : String(err)), tools: [] };
+    } finally {
+      if (client) {
+        await this.closeClient(client, config.id || "temporary");
+      }
     }
   }
 
   private createClientAndTransport(config: McpServerConfig) {
-    const client = new Client({
-      name: "kaoz1-agent",
-      version: "1.0.0"
-    }, {
-      capabilities: {}
-    });
-
     let transport: StdioClientTransport | SSEClientTransport;
     if (config.transport === "stdio") {
       transport = new StdioClientTransport({
@@ -150,16 +183,33 @@ export class McpManager {
       transport = new SSEClientTransport(new URL(config.url || ""));
     }
 
+    const client = new Client({
+      name: "kaoz1-agent",
+      version: "1.0.0"
+    }, {
+      capabilities: {}
+    });
+
     return { client, transport };
   }
 
-  private async connectServer(config: McpServerConfig) {
+  private async connectServer(
+    config: McpServerConfig,
+    generation: number,
+  ) {
+    let client: Client | undefined;
     try {
-      const { client, transport } = this.createClientAndTransport(config);
-      await client.connect(transport);
-      this.clients.set(config.id, client);
+      const created = this.createClientAndTransport(config);
+      client = created.client;
+      await client.connect(
+        created.transport,
+        requestOptions(MCP_CONNECT_TIMEOUT_MS),
+      );
 
-      const toolsResponse = await client.listTools();
+      const toolsResponse = await client.listTools(
+        undefined,
+        requestOptions(MCP_DISCOVERY_TIMEOUT_MS),
+      );
       const tools: McpToolSchema[] = (toolsResponse.tools || []).map((t) => ({
         name: t.name,
         description: t.description,
@@ -169,6 +219,11 @@ export class McpManager {
         ? await this.getResolveDiagnostic(client)
         : null;
 
+      if (generation !== this.connectionGeneration) {
+        await this.closeClient(client, config.id);
+        return;
+      }
+      this.clients.set(config.id, client);
       this.statuses.set(config.id, {
         id: config.id,
         connected: true,
@@ -177,6 +232,12 @@ export class McpManager {
         diagnostic,
       });
     } catch (err: unknown) {
+      if (client) {
+        await this.closeClient(client, config.id);
+      }
+      if (generation !== this.connectionGeneration) {
+        return;
+      }
       this.statuses.set(config.id, {
         id: config.id,
         connected: false,
@@ -198,20 +259,38 @@ export class McpManager {
     return allTools;
   }
 
-  public async callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  public async callTool(
+    serverId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    options: McpToolCallOptions = {},
+  ): Promise<McpToolCallResult> {
+    consumeMcpCallAuthorization(
+      options.authorization,
+      mcpToolId(serverId, toolName),
+      args,
+    );
     const client = this.clients.get(serverId);
     if (!client) {
       throw new Error(`Servidor MCP ${serverId} não está conectado.`);
     }
     
-    const result = await client.callTool({ name: toolName, arguments: args }) as McpToolCallResult;
-
-    const resultIsError = Boolean(result && typeof result === "object" && "isError" in result && (result as { isError?: boolean }).isError);
-    if (toolName === "create_playlist" && !resultIsError) {
-      // Fire and forget: generate and upload cover
-      this.generateAndUploadCover(serverId, args, result).catch(err => {
-        console.error("Erro no processo de gerar e upar capa da playlist:", err);
-      });
+    const timeoutMs = normalizeTimeout(
+      options.timeoutMs,
+      MCP_TOOL_TIMEOUT_MS,
+    );
+    let result: McpToolCallResult;
+    try {
+      result = await client.callTool(
+        { name: toolName, arguments: args },
+        undefined,
+        requestOptions(timeoutMs, options.signal),
+      ) as McpToolCallResult;
+    } catch (error) {
+      if (invalidatesClient(error)) {
+        await this.invalidateClient(serverId, client, error);
+      }
+      throw error;
     }
 
     return result;
@@ -221,10 +300,14 @@ export class McpManager {
     client: Client,
   ): Promise<Record<string, unknown>> {
     try {
-      const result = await client.callTool({
-        name: "resolve_get_status",
-        arguments: {},
-      }) as McpToolCallResult;
+      const result = await client.callTool(
+        {
+          name: "resolve_get_status",
+          arguments: {},
+        },
+        undefined,
+        requestOptions(MCP_DIAGNOSTIC_TIMEOUT_MS),
+      ) as McpToolCallResult;
       if (
         result.structuredContent &&
         typeof result.structuredContent === "object" &&
@@ -243,6 +326,9 @@ export class McpManager {
         }
       }
     } catch (error) {
+      if (invalidatesClient(error)) {
+        throw error;
+      }
       return {
         resolveOpen: false,
         code: "RESOLVE_DIAGNOSTIC_FAILED",
@@ -260,64 +346,74 @@ export class McpManager {
     };
   }
 
-  private async generateAndUploadCover(serverId: string, args: Record<string, unknown>, result: unknown) {
-    const resultRecord = result && typeof result === "object" ? result as { content?: Array<{ text?: string }>; isError?: boolean } : {};
-    const textContent = Array.isArray(resultRecord.content) ? resultRecord.content[0]?.text : "";
-    const playlistIdMatch = textContent?.match(/Playlist ID: ([a-zA-Z0-9]+)/);
-    if (!playlistIdMatch) {
-      console.warn("Não foi possível extrair o Playlist ID para upload de capa.");
-      return;
+  private async invalidateClient(
+    serverId: string,
+    client: Client,
+    error: unknown,
+  ): Promise<void> {
+    if (this.clients.get(serverId) === client) {
+      this.clients.delete(serverId);
+      this.statuses.set(serverId, {
+        id: serverId,
+        connected: false,
+        error: redactSecrets(
+          error instanceof Error ? error.message : String(error),
+        ),
+        tools: [],
+      });
     }
-    const playlistId = playlistIdMatch[1];
-    const playlistName = typeof args.name === "string" ? args.name : "Nova Playlist";
-    const playlistDesc = typeof args.description === "string" ? args.description : "";
+    await this.closeClient(client, serverId);
+  }
 
-    const prompt = `A professional, highly aesthetic album cover art for a music playlist. Theme/Name: "${playlistName}". ${playlistDesc ? `Context: ${playlistDesc}. ` : ''}Style: vibrant, creative, artistic, highly detailed, visually striking. NO TEXT, NO LETTERS, no typography, no words, no watermarks. Abstract, atmospheric, or symbolic visual representation matching the playlist vibe.`;
-    console.log(`[Spotify MCP] Gerando capa da playlist '${playlistName}' com Flow...`);
-    
-    // Configurado para quadrado 1:1 conforme instrução
-    const generateOptions = {
-      aspectRatio: '1:1' as const,
-      quantity: 1 as const,
-    };
-
-    const flowResult = await flowProvider.generateImage(prompt, generateOptions);
-    
-    const imagePath = flowResult.paths?.[0] || flowResult.path;
-    if (!flowResult.success || !imagePath) {
-      console.error("[Spotify MCP] Falha ao gerar imagem no Flow:", flowResult.error);
-      return;
-    }
-
+  private async closeClient(client: Client, id: string): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout>;
     try {
-      console.log(`[Spotify MCP] Redimensionando capa gerada...`);
-      // O Spotify exige JPEG base64 < 256KB
-      const imageBuffer = await sharp(imagePath)
-        .resize(500, 500)
-        .jpeg({ quality: 80 })
-        .toBuffer();
-      
-      const imageBase64 = imageBuffer.toString("base64");
-      
-      console.log(`[Spotify MCP] Fazendo upload da capa no Spotify...`);
-      const client = this.clients.get(serverId);
-      if (client) {
-        const uploadResult = await client.callTool({
-          name: "upload_playlist_cover",
-          arguments: {
-            playlist_id: playlistId,
-            image_base64: imageBase64
-          }
-        });
-        
-        if (uploadResult.isError) {
-          console.error(`[Spotify MCP] Falha ao adicionar capa:`, uploadResult.content);
-        } else {
-          console.log(`[Spotify MCP] Capa da playlist adicionada com sucesso!`);
-        }
-      }
-    } catch (err) {
-      console.error("[Spotify MCP] Erro ao processar imagem da capa ou enviar para o Spotify:", err);
+      await Promise.race([
+        client.close(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`Timeout closing MCP client ${id}.`)),
+            MCP_CLOSE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      console.error(`Error closing client ${id}:`, error);
+    } finally {
+      clearTimeout(timeout!);
     }
   }
+
+}
+
+function requestOptions(timeoutMs: number, signal?: AbortSignal) {
+  return {
+    signal,
+    timeout: timeoutMs,
+    maxTotalTimeout: timeoutMs,
+  };
+}
+
+function normalizeTimeout(
+  timeoutMs: number | undefined,
+  fallback: number,
+): number {
+  return typeof timeoutMs === "number" &&
+    Number.isFinite(timeoutMs) &&
+    timeoutMs > 0
+    ? Math.floor(timeoutMs)
+    : fallback;
+}
+
+function invalidatesClient(error: unknown): boolean {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === -32000 || code === -32001) {
+      return true;
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:connection closed|transport|network|fetch failed|timed out|timeout|request was cancelled|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EPIPE|socket hang up)/i.test(
+    message,
+  );
 }

@@ -14,6 +14,18 @@ export const DAVINCI_RESOLVE_ENV_KEYS = Object.freeze([
 
 const DAVINCI_ENV_KEY_SET = new Set<string>(DAVINCI_RESOLVE_ENV_KEYS);
 
+export type McpSettingsValidationIssue = Readonly<{
+  index: number;
+  id: string;
+  error: string;
+}>;
+
+export type LenientMcpSettings = Readonly<{
+  settings: McpSettings;
+  validServers: McpServerConfig[];
+  issues: McpSettingsValidationIssue[];
+}>;
+
 export function getDavinciResolveServerPath(root = process.cwd()): string {
   return path.resolve(
     root,
@@ -58,6 +70,53 @@ export function validateMcpSettings(
       ids.add(validated.id);
       return validated;
     }),
+  };
+}
+
+export function validateMcpSettingsLenient(
+  settings: unknown,
+  root = process.cwd(),
+): LenientMcpSettings {
+  if (!isRecord(settings) || !Array.isArray(settings.servers)) {
+    throw new Error("Formato de configuração MCP inválido.");
+  }
+
+  const claimedIds = new Set<string>();
+  const validServers: McpServerConfig[] = [];
+  const issues: McpSettingsValidationIssue[] = [];
+
+  settings.servers.forEach((server, index) => {
+    const visibleId = getVisibleServerId(server, index);
+    if (claimedIds.has(visibleId)) {
+      issues.push({
+        index,
+        id: visibleId,
+        error: `ID de servidor MCP duplicado: ${visibleId}.`,
+      });
+      return;
+    }
+    claimedIds.add(visibleId);
+    try {
+      const validated = validateMcpServerConfig(
+        server as McpServerConfig,
+        root,
+      );
+      validServers.push(validated);
+    } catch (error) {
+      issues.push({
+        index,
+        id: visibleId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  return {
+    settings: {
+      servers: settings.servers.map(cloneServerForDisplay),
+    },
+    validServers,
+    issues: mergeValidationIssues(issues),
   };
 }
 
@@ -186,15 +245,94 @@ function assertAbsoluteLocalWindowsPath(
   if (!candidate || !path.win32.isAbsolute(candidate)) {
     throw new Error(`${label} deve ser um caminho Windows absoluto.`);
   }
+  const normalized = path.win32.normalize(candidate);
   if (
     candidate.startsWith("\\\\") ||
+    normalized.startsWith("\\\\") ||
     candidate.includes("*") ||
     candidate.includes("?")
   ) {
     throw new Error(`${label} não aceita UNC ou curingas.`);
   }
-  const normalized = path.win32.normalize(candidate);
+  if (candidate.split(/[\\/]+/).includes("..")) {
+    throw new Error(`${label} contém traversal inválido.`);
+  }
   if (normalized.split("\\").includes("..")) {
     throw new Error(`${label} contém traversal inválido.`);
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getVisibleServerId(server: unknown, index: number): string {
+  if (
+    isRecord(server) &&
+    typeof server.id === "string" &&
+    server.id.trim()
+  ) {
+    return server.id;
+  }
+  return `invalid-mcp-config-${index + 1}`;
+}
+
+function mergeValidationIssues(
+  issues: readonly McpSettingsValidationIssue[],
+): McpSettingsValidationIssue[] {
+  const merged = new Map<string, McpSettingsValidationIssue>();
+  for (const issue of issues) {
+    const existing = merged.get(issue.id);
+    merged.set(
+      issue.id,
+      existing
+        ? {
+            index: Math.min(existing.index, issue.index),
+            id: issue.id,
+            error: `${existing.error} ${issue.error}`,
+          }
+        : issue,
+    );
+  }
+  return [...merged.values()];
+}
+
+function cloneServerForDisplay(
+  server: unknown,
+  index: number,
+): McpServerConfig {
+  if (!isRecord(server)) {
+    return {
+      id: getVisibleServerId(server, index),
+      name: `Configuração MCP inválida (entrada ${index + 1})`,
+      enabled: false,
+      transport: "stdio",
+      command: "",
+      args: [],
+      env: {},
+    };
+  }
+  return {
+    ...server,
+    id: getVisibleServerId(server, index),
+    name:
+      typeof server.name === "string"
+        ? server.name
+        : `Configuração MCP inválida (entrada ${index + 1})`,
+    enabled: server.enabled === true,
+    transport: server.transport === "sse" ? "sse" : "stdio",
+    command: typeof server.command === "string" ? server.command : undefined,
+    args: Array.isArray(server.args)
+      ? server.args.filter((item): item is string => typeof item === "string")
+      : undefined,
+    url: typeof server.url === "string" ? server.url : undefined,
+    env: isRecord(server.env)
+      ? Object.fromEntries(
+          Object.entries(server.env).filter(
+            (entry): entry is [string, string] =>
+              typeof entry[1] === "string",
+          ),
+        )
+      : undefined,
+  } as McpServerConfig;
 }

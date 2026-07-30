@@ -14,6 +14,8 @@ import {
 } from "../orchestrator/orchestrator.policy.ts";
 import type { ApprovalMode } from "../orchestrator/orchestrator.types.ts";
 import { assertToolArguments } from "./tool.validation.ts";
+import { consumeMcpApprovalGrant } from "./tool-approval.service.ts";
+import { issueMcpCallAuthorization } from "../mcp/mcp-call.authorization.ts";
 import { InMemoryToolExecutionAudit } from "./tool-execution.audit.ts";
 import type {
   ToolCatalog,
@@ -203,6 +205,13 @@ export class ToolExecutionService {
       assertToolArguments(tool.inputSchema, {
         ...request.arguments,
       });
+      if (tool.source === "mcp") {
+        consumeMcpApprovalGrant(
+          request.approvalGrant,
+          tool.id,
+          request.arguments,
+        );
+      }
 
       const handler = this.catalog.handler(tool.id);
       if (!handler) {
@@ -217,12 +226,16 @@ export class ToolExecutionService {
         busContext.signal,
         AbortSignal.timeout(executionTimeoutMs),
       );
+      const mcpCallAuthorization = tool.source === "mcp"
+        ? issueMcpCallAuthorization(tool.id, request.arguments)
+        : undefined;
       result = await invokeWithTimeout(
         handler(
           { ...request.arguments },
           {
             ...request.context,
             signal,
+            mcpCallAuthorization,
           },
         ),
         executionTimeoutMs,

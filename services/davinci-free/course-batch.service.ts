@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { readdir, readFile, stat, writeFile, mkdir, unlink } from "node:fs/promises";
-import { promisify } from "node:util";
+import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import {
@@ -17,6 +15,9 @@ import type {
 } from "./intelligent-edit.types";
 import { sortCourseVideoPaths } from "./course-batch.order";
 import { analyzeCourseIdentity } from "./course-identity.service";
+import { normalizeExistingLocalCourseDirectory } from "./course-folder-picker";
+
+export { chooseCourseFolder } from "./course-folder-picker";
 
 const ROOT = path.join(
   getLocalDataDir(),
@@ -36,7 +37,6 @@ const processState = globalThis as typeof globalThis & {
   __kaozDavinciBatchJobs?: Map<string, Promise<void>>;
 };
 const activeJobs = processState.__kaozDavinciBatchJobs ||= new Map();
-const execFileAsync = promisify(execFile);
 
 export type CourseBatchItemStatus =
   | "pending"
@@ -111,73 +111,6 @@ function jobPath(id: string) {
   return path.join(ROOT, `${id}.json`);
 }
 
-async function localDirectory(value: unknown) {
-  const raw = cleanText(value);
-  if (!raw || !path.win32.isAbsolute(raw) || raw.startsWith("\\\\")) {
-    throw new Error("A pasta do curso deve usar um caminho local absoluto.");
-  }
-  const normalized = path.win32.normalize(raw);
-  const info = await stat(normalized).catch(() => null);
-  if (!info?.isDirectory()) {
-    throw new Error("A pasta do curso não foi encontrada.");
-  }
-  return normalized;
-}
-
-export async function chooseCourseFolder() {
-  if (process.platform !== "win32") {
-    throw new Error("O seletor de pastas está disponível somente no Windows.");
-  }
-  const pickerDirectory = path.join(ROOT, "folder-picker");
-  await mkdir(pickerDirectory, { recursive: true });
-  const token = crypto.randomBytes(12).toString("hex");
-  const scriptPath = path.join(pickerDirectory, `${token}.vbs`);
-  const resultPath = path.join(pickerDirectory, `${token}.result`);
-  const escapedResultPath = resultPath.replaceAll('"', '""');
-  const script = [
-    "Option Explicit",
-    "Dim shell, folder, fso, output",
-    'Set shell = CreateObject("Shell.Application")',
-    'Set folder = shell.BrowseForFolder(0, "Selecione a pasta do curso", &H41, 0)',
-    'Set fso = CreateObject("Scripting.FileSystemObject")',
-    `Set output = fso.CreateTextFile("${escapedResultPath}", True, True)`,
-    'If folder Is Nothing Then',
-    '  output.Write "CANCEL"',
-    "Else",
-    "  output.Write folder.Self.Path",
-    "End If",
-    "output.Close",
-  ].join("\r\n");
-  await writeFile(scriptPath, script, "utf8");
-  try {
-    await execFileAsync("explorer.exe", [scriptPath], {
-      timeout: 30_000,
-      windowsHide: false,
-    });
-    const deadline = Date.now() + 10 * 60_000;
-    let selected = "";
-    while (Date.now() < deadline) {
-      const raw = await readFile(resultPath, "utf16le").catch(() => "");
-      if (raw) {
-        selected = raw.replace(/^\uFEFF/, "").trim();
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    if (!selected) throw new Error("O seletor de pasta expirou sem resposta.");
-    if (selected === "CANCEL") return { canceled: true, folderPath: null };
-    return {
-      canceled: false,
-      folderPath: await localDirectory(selected),
-    };
-  } finally {
-    await Promise.all([
-      unlink(scriptPath).catch(() => undefined),
-      unlink(resultPath).catch(() => undefined),
-    ]);
-  }
-}
-
 async function walkVideos(root: string, current = root): Promise<string[]> {
   const entries = await readdir(current, { withFileTypes: true });
   const found: string[] = [];
@@ -224,7 +157,9 @@ function suggestedCourseName(folderPath: string) {
 }
 
 export async function discoverCourseBatch(rawInput: Record<string, unknown>) {
-  const folderPath = await localDirectory(rawInput.folderPath);
+  const folderPath = await normalizeExistingLocalCourseDirectory(
+    rawInput.folderPath,
+  );
   const paths = sortCourseVideoPaths(await walkVideos(folderPath));
   if (paths.length > MAX_BATCH_VIDEOS) {
     throw new Error(`O lote excede o limite de ${MAX_BATCH_VIDEOS} vídeos.`);

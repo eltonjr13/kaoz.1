@@ -53,8 +53,8 @@ Exemplo persistido em `mcp-settings.json`:
 
 O backend fornece o caminho absoluto correto de `server.py` para o runtime em
 execução; ele não aceita argumentos extras. Para múltiplas raízes de mídia,
-separe caminhos locais por `;`. UNC, curingas, paths relativos e traversal são
-bloqueados.
+separe caminhos locais por `;`. UNC com `\\server` ou `//server`, curingas,
+paths relativos e traversal são bloqueados.
 
 ## Segurança e aprovações
 
@@ -64,17 +64,29 @@ bloqueados.
 - Como MCP é efeito externo, toda chamada exige aprovação por etapa
   (`approvalMode: "step"`), inclusive leituras.
 - Toda mutação exige `requestId`, usado para rastreabilidade e idempotência. Um
-  ledger mínimo é persistido na primeira raiz autorizada de exportação.
+  ledger versionado é persistido na primeira raiz autorizada de exportação
+  **antes** de qualquer mutação.
+- O mesmo `requestId` só pode repetir exatamente a mesma operação e argumentos.
+  Reuso com outra intenção retorna `REQUEST_ID_CONFLICT`. Estado `pending`
+  bloqueia replay automático porque a execução anterior pode ter sido
+  interrompida.
 - Não há ferramenta para Python, Lua, shell, expressão ou script arbitrário.
 - O MVP não exclui projetos, mídias, timelines ou render jobs.
 - O MVP não substitui nem modifica timelines preexistentes. Montagem,
-  marcadores e legendas só são aceitos em timelines criadas pelo MCP com prefixo
-  `Kaoz -`.
+  marcadores e legendas só são aceitos em timelines criadas pelo MCP cuja
+  identidade de timeline **e de projeto** esteja registrada no ledger. O prefixo
+  `Kaoz -` sozinho não concede autorização.
 - Importação e exportação ficam limitadas às raízes configuradas.
 - Arquivos existentes não são sobrescritos sem `overwrite=true` explícito e
   aprovado. Renders nunca são sobrescritos.
 - `resolve_create_render_job` somente prepara a fila. O render começa apenas
   com uma chamada separada e aprovada a `resolve_start_render`.
+- `resolve_start_render` aceita somente um job criado por
+  `resolve_create_render_job` no projeto atual e registrado no ledger; jobs
+  preexistentes na fila nunca são iniciados por fallback.
+- O destino do render é guardado apenas no ledger local, revalidado ao iniciar
+  e configurado com `UniqueFilenameStyle=1`. A resposta pública da fila remove
+  `TargetDir` e nomes de saída que possam revelar paths locais.
 
 Fluxo recomendado:
 
@@ -91,8 +103,10 @@ Fluxo recomendado:
 
 O botão **Testar conexão** inicia o MCP, descobre as ferramentas e chama apenas
 `resolve_get_status`. O diagnóstico informa Python, paths da API, carga do
-módulo, estado do Resolve, versão, projeto e timeline atuais. Resolve fechado
-não derruba o Kaoz.1 nem outros servidores MCP.
+módulo, estado do Resolve, versão, projeto e timeline atuais. A resposta inclui
+versão, implementação e arquitetura do Python, além de detalhes seguros e
+acionáveis, sem devolver mensagens brutas de exceção que possam revelar paths.
+Resolve fechado não derruba o Kaoz.1 nem outros servidores MCP.
 
 Smoke manual opcional, sem mutação:
 
@@ -101,11 +115,19 @@ Smoke manual opcional, sem mutação:
   'services\mcp-servers\davinci-resolve\smoke_status.py'
 ```
 
+Para usar o smoke como gate (código de saída `1` quando o Resolve não estiver
+aberto/acessível):
+
+```powershell
+& 'C:\Python312\python.exe' `
+  'services\mcp-servers\davinci-resolve\smoke_status.py' --require-open
+```
+
 Testes mockados, sem instalação real:
 
 ```powershell
-& 'C:\Python312\python.exe' -m unittest -v `
-  'services\mcp-servers\davinci-resolve\test_resolve_bridge.py'
+& 'build\runtime\parakeet\python\python.exe' -m unittest discover -v `
+  -s 'services\mcp-servers\davinci-resolve' -p 'test_*.py'
 npm.cmd run test:davinci-resolve
 ```
 
@@ -114,15 +136,30 @@ npm.cmd run test:davinci-resolve
 - O Resolve precisa estar aberto; o MCP não o inicia.
 - A disponibilidade de scripting externo e alguns métodos varia conforme a
   versão/edição instalada.
-- A API oficial tradicional não oferece inserção uniforme de texto de legenda
-  em todas as versões. `resolve_add_subtitles` usa `AddSubtitle` somente quando
-  o objeto de timeline o expõe; caso contrário retorna
-  `SUBTITLE_API_UNAVAILABLE` sem modificar a timeline.
-- A seleção temporária de timeline necessária para algumas APIs de exportação e
-  Deliver é serializada e a timeline anterior é restaurada.
+- A documentação oficial instalada não expõe um método de timeline para inserir
+  itens de legenda. `resolve_add_subtitles` valida a entrada e sempre retorna
+  `SUBTITLE_API_UNAVAILABLE`, orientando exportar/importar SRT manualmente, sem
+  tentar uma API inexistente e sem modificar a timeline.
+- Exportação DRT usa `Timeline.Export` com `resolve.EXPORT_DRT` e
+  `resolve.EXPORT_NONE`, conforme o `README.txt` oficial instalado.
+- A seleção temporária de timeline necessária para Deliver é serializada e a
+  timeline anterior é restaurada. Ao listar uma pasta filha de projetos, o MCP
+  retorna com `GotoParentFolder`.
 - Idempotência é mantida pelo ledger
-  `.kaoz1-resolve-idempotency.json` na raiz de exportação e por nomes
-  rastreáveis de timeline.
+  `.kaoz1-resolve-idempotency.json` na raiz de exportação. Cada entrada contém
+  versão, estado `pending`/`completed`, operação, fingerprint SHA-256 dos
+  argumentos e resultado concluído. Falha ao persistir `pending` impede a
+  mutação; falha posterior mantém o replay bloqueado. Entradas do formato
+  legado são migradas conservadoramente como `pending`, pois seus argumentos
+  antigos não podem ser verificados.
+- Timelines e render jobs criados pelo MCP guardam identidade de projeto e do
+  recurso como metadado privado do ledger. Se a proveniência/destino não puder
+  ser verificada ou surgir uma colisão antes do início,
+  `resolve_start_render` falha sem iniciar o job.
+- Timelines novas recebem um token rastreável com os primeiros 12 hexadecimais
+  de `SHA-256(requestId)`, evitando colisões por prefixos iguais de `requestId`.
+- `startFrame` e `endFrame` são validados e enviados ao
+  `MediaPool.AppendToTimeline` nos `clipInfo` correspondentes.
 - Fusion, color grading, edição por transcrição e edição avançada não fazem
   parte deste MVP.
 
