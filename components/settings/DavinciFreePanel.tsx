@@ -507,6 +507,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [activeMediaAsset, analysis]);
 
   useEffect(() => {
+    setPlayerDuration(0);
+    setPlayerError(null);
+    setPlayheadTime(0);
+  }, [videoMediaSrc]);
+
+  useEffect(() => {
     if (!analysis) {
       setWaveform([]);
       setMusicWaveform([]);
@@ -1042,7 +1048,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Playhead */}
                 <div
                   className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
-                  style={{ left: `${Math.min(100, (playheadTime / maxDuration) * 100)}%` }}
+                  style={{ left: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
                 >
                   <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-red-500 rounded-xs" />
                 </div>
@@ -1073,8 +1079,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         const enabled = change.enabled !== false;
                         const evtStart = change.start ?? evt.start;
                         const evtDuration = change.duration ?? evt.duration;
-                        const leftPct = (evtStart / maxDuration) * 100;
-                        const widthPct = Math.max(4, (evtDuration / maxDuration) * 100);
+                        const playerEventStart = eventPlayerTime(evt, evtStart);
+                        const leftPct = (playerEventStart / timelineDuration) * 100;
+                        const widthPct = Math.max(1.5, (evtDuration / timelineDuration) * 100);
                         const isSelected = selectedEventId === evt.id;
 
                         return (
@@ -1082,7 +1089,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                             key={evt.id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSelectEvent(evt.id, evtStart);
+                              handleSelectEvent(evt.id, playerEventStart);
                             }}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             className={`absolute h-6 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
@@ -1092,10 +1099,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                   ? `${kindColorClass[evt.kind] || "bg-violet-950 border-violet-500 text-violet-300"} hover:brightness-125`
                                   : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                             }`}
-                            title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(evtStart)})`}
+                            title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
                           >
                             <span className="truncate">{kindLabel[evt.kind]}</span>
-                            <span className="text-[8px] opacity-75 font-mono ml-1">{clock(evtStart)}</span>
+                            <span className="text-[8px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
                           </div>
                         );
                       })
@@ -1108,18 +1115,45 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track A1 (Audio Waveform) */}
-                <div className="h-8 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
+                <div className="h-9 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
                   <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">A1</span>
-                  <div className="flex-1 h-full flex items-center gap-[2px] opacity-50 px-2 overflow-hidden">
-                    {Array.from({ length: 64 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-1 bg-emerald-400 rounded-full"
-                        style={{ height: `${((i * 7) % 5 + 1) * 18}%` }}
-                      />
-                    ))}
+                  <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
+                    {waveformBusy && !waveform.length ? (
+                      <span className="flex items-center gap-1 text-[9px] text-zinc-500">
+                        <Loader2 size={10} className="animate-spin" />
+                        Lendo áudio
+                      </span>
+                    ) : waveform.length ? waveform.map((peak, index) => {
+                      const pointTime = (index / waveform.length) * timelineDuration;
+                      return (
+                        <div
+                          key={index}
+                          className={`min-w-px flex-1 rounded-full ${
+                            pointTime <= playheadTime ? "bg-emerald-300" : "bg-emerald-700"
+                          }`}
+                          style={{ height: `${Math.max(8, peak * 90)}%` }}
+                        />
+                      );
+                    }) : (
+                      <span className="text-[9px] italic text-zinc-600">Faixa de áudio indisponível</span>
+                    )}
                   </div>
                 </div>
+                {musicWaveform.length > 0 && (
+                  <div className="h-8 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
+                    <span className="text-[10px] font-mono font-bold text-cyan-500 w-8 shrink-0">A2</span>
+                    <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
+                      {musicWaveform.map((peak, index) => (
+                        <div
+                          key={index}
+                          className="min-w-px flex-1 rounded-full bg-cyan-700"
+                          style={{ height: `${Math.max(6, peak * 78)}%` }}
+                        />
+                      ))}
+                    </div>
+                    <span className="ml-2 text-[8px] text-cyan-400">{analysis?.media.musicDb} dB</span>
+                  </div>
+                )}
               </div>
             </div>
           </main>
@@ -1194,7 +1228,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <div
                       id={`edit-${event.id}`}
                       key={`edit-${event.id}`}
-                      onClick={() => handleSelectEvent(event.id, change.start ?? event.start)}
+                      onClick={() => handleSelectEvent(
+                        event.id,
+                        eventPlayerTime(event, change.start ?? event.start),
+                      )}
                       className={`rounded-xl border p-2.5 transition-all text-xs cursor-pointer ${
                         isSelected
                           ? "border-emerald-500 bg-emerald-950/20 shadow-lg shadow-emerald-500/10"
@@ -1298,7 +1335,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <input
                     type="checkbox"
                     checked={review.captionsEnabled ?? (analysis?.design?.captionsEnabled !== false)}
-                    onChange={(input) => setReview((current) => ({ ...current, captionsEnabled: input.target.checked }))}
+                    onChange={(input) => {
+                      setPreviewStale(true);
+                      setReview((current) => ({ ...current, captionsEnabled: input.target.checked }));
+                    }}
                     className="accent-emerald-500 rounded h-3.5 w-3.5"
                   />
                   Exibir legendas
