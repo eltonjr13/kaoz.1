@@ -59,6 +59,22 @@ function contentType(filePath: string) {
   return MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
+function mediaPath(
+  plan: Awaited<ReturnType<typeof readIntelligentEditPlan>>,
+  asset: IntelligentMediaAsset,
+) {
+  if (!plan) return undefined;
+  if (asset === "source") return plan.sourcePath;
+  if (asset === "preview") return plan.artifacts.previewPath;
+  return plan.media.musicPath;
+}
+
+function missingAssetMessage(asset: IntelligentMediaAsset) {
+  return asset === "preview"
+    ? "A prévia ainda não foi renderizada."
+    : "A faixa de música não foi configurada.";
+}
+
 export async function resolveIntelligentMedia(
   planId: string,
   asset: IntelligentMediaAsset,
@@ -69,18 +85,8 @@ export async function resolveIntelligentMedia(
   const plan = await readIntelligentEditPlan(planId);
   if (!plan) throw new Error("Plano inteligente não encontrado.");
 
-  const filePath = asset === "source"
-    ? plan.sourcePath
-    : asset === "preview"
-      ? plan.artifacts.previewPath
-      : plan.media.musicPath;
-  if (!filePath) {
-    throw new Error(
-      asset === "preview"
-        ? "A prévia ainda não foi renderizada."
-        : "A faixa de música não foi configurada.",
-    );
-  }
+  const filePath = mediaPath(plan, asset);
+  if (!filePath) throw new Error(missingAssetMessage(asset));
 
   const info = await stat(filePath).catch(() => null);
   if (!info?.isFile()) throw new Error("Arquivo de mídia não encontrado.");

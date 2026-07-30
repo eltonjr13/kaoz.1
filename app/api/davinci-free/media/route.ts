@@ -18,56 +18,78 @@ function errorResponse(error: unknown, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function GET(request: NextRequest) {
-  const planId = request.nextUrl.searchParams.get("planId") || "";
-  const requestedAsset = request.nextUrl.searchParams.get("asset") || "preview";
-  if (!ASSETS.has(requestedAsset as IntelligentMediaAsset)) {
-    return errorResponse("Tipo de mídia inválido.");
+function requestedAsset(request: NextRequest) {
+  const asset = request.nextUrl.searchParams.get("asset") || "preview";
+  if (!ASSETS.has(asset as IntelligentMediaAsset)) {
+    throw new TypeError("Tipo de mídia inválido.");
+  }
+  return asset as IntelligentMediaAsset;
+}
+
+function byteRange(request: NextRequest, size: number) {
+  try {
+    return parseMediaByteRange(request.headers.get("range"), size);
+  } catch {
+    return "invalid" as const;
+  }
+}
+
+async function waveformResponse(
+  request: NextRequest,
+  descriptor: Awaited<ReturnType<typeof resolveIntelligentMedia>>,
+) {
+  const points = Number(request.nextUrl.searchParams.get("points") || 360);
+  return NextResponse.json(await readIntelligentAudioWaveform(descriptor, points), {
+    headers: { "Cache-Control": "private, max-age=300" },
+  });
+}
+
+function streamResponse(
+  request: NextRequest,
+  descriptor: Awaited<ReturnType<typeof resolveIntelligentMedia>>,
+) {
+  const range = byteRange(request, descriptor.size);
+  if (range === "invalid") {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${descriptor.size}`,
+        "Accept-Ranges": "bytes",
+      },
+    });
   }
 
+  const disposition = request.nextUrl.searchParams.get("download") === "true"
+    ? "attachment"
+    : "inline";
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, no-cache",
+    "Content-Type": descriptor.contentType,
+    "Content-Disposition": `${disposition}; filename="${descriptor.fileName.replaceAll("\"", "")}"`,
+  });
+  if (range) {
+    headers.set("Content-Length", String(range.end - range.start + 1));
+    headers.set("Content-Range", `bytes ${range.start}-${range.end}/${descriptor.size}`);
+  } else {
+    headers.set("Content-Length", String(descriptor.size));
+  }
+
+  const stream = openIntelligentMedia(descriptor, range || undefined);
+  return new Response(Readable.toWeb(stream) as ReadableStream, {
+    status: range ? 206 : 200,
+    headers,
+  });
+}
+
+export async function GET(request: NextRequest) {
+  const planId = request.nextUrl.searchParams.get("planId") || "";
   try {
-    const descriptor = await resolveIntelligentMedia(
-      planId,
-      requestedAsset as IntelligentMediaAsset,
-    );
+    const descriptor = await resolveIntelligentMedia(planId, requestedAsset(request));
     if (request.nextUrl.searchParams.get("waveform") === "true") {
-      const points = Number(request.nextUrl.searchParams.get("points") || 360);
-      return NextResponse.json(await readIntelligentAudioWaveform(descriptor, points), {
-        headers: { "Cache-Control": "private, max-age=300" },
-      });
+      return waveformResponse(request, descriptor);
     }
-
-    let range;
-    try {
-      range = parseMediaByteRange(request.headers.get("range"), descriptor.size);
-    } catch {
-      return new Response(null, {
-        status: 416,
-        headers: {
-          "Content-Range": `bytes */${descriptor.size}`,
-          "Accept-Ranges": "bytes",
-        },
-      });
-    }
-
-    const headers = new Headers({
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "private, no-cache",
-      "Content-Type": descriptor.contentType,
-      "Content-Disposition": `${request.nextUrl.searchParams.get("download") === "true" ? "attachment" : "inline"}; filename="${descriptor.fileName.replaceAll("\"", "")}"`,
-    });
-    if (range) {
-      headers.set("Content-Length", String(range.end - range.start + 1));
-      headers.set("Content-Range", `bytes ${range.start}-${range.end}/${descriptor.size}`);
-    } else {
-      headers.set("Content-Length", String(descriptor.size));
-    }
-
-    const stream = openIntelligentMedia(descriptor, range || undefined);
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: range ? 206 : 200,
-      headers,
-    });
+    return streamResponse(request, descriptor);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /não encontrad|ainda não|não foi configurada/i.test(message) ? 404 : 400;

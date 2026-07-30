@@ -14,6 +14,14 @@ import type {
 } from "./intelligent-edit.types";
 
 const STANDARD_ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "course-editorial-standards");
+const ADDED_EVENT_KINDS = new Set<IntelligentEditEvent["kind"]>([
+  "lower-third",
+  "impact-text",
+  "zoom",
+  "cut",
+  "cursor",
+  "transition",
+]);
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -34,94 +42,134 @@ function courseId(courseName: string) {
     .slice(0, 16);
 }
 
+function customZoomFields(
+  item: Record<string, unknown>,
+  kind: IntelligentEditEvent["kind"],
+) {
+  if (kind !== "zoom") return {};
+  const scale = Number(item.scale);
+  const x = Number(item.x);
+  const y = Number(item.y);
+  return {
+    ...(Number.isFinite(scale) ? { scale: clamp(scale, 1, 1.14) } : {}),
+    ...(Number.isFinite(x) ? { x: clamp(x, 0.28, 0.72) } : {}),
+    ...(Number.isFinite(y) ? { y: clamp(y, 0.24, 0.62) } : {}),
+  };
+}
+
+function customEventReason(value: unknown) {
+  return text(value, 220) || "Evento adicionado manualmente na timeline.";
+}
+
+function customEventEntry(
+  plan: IntelligentEditPlan,
+  value: unknown,
+): IntelligentEditEvent[] {
+  if (!value || typeof value !== "object") return [];
+  const item = value as Record<string, unknown>;
+  const id = String(item.id || "");
+  const kind = String(item.kind || "") as IntelligentEditEvent["kind"];
+  const start = Number(item.start);
+  const duration = Number(item.duration);
+  const label = text(item.label, 120);
+  const invalidIdentity = !/^custom-evt-[a-f0-9-]{8,36}$/.test(id) || !ADDED_EVENT_KINDS.has(kind);
+  const invalidTiming = !Number.isFinite(start) || !Number.isFinite(duration);
+  if (invalidIdentity || invalidTiming || !label) return [];
+  return [{
+    id,
+    kind,
+    start: clamp(start, 0, plan.media.durationSeconds),
+    duration: clamp(duration, 0.1, 12),
+    label,
+    subtitle: text(item.subtitle, 160),
+    reason: customEventReason(item.reason),
+    ...customZoomFields(item, kind),
+  }];
+}
+
+function editableEventFields(
+  plan: IntelligentEditPlan,
+  item: Record<string, unknown>,
+) {
+  const start = Number(item.start);
+  const duration = Number(item.duration);
+  const scale = Number(item.scale);
+  const x = Number(item.x);
+  const y = Number(item.y);
+  return {
+    ...(Number.isFinite(start) ? { start: clamp(start, 0, plan.media.durationSeconds) } : {}),
+    ...(Number.isFinite(duration) ? { duration: clamp(duration, 0.1, 12) } : {}),
+    ...(text(item.label, 120) ? { label: text(item.label, 120) } : {}),
+    ...(text(item.subtitle, 160) ? { subtitle: text(item.subtitle, 160) } : {}),
+    ...(Number.isFinite(scale) ? { scale: clamp(scale, 1, 1.14) } : {}),
+    ...(Number.isFinite(x) ? { x: clamp(x, 0.28, 0.72) } : {}),
+    ...(Number.isFinite(y) ? { y: clamp(y, 0.24, 0.62) } : {}),
+  };
+}
+
+function eventOverrideEntry(
+  plan: IntelligentEditPlan,
+  allowedEvents: Map<string, IntelligentEditEvent>,
+  value: unknown,
+): IntelligentEditorialEventOverride[] {
+  if (!value || typeof value !== "object") return [];
+  const item = value as Record<string, unknown>;
+  const original = allowedEvents.get(String(item.id));
+  if (!original) return [];
+  return [{
+    id: original.id,
+    ...(typeof item.enabled === "boolean" ? { enabled: item.enabled } : {}),
+    ...editableEventFields(plan, item),
+  }];
+}
+
+function captionTimingFields(
+  plan: IntelligentEditPlan,
+  index: number,
+  item: Record<string, unknown>,
+) {
+  const start = Number(item.start);
+  const end = Number(item.end);
+  const nextStart = Number.isFinite(start) ? clamp(start, 0, plan.media.durationSeconds) : undefined;
+  const minimumEnd = (nextStart ?? plan.captions[index].start) + 0.1;
+  const nextEnd = Number.isFinite(end)
+    ? clamp(end, minimumEnd, plan.media.durationSeconds)
+    : undefined;
+  return {
+    ...(nextStart !== undefined ? { start: nextStart } : {}),
+    ...(nextEnd !== undefined ? { end: nextEnd } : {}),
+  };
+}
+
+function captionOverrideEntry(
+  plan: IntelligentEditPlan,
+  value: unknown,
+): IntelligentEditorialCaptionOverride[] {
+  if (!value || typeof value !== "object") return [];
+  const item = value as Record<string, unknown>;
+  const index = Number(item.index);
+  const invalidIndex = !Number.isInteger(index) || index < 0 || index >= plan.captions.length;
+  if (invalidIndex) return [];
+  return [{
+    index,
+    ...(typeof item.enabled === "boolean" ? { enabled: item.enabled } : {}),
+    ...captionTimingFields(plan, index, item),
+    ...(text(item.text, 220) ? { text: text(item.text, 220) } : {}),
+  }];
+}
+
 function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditorialReview {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const allowedEvents = new Map(plan.events.map((event) => [event.id, event]));
-  const allowedKinds = new Set<IntelligentEditEvent["kind"]>([
-    "lower-third",
-    "impact-text",
-    "zoom",
-    "cut",
-    "cursor",
-    "transition",
-  ]);
-  const events = Array.isArray(raw.events) ? raw.events.flatMap((value): IntelligentEditorialEventOverride[] => {
-    if (!value || typeof value !== "object") return [];
-    const item = value as Record<string, unknown>;
-    const original = allowedEvents.get(String(item.id));
-    if (!original) return [];
-    const start = Number(item.start);
-    const duration = Number(item.duration);
-    const scale = Number(item.scale);
-    const x = Number(item.x);
-    const y = Number(item.y);
-    return [{
-      id: original.id,
-      ...(typeof item.enabled === "boolean" ? { enabled: item.enabled } : {}),
-      ...(Number.isFinite(start) ? { start: clamp(start, 0, plan.media.durationSeconds) } : {}),
-      ...(Number.isFinite(duration) ? { duration: clamp(duration, 0.1, 12) } : {}),
-      ...(text(item.label, 120) ? { label: text(item.label, 120) } : {}),
-      ...(text(item.subtitle, 160) ? { subtitle: text(item.subtitle, 160) } : {}),
-      ...(Number.isFinite(scale) ? { scale: clamp(scale, 1, 1.14) } : {}),
-      ...(Number.isFinite(x) ? { x: clamp(x, 0.28, 0.72) } : {}),
-      ...(Number.isFinite(y) ? { y: clamp(y, 0.24, 0.62) } : {}),
-    }];
-  }) : [];
-  const addedEvents = Array.isArray(raw.addedEvents)
-    ? raw.addedEvents.flatMap((value): IntelligentEditEvent[] => {
-      if (!value || typeof value !== "object") return [];
-      const item = value as Record<string, unknown>;
-      const id = String(item.id || "");
-      const kind = String(item.kind || "") as IntelligentEditEvent["kind"];
-      const start = Number(item.start);
-      const duration = Number(item.duration);
-      const label = text(item.label, 120);
-      if (
-        !/^custom-evt-[a-f0-9-]{8,36}$/.test(id)
-        || !allowedKinds.has(kind)
-        || !Number.isFinite(start)
-        || !Number.isFinite(duration)
-        || !label
-      ) {
-        return [];
-      }
-      return [{
-        id,
-        kind,
-        start: clamp(start, 0, plan.media.durationSeconds),
-        duration: clamp(duration, 0.1, 12),
-        label,
-        subtitle: text(item.subtitle, 160),
-        reason: text(item.reason, 220) || "Evento adicionado manualmente na timeline.",
-        ...(kind === "zoom" && Number.isFinite(Number(item.scale))
-          ? { scale: clamp(Number(item.scale), 1, 1.14) }
-          : {}),
-        ...(kind === "zoom" && Number.isFinite(Number(item.x))
-          ? { x: clamp(Number(item.x), 0.28, 0.72) }
-          : {}),
-        ...(kind === "zoom" && Number.isFinite(Number(item.y))
-          ? { y: clamp(Number(item.y), 0.24, 0.62) }
-          : {}),
-      }];
-    })
+  const events = Array.isArray(raw.events)
+    ? raw.events.flatMap((item) => eventOverrideEntry(plan, allowedEvents, item))
     : [];
-  const captions = Array.isArray(raw.captions) ? raw.captions.flatMap((value): IntelligentEditorialCaptionOverride[] => {
-    if (!value || typeof value !== "object") return [];
-    const item = value as Record<string, unknown>;
-    const index = Number(item.index);
-    if (!Number.isInteger(index) || index < 0 || index >= plan.captions.length) return [];
-    const start = Number(item.start);
-    const end = Number(item.end);
-    const nextStart = Number.isFinite(start) ? clamp(start, 0, plan.media.durationSeconds) : undefined;
-    const nextEnd = Number.isFinite(end) ? clamp(end, (nextStart ?? plan.captions[index].start) + 0.1, plan.media.durationSeconds) : undefined;
-    return [{
-      index,
-      ...(typeof item.enabled === "boolean" ? { enabled: item.enabled } : {}),
-      ...(nextStart !== undefined ? { start: nextStart } : {}),
-      ...(nextEnd !== undefined ? { end: nextEnd } : {}),
-      ...(text(item.text, 220) ? { text: text(item.text, 220) } : {}),
-    }];
-  }) : [];
+  const addedEvents = Array.isArray(raw.addedEvents)
+    ? raw.addedEvents.flatMap((item) => customEventEntry(plan, item))
+    : [];
+  const captions = Array.isArray(raw.captions)
+    ? raw.captions.flatMap((item) => captionOverrideEntry(plan, item))
+    : [];
   return {
     version: 1,
     planId: plan.id,
