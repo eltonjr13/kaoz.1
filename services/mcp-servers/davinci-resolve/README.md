@@ -70,6 +70,9 @@ paths relativos e traversal são bloqueados.
   Reuso com outra intenção retorna `REQUEST_ID_CONFLICT`. Estado `pending`
   bloqueia replay automático porque a execução anterior pode ter sido
   interrompida.
+- O ledger usa um lock de arquivo do sistema entre processos. Aquisição com
+  timeout falha fechada; arquivos de lock deixados por processos encerrados são
+  recuperados quando o sistema libera o lock correspondente.
 - Não há ferramenta para Python, Lua, shell, expressão ou script arbitrário.
 - O MVP não exclui projetos, mídias, timelines ou render jobs.
 - O MVP não substitui nem modifica timelines preexistentes. Montagem,
@@ -151,10 +154,15 @@ npm.cmd run test:davinci-resolve
   argumentos e resultado concluído. Falha ao persistir `pending` impede a
   mutação; falha posterior mantém o replay bloqueado. Entradas do formato
   legado são migradas conservadoramente como `pending`, pois seus argumentos
-  antigos não podem ser verificados.
+  antigos não podem ser verificados. Transações curtas usam
+  `.kaoz1-resolve-idempotency.lock` e mesclam o estado lido do disco sob o lock,
+  evitando perda de entradas quando duas instâncias executam simultaneamente.
 - Timelines e render jobs criados pelo MCP guardam identidade de projeto e do
-  recurso como metadado privado do ledger. Se a proveniência/destino não puder
-  ser verificada ou surgir uma colisão antes do início,
+  recurso como metadado privado do ledger. No início do render, projeto, job,
+  destino atual, timeline e preset da fila são confrontados com o vínculo
+  persistido; a allowlist e a colisão também são reavaliadas sobre o destino
+  atual. Se a proveniência não puder ser verificada, a fila divergir ou surgir
+  uma colisão antes do início,
   `resolve_start_render` falha sem iniciar o job.
 - Timelines novas recebem um token rastreável com os primeiros 12 hexadecimais
   de `SHA-256(requestId)`, evitando colisões por prefixos iguais de `requestId`.

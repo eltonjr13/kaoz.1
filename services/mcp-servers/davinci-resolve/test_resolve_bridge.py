@@ -466,6 +466,170 @@ class ResolveBridgeTests(unittest.TestCase):
             migrated["entries"]["request-legacy-1234"]["legacy"]
         )
 
+    def test_interprocess_ledger_merge_preserves_concurrent_completed_requests(self):
+        server_directory = Path(__file__).resolve().parent
+        script = """
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from resolve_client import ResolveClient
+
+root = Path(sys.argv[2])
+request_id = sys.argv[3]
+label = sys.argv[4]
+
+def mutate():
+    (root / f".ready-{label}").write_text("ready", encoding="utf-8")
+    deadline = time.monotonic() + 5
+    while not all((root / f".ready-{name}").is_file() for name in ("a", "b")):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("concurrency barrier timeout")
+        time.sleep(0.02)
+    return {"projectName": label}
+
+ResolveClient()._once(
+    "open_project",
+    request_id,
+    {"projectName": label},
+    mutate,
+)
+"""
+        processes = [
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(server_directory),
+                    str(self.export_root),
+                    f"request-process-{label}",
+                    label,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=dict(os.environ),
+            )
+            for label in ("a", "b")
+        ]
+        outputs = [process.communicate(timeout=10) for process in processes]
+        for process, output in zip(processes, outputs):
+            self.assertEqual(process.returncode, 0, output[1])
+
+        ledger = json.loads(
+            (self.export_root / ".kaoz1-resolve-idempotency.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            set(ledger["entries"]),
+            {"request-process-a", "request-process-b"},
+        )
+        self.assertTrue(
+            all(
+                entry["state"] == "completed"
+                for entry in ledger["entries"].values()
+            )
+        )
+
+        replay = ResolveClient()._once(
+            "open_project",
+            "request-process-a",
+            {"projectName": "a"},
+            lambda: self.fail("a mutação não pode ser repetida"),
+        )
+        self.assertTrue(replay["idempotentReplay"])
+
+    def test_concurrent_same_request_is_reserved_only_once(self):
+        first_client = ResolveClient()
+        second_client = ResolveClient()
+        callback_entered = threading.Event()
+        callback_release = threading.Event()
+        callback_calls = []
+        errors = []
+
+        def mutate():
+            callback_calls.append("called")
+            callback_entered.set()
+            if not callback_release.wait(timeout=5):
+                raise RuntimeError("callback release timeout")
+            return {"projectName": "same"}
+
+        def run_first():
+            try:
+                first_client._once(
+                    "open_project",
+                    "request-concurrent-same",
+                    {"projectName": "same"},
+                    mutate,
+                )
+            except Exception as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=run_first)
+        thread.start()
+        self.assertTrue(callback_entered.wait(timeout=5))
+        try:
+            with self.assertRaises(ResolveOperationError) as context:
+                second_client._once(
+                    "open_project",
+                    "request-concurrent-same",
+                    {"projectName": "same"},
+                    lambda: self.fail("a segunda mutação não pode executar"),
+                )
+            self.assertEqual(context.exception.code, "IDEMPOTENCY_PENDING")
+        finally:
+            callback_release.set()
+            thread.join(timeout=5)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(callback_calls, ["called"])
+
+    def test_ledger_lock_timeout_fails_closed_before_callback(self):
+        callback_calls = []
+        with mock.patch("resolve_client._try_lock_file", return_value=False), mock.patch(
+            "resolve_client._LEDGER_LOCK_TIMEOUT_SECONDS",
+            0,
+        ):
+            with self.assertRaises(ResolveOperationError) as context:
+                ResolveClient()._once(
+                    "open_project",
+                    "request-lock-timeout",
+                    {"projectName": "locked"},
+                    lambda: callback_calls.append("called") or {},
+                )
+
+        self.assertEqual(context.exception.code, "IDEMPOTENCY_LOCK_TIMEOUT")
+        self.assertEqual(callback_calls, [])
+
+    def test_stale_lock_metadata_without_os_lock_is_reclaimed(self):
+        lock_path = self.export_root / ".kaoz1-resolve-idempotency.lock"
+        lock_path.write_text(
+            json.dumps({"pid": 999999, "acquiredAt": 1}),
+            encoding="utf-8",
+        )
+
+        result = ResolveClient()._once(
+            "open_project",
+            "request-stale-lock",
+            {"projectName": "safe"},
+            lambda: {"projectName": "safe"},
+        )
+
+        self.assertEqual(result["projectName"], "safe")
+        ledger = json.loads(
+            (self.export_root / ".kaoz1-resolve-idempotency.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            ledger["entries"]["request-stale-lock"]["state"],
+            "completed",
+        )
+
     def test_media_import_can_partially_reject(self):
         valid = self.media_root / "take.mp4"
         valid.write_bytes(b"mock")
@@ -725,6 +889,15 @@ class ResolveBridgeTests(unittest.TestCase):
             1,
         )
         self.assertNotIn("_kaozLedgerMetadata", result)
+        ledger = json.loads(
+            (self.export_root / ".kaoz1-resolve-idempotency.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        metadata = ledger["entries"]["request-render-1234"]["metadata"]
+        self.assertEqual(metadata["timelineId"], "timeline-original")
+        self.assertEqual(metadata["timelineName"], "Original")
+        self.assertEqual(metadata["preset"], "H.264 Master")
 
     def test_render_file_name_rejects_windows_reserved_and_ambiguous_names(self):
         for file_name in (
@@ -805,6 +978,118 @@ class ResolveBridgeTests(unittest.TestCase):
         self.assertEqual(queue["jobs"][0]["renderJobId"], "job-1")
         self.assertNotIn("TargetDir", json.dumps(queue))
         self.assertNotIn(str(self.export_root), json.dumps(queue))
+
+    def test_start_render_rejects_target_drift_inside_allowlist(self):
+        project = FakeProject()
+        client = client_for(project)
+        created = client.create_render_job(
+            "Original",
+            "H.264 Master",
+            str(self.export_root),
+            "bound-output",
+            "request-render-bound-target",
+        )
+        changed_directory = self.export_root / "changed"
+        changed_directory.mkdir()
+        project.render_job_details["job-1"]["TargetDir"] = str(changed_directory)
+
+        with self.assertRaises(ResolveOperationError) as context:
+            client.start_render(
+                created["renderJobId"],
+                "request-start-target-drift",
+            )
+
+        self.assertEqual(context.exception.code, "RENDER_JOB_DIVERGED")
+        self.assertEqual(context.exception.details["fields"], ["target"])
+        self.assertEqual(project.render_started, 0)
+
+    def test_start_render_revalidates_current_target_allowlist(self):
+        project = FakeProject()
+        client = client_for(project)
+        created = client.create_render_job(
+            "Original",
+            "H.264 Master",
+            str(self.export_root),
+            "bound-output",
+            "request-render-allowlist",
+        )
+        project.render_job_details["job-1"]["TargetDir"] = str(
+            Path(self.temp.name) / "outside"
+        )
+
+        with self.assertRaises(ResolveOperationError) as context:
+            client.start_render(
+                created["renderJobId"],
+                "request-start-outside-allowlist",
+            )
+
+        self.assertEqual(context.exception.code, "RENDER_JOB_TARGET_DENIED")
+        self.assertEqual(project.render_started, 0)
+
+    def test_start_render_rejects_timeline_or_preset_drift(self):
+        for drift_field in ("timeline", "preset"):
+            with self.subTest(drift_field=drift_field):
+                nested_export_root = self.export_root / drift_field
+                nested_export_root.mkdir()
+                previous_root = os.environ["KAOZ_RESOLVE_EXPORT_ROOT"]
+                os.environ["KAOZ_RESOLVE_EXPORT_ROOT"] = str(nested_export_root)
+                try:
+                    project = FakeProject(project_id=f"project-{drift_field}")
+                    client = client_for(project)
+                    created = client.create_render_job(
+                        "Original",
+                        "H.264 Master",
+                        str(nested_export_root),
+                        "bound-output",
+                        f"request-render-{drift_field}",
+                    )
+                    if drift_field == "timeline":
+                        project.render_job_details["job-1"][
+                            "TimelineName"
+                        ] = "Outra"
+                    else:
+                        project.render_job_details["job-1"][
+                            "RenderPreset"
+                        ] = "Outro preset"
+
+                    with self.assertRaises(ResolveOperationError) as context:
+                        client.start_render(
+                            created["renderJobId"],
+                            f"request-start-{drift_field}",
+                        )
+                    self.assertEqual(
+                        context.exception.code,
+                        "RENDER_JOB_DIVERGED",
+                    )
+                    self.assertEqual(
+                        context.exception.details["fields"],
+                        [drift_field],
+                    )
+                    self.assertEqual(project.render_started, 0)
+                finally:
+                    os.environ["KAOZ_RESOLVE_EXPORT_ROOT"] = previous_root
+
+    def test_start_render_rejects_bound_timeline_identity_drift(self):
+        project = FakeProject()
+        client = client_for(project)
+        created = client.create_render_job(
+            "Original",
+            "H.264 Master",
+            str(self.export_root),
+            "bound-output",
+            "request-render-timeline-identity",
+        )
+        project.timelines[0].timeline_id = "timeline-replaced"
+
+        with self.assertRaises(ResolveOperationError) as context:
+            client.start_render(
+                created["renderJobId"],
+                "request-start-timeline-identity",
+            )
+
+        self.assertEqual(context.exception.code, "RENDER_JOB_DIVERGED")
+        self.assertEqual(context.exception.details["fields"], ["timeline"])
+        self.assertEqual(project.render_started, 0)
 
     def test_start_render_rejects_preexisting_job_without_mcp_provenance(self):
         project = FakeProject()

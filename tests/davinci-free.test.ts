@@ -123,7 +123,7 @@ test(
       const selected = await chooseCourseFolder({
         pickerDirectory,
         runScript: async (scriptPath, resultPath) => {
-          const script = await readFile(scriptPath, "utf8");
+          const script = await readFile(scriptPath, "utf16le");
           assert.match(script, /Shell\.Application/);
           assert.match(script, /BrowseForFolder/);
           await writeFile(resultPath, selectedDirectory, "utf16le");

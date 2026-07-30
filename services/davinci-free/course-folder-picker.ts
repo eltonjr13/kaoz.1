@@ -63,7 +63,7 @@ export async function chooseCourseFolder(
     "End If",
     "output.Close",
   ].join("\r\n");
-  await writeFile(scriptPath, script, "utf8");
+  await writeFile(scriptPath, `\uFEFF${script}`, "utf16le");
   try {
     const runScript = options.runScript ?? runCourseFolderPickerScript;
     await runScript(scriptPath, resultPath);
