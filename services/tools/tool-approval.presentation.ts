@@ -1,5 +1,5 @@
 import {
-  redactSecrets,
+  sanitizePublicErrorMessage,
   sanitizeSensitiveValue,
 } from "../orchestrator/orchestrator.policy.ts";
 import type { ToolResult } from "./tool.types.ts";
@@ -19,7 +19,7 @@ export async function presentApprovedMcpResult(
     return await executor(presentationPrompt);
   } catch (error) {
     const safeResult = serializedResult.slice(0, 4_000);
-    const safeError = redactSecrets(errorMessage(error)).slice(0, 500);
+    const safeError = sanitizePublicErrorMessage(error);
     return JSON.stringify({
       message:
         "A chamada MCP já foi executada uma única vez, mas não foi possível " +
@@ -36,8 +36,4 @@ function serializeSafely(value: unknown): string {
   } catch {
     return "[resultado não serializável]";
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

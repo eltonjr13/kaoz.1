@@ -1582,23 +1582,45 @@ def _valid_provenance_metadata(operation: Any, metadata: Any) -> bool:
     if operation == "create_render_job":
         if set(metadata) == {"renderTarget"}:
             return isinstance(metadata.get("renderTarget"), str)
+        metadata_keys = set(metadata)
+        legacy_keys = {
+            "resourceType",
+            "projectId",
+            "projectName",
+            "renderJobId",
+            "renderTarget",
+        }
+        current_keys = legacy_keys | {
+            "timelineId",
+            "timelineName",
+            "preset",
+        }
+        if metadata_keys != legacy_keys and metadata_keys != current_keys:
+            return False
+        required_values = ["projectId", "renderJobId", "renderTarget"]
+        if metadata_keys == current_keys:
+            required_values.extend(["timelineId", "timelineName", "preset"])
         return (
-            set(metadata)
-            == {
-                "resourceType",
-                "projectId",
-                "projectName",
-                "renderJobId",
-                "renderTarget",
-            }
-            and metadata.get("resourceType") == "renderJob"
+            metadata.get("resourceType") == "renderJob"
             and all(
                 isinstance(metadata.get(key), str) and bool(metadata.get(key))
-                for key in ("projectId", "renderJobId", "renderTarget")
+                for key in required_values
             )
             and isinstance(metadata.get("projectName"), str)
         )
     return False
+
+
+def _render_target_matches(recorded_target: Path, current_target: Path) -> bool:
+    if os.path.normcase(str(recorded_target.parent)) != os.path.normcase(
+        str(current_target.parent)
+    ):
+        return False
+    recorded_name = recorded_target.name.casefold()
+    current_name = current_target.name.casefold()
+    return current_name == recorded_name or current_name.startswith(
+        f"{recorded_name}."
+    )
 
 
 def _render_output_exists(directory: Path, file_name: str) -> bool:

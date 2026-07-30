@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -132,6 +135,8 @@ class FakeProject:
         self.render_jobs = 0
         self.render_started = 0
         self.render_settings = {}
+        self.render_preset = ""
+        self.render_job_details = {}
 
     def GetName(self):
         return "Mock Project"
@@ -161,7 +166,8 @@ class FakeProject:
     def GetMediaPool(self):
         return self.media_pool
 
-    def LoadRenderPreset(self, _preset):
+    def LoadRenderPreset(self, preset):
+        self.render_preset = preset
         return True
 
     def SetRenderSettings(self, settings):
@@ -170,30 +176,29 @@ class FakeProject:
 
     def AddRenderJob(self):
         self.render_jobs += 1
-        return f"job-{self.render_jobs}"
+        job_id = f"job-{self.render_jobs}"
+        self.render_job_details[job_id] = {
+            "JobId": job_id,
+            "TimelineName": self.current.name if self.current else "",
+            "RenderPreset": self.render_preset,
+            "TargetDir": self.render_settings.get("TargetDir", ""),
+            "OutputFilename": f"{self.render_settings.get('CustomName', '')}.mp4",
+        }
+        return job_id
 
     def StartRendering(self, _job_id):
         self.render_started += 1
         return True
 
     def GetRenderJobStatus(self, job_id):
-        if job_id == "job-1" and self.render_jobs:
+        if job_id in self.render_job_details or (
+            job_id == "job-1" and self.render_jobs
+        ):
             return {"JobStatus": "Ready"}
         return None
 
     def GetRenderJobList(self):
-        return [
-            {
-                "JobId": f"job-{index}",
-                "TimelineName": self.current.name if self.current else "",
-                "RenderPreset": "H.264 Master",
-                "TargetDir": self.render_settings.get("TargetDir", ""),
-                "OutputFilename": (
-                    f"{self.render_settings.get('CustomName', '')}.mp4"
-                ),
-            }
-            for index in range(1, self.render_jobs + 1)
-        ]
+        return [dict(job) for job in self.render_job_details.values()]
 
     def IsRenderingInProgress(self):
         return self.render_started > 0

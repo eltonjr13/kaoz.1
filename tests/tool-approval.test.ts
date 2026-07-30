@@ -488,7 +488,13 @@ test("falha do resumo não informa falsamente que a chamada MCP falhou", async (
       },
     },
     async () => {
-      throw new Error("authorization=secret-presentation-value");
+      throw Object.assign(
+        new Error(
+          'Command failed: "C:\\Users\\elton\\AppData\\Local\\runner.exe" --token presentation-cli-secret\n' +
+            "Authorization: Bearer secret-presentation-value",
+        ),
+        { code: "PRESENTATION_FAILED" },
+      );
     },
   );
   const parsed = JSON.parse(response) as { message?: string };
@@ -496,9 +502,10 @@ test("falha do resumo não informa falsamente que a chamada MCP falhou", async (
   assert.match(parsed.message || "", /já foi executada uma única vez/);
   assert.match(parsed.message || "", /"created":true/);
   assert.match(parsed.message || "", /\[REDACTED\]/);
+  assert.match(parsed.message || "", /PRESENTATION_FAILED/);
   assert.doesNotMatch(
     parsed.message || "",
-    /secret-result-value|secret-presentation-value|fallback-token-secret|fallback-refresh-secret/,
+    /C:\\Users|runner\.exe|secret-result-value|secret-presentation-value|presentation-cli-secret|fallback-token-secret|fallback-refresh-secret/,
   );
   assert.doesNotMatch(parsed.message || "", /não foi possível executar/i);
 });
