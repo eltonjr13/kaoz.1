@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   CheckCircle,
@@ -14,10 +14,12 @@ import {
   Sparkles,
   WandSparkles,
   Play,
+  Pause,
   Volume2,
+  VolumeX,
   Maximize2,
   Scissors,
-  Copy,
+  Plus,
   ZoomIn,
   ZoomOut,
   Folder,
@@ -58,13 +60,24 @@ type EditEvent = {
 type EditorialReview = {
   captionsEnabled?: boolean;
   events: Array<Partial<EditEvent> & { id: string; enabled?: boolean }>;
+  addedEvents?: EditEvent[];
   captions: Array<{ index: number; enabled?: boolean; start?: number; end?: number; text?: string }>;
 };
 
 type Analysis = {
   id: string;
+  sourcePath: string;
   courseName?: string;
   moduleName: string;
+  media: {
+    durationSeconds: number;
+    width: number;
+    height: number;
+    fps: number;
+    hasAudio: boolean;
+    musicPath?: string;
+    musicDb: number;
+  };
   transcript: Array<{ start: number; end: number; text: string }>;
   captions: Array<{ start: number; end: number; text: string }>;
   events: EditEvent[];
@@ -144,6 +157,17 @@ const kindLabel: Record<EditEvent["kind"], string> = {
   transition: "Transição",
 };
 
+const kindColorClass: Record<EditEvent["kind"], string> = {
+  intro: "bg-emerald-950/90 border-emerald-500 text-emerald-300",
+  outro: "bg-indigo-950/90 border-indigo-500 text-indigo-300",
+  "lower-third": "bg-violet-950/90 border-violet-500 text-violet-300",
+  "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
+  zoom: "bg-amber-950/90 border-amber-500 text-amber-300",
+  cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
+  cursor: "bg-blue-950/90 border-blue-500 text-blue-300",
+  transition: "bg-pink-950/90 border-pink-500 text-pink-300",
+};
+
 function clock(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -159,6 +183,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<"single" | "batch">("single");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [playheadTime, setPlayheadTime] = useState<number>(0);
+  const [timelineScale, setTimelineScale] = useState<number>(1);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [playerDuration, setPlayerDuration] = useState<number>(0);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  const [waveform, setWaveform] = useState<number[]>([]);
+  const [musicWaveform, setMusicWaveform] = useState<number[]>([]);
+  const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
+  const [previewStale, setPreviewStale] = useState<boolean>(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+
   const [form, setForm] = useState({
     sourcePath: "",
     courseName: "",
@@ -256,6 +294,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (result?.id) {
       setAnalysis(result as Analysis);
       setReview({ events: [], captions: [] });
+      setPlayheadTime(0);
+      setPlayerDuration(0);
+      setPreviewStale(false);
       onStatusMessage({
         text: "Áudio transcrito e decisões de edição preparadas para revisão.",
         type: "success",
@@ -269,10 +310,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!saved) return;
     const result = await action("render-preview", { planId: analysis.id });
     if (result?.plan) {
-      setAnalysis((current) => current ? {
-        ...current,
-        artifacts: (result.plan as Analysis).artifacts,
-      } : result.plan as Analysis);
+      setAnalysis(result.plan as Analysis);
+      setPlayheadTime(0);
+      setPlayerDuration(Number(result.durationSeconds) || 0);
+      setPreviewStale(false);
       onStatusMessage({
         text: `Prévia renderizada em ${String(result.previewPath)}`,
         type: "success",
@@ -285,6 +326,35 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function updateEvent(event: EditEvent, patch: Partial<EditEvent> & { enabled?: boolean }) {
+    setPreviewStale(true);
+    if (event.id.startsWith("custom-evt-")) {
+      if (patch.enabled === false) {
+        setAnalysis((current) => current ? {
+          ...current,
+          events: current.events.filter((item) => item.id !== event.id),
+        } : null);
+        setReview((current) => ({
+          ...current,
+          addedEvents: (current.addedEvents || []).filter((item) => item.id !== event.id),
+        }));
+        setSelectedEventId(null);
+        return;
+      }
+      const { enabled: _enabled, ...eventPatch } = patch;
+      setAnalysis((current) => current ? {
+        ...current,
+        events: current.events.map((item) =>
+          item.id === event.id ? { ...item, ...eventPatch } : item
+        ),
+      } : null);
+      setReview((current) => ({
+        ...current,
+        addedEvents: (current.addedEvents || []).map((item) =>
+          item.id === event.id ? { ...item, ...eventPatch } : item
+        ),
+      }));
+      return;
+    }
     setReview((current) => ({
       ...current,
       events: [...current.events.filter((item) => item.id !== event.id), { ...eventReview(event), ...patch, id: event.id }],
@@ -296,6 +366,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function updateCaption(index: number, patch: Partial<EditorialReview["captions"][number]>) {
+    setPreviewStale(true);
     setReview((current) => ({
       ...current,
       captions: [...current.captions.filter((item) => item.index !== index), { ...captionReview(index), ...patch, index }],
@@ -307,6 +378,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const result = await action("reset-editorial-review", { planId: analysis.id });
     if (result) {
       setReview({ events: [], captions: [] });
+      setPreviewStale(true);
       onStatusMessage({ text: "Decisões automáticas restauradas. Renderize a prévia quando quiser conferir.", type: "success" });
     }
   }
@@ -410,10 +482,155 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     return counts;
   }, [analysis]);
 
+  const activeMediaAsset = analysis?.artifacts.previewPath ? "preview" : "source";
+  const timelineDuration = useMemo(() => {
+    if (playerDuration > 0) return playerDuration;
+    if (analysis?.media.durationSeconds) {
+      return analysis.media.durationSeconds + (activeMediaAsset === "preview" ? 8 : 0);
+    }
+    return 1;
+  }, [activeMediaAsset, analysis?.media.durationSeconds, playerDuration]);
+
+  const rulerTicks = useMemo(() => {
+    const ticks: number[] = [];
+    const step = timelineDuration > 300 ? 60 : timelineDuration > 120 ? 30 : timelineDuration > 60 ? 15 : 5;
+    for (let i = 0; i <= timelineDuration; i += step) {
+      ticks.push(i);
+    }
+    if (ticks.at(-1) !== Math.ceil(timelineDuration)) ticks.push(Math.ceil(timelineDuration));
+    return ticks;
+  }, [timelineDuration]);
+
+  const videoMediaSrc = useMemo(() => {
+    if (!analysis) return "";
+    return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
+  }, [activeMediaAsset, analysis]);
+
+  useEffect(() => {
+    if (!analysis) {
+      setWaveform([]);
+      setMusicWaveform([]);
+      return;
+    }
+    const controller = new AbortController();
+    setWaveformBusy(true);
+    const load = async (asset: "source" | "preview" | "music") => {
+      const response = await fetch(
+        `/api/davinci-free/media?planId=${analysis.id}&asset=${asset}&waveform=true&points=360`,
+        { cache: "no-store", signal: controller.signal },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Falha ao ler a faixa de áudio.");
+      return Array.isArray(data.peaks) ? data.peaks as number[] : [];
+    };
+    Promise.all([
+      load(activeMediaAsset).then(setWaveform),
+      analysis.media.musicPath
+        ? load("music").then(setMusicWaveform)
+        : Promise.resolve(setMusicWaveform([])),
+    ])
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setWaveform([]);
+          onStatusMessage({
+            text: error instanceof Error ? error.message : String(error),
+            type: "error",
+          });
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setWaveformBusy(false);
+      });
+    return () => controller.abort();
+  }, [activeMediaAsset, analysis, onStatusMessage]);
+
+  function eventPlayerTime(event: EditEvent, sourceTime: number) {
+    if (activeMediaAsset !== "preview") return sourceTime;
+    if (event.kind === "intro") return 0;
+    if (event.kind === "outro") return (analysis?.media.durationSeconds || sourceTime) + 4;
+    return sourceTime + 4;
+  }
+
+  function handleSelectEvent(eventId: string, time: number) {
+    setSelectedEventId(eventId);
+    setPlayheadTime(time);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+    }
+    const element = document.getElementById(`edit-${eventId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  function handleTimelineClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (!timelineTrackRef.current) return;
+    const rect = timelineTrackRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+    const ratio = clickX / rect.width;
+    const newTime = Math.round(ratio * timelineDuration * 10) / 10;
+    setPlayheadTime(newTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+  }
+
+  function addEventAtPlayhead() {
+    if (!analysis) return;
+    const newId = `custom-evt-${crypto.randomUUID().slice(0, 8)}`;
+    const sourceTime = activeMediaAsset === "preview"
+      ? Math.max(0, Math.min(analysis.media.durationSeconds, playheadTime - 4))
+      : Math.min(analysis.media.durationSeconds, playheadTime);
+    const newEvent: EditEvent = {
+      id: newId,
+      kind: "impact-text",
+      start: Math.round(sourceTime * 10) / 10,
+      duration: 2.5,
+      label: "Novo Destaque",
+      reason: "Evento adicionado manualmente na timeline",
+    };
+    setAnalysis((current) => current ? {
+      ...current,
+      events: [...current.events, newEvent],
+    } : null);
+    setReview((current) => ({
+      ...current,
+      addedEvents: [...(current.addedEvents || []), newEvent],
+    }));
+    setPreviewStale(true);
+    setSelectedEventId(newId);
+    onStatusMessage({ text: `Novo evento inserido em ${clock(sourceTime)}`, type: "success" });
+  }
+
+  function togglePlayPause() {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch(() => undefined);
+    }
+    setIsPlaying(!isPlaying);
+  }
+
+  function toggleMute() {
+    if (!videoRef.current) return;
+    videoRef.current.muted = !videoRef.current.muted;
+    setIsMuted(videoRef.current.muted);
+  }
+
+  function toggleFullscreen() {
+    videoRef.current?.requestFullscreen().catch(() => undefined);
+  }
+
   const update =
     (key: keyof typeof form) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((current) => ({ ...current, [key]: event.target.value }));
+
+  // Dynamic presenter anchor coordinates
+  const selectedEvent = useMemo(() => {
+    return analysis?.events.find((e) => e.id === selectedEventId) || null;
+  }, [analysis, selectedEventId]);
 
   return (
     <div className="space-y-4 pb-20">
@@ -659,14 +876,26 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
               <div className="w-full max-w-2xl aspect-video bg-zinc-900 rounded-xl overflow-hidden relative shadow-2xl border border-white/10 flex flex-col justify-center items-center group">
-                {analysis?.artifacts.previewPath ? (
-                  <div className="w-full h-full flex flex-col justify-center items-center bg-zinc-950 p-4 text-center">
-                    <Film size={40} className="text-emerald-400 mb-2 animate-bounce" />
-                    <p className="text-xs font-bold text-white">Prévia Renderizada Pronta</p>
-                    <p className="text-[11px] font-mono text-emerald-400 mt-1 break-all px-4">
-                      {analysis.artifacts.previewPath}
-                    </p>
-                  </div>
+                {videoMediaSrc ? (
+                  <video
+                    ref={videoRef}
+                    src={videoMediaSrc}
+                    preload="metadata"
+                    playsInline
+                    onTimeUpdate={(e) => setPlayheadTime(e.currentTarget.currentTime)}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onLoadedMetadata={(event) => {
+                      setPlayerDuration(event.currentTarget.duration);
+                      setPlayerError(null);
+                    }}
+                    onEnded={() => setIsPlaying(false)}
+                    onError={() => {
+                      setPlayerError("Não foi possível reproduzir esta mídia no player.");
+                      setIsPlaying(false);
+                    }}
+                    className="w-full h-full object-contain bg-black"
+                  />
                 ) : (
                   <div className="w-full h-full flex flex-col justify-center items-center bg-zinc-900/90 text-center p-6">
                     <Video size={48} className="text-zinc-600 mb-3" />
@@ -678,31 +907,87 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 )}
 
                 {/* AI Subject Tracking Overlay */}
-                <div className="absolute top-6 left-8 w-28 h-36 border border-emerald-400/60 rounded-md pointer-events-none opacity-80 shadow-[0_0_15px_rgba(78,222,163,0.2)_inset]">
-                  <span className="absolute -top-4 left-0 text-[9px] text-emerald-300 font-mono bg-zinc-900/90 px-1.5 py-0.5 rounded border border-emerald-500/40">
-                    {analysis?.visual.source === "agent-contact-sheet"
-                      ? "Apresentador identificado"
-                      : "Subj. Detected"}
-                  </span>
-                </div>
+                {activeMediaAsset === "source" && selectedEvent?.kind === "zoom" && (
+                  <div
+                    className="absolute border border-emerald-400/70 rounded-md pointer-events-none opacity-80 shadow-[0_0_15px_rgba(78,222,163,0.25)_inset] transition-all duration-300"
+                    style={{
+                      top: selectedEvent.y ? `${Math.min(70, Math.max(10, selectedEvent.y * 100))}%` : "20%",
+                      left: selectedEvent.x ? `${Math.min(70, Math.max(10, selectedEvent.x * 100))}%` : "30%",
+                      width: selectedEvent.scale ? `${Math.min(45, 25 * selectedEvent.scale)}%` : "30%",
+                      height: selectedEvent.scale ? `${Math.min(50, 35 * selectedEvent.scale)}%` : "40%",
+                    }}
+                  >
+                    <span className="absolute -top-4 left-0 text-[9px] text-emerald-300 font-mono bg-zinc-900/90 px-1.5 py-0.5 rounded border border-emerald-500/40">
+                      {analysis?.visual.source === "agent-contact-sheet"
+                        ? "Apresentador identificado"
+                        : "Âncora segura"}
+                    </span>
+                  </div>
+                )}
+
+                {analysis && (
+                  <div className="absolute left-3 top-3 flex items-center gap-2">
+                    <span className="rounded-md border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-200">
+                      {activeMediaAsset === "preview" ? "Prévia renderizada" : "Vídeo original"}
+                    </span>
+                    {previewStale && activeMediaAsset === "preview" && (
+                      <span className="rounded-md border border-amber-500/40 bg-amber-950/80 px-2 py-1 text-[9px] font-bold text-amber-200">
+                        Alterações ainda não renderizadas
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {playerError && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 p-6 text-center">
+                    <div>
+                      <Film size={32} className="mx-auto mb-2 text-red-400" />
+                      <p className="text-xs font-bold text-white">{playerError}</p>
+                      <p className="mt-1 text-[10px] text-zinc-400">
+                        Confirme se o codec é compatível ou renderize a prévia MP4.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Controls Overlay */}
                 <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col gap-1.5 opacity-90 transition-opacity">
-                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden cursor-pointer">
-                    <div className="h-full bg-emerald-400 w-[20%] relative">
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_8px_rgba(78,222,163,0.8)]" />
+                  <div
+                    onClick={handleTimelineClick}
+                    className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden cursor-pointer relative"
+                  >
+                    <div
+                      className="h-full bg-emerald-400 relative transition-all duration-100"
+                      style={{ width: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
+                    >
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-[0_0_8px_rgba(78,222,163,0.9)]" />
                     </div>
                   </div>
                   <div className="flex justify-between items-center text-xs text-zinc-300 px-1">
                     <div className="flex items-center gap-2">
-                      <button className="hover:text-emerald-400 transition-colors">
-                        <Play size={14} className="fill-current" />
+                      <button onClick={togglePlayPause} className="hover:text-emerald-400 transition-colors">
+                        {isPlaying ? <Pause size={14} className="fill-current text-emerald-400" /> : <Play size={14} className="fill-current" />}
                       </button>
-                      <span className="font-mono text-[11px] text-zinc-400">00:04:12 / 00:28:45</span>
+                      <span className="font-mono text-[11px] text-zinc-300">
+                        {clock(playheadTime)} / {clock(timelineDuration)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 text-zinc-400">
-                      <Volume2 size={14} className="hover:text-white transition-colors cursor-pointer" />
-                      <Maximize2 size={14} className="hover:text-white transition-colors cursor-pointer" />
+                      <button onClick={toggleMute} title={isMuted ? "Ativar áudio" : "Silenciar"}>
+                        {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                      </button>
+                      {videoMediaSrc && (
+                        <a
+                          href={`${videoMediaSrc}&download=true`}
+                          title="Baixar mídia exibida"
+                          className="hover:text-white transition-colors"
+                        >
+                          <Download size={14} />
+                        </a>
+                      )}
+                      <button onClick={toggleFullscreen} title="Tela cheia">
+                        <Maximize2 size={14} className="hover:text-white transition-colors" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -714,84 +999,110 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               {/* Timeline Header Toolbar */}
               <div className="h-9 border-b border-white/10 flex items-center px-4 justify-between bg-zinc-950 text-zinc-400">
                 <div className="flex items-center gap-2 text-xs">
-                  <button className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors" title="Cut">
-                    <Scissors size={14} />
-                  </button>
-                  <button className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors" title="Copy">
-                    <Copy size={14} />
+                  <button
+                    onClick={addEventAtPlayhead}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 transition-all text-[10px] font-bold"
+                    title="Inserir evento no corte"
+                  >
+                    <Plus size={13} />
+                    Adicionar Evento
                   </button>
                   <div className="w-px h-3.5 bg-white/10 mx-1" />
-                  <button className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors" title="Zoom In">
+                  <button
+                    onClick={() => setTimelineScale((s) => Math.min(3, s + 0.25))}
+                    className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
+                    title="Zoom In"
+                  >
                     <ZoomIn size={14} />
                   </button>
-                  <button className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors" title="Zoom Out">
+                  <button
+                    onClick={() => setTimelineScale((s) => Math.max(0.5, s - 0.25))}
+                    className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
+                    title="Zoom Out"
+                  >
                     <ZoomOut size={14} />
                   </button>
+                  <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
                 </div>
-                <div className="flex-1 flex justify-between px-6 text-[10px] font-mono text-zinc-500 select-none">
-                  <span>0:00</span>
-                  <span>0:05</span>
-                  <span>0:10</span>
-                  <span>0:15</span>
-                  <span>0:20</span>
-                  <span>0:25</span>
-                  <span>0:30</span>
+
+                <div className="flex-1 flex justify-between px-6 text-[10px] font-mono text-zinc-500 select-none overflow-hidden">
+                  {rulerTicks.map((tick) => (
+                    <span key={tick}>{clock(tick)}</span>
+                  ))}
                 </div>
               </div>
 
               {/* Tracks Area */}
-              <div className="flex-1 overflow-x-auto p-3 flex flex-col gap-2 relative bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%]">
+              <div
+                ref={timelineTrackRef}
+                onClick={handleTimelineClick}
+                className="flex-1 overflow-x-auto p-3 flex flex-col gap-2 relative bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%] cursor-crosshair"
+                style={{ width: `${100 * timelineScale}%` }}
+              >
                 {/* Playhead */}
-                <div className="absolute top-0 bottom-0 left-[20%] w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.8)]">
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
+                  style={{ left: `${Math.min(100, (playheadTime / maxDuration) * 100)}%` }}
+                >
                   <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-red-500 rounded-xs" />
                 </div>
 
-                {/* Track V1 (Video) */}
+                {/* Track V1 (Video Clips) */}
                 <div className="h-10 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
                   <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">V1</span>
                   <div className="flex-1 relative h-full flex items-center">
                     <div className="absolute left-0 w-[12%] h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate">
                       Intro Sequence
                     </div>
-                    <div className="absolute left-[13%] w-[45%] h-7 bg-emerald-950/60 border border-emerald-500 rounded px-2 flex items-center text-[10px] text-emerald-300 font-mono truncate font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)_inset]">
-                      A-Roll (Ativo)
+                    <div className="absolute left-[13%] w-[55%] h-7 bg-emerald-950/60 border border-emerald-500 rounded px-2 flex items-center text-[10px] text-emerald-300 font-mono truncate font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)_inset]">
+                      A-Roll ({form.moduleName || "Ativo"})
                     </div>
-                    <div className="absolute left-[59%] w-[20%] h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate">
-                      B-Roll Cut
+                    <div className="absolute left-[69%] w-[25%] h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate">
+                      Outro Cut
                     </div>
                   </div>
                 </div>
 
-                {/* Track FX (AI Effects) */}
-                <div className="h-8 bg-zinc-950/60 rounded-lg border border-white/10 flex relative items-center px-2">
+                {/* Track FX (AI Efficacy Event Clips) */}
+                <div className="h-9 bg-zinc-950/60 rounded-lg border border-white/10 flex relative items-center px-2">
                   <span className="text-[10px] font-mono font-bold text-violet-400 w-8 shrink-0">FX</span>
-                  <div className="flex-1 relative h-full flex items-center gap-2">
+                  <div className="flex-1 relative h-full flex items-center">
                     {analysis?.events.length ? (
-                      analysis.events.slice(0, 6).map((evt, idx) => (
-                        <div
-                          key={evt.id || idx}
-                          onClick={() => setSelectedEventId(evt.id)}
-                          className={`h-5 px-2 rounded text-[9px] font-mono font-semibold border flex items-center cursor-pointer transition-all ${
-                            selectedEventId === evt.id
-                              ? "bg-emerald-500 text-black border-white shadow-md shadow-emerald-500/30"
-                              : "bg-violet-950/80 border-violet-500/40 text-violet-300 hover:border-violet-400"
-                          }`}
-                        >
-                          {kindLabel[evt.kind]}: {clock(evt.start)}
-                        </div>
-                      ))
+                      analysis.events.map((evt) => {
+                        const change = eventReview(evt);
+                        const enabled = change.enabled !== false;
+                        const evtStart = change.start ?? evt.start;
+                        const evtDuration = change.duration ?? evt.duration;
+                        const leftPct = (evtStart / maxDuration) * 100;
+                        const widthPct = Math.max(4, (evtDuration / maxDuration) * 100);
+                        const isSelected = selectedEventId === evt.id;
+
+                        return (
+                          <div
+                            key={evt.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectEvent(evt.id, evtStart);
+                            }}
+                            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                            className={`absolute h-6 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
+                              isSelected
+                                ? "bg-emerald-500 text-black border-white shadow-lg shadow-emerald-500/40 z-10"
+                                : enabled
+                                  ? `${kindColorClass[evt.kind] || "bg-violet-950 border-violet-500 text-violet-300"} hover:brightness-125`
+                                  : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
+                            }`}
+                            title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(evtStart)})`}
+                          >
+                            <span className="truncate">{kindLabel[evt.kind]}</span>
+                            <span className="text-[8px] opacity-75 font-mono ml-1">{clock(evtStart)}</span>
+                          </div>
+                        );
+                      })
                     ) : (
-                      <>
-                        <div className="h-5 px-2 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 rounded text-[9px] font-mono flex items-center">
-                          L.Third (0:00)
-                        </div>
-                        <div className="h-5 px-2 bg-violet-950/80 border border-violet-500/40 text-violet-300 rounded text-[9px] font-mono flex items-center">
-                          Zoom (0:04)
-                        </div>
-                        <div className="h-5 px-2 bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 rounded text-[9px] font-mono flex items-center">
-                          Impact (0:06)
-                        </div>
-                      </>
+                      <div className="text-[10px] text-zinc-500 italic pl-2">
+                        Execute a análise para visualizar os eventos de corte na timeline
+                      </div>
                     )}
                   </div>
                 </div>
@@ -800,11 +1111,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <div className="h-8 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
                   <span className="text-[10px] font-mono font-bold text-zinc-500 w-8 shrink-0">A1</span>
                   <div className="flex-1 h-full flex items-center gap-[2px] opacity-50 px-2 overflow-hidden">
-                    {Array.from({ length: 48 }).map((_, i) => (
+                    {Array.from({ length: 64 }).map((_, i) => (
                       <div
                         key={i}
                         className="w-1 bg-emerald-400 rounded-full"
-                        style={{ height: `${(i % 5 + 1) * 18}%` }}
+                        style={{ height: `${((i * 7) % 5 + 1) * 18}%` }}
                       />
                     ))}
                   </div>
@@ -878,11 +1189,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {analysis?.events.map((event) => {
                   const change = eventReview(event);
                   const enabled = change.enabled !== false;
+                  const isSelected = selectedEventId === event.id;
                   return (
                     <div
+                      id={`edit-${event.id}`}
                       key={`edit-${event.id}`}
-                      className={`rounded-xl border p-2.5 transition-all text-xs ${
-                        enabled ? "border-white/10 bg-black/40" : "border-white/5 opacity-40"
+                      onClick={() => handleSelectEvent(event.id, change.start ?? event.start)}
+                      className={`rounded-xl border p-2.5 transition-all text-xs cursor-pointer ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-950/20 shadow-lg shadow-emerald-500/10"
+                          : enabled
+                            ? "border-white/10 bg-black/40 hover:border-white/20"
+                            : "border-white/5 bg-black/20 opacity-40"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -893,7 +1211,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                           className="accent-emerald-500 rounded h-3.5 w-3.5"
                         />
                         <span className="font-bold text-emerald-300 text-[11px]">{kindLabel[event.kind]}</span>
-                        <span className="text-[10px] text-zinc-400 truncate">{event.reason}</span>
+                        <span className="text-[10px] text-zinc-400 truncate">— {event.reason}</span>
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
                         <label className="text-[10px] text-zinc-400">
@@ -928,6 +1246,47 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                           />
                         </label>
                       </div>
+
+                      {event.kind === "zoom" && (
+                        <div className="mt-2 grid grid-cols-3 gap-1.5 pt-1.5 border-t border-white/5">
+                          <label className="text-[9px] text-zinc-400">
+                            Intensidade
+                            <input
+                              className={fieldClass}
+                              type="number"
+                              min="1"
+                              max="1.14"
+                              step="0.01"
+                              value={change.scale ?? event.scale ?? 1.12}
+                              onChange={(input) => updateEvent(event, { scale: Number(input.target.value) })}
+                            />
+                          </label>
+                          <label className="text-[9px] text-zinc-400">
+                            Foco Horiz.
+                            <input
+                              className={fieldClass}
+                              type="number"
+                              min="0.28"
+                              max="0.72"
+                              step="0.01"
+                              value={change.x ?? event.x ?? 0.5}
+                              onChange={(input) => updateEvent(event, { x: Number(input.target.value) })}
+                            />
+                          </label>
+                          <label className="text-[9px] text-zinc-400">
+                            Foco Vert.
+                            <input
+                              className={fieldClass}
+                              type="number"
+                              min="0.24"
+                              max="0.62"
+                              step="0.01"
+                              value={change.y ?? event.y ?? 0.4}
+                              onChange={(input) => updateEvent(event, { y: Number(input.target.value) })}
+                            />
+                          </label>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

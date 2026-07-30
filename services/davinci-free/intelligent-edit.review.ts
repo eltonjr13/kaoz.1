@@ -9,6 +9,7 @@ import type {
   IntelligentEditorialCaptionOverride,
   IntelligentEditorialEventOverride,
   IntelligentEditorialReview,
+  IntelligentEditEvent,
   IntelligentEditPlan,
 } from "./intelligent-edit.types";
 
@@ -36,6 +37,14 @@ function courseId(courseName: string) {
 function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditorialReview {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const allowedEvents = new Map(plan.events.map((event) => [event.id, event]));
+  const allowedKinds = new Set<IntelligentEditEvent["kind"]>([
+    "lower-third",
+    "impact-text",
+    "zoom",
+    "cut",
+    "cursor",
+    "transition",
+  ]);
   const events = Array.isArray(raw.events) ? raw.events.flatMap((value): IntelligentEditorialEventOverride[] => {
     if (!value || typeof value !== "object") return [];
     const item = value as Record<string, unknown>;
@@ -58,6 +67,44 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
       ...(Number.isFinite(y) ? { y: clamp(y, 0.24, 0.62) } : {}),
     }];
   }) : [];
+  const addedEvents = Array.isArray(raw.addedEvents)
+    ? raw.addedEvents.flatMap((value): IntelligentEditEvent[] => {
+      if (!value || typeof value !== "object") return [];
+      const item = value as Record<string, unknown>;
+      const id = String(item.id || "");
+      const kind = String(item.kind || "") as IntelligentEditEvent["kind"];
+      const start = Number(item.start);
+      const duration = Number(item.duration);
+      const label = text(item.label, 120);
+      if (
+        !/^custom-evt-[a-f0-9-]{8,36}$/.test(id)
+        || !allowedKinds.has(kind)
+        || !Number.isFinite(start)
+        || !Number.isFinite(duration)
+        || !label
+      ) {
+        return [];
+      }
+      return [{
+        id,
+        kind,
+        start: clamp(start, 0, plan.media.durationSeconds),
+        duration: clamp(duration, 0.1, 12),
+        label,
+        subtitle: text(item.subtitle, 160),
+        reason: text(item.reason, 220) || "Evento adicionado manualmente na timeline.",
+        ...(kind === "zoom" && Number.isFinite(Number(item.scale))
+          ? { scale: clamp(Number(item.scale), 1, 1.14) }
+          : {}),
+        ...(kind === "zoom" && Number.isFinite(Number(item.x))
+          ? { x: clamp(Number(item.x), 0.28, 0.72) }
+          : {}),
+        ...(kind === "zoom" && Number.isFinite(Number(item.y))
+          ? { y: clamp(Number(item.y), 0.24, 0.62) }
+          : {}),
+      }];
+    })
+    : [];
   const captions = Array.isArray(raw.captions) ? raw.captions.flatMap((value): IntelligentEditorialCaptionOverride[] => {
     if (!value || typeof value !== "object") return [];
     const item = value as Record<string, unknown>;
@@ -81,6 +128,7 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
     updatedAt: new Date().toISOString(),
     ...(typeof raw.captionsEnabled === "boolean" ? { captionsEnabled: raw.captionsEnabled } : {}),
     events,
+    addedEvents,
     captions,
   };
 }
@@ -98,7 +146,7 @@ export function applyEditorialReview(plan: IntelligentEditPlan, review: Intellig
     const change = events.get(event.id);
     if (change?.enabled === false) return [];
     return [{ ...event, ...change, id: event.id }];
-  });
+  }).concat(review.addedEvents || []);
   const reviewedCaptions = plan.captions.flatMap((caption, index) => {
     const change = captions.get(index);
     if (change?.enabled === false) return [];

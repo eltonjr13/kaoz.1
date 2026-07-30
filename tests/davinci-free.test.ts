@@ -21,6 +21,24 @@ import {
   isReliableVisualAnchor,
   stabilizeSubjectAnchor,
 } from "../services/davinci-free/visual-anchor.ts";
+import { parseMediaByteRange } from "../services/davinci-free/media-range.ts";
+
+test("stream de mídia interpreta ranges usados pelo player sem carregar o arquivo inteiro", () => {
+  assert.deepEqual(parseMediaByteRange(null, 1_000), null);
+  assert.deepEqual(parseMediaByteRange("bytes=100-199", 1_000), {
+    start: 100,
+    end: 199,
+  });
+  assert.deepEqual(parseMediaByteRange("bytes=900-", 1_000), {
+    start: 900,
+    end: 999,
+  });
+  assert.deepEqual(parseMediaByteRange("bytes=-100", 1_000), {
+    start: 900,
+    end: 999,
+  });
+  assert.throws(() => parseMediaByteRange("bytes=1000-", 1_000), /fora do arquivo/);
+});
 
 test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
   const first = stabilizeSubjectAnchor({
@@ -362,6 +380,22 @@ test("edição de vídeo possui área própria na navegação, fora das configur
   assert.match(editor, /DavinciFreePanel/);
   assert.doesNotMatch(settings, /DavinciFreePanel/);
   assert.doesNotMatch(settings, /davinci-free/);
+});
+
+test("backend de mídia expõe streaming parcial e waveform real para o editor", async () => {
+  const mediaRoute = await readFile(
+    path.join(process.cwd(), "app", "api", "davinci-free", "media", "route.ts"),
+    "utf8",
+  );
+  const mediaService = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.media.ts"),
+    "utf8",
+  );
+  assert.match(mediaRoute, /Accept-Ranges/);
+  assert.match(mediaRoute, /Content-Range/);
+  assert.match(mediaRoute, /readIntelligentAudioWaveform/);
+  assert.match(mediaService, /waveform-/);
+  assert.match(mediaService, /"-ar",\s*"200"/);
 });
 
 test("runner interno não abre servidor nem executa código arbitrário", async () => {

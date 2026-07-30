@@ -116,6 +116,7 @@ export interface IntelligentEditorialReview {
   updatedAt: string;
   captionsEnabled?: boolean;
   events: IntelligentEditorialEventOverride[];
+  addedEvents?: IntelligentEditEvent[];
   captions: IntelligentEditorialCaptionOverride[];
   previewPath?: string;
 }
