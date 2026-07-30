@@ -498,7 +498,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     for (let i = 0; i <= timelineDuration; i += step) {
       ticks.push(i);
     }
-    if (ticks.at(-1) !== Math.ceil(timelineDuration)) ticks.push(Math.ceil(timelineDuration));
+    const lastWholeSecond = Math.floor(timelineDuration);
+    if (ticks.at(-1) !== lastWholeSecond) ticks.push(lastWholeSecond);
     return ticks;
   }, [timelineDuration]);
 
@@ -580,6 +581,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (videoRef.current) {
       videoRef.current.currentTime = newTime;
     }
+  }
+
+  function handlePlayerSeek(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+    const newTime = Math.round((clickX / rect.width) * timelineDuration * 10) / 10;
+    setPlayheadTime(newTime);
+    if (videoRef.current) videoRef.current.currentTime = newTime;
   }
 
   function addEventAtPlayhead() {
@@ -750,7 +759,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid gap-4 lg:grid-cols-12 min-h-[640px]">
+        <div className="grid items-start gap-4 lg:grid-cols-12">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="lg:col-span-3 flex flex-col rounded-2xl border border-white/10 bg-zinc-900/70 p-4 backdrop-blur-xl shadow-xl space-y-4">
             <div className="border-b border-white/10 pb-3">
@@ -877,12 +886,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="lg:col-span-6 flex flex-col rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden shadow-2xl relative">
+          <main className="lg:col-span-6 min-w-0 self-start flex flex-col rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden shadow-2xl relative">
             {/* Player Container */}
-            <div className="flex-1 p-4 flex flex-col justify-center items-center relative min-h-[340px] bg-black">
+            <div className="p-3 flex items-center justify-center relative bg-black">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="w-full max-w-2xl aspect-video bg-zinc-900 rounded-xl overflow-hidden relative shadow-2xl border border-white/10 flex flex-col justify-center items-center group">
+              <div className="w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden relative shadow-2xl border border-white/10 flex flex-col justify-center items-center group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -960,7 +969,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Controls Overlay */}
                 <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col gap-1.5 opacity-90 transition-opacity">
                   <div
-                    onClick={handleTimelineClick}
+                    onClick={handlePlayerSeek}
                     className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden cursor-pointer relative"
                   >
                     <div
@@ -1002,7 +1011,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className="h-56 bg-zinc-900/90 border-t border-white/10 flex flex-col shrink-0">
+            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/90 border-t border-white/10 flex flex-col shrink-0`}>
               {/* Timeline Header Toolbar */}
               <div className="h-9 border-b border-white/10 flex items-center px-4 justify-between bg-zinc-950 text-zinc-400">
                 <div className="flex items-center gap-2 text-xs">
@@ -1031,29 +1040,55 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
                 </div>
-
-                <div className="flex-1 flex justify-between px-6 text-[10px] font-mono text-zinc-500 select-none overflow-hidden">
-                  {rulerTicks.map((tick) => (
-                    <span key={tick}>{clock(tick)}</span>
-                  ))}
-                </div>
+                <span className="text-[10px] font-mono text-zinc-500">
+                  DuraÃ§Ã£o {clock(timelineDuration)}
+                </span>
               </div>
 
               {/* Tracks Area */}
               <div className="flex-1 overflow-x-auto overflow-y-hidden">
                 <div
-                  ref={timelineTrackRef}
                   onClick={handleTimelineClick}
-                  className="h-full min-w-full p-3 flex flex-col gap-2 relative bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%] cursor-crosshair"
+                  className="h-full min-w-full flex flex-col cursor-crosshair"
                   style={{ width: `${100 * timelineScale}%` }}
                 >
-                {/* Playhead */}
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
-                  style={{ left: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
-                >
-                  <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-red-500 rounded-xs" />
-                </div>
+                  <div className="grid h-6 shrink-0 grid-cols-[40px_minmax(0,1fr)] items-end border-b border-white/5 px-3">
+                    <span className="pb-1 text-[8px] font-mono text-zinc-600">TC</span>
+                    <div className="relative h-full select-none">
+                      {rulerTicks.map((tick, index) => (
+                        <span
+                          key={tick}
+                          className="absolute bottom-1 text-[9px] font-mono text-zinc-500"
+                          style={{
+                            left: `${(tick / timelineDuration) * 100}%`,
+                            transform:
+                              index === 0
+                                ? "none"
+                                : index === rulerTicks.length - 1
+                                  ? "translateX(-100%)"
+                                  : "translateX(-50%)",
+                          }}
+                        >
+                          {clock(tick)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative flex-1 px-3 pb-3 pt-2">
+                    <div
+                      ref={timelineTrackRef}
+                      className="absolute bottom-3 left-[52px] right-3 top-2 bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%]"
+                    >
+                      <div
+                        className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
+                        style={{ left: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
+                      >
+                        <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-red-500 rounded-xs" />
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 flex h-full flex-col gap-2 pointer-events-none">
 
                 {/* Track V1 (Video Clips) */}
                 <div className="h-10 bg-zinc-950/80 rounded-lg border border-white/10 flex relative items-center px-2">
