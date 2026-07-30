@@ -22,6 +22,7 @@ import {
   stabilizeSubjectAnchor,
 } from "../services/davinci-free/visual-anchor.ts";
 import { parseMediaByteRange } from "../services/davinci-free/media-range.ts";
+import { createAudioWaveformPeaks } from "../services/davinci-free/audio-waveform.ts";
 
 test("stream de mídia interpreta ranges usados pelo player sem carregar o arquivo inteiro", () => {
   assert.deepEqual(parseMediaByteRange(null, 1_000), null);
@@ -38,6 +39,23 @@ test("stream de mídia interpreta ranges usados pelo player sem carregar o arqui
     end: 999,
   });
   assert.throws(() => parseMediaByteRange("bytes=1000-", 1_000), /fora do arquivo/);
+});
+
+test("waveform preserva silêncio e não achata a fala por causa de um pico isolado", () => {
+  const samples = new Float32Array(10_000);
+  for (let index = 2_000; index < 8_000; index += 1) {
+    samples[index] = Math.sin(index / 5) * (index < 5_000 ? 0.08 : 0.18);
+  }
+  samples[6_050] = 1;
+  const peaks = createAudioWaveformPeaks(samples, 100);
+  assert.deepEqual(peaks.slice(0, 15), Array.from({ length: 15 }, () => 0));
+  assert.ok(peaks.slice(20, 50).every((peak) => peak > 0.25));
+  assert.ok(
+    peaks.slice(50, 80).reduce((sum, peak) => sum + peak, 0)
+      > peaks.slice(20, 50).reduce((sum, peak) => sum + peak, 0),
+  );
+  assert.equal(Math.max(...peaks), 1);
+  assert.deepEqual(peaks.slice(85), Array.from({ length: 15 }, () => 0));
 });
 
 test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
@@ -407,6 +425,7 @@ test("backend de mídia expõe streaming parcial e waveform real para o editor",
   assert.match(mediaRoute, /readIntelligentAudioWaveform/);
   assert.match(mediaService, /waveform-/);
   assert.match(mediaService, /"-ar",\s*"200"/);
+  assert.match(mediaService, /waveform-.*-v2\.json/);
 });
 
 test("runner interno não abre servidor nem executa código arbitrário", async () => {
