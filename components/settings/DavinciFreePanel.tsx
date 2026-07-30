@@ -1042,7 +1042,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
                 </div>
                 <span className="text-[10px] font-mono text-zinc-500">
-                  DuraÃ§Ã£o {clock(timelineDuration)}
+                  Duração {clock(timelineDuration)}
                 </span>
               </div>
 
