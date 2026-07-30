@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Menu,
   Settings,
-  Shirt,
   Sparkles,
   Video,
   X,
@@ -21,7 +20,6 @@ const navItems = [
   { href: "/supervision", label: "Supervisor", icon: Activity },
   { href: "/cortex", label: "Córtex", icon: Brain },
   { href: "/video", label: "Edição de vídeo", icon: Video },
-  { href: "/patterns", label: "Estampas", icon: Shirt },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

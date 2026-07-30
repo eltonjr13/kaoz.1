@@ -65,7 +65,7 @@ export class FlowImageGenerator {
         ? `${filenameBase}${ext}`
         : generateFilename('image', ext);
       const targetDir = customFolder
-        ? path.resolve(this.config.downloadPath, 'patterns', customFolder)
+        ? path.resolve(this.config.downloadPath, customFolder)
         : path.resolve(this.config.downloadPath, 'images');
 
       ensureDirExists(targetDir);

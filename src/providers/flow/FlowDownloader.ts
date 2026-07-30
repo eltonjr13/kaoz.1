@@ -57,8 +57,8 @@ export class FlowDownloader {
       
       let targetDir;
       if (customFolder) {
-        // Save to storage/generated/patterns/<customFolder>
-        targetDir = path.resolve(this.downloadRootPath, 'patterns', customFolder);
+        // Save to storage/generated/<customFolder>
+        targetDir = path.resolve(this.downloadRootPath, customFolder);
       } else {
         targetDir = path.resolve(this.downloadRootPath, subfolder);
       }

@@ -10,9 +10,11 @@ test("navegacao principal nao expoe as superficies legadas", async () => {
   assert.doesNotMatch(shell, /href:\s*"\/jobs"/);
   assert.doesNotMatch(shell, /href:\s*"\/jobs\/new"/);
   assert.doesNotMatch(shell, /href:\s*"\/avatars"/);
+  assert.doesNotMatch(shell, /href:\s*"\/patterns"/);
   assert.doesNotMatch(shell, /label:\s*"Projects"/);
   assert.doesNotMatch(shell, /label:\s*"Avatar"/);
   assert.doesNotMatch(shell, /label:\s*"Generation"/);
+  assert.doesNotMatch(shell, /label:\s*"Estampas"/);
 });
 
 test("agente atual nao carrega nem oferece avatar ou modo Fly", async () => {
