@@ -13,7 +13,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export type CourseFolderPickerOptions = Readonly<{
-  pickerDirectory?: string;
+  pickerDirectory: string;
   runScript?: (scriptPath: string, resultPath: string) => Promise<void>;
   responseTimeoutMs?: number;
   pollIntervalMs?: number;
@@ -38,13 +38,12 @@ export async function normalizeExistingLocalCourseDirectory(
 }
 
 export async function chooseCourseFolder(
-  options: CourseFolderPickerOptions = {},
+  options: CourseFolderPickerOptions,
 ) {
   if (process.platform !== "win32") {
     throw new Error("O seletor de pastas está disponível somente no Windows.");
   }
-  const pickerDirectory = options.pickerDirectory
-    ?? path.join(process.cwd(), ".generated", "course-folder-picker");
+  const pickerDirectory = options.pickerDirectory;
   await mkdir(pickerDirectory, { recursive: true });
   const token = crypto.randomBytes(12).toString("hex");
   const scriptPath = path.join(pickerDirectory, `${token}.vbs`);

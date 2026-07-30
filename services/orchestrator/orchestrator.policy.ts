@@ -37,7 +37,81 @@ const SENSITIVE_TOKEN_KEYS = new Set([
 
 export function requiredApproval(effect: ToolEffect, declared: ApprovalMode): ApprovalMode { if (effect === "destructive" || effect === "external") return "step"; if (effect === "write") return declared === "never" ? "plan" : declared; return declared; }
 export function assertSafeWorkspacePath(candidate: string, root = process.cwd()): string { const resolved = path.resolve(root, candidate); const relative = path.relative(path.resolve(root), resolved); if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Caminho fora da raiz permitida."); return resolved; }
-export function redactSecrets(value: unknown): string { const text = typeof value === "string" ? value : JSON.stringify(value); return text.replace(/((?:api[_-]?key|token|secret|password|authorization)\s*[=:]\s*)[^\s,;"']+/gi, "$1[REDACTED]").replace(/\b(?:sk|ghp|xox[baprs])-[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"); }
+
+export function redactSecrets(value: unknown): string {
+  let text = typeof value === "string" ? value : JSON.stringify(value);
+  text = text.replace(
+    /"([A-Za-z][A-Za-z0-9_.-]*)"\s*([=:])\s*"((?:\\.|[^"\\])*)"/g,
+    (match, key: string, separator: string) =>
+      isSensitiveKey(key)
+        ? `"${key}"${separator}"[REDACTED]"`
+        : match,
+  );
+  text = text.replace(
+    /'([A-Za-z][A-Za-z0-9_.-]*)'\s*([=:])\s*'((?:\\.|[^'\\])*)'/g,
+    (match, key: string, separator: string) =>
+      isSensitiveKey(key)
+        ? `'${key}'${separator}'[REDACTED]'`
+        : match,
+  );
+  text = text.replace(
+    /\b([A-Za-z][A-Za-z0-9_.-]*)\s*([=:])\s*([^\s,;"'&]+)/g,
+    (match, key: string, separator: string, item: string) => {
+      if (!isSensitiveKey(key) || /^(?:Bearer|Basic)$/i.test(item)) {
+        return match;
+      }
+      return `${key}${separator}[REDACTED]`;
+    },
+  );
+  text = text.replace(
+    /(--?)([A-Za-z][A-Za-z0-9_-]*)\s+("[^"]*"|'[^']*'|[^\s,;]+)/g,
+    (match, prefix: string, key: string) =>
+      isSensitiveKey(key) ? `${prefix}${key} [REDACTED]` : match,
+  );
+  return text
+    .replace(
+      /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]{8,}={0,2}/gi,
+      "$1 [REDACTED]",
+    )
+    .replace(
+      /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+      "[REDACTED]",
+    )
+    .replace(
+      /\b(?:sk-[A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/gi,
+      "[REDACTED]",
+    )
+    .replace(
+      /(\b[a-z][a-z0-9+.-]*:\/\/)([^@\s/]+)@/gi,
+      "$1[REDACTED]@",
+    );
+}
+
+export function sanitizePublicErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const code = publicErrorCode(error);
+  let message = redactSecrets(raw)
+    .replace(
+      /\b(?:Command failed|Comando falhou|Comando executado|Command|Comando|args|arguments|argumentos)\s*[:=]\s*[^\r\n]*/gi,
+      (match) => `${match.slice(0, match.search(/[:=]/) + 1)} [REDACTED]`,
+    )
+    .replace(/\bspawn\s+[^\r\n]*/gi, "spawn [REDACTED]")
+    .replace(/"(?:(?:[A-Za-z]:[\\/])|\\\\)[^"]+"/g, '"[LOCAL_PATH]"')
+    .replace(/'(?:(?:[A-Za-z]:[\\/])|\\\\)[^']+'/g, "'[LOCAL_PATH]'")
+    .replace(/\b[A-Za-z]:[\\/][^\s"'`<>|,;]+/g, "[LOCAL_PATH]")
+    .replace(/\\\\[^\\\s]+\\[^\s"'`<>|,;]+/g, "[LOCAL_PATH]")
+    .replace(
+      /(?<![:A-Za-z0-9])\/(?:Users|home|tmp|var|etc|opt|mnt|workspace|data)\/[^\s"'`<>|,;]+/gi,
+      "[LOCAL_PATH]",
+    )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  if (!message) {
+    message = "Falha interna durante a execução MCP.";
+  }
+  return code && !message.includes(code) ? `${code}: ${message}` : message;
+}
 
 export function isSensitiveKey(key: string): boolean {
   const normalized = normalizeSensitiveKey(key);
@@ -85,4 +159,12 @@ function normalizeSensitiveKey(key: string): string {
     .replace(/[^A-Za-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
+}
+
+function publicErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code)
+    ? code
+    : null;
 }

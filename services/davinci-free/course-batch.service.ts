@@ -15,9 +15,10 @@ import type {
 } from "./intelligent-edit.types";
 import { sortCourseVideoPaths } from "./course-batch.order";
 import { analyzeCourseIdentity } from "./course-identity.service";
-import { normalizeExistingLocalCourseDirectory } from "./course-folder-picker";
-
-export { chooseCourseFolder } from "./course-folder-picker";
+import {
+  chooseCourseFolder as runCourseFolderPicker,
+  normalizeExistingLocalCourseDirectory,
+} from "./course-folder-picker";
 
 const ROOT = path.join(
   getLocalDataDir(),
@@ -109,6 +110,12 @@ function jobPath(id: string) {
     throw new Error("Identificador do lote inválido.");
   }
   return path.join(ROOT, `${id}.json`);
+}
+
+export async function chooseCourseFolder() {
+  return runCourseFolderPicker({
+    pickerDirectory: path.join(ROOT, "folder-picker"),
+  });
 }
 
 async function walkVideos(root: string, current = root): Promise<string[]> {

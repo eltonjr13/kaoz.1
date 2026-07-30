@@ -13,6 +13,10 @@ import test from "node:test";
 import { createAgentId } from "../services/agents/core/agent-id.ts";
 import { consumeMcpCallAuthorization } from "../services/mcp/mcp-call.authorization.ts";
 import {
+  redactSecrets,
+  sanitizePublicErrorMessage,
+} from "../services/orchestrator/orchestrator.policy.ts";
+import {
   ToolApprovalStore,
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
@@ -177,6 +181,53 @@ test("somente o comando inteiro e afirmativo reconhece o token", () => {
     null,
   );
   assert.equal(extractToolApprovalToken(`aprovar ${token} depois`), null);
+});
+
+test("redação remove Bearer, JWT e credenciais embutidas em texto livre", () => {
+  const bearer = "bearer-secret-0123456789";
+  const genericBearer = "generic-bearer-secret-9876543210";
+  const jwt =
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signatureSecret123";
+  const openAiKey = "sk-abcdefghijklmnopqrstuvwxyz";
+  const githubToken = "ghp_abcdefghijklmnopqrstuvwxyz";
+  const output = redactSecrets(
+    [
+      `Authorization: Bearer ${bearer}`,
+      `falha com Bearer ${genericBearer}`,
+      `jwt=${jwt}`,
+      `--refresh-token cli-refresh-secret`,
+      `{"token":"json-token-secret"}`,
+      `https://local-user:local-password@example.test/path`,
+      openAiKey,
+      githubToken,
+      "pageToken=next-page-marker",
+    ].join("\n"),
+  );
+
+  assert.doesNotMatch(
+    output,
+    /bearer-secret|generic-bearer-secret|signatureSecret|cli-refresh-secret|json-token-secret|local-user|local-password|sk-abcdefghijklmnopqrstuvwxyz|ghp_abcdefghijklmnopqrstuvwxyz/,
+  );
+  assert.match(output, /Authorization: Bearer \[REDACTED\]/);
+  assert.match(output, /pageToken=next-page-marker/);
+});
+
+test("erro público preserva código e remove comando, path e credenciais", () => {
+  const error = Object.assign(
+    new Error(
+      'Command failed: "C:\\Users\\elton\\AppData\\runner.exe" --token command-secret\n' +
+      "Authorization: Bearer error-bearer-secret-0123456789",
+    ),
+    { code: "REQUEST_ID_CONFLICT" },
+  );
+  const message = sanitizePublicErrorMessage(error);
+
+  assert.match(message, /REQUEST_ID_CONFLICT/);
+  assert.match(message, /\[REDACTED\]/);
+  assert.doesNotMatch(
+    message,
+    /C:\\Users|runner\.exe|command-secret|error-bearer-secret/,
+  );
 });
 
 test("resumo de aprovação não esconde cauda nem permite injeção Markdown", async () => {
@@ -356,13 +407,17 @@ test("migração remove argumentos legados em texto claro", async () => {
 });
 
 test("chat e manager não mantêm atalhos MCP com efeitos ocultos", async () => {
-  const [chatRoute, manager] = await Promise.all([
+  const [chatRoute, manager, agentLlm] = await Promise.all([
     readFile(
       path.join(process.cwd(), "app", "api", "flow", "chat", "route.ts"),
       "utf8",
     ),
     readFile(
       path.join(process.cwd(), "services", "mcp", "mcp.manager.ts"),
+      "utf8",
+    ),
+    readFile(
+      path.join(process.cwd(), "services", "agent-llm", "agent-llm.service.ts"),
       "utf8",
     ),
   ]);
@@ -373,6 +428,18 @@ test("chat e manager não mantêm atalhos MCP com efeitos ocultos", async () => 
     /generateAndUploadCover|upload_playlist_cover/,
   );
   assert.match(manager, /consumeMcpCallAuthorization/);
+  const approvedExecution = agentLlm.slice(
+    agentLlm.indexOf("if (extractToolApprovalToken"),
+    agentLlm.indexOf("let relevantTools"),
+  );
+  assert.match(
+    approvedExecution,
+    /sanitizePublicErrorMessage\(error\)/,
+  );
+  assert.doesNotMatch(
+    approvedExecution,
+    /error instanceof Error \? error\.message/,
+  );
 });
 
 test("somente o adaptador central pode chamar McpManager.callTool", async () => {

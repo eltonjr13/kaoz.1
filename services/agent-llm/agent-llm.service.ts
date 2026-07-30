@@ -13,6 +13,7 @@ import {
   requestMcpToolApproval,
 } from "../tools/tool-approval.service.ts";
 import { presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
+import { sanitizePublicErrorMessage } from "../orchestrator/orchestrator.policy.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -851,7 +852,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
         },
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = sanitizePublicErrorMessage(error);
       return JSON.stringify({
         message: `Não foi possível executar a aprovação: ${message}`,
         action: null,

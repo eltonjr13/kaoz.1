@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { sortCourseVideoPaths } from "../services/davinci-free/course-batch.order.ts";
-import { chooseCourseFolder } from "../services/davinci-free/course-batch.service.ts";
+import { chooseCourseFolder } from "../services/davinci-free/course-folder-picker.ts";
 import {
   analyzeCourseIdentity,
   cleanLessonTitle,
@@ -75,20 +75,24 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
     path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
     "utf8",
   );
+  const picker = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-folder-picker.ts"),
+    "utf8",
+  );
   const panel = await readFile(
     path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
     "utf8",
   );
   assert.match(batch, /course-batches/);
-  assert.match(batch, /Shell\.Application/);
-  assert.match(batch, /BrowseForFolder/);
-  assert.match(batch, /wscript\.exe/);
+  assert.match(picker, /Shell\.Application/);
+  assert.match(picker, /BrowseForFolder/);
+  assert.match(picker, /wscript\.exe/);
   assert.equal(
     path.win32.normalize("//server/course").startsWith("\\\\"),
     true,
   );
-  assert.match(batch, /const normalized = path\.win32\.normalize\(raw\)/);
-  assert.match(batch, /normalized\.startsWith\("\\\\\\\\"\)/);
+  assert.match(picker, /const normalized = path\.win32\.normalize\(raw\)/);
+  assert.match(picker, /normalized\.startsWith\("\\\\\\\\"\)/);
   assert.match(batch, /suggestedCourseName/);
   assert.match(batch, /reuseCourseTheme:\s*true/);
   assert.match(batch, /activeJobs/);
@@ -114,8 +118,10 @@ test(
     const selectedDirectory = await mkdtemp(
       path.join(os.tmpdir(), "kaoz-course-picker-"),
     );
+    const pickerDirectory = path.join(selectedDirectory, "picker-state");
     try {
       const selected = await chooseCourseFolder({
+        pickerDirectory,
         runScript: async (scriptPath, resultPath) => {
           const script = await readFile(scriptPath, "utf8");
           assert.match(script, /Shell\.Application/);
@@ -131,6 +137,7 @@ test(
       });
 
       const canceled = await chooseCourseFolder({
+        pickerDirectory,
         runScript: async (_scriptPath, resultPath) => {
           await writeFile(resultPath, "CANCEL", "utf16le");
         },
@@ -144,6 +151,7 @@ test(
 
       await assert.rejects(
         chooseCourseFolder({
+          pickerDirectory,
           runScript: async () => undefined,
           responseTimeoutMs: 5,
           pollIntervalMs: 1,

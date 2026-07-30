@@ -84,7 +84,17 @@ class _InterprocessLedgerLock:
 
         deadline = time.monotonic() + _LEDGER_LOCK_TIMEOUT_SECONDS
         while True:
-            if _try_lock_file(self.handle):
+            try:
+                acquired = _try_lock_file(self.handle)
+            except Exception as error:
+                self._close()
+                raise ResolveOperationError(
+                    "IDEMPOTENCY_LOCK_UNAVAILABLE",
+                    "O lock do ledger não pôde ser adquirido com segurança.",
+                    "Verifique o suporte a locks de arquivo do sistema antes de tentar novamente.",
+                    {"errorType": type(error).__name__},
+                ) from None
+            if acquired:
                 self._write_owner_metadata()
                 return self
             if time.monotonic() >= deadline:
@@ -599,6 +609,14 @@ class ResolveClient:
             project = self._project()
             project_identity = self._project_identity(project)
             timeline = self._require_timeline(timeline_name, project=project)
+            timeline_id = _timeline_id(timeline)
+            bound_timeline_name = str(_safe_call(timeline, "GetName") or "")
+            if not timeline_id or not bound_timeline_name:
+                raise ResolveOperationError(
+                    "RENDER_TIMELINE_IDENTITY_UNAVAILABLE",
+                    "O Resolve não forneceu a identidade estável da timeline de render.",
+                    "Reabra o projeto e confirme a versão da API antes de criar o render job.",
+                )
             previous = _safe_call(project, "GetCurrentTimeline")
             try:
                 if timeline is not previous:
@@ -647,6 +665,9 @@ class ResolveClient:
                     **project_identity,
                     "renderJobId": str(job_id),
                     "renderTarget": str(final_stem),
+                    "timelineId": timeline_id,
+                    "timelineName": bound_timeline_name,
+                    "preset": preset,
                 },
             }
 
@@ -718,8 +739,8 @@ class ResolveClient:
         project: Any,
         render_job_id: str,
     ) -> None:
-        target = self._render_target_from_ledger(project, render_job_id)
-        if target is None:
+        provenance = self._render_provenance_from_ledger(project, render_job_id)
+        if provenance is None:
             raise ResolveOperationError(
                 "RENDER_JOB_PROVENANCE_REQUIRED",
                 "O render job não possui proveniência válida no ledger do MCP.",
@@ -727,19 +748,119 @@ class ResolveClient:
                 "aprovar o início; jobs preexistentes nunca são iniciados.",
                 {"renderJobId": render_job_id},
             )
-        if _render_output_exists(target.parent, target.name):
+
+        jobs = _safe_call(project, "GetRenderJobList")
+        matching_jobs = [
+            job
+            for job in jobs or []
+            if isinstance(job, dict)
+            and str(job.get("JobId") or "") == render_job_id
+        ]
+        if len(matching_jobs) != 1:
+            raise ResolveOperationError(
+                "RENDER_JOB_INTEGRITY_UNVERIFIABLE",
+                "O render job não pôde ser identificado de forma única na fila atual.",
+                "Atualize a fila na página Deliver e crie um novo job pelo MCP.",
+                {"renderJobId": render_job_id},
+            )
+        current_job = matching_jobs[0]
+        current_timeline_name = current_job.get("TimelineName")
+        current_preset = current_job.get("RenderPreset")
+        if not isinstance(current_preset, str) or not current_preset:
+            current_preset = current_job.get("PresetName")
+        target_directory = current_job.get("TargetDir")
+        output_filename = current_job.get("OutputFilename")
+        if not isinstance(output_filename, str) or not output_filename:
+            output_filename = current_job.get("CustomName")
+        missing_fields = [
+            field
+            for field, value in (
+                ("TimelineName", current_timeline_name),
+                ("RenderPreset", current_preset),
+                ("TargetDir", target_directory),
+                ("OutputFilename", output_filename),
+            )
+            if not isinstance(value, str) or not value
+        ]
+        if missing_fields:
+            raise ResolveOperationError(
+                "RENDER_JOB_INTEGRITY_UNVERIFIABLE",
+                "A fila atual não expõe todos os campos necessários para validar o render job.",
+                "Crie novamente o job pelo MCP e confirme a versão da API do Resolve.",
+                {"renderJobId": render_job_id, "fields": missing_fields},
+            )
+
+        output_name_path = Path(output_filename)
+        if (
+            output_name_path.is_absolute()
+            or output_name_path.name != output_filename
+            or output_filename in {".", ".."}
+        ):
+            raise ResolveOperationError(
+                "RENDER_JOB_TARGET_DENIED",
+                "O nome de saída atual do render job não é seguro.",
+                "Remova o job alterado e crie outro pelo MCP dentro da allowlist.",
+                {"renderJobId": render_job_id},
+            )
+        try:
+            current_directory = secure_export_path(target_directory)
+            current_target = secure_export_path(
+                str(current_directory / output_filename)
+            )
+        except ValidationError as error:
+            raise ResolveOperationError(
+                "RENDER_JOB_TARGET_DENIED",
+                "O destino atual do render job está fora da allowlist segura.",
+                "Remova o job alterado e crie outro pelo MCP dentro da allowlist.",
+                {
+                    "renderJobId": render_job_id,
+                    "validationCode": error.code,
+                },
+            ) from None
+
+        recorded_target = provenance["renderTarget"]
+        bound_timeline = self._find_timeline(
+            project,
+            timeline_id=provenance["timelineId"],
+        )
+        diverged_fields = []
+        if not _render_target_matches(recorded_target, current_target):
+            diverged_fields.append("target")
+        if (
+            current_timeline_name != provenance["timelineName"]
+            or not bound_timeline
+            or str(_safe_call(bound_timeline, "GetName") or "")
+            != provenance["timelineName"]
+        ):
+            diverged_fields.append("timeline")
+        if current_preset != provenance["preset"]:
+            diverged_fields.append("preset")
+        if diverged_fields:
+            raise ResolveOperationError(
+                "RENDER_JOB_DIVERGED",
+                "O render job atual divergiu da configuração aprovada pelo MCP.",
+                "Remova o job alterado e crie outro pelo MCP antes de iniciar o render.",
+                {
+                    "renderJobId": render_job_id,
+                    "fields": diverged_fields,
+                },
+            )
+
+        if _render_output_exists(current_target.parent, current_target.name):
             raise ResolveOperationError(
                 "RENDER_OUTPUT_EXISTS",
                 "Já existe uma saída com o nome reservado para este render job.",
                 "Escolha outro fileName e crie um novo render job; nada foi iniciado.",
             )
 
-    def _render_target_from_ledger(
+    def _render_provenance_from_ledger(
         self,
         project: Any,
         render_job_id: str,
-    ) -> Path | None:
+    ) -> dict[str, Any] | None:
+        self._load_idempotency()
         project_id = self._project_identity(project)["projectId"]
+        matches: list[dict[str, Any]] = []
         for entry in self._idempotency.values():
             if (
                 entry.get("operation") != "create_render_job"
@@ -756,9 +877,26 @@ class ResolveClient:
                 and metadata.get("projectId") == project_id
                 and metadata.get("renderJobId") == render_job_id
                 and isinstance(metadata.get("renderTarget"), str)
+                and isinstance(metadata.get("timelineId"), str)
+                and bool(metadata.get("timelineId"))
+                and isinstance(metadata.get("timelineName"), str)
+                and bool(metadata.get("timelineName"))
+                and isinstance(metadata.get("preset"), str)
+                and bool(metadata.get("preset"))
             ):
-                return secure_export_path(metadata["renderTarget"])
-        return None
+                try:
+                    target = secure_export_path(metadata["renderTarget"])
+                except ValidationError:
+                    continue
+                matches.append(
+                    {
+                        "renderTarget": target,
+                        "timelineId": metadata["timelineId"],
+                        "timelineName": metadata["timelineName"],
+                        "preset": metadata["preset"],
+                    }
+                )
+        return matches[0] if len(matches) == 1 else None
 
     def _load_module(self) -> Any:
         api_path = os.environ.get("RESOLVE_SCRIPT_API", "").strip()
@@ -1276,6 +1414,95 @@ def _operation_fingerprint(operation: str, arguments: dict[str, Any]) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _try_lock_file(handle: Any) -> bool:
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except (BlockingIOError, OSError):
+        return False
+
+
+def _unlock_file(handle: Any) -> None:
+    try:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        # Closing the descriptor releases any remaining OS lock.
+        pass
+
+
+def _lock_metadata_is_stale(owner: dict[str, Any]) -> bool:
+    acquired_at = owner.get("acquiredAt")
+    if not isinstance(acquired_at, (int, float)) or isinstance(acquired_at, bool):
+        return False
+    return time.time() - float(acquired_at) > _LEDGER_LOCK_STALE_SECONDS
+
+
+def _merge_idempotency_entries(
+    disk_entries: dict[str, dict[str, Any]],
+    local_entries: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    if not _valid_idempotency_entries(disk_entries) or not _valid_idempotency_entries(
+        local_entries
+    ):
+        raise ResolveOperationError(
+            "IDEMPOTENCY_LEDGER_CORRUPT",
+            "O ledger de idempotência contém entradas inválidas.",
+            "Preserve o ledger para diagnóstico antes de executar novas mutações.",
+        )
+
+    merged = copy.deepcopy(disk_entries)
+    for request_id, local_entry in local_entries.items():
+        disk_entry = merged.get(request_id)
+        if disk_entry is None:
+            merged[request_id] = copy.deepcopy(local_entry)
+            continue
+        if disk_entry == local_entry:
+            continue
+        if (
+            disk_entry.get("operation") != local_entry.get("operation")
+            or disk_entry.get("fingerprint") != local_entry.get("fingerprint")
+        ):
+            raise ResolveOperationError(
+                "IDEMPOTENCY_LEDGER_CONFLICT",
+                "Duas instâncias registraram intenções incompatíveis para o mesmo requestId.",
+                "Não repita a solicitação. Preserve o ledger e use um novo requestId "
+                "somente após inspecionar o Resolve.",
+                {"requestId": request_id},
+            )
+
+        disk_state = disk_entry.get("state")
+        local_state = local_entry.get("state")
+        if disk_state == "completed" and local_state == "pending":
+            continue
+        if disk_state == "pending" and local_state == "completed":
+            merged[request_id] = copy.deepcopy(local_entry)
+            continue
+        raise ResolveOperationError(
+            "IDEMPOTENCY_LEDGER_CONFLICT",
+            "Duas instâncias mantêm estados incompatíveis para o mesmo requestId.",
+            "Não repita a solicitação. Preserve o ledger e inspecione o Resolve antes "
+            "de continuar.",
+            {"requestId": request_id},
+        )
+    return merged
 
 
 def _migrate_legacy_entries(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
