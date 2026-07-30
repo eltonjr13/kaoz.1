@@ -589,14 +589,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  function handlePlayerSeek(event: React.MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    const newTime = Math.round((clickX / rect.width) * timelineDuration * 10) / 10;
-    setPlayheadTime(newTime);
-    if (videoRef.current) videoRef.current.currentTime = newTime;
-  }
-
   function addEventAtPlayhead() {
     if (!analysis) return;
     const newId = `custom-evt-${crypto.randomUUID().slice(0, 8)}`;
@@ -972,47 +964,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
-                {/* Controls Overlay */}
-                <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col gap-1.5 opacity-90 transition-opacity">
-                  <div
-                    onClick={handlePlayerSeek}
-                    className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden cursor-pointer relative"
-                  >
-                    <div
-                      className="h-full bg-emerald-400 relative transition-all duration-100"
-                      style={{ width: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
-                    >
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-[0_0_8px_rgba(78,222,163,0.9)]" />
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-zinc-300 px-1">
-                    <div className="flex items-center gap-2">
-                      <button onClick={togglePlayPause} className="hover:text-emerald-400 transition-colors">
-                        {isPlaying ? <Pause size={14} className="fill-current text-emerald-400" /> : <Play size={14} className="fill-current" />}
-                      </button>
-                      <span className="font-mono text-[11px] text-zinc-300">
-                        {clock(playheadTime)} / {clock(timelineDuration)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <button onClick={toggleMute} title={isMuted ? "Ativar áudio" : "Silenciar"}>
-                        {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                      </button>
-                      {videoMediaSrc && (
-                        <a
-                          href={`${videoMediaSrc}&download=true`}
-                          title="Baixar mídia exibida"
-                          className="hover:text-white transition-colors"
-                        >
-                          <Download size={14} />
-                        </a>
-                      )}
-                      <button onClick={toggleFullscreen} title="Tela cheia">
-                        <Maximize2 size={14} className="hover:text-white transition-colors" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1045,6 +996,45 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <ZoomOut size={14} />
                   </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
+                  <div className="mx-1 h-3.5 w-px bg-white/10" />
+                  <button
+                    onClick={togglePlayPause}
+                    disabled={!videoMediaSrc}
+                    className="rounded p-1 transition-colors hover:bg-white/10 hover:text-emerald-400 disabled:opacity-30"
+                    title={isPlaying ? "Pausar" : "Reproduzir"}
+                  >
+                    {isPlaying
+                      ? <Pause size={14} className="fill-current text-emerald-400" />
+                      : <Play size={14} className="fill-current" />}
+                  </button>
+                  <span className="min-w-[68px] text-[10px] font-mono text-zinc-400">
+                    {clock(playheadTime)} / {clock(timelineDuration)}
+                  </span>
+                  <button
+                    onClick={toggleMute}
+                    disabled={!videoMediaSrc}
+                    className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30"
+                    title={isMuted ? "Ativar áudio" : "Silenciar"}
+                  >
+                    {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  </button>
+                  {videoMediaSrc && (
+                    <a
+                      href={`${videoMediaSrc}&download=true`}
+                      title="Baixar mídia exibida"
+                      className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      <Download size={14} />
+                    </a>
+                  )}
+                  <button
+                    onClick={toggleFullscreen}
+                    disabled={!videoMediaSrc}
+                    className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30"
+                    title="Tela cheia"
+                  >
+                    <Maximize2 size={14} />
+                  </button>
                 </div>
                 <span className="text-[10px] font-mono text-zinc-500">
                   Duração {clock(timelineDuration)}
