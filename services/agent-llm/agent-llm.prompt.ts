@@ -1,6 +1,16 @@
 export const ANTIGRAVITY_INLINE_PROMPT_BUDGET = 27_500;
 const PUBLISH_VERB_PATTERN = /\b(publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/;
 const PLAYWRIGHT_MCP_TOOL_PREFIX = "mcp:playwright-browser:";
+const PLAYWRIGHT_MCP_TOOL_PRIORITY = [
+  "browser_navigate",
+  "browser_wait_for",
+  "browser_snapshot",
+  "browser_find",
+  "browser_click",
+  "browser_type",
+  "browser_tabs",
+  "browser_take_screenshot",
+] as const;
 
 export function isExplicitPlaywrightMcpRequest(text: string): boolean {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -10,7 +20,39 @@ export function isExplicitPlaywrightMcpRequest(text: string): boolean {
 export function selectExplicitPlaywrightMcpTools<T extends { id: string }>(
   tools: readonly T[],
 ): T[] {
-  return tools.filter((tool) => tool.id.startsWith(PLAYWRIGHT_MCP_TOOL_PREFIX));
+  return tools
+    .filter((tool) => isPlaywrightMcpToolId(tool.id))
+    .sort((left, right) => playwrightToolPriority(left.id) - playwrightToolPriority(right.id));
+}
+
+export function isPlaywrightMcpToolId(toolId: string): boolean {
+  return toolId.startsWith(PLAYWRIGHT_MCP_TOOL_PREFIX);
+}
+
+export function shouldSelectSkillTools(
+  explicitPlaywrightMcpIntent: boolean,
+  spotifyIntent: boolean,
+  connectorPublishIntent: boolean,
+): boolean {
+  return !explicitPlaywrightMcpIntent && !spotifyIntent && !connectorPublishIntent;
+}
+
+export function missingPlaywrightToolCallInstruction(previousOutput: string): string {
+  return `
+
+[CORRECAO OBRIGATORIA - PLAYWRIGHT MCP NAO EXECUTADO]
+As ferramentas mcp:playwright-browser:* listadas acima sao fornecidas pelo host Kaoz.1 e estao disponiveis, independentemente dos MCPs internos da CLI.
+Resposta anterior: ${JSON.stringify(previousOutput.slice(0, 2_000))}
+Nao mencione StitchMCP, hermes, pesquisa web ou indisponibilidade. Responda SOMENTE com a proxima chamada necessaria no formato <TOOL_CALL>{"toolId":"ID LISTADO ACIMA","args":{}}</TOOL_CALL>.
+`;
+}
+
+function playwrightToolPriority(toolId: string): number {
+  const toolName = toolId.slice(PLAYWRIGHT_MCP_TOOL_PREFIX.length);
+  const index = PLAYWRIGHT_MCP_TOOL_PRIORITY.indexOf(
+    toolName as (typeof PLAYWRIGHT_MCP_TOOL_PRIORITY)[number],
+  );
+  return index === -1 ? PLAYWRIGHT_MCP_TOOL_PRIORITY.length : index;
 }
 
 export function connectorPublishProvider(text: string): "discord" | "bluesky" | "telegram" | null {

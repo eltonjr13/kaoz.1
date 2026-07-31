@@ -6,14 +6,14 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, selectExplicitPlaywrightMcpTools } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
 import {
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
   requestMcpToolApproval,
 } from "../tools/tool-approval.service.ts";
 import { presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
-import { sanitizePublicErrorMessage } from "../orchestrator/orchestrator.policy.ts";
+import { sanitizePublicErrorMessage, sanitizeSensitiveValue } from "../orchestrator/orchestrator.policy.ts";
 
 type ProcessResult = {
   stdout: string;
@@ -833,6 +833,9 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const connectorProvider = connectorPublishProvider(normalizedPrompt);
   const connectorPublishIntent = connectorProvider !== null;
   const explicitPlaywrightMcpIntent = isExplicitPlaywrightMcpRequest(toolIntentPrompt);
+  let approvedPlaywrightStep: Awaited<
+    ReturnType<typeof executeApprovedMcpToolFromIntent>
+  > = null;
 
   if (extractToolApprovalToken(toolIntentPrompt)) {
     let approved: Awaited<
@@ -872,11 +875,16 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       });
     }
     if (approved) {
-      return presentApprovedMcpResult(prompt, approved.result, executor);
+      if (isPlaywrightMcpToolId(approved.tool.id)) {
+        approvedPlaywrightStep = approved;
+      } else {
+        return presentApprovedMcpResult(prompt, approved.result, executor);
+      }
     }
   }
-  
-  let relevantTools = explicitPlaywrightMcpIntent
+
+  const playwrightMcpIntent = explicitPlaywrightMcpIntent || approvedPlaywrightStep !== null;
+  let relevantTools = playwrightMcpIntent
     ? selectExplicitPlaywrightMcpTools(allTools)
     : connectorProvider
     ? allTools.filter((tool) => tool.id === `social:${connectorProvider}:publish`)
@@ -891,7 +899,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       })
     : [];
 
-  if (!spotifyIntent && !connectorPublishIntent) {
+  if (shouldSelectSkillTools(playwrightMcpIntent, spotifyIntent, connectorPublishIntent)) {
     const { skillRegistry } = await import("../skills/skill.registry.ts");
     let selectedSkill = skillRegistry.select(toolIntentPrompt);
     if (selectedSkill.id === "general.execute-goal" && WEB_INTENT_PATTERN.test(normalizedPrompt)) {
@@ -901,16 +909,30 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     relevantTools = allTools.filter((tool) => allowedIds.has(tool.id));
   }
 
-  if (relevantTools.length === 0) return executor(prompt);
+  if (relevantTools.length === 0) {
+    if (playwrightMcpIntent) {
+      return JSON.stringify({
+        message: "O MCP Playwright Browser não apresentou ferramentas conectadas ao runtime do Kaoz.1. Abra Configurações > MCP, teste a conexão e mantenha o servidor ativado.",
+        action: null,
+      });
+    }
+    return executor(prompt);
+  }
   const allowedToolIds = new Set(relevantTools.map((tool) => tool.id));
 
-  let toolsDescription = "\n\n[FERRAMENTAS DISPONIVEIS]\nPara usar uma ferramenta, responda somente com <TOOL_CALL>{\"toolId\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
+  let toolsDescription = "\n\n[FERRAMENTAS DISPONIVEIS PELO HOST KAOZ.1]\nEstas ferramentas estao conectadas ao runtime e independem dos MCPs internos da CLI. Para usar uma ferramenta, responda somente com <TOOL_CALL>{\"toolId\":\"...\",\"args\":{}}</TOOL_CALL>.\n";
   for (const tool of relevantTools) {
     const line = `- toolId: "${tool.id}", description: "${tool.description.slice(0, 240)}", schema: ${JSON.stringify(compactToolSchema(tool.inputSchema))}\n`;
     if (toolsDescription.length + line.length <= 6_000) toolsDescription += line;
   }
 
   let currentPrompt = prompt + toolsDescription;
+  if (approvedPlaywrightStep) {
+    currentPrompt +=
+      `\n[ETAPA PLAYWRIGHT MCP JA EXECUTADA]\nFerramenta: ${approvedPlaywrightStep.tool.id}\n` +
+      `Resultado: ${JSON.stringify(sanitizeSensitiveValue(approvedPlaywrightStep.result))}\n` +
+      "Nao repita a mesma chamada. Solicite a proxima ferramenta Playwright necessaria ou responda com o resultado final se a tarefa terminou.";
+  }
   for (let loop = 0; loop < 10; loop++) {
     const cliOutput = await executor(currentPrompt);
     const match = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
@@ -919,8 +941,18 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
         currentPrompt += missingConnectorToolCallInstruction(connectorProvider, cliOutput);
         continue;
       }
+      if (playwrightMcpIntent && loop === 0) {
+        currentPrompt += missingPlaywrightToolCallInstruction(cliOutput);
+        continue;
+      }
       if (connectorProvider) {
         return JSON.stringify({ message: `Não consegui executar a publicação no ${connectorProvider}: o modelo não chamou a ferramenta autorizada. Nada foi enviado.`, action: null });
+      }
+      if (playwrightMcpIntent) {
+        return JSON.stringify({
+          message: "O MCP Playwright Browser está conectado, mas o modelo selecionado não emitiu a chamada de ferramenta exigida. Nenhuma pesquisa web alternativa foi usada.",
+          action: null,
+        });
       }
       return cliOutput;
     }

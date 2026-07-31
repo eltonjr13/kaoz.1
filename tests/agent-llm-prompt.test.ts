@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, selectExplicitPlaywrightMcpTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -72,14 +72,35 @@ test("pedido explícito pelo Playwright seleciona somente as ferramentas desse M
   assert.equal(isExplicitPlaywrightMcpRequest("Abra o navegador sem indicar MCP."), false);
   assert.deepEqual(
     selectExplicitPlaywrightMcpTools([
-      { id: "mcp:playwright-browser:browser_navigate" },
       { id: "mcp:playwright-browser:browser_snapshot" },
+      { id: "mcp:playwright-browser:browser_click" },
       { id: "mcp:spotify:search_tracks" },
+      { id: "mcp:playwright-browser:browser_navigate" },
+      { id: "mcp:playwright-browser:browser_wait_for" },
       { id: "native:web-research" },
     ]),
     [
       { id: "mcp:playwright-browser:browser_navigate" },
+      { id: "mcp:playwright-browser:browser_wait_for" },
       { id: "mcp:playwright-browser:browser_snapshot" },
+      { id: "mcp:playwright-browser:browser_click" },
     ],
   );
+});
+
+test("pedido Playwright exclusivo não é sobrescrito pela seleção genérica de skill", () => {
+  assert.equal(shouldSelectSkillTools(true, false, false), false);
+  assert.equal(shouldSelectSkillTools(false, false, false), true);
+  assert.equal(shouldSelectSkillTools(false, true, false), false);
+  assert.equal(shouldSelectSkillTools(false, false, true), false);
+});
+
+test("resposta sem tool call recebe correção para usar as ferramentas do host", () => {
+  const instruction = missingPlaywrightToolCallInstruction(
+    "Apenas StitchMCP está disponível.",
+  );
+  assert.match(instruction, /PLAYWRIGHT MCP NAO EXECUTADO/);
+  assert.match(instruction, /fornecidas pelo host Kaoz\.1/);
+  assert.match(instruction, /ID LISTADO ACIMA/);
+  assert.match(instruction, /Nao mencione StitchMCP/);
 });

@@ -1,25 +1,25 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import type { McpServerConfig, McpServerStatus, McpSettings, McpToolCallResult, McpToolSchema } from "./mcp.types";
-import { redactSecrets } from "@/services/orchestrator/orchestrator.policy";
-import { buildSafeMcpEnvironment } from "./mcp.security";
-import { consumeMcpCallAuthorization } from "./mcp-call.authorization";
-import { mcpToolId } from "./mcp-tool-id";
+import type { McpServerConfig, McpServerStatus, McpSettings, McpToolCallResult, McpToolSchema } from "./mcp.types.ts";
+import { redactSecrets } from "../orchestrator/orchestrator.policy.ts";
+import { buildSafeMcpEnvironment } from "./mcp.security.ts";
+import { consumeMcpCallAuthorization } from "./mcp-call.authorization.ts";
+import { mcpToolId } from "./mcp-tool-id.ts";
 import {
   PLAYWRIGHT_MCP_ENV_KEYS,
   isPlaywrightMcpConfig,
-} from "./playwright.config";
+} from "./playwright.config.ts";
 import {
   DAVINCI_RESOLVE_ENV_KEYS,
   isDavinciResolveConfig,
   validateMcpServerConfig,
   validateMcpSettings,
   validateMcpSettingsLenient,
-} from "./davinci-resolve.config";
+} from "./davinci-resolve.config.ts";
 
 const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "mcp-settings.json");
@@ -44,6 +44,8 @@ export class McpManager {
   private clients: Map<string, Client> = new Map();
   private statuses: Map<string, McpServerStatus> = new Map();
   private connectionGeneration = 0;
+  private settingsFileSnapshot: string | null = null;
+  private settingsRefreshPromise: Promise<void> | null = null;
 
   private constructor() {}
 
@@ -70,19 +72,12 @@ export class McpManager {
   public async loadSettings(): Promise<McpSettings> {
     try {
       const data = await readFile(SETTINGS_FILE, "utf8");
-      const loaded = validateMcpSettingsLenient(JSON.parse(data));
-      this.settings = loaded.settings;
-      this.connectableServers = loaded.validServers;
-      this.invalidStatuses = loaded.issues.map((issue) => ({
-        id: issue.id,
-        connected: false,
-        error: redactSecrets(issue.error),
-        tools: [],
-      }));
+      this.applySettingsData(data);
     } catch {
       this.settings = { servers: [] };
       this.connectableServers = [];
       this.invalidStatuses = [];
+      this.settingsFileSnapshot = null;
     }
     return this.settings;
   }
@@ -92,7 +87,9 @@ export class McpManager {
     this.connectableServers = this.settings.servers;
     this.invalidStatuses = [];
     await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(SETTINGS_FILE, JSON.stringify(this.settings, null, 2), "utf8");
+    const serializedSettings = JSON.stringify(this.settings, null, 2);
+    await writeFile(SETTINGS_FILE, serializedSettings, "utf8");
+    this.settingsFileSnapshot = serializedSettings;
     // Reinitialize connections on save
     await this.initializeConnections();
   }
@@ -254,6 +251,7 @@ export class McpManager {
   }
 
   public async getAllTools(): Promise<Array<{ serverId: string; tool: McpToolSchema }>> {
+    await this.refreshSettingsIfChanged();
     const allTools: Array<{ serverId: string; tool: McpToolSchema }> = [];
     for (const [serverId, status] of this.statuses.entries()) {
       if (status.connected) {
@@ -263,6 +261,54 @@ export class McpManager {
       }
     }
     return allTools;
+  }
+
+  private applySettingsData(data: string): void {
+    const loaded = validateMcpSettingsLenient(JSON.parse(data));
+    this.settings = loaded.settings;
+    this.connectableServers = loaded.validServers;
+    this.invalidStatuses = loaded.issues.map((issue) => ({
+      id: issue.id,
+      connected: false,
+      error: redactSecrets(issue.error),
+      tools: [],
+    }));
+    this.settingsFileSnapshot = data;
+  }
+
+  private async refreshSettingsIfChanged(): Promise<void> {
+    if (!this.settingsRefreshPromise) {
+      this.settingsRefreshPromise = this.refreshSettingsFromDisk().finally(() => {
+        this.settingsRefreshPromise = null;
+      });
+    }
+    return this.settingsRefreshPromise;
+  }
+
+  private async refreshSettingsFromDisk(): Promise<void> {
+    let data: string | null;
+    try {
+      data = await readFile(SETTINGS_FILE, "utf8");
+    } catch {
+      data = null;
+    }
+    if (data === this.settingsFileSnapshot) {
+      return;
+    }
+
+    if (data === null) {
+      this.settings = { servers: [] };
+      this.connectableServers = [];
+      this.invalidStatuses = [];
+      this.settingsFileSnapshot = null;
+    } else {
+      try {
+        this.applySettingsData(data);
+      } catch {
+        return;
+      }
+    }
+    await this.initializeConnections();
   }
 
   public async callTool(
