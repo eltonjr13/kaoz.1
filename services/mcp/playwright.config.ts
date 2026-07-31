@@ -1,7 +1,5 @@
 import path from "node:path";
 
-import { getFlowStorageRoot } from "../../lib/runtime-paths.ts";
-
 import type { McpServerConfig } from "./mcp.types.ts";
 
 export const PLAYWRIGHT_MCP_SERVER_ID = "playwright-browser";
@@ -39,10 +37,6 @@ export function getPlaywrightMcpServerPath(root = process.cwd()): string {
   return path.join(root, "node_modules", "@playwright", "mcp", "cli.js");
 }
 
-export function getPlaywrightMcpProfilePath(): string {
-  return path.join(getFlowStorageRoot(), "browser-profile", "playwright-mcp");
-}
-
 export function createPlaywrightMcpPreset(
   root = process.cwd(),
 ): McpServerConfig {
@@ -57,8 +51,7 @@ export function createPlaywrightMcpPreset(
       getPlaywrightMcpServerPath(root),
       "--browser",
       "chrome",
-      "--user-data-dir",
-      getPlaywrightMcpProfilePath(),
+      "--isolated",
       "--codegen",
       "none",
       "--image-responses",

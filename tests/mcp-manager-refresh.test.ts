@@ -19,6 +19,11 @@ test("gerenciador MCP recarrega configuração alterada por outro runtime", asyn
     const manager = await McpManager.getInstance();
     assert.deepEqual(manager.getSettings().servers, []);
 
+    const managerModuleUrl = new URL("../services/mcp/mcp.manager.ts", import.meta.url);
+    managerModuleUrl.searchParams.set("runtime-copy", "1");
+    const reloadedModule = await import(managerModuleUrl.href);
+    assert.equal(await reloadedModule.McpManager.getInstance(), manager);
+
     const updatedSettings = {
       servers: [
         {

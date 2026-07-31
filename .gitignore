@@ -51,6 +51,7 @@ output
 /.agents/
 /.codex/
 /.hermes/
+/.playwright-mcp/
 /cache/
 /tmp/
 

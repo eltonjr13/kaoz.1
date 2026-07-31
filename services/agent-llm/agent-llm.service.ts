@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
 import {
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
@@ -876,6 +876,28 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     }
     if (approved) {
       if (isPlaywrightMcpToolId(approved.tool.id)) {
+        const continuation = requiredPlaywrightMcpContinuation(
+          prompt,
+          approved.tool.id,
+          allTools.map((tool) => tool.id),
+        );
+        const continuationTool = continuation
+          ? allTools.find((tool) => tool.id === continuation.toolId)
+          : undefined;
+        if (continuation && continuationTool?.source === "mcp") {
+          const pending = await requestMcpToolApproval(
+            continuationTool,
+            continuation.args,
+          );
+          return JSON.stringify({ message: pending.message, action: null });
+        }
+        if (canFinishAfterPlaywrightMcpTool(approved.tool.id)) {
+          return presentCompletedPlaywrightMcpResult(
+            prompt,
+            approved.result,
+            executor,
+          );
+        }
         approvedPlaywrightStep = approved;
       } else {
         return presentApprovedMcpResult(prompt, approved.result, executor);
@@ -997,6 +1019,28 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   }
 
   return JSON.stringify({ message: "Limite de etapas das ferramentas atingido.", action: null });
+}
+
+async function presentCompletedPlaywrightMcpResult(
+  prompt: string,
+  result: unknown,
+  executor: (currentPrompt: string) => Promise<string>,
+): Promise<string> {
+  let presentationPrompt =
+    `${prompt}\n\n[RESULTADO FINAL DO PLAYWRIGHT MCP]\n` +
+    `${JSON.stringify(sanitizeSensitiveValue(result))}\n\n` +
+    "A sequência de ferramentas terminou. Responda ao pedido original usando somente o resultado observado. Não emita TOOL_CALL e não abra outra URL.";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const output = await executor(presentationPrompt);
+    if (!/<TOOL_CALL>[\s\S]*?<\/TOOL_CALL>/i.test(output)) return output;
+    presentationPrompt +=
+      `\n\n[CORRECAO FINAL OBRIGATORIA]\nA resposta anterior tentou chamar outra ferramenta: ${JSON.stringify(output.slice(0, 2_000))}. ` +
+      "A fase de ferramentas já terminou. Responda agora apenas com o resultado textual observado, sem TOOL_CALL.";
+  }
+  return JSON.stringify({
+    message: "O Playwright concluiu a leitura, mas o modelo não apresentou o resultado observado sem tentar iniciar outra navegação.",
+    action: null,
+  });
 }
 
 export async function getAgentLLMRuntimeStatus(settings: AgentLLMSettings): Promise<AgentLLMRuntimeStatus> {

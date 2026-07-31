@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-const issuedAuthorizations = new WeakSet<object>();
-
 export type McpCallAuthorization = Readonly<{
   kind: "mcp-central-execution";
   toolId: string;
@@ -21,7 +19,7 @@ export function issueMcpCallAuthorization(
     toolId,
     fingerprint: fingerprint(toolId, args),
   });
-  issuedAuthorizations.add(authorization);
+  getAuthorizationRegistry().add(authorization);
   return authorization;
 }
 
@@ -33,13 +31,13 @@ export function consumeMcpCallAuthorization(
   if (
     !authorization ||
     typeof authorization !== "object" ||
-    !issuedAuthorizations.has(authorization)
+    !getAuthorizationRegistry().has(authorization)
   ) {
     throw new Error(
       "Chamada MCP bloqueada: use o ToolExecutionService e uma aprovação humana válida.",
     );
   }
-  issuedAuthorizations.delete(authorization);
+  getAuthorizationRegistry().delete(authorization);
   const candidate = authorization as Partial<McpCallAuthorization>;
   if (
     candidate.kind !== "mcp-central-execution" ||
@@ -50,6 +48,21 @@ export function consumeMcpCallAuthorization(
       "A autorização MCP central não corresponde à ferramenta e aos argumentos.",
     );
   }
+}
+
+function getAuthorizationRegistry(): WeakSet<object> {
+  const scope = process as NodeJS.Process & {
+    __kaoz1McpCallAuthorizations?: WeakSet<object>;
+  };
+  if (!scope.__kaoz1McpCallAuthorizations) {
+    Object.defineProperty(scope, "__kaoz1McpCallAuthorizations", {
+      configurable: false,
+      enumerable: false,
+      value: new WeakSet<object>(),
+      writable: false,
+    });
+  }
+  return scope.__kaoz1McpCallAuthorizations!;
 }
 
 function fingerprint(

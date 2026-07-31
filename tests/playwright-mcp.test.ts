@@ -5,14 +5,13 @@ import test from "node:test";
 import {
   PLAYWRIGHT_MCP_SERVER_ID,
   createPlaywrightMcpPreset,
-  getPlaywrightMcpProfilePath,
   getPlaywrightMcpServerPath,
   isPlaywrightMcpToolAllowed,
   validatePlaywrightMcpConfig,
 } from "../services/mcp/playwright.config.ts";
 import { isMcpToolAllowed } from "../services/orchestrator/adapters/mcp.adapter.ts";
 
-test("preset Playwright usa o runtime empacotado e um perfil separado do Flow", () => {
+test("preset Playwright usa o runtime empacotado com perfil isolado", () => {
   const root = path.join(process.cwd(), "dist", "standalone");
   const preset = createPlaywrightMcpPreset(root);
 
@@ -23,14 +22,13 @@ test("preset Playwright usa o runtime empacotado e um perfil separado do Flow", 
     getPlaywrightMcpServerPath(root),
     "--browser",
     "chrome",
-    "--user-data-dir",
-    getPlaywrightMcpProfilePath(),
+    "--isolated",
     "--codegen",
     "none",
     "--image-responses",
     "omit",
   ]);
-  assert.match(getPlaywrightMcpProfilePath(), /browser-profile[\\/]playwright-mcp$/);
+  assert.equal(preset.args?.includes("--user-data-dir"), false);
 });
 
 test("validação preserva ativação e bloqueia variáveis de ambiente inesperadas", () => {

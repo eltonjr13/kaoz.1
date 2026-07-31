@@ -26,6 +26,25 @@ import { presentApprovedMcpResult } from "../services/tools/tool-approval.presen
 import { ToolExecutionService } from "../services/tools/tool-execution.service.ts";
 import type { KaozTool } from "../services/tools/tool.types.ts";
 
+test("autorização MCP de uso único funciona entre bundles do runtime", async () => {
+  const moduleUrl = new URL("../services/mcp/mcp-call.authorization.ts", import.meta.url);
+  moduleUrl.searchParams.set("issuer", "1");
+  const issuer = await import(moduleUrl.href);
+  moduleUrl.searchParams.set("consumer", "1");
+  const consumer = await import(moduleUrl.href);
+  const args = { url: "https://example.com" };
+  const toolId = "mcp:playwright-browser:browser_navigate";
+  const authorization = issuer.issueMcpCallAuthorization(toolId, args);
+
+  assert.doesNotThrow(() => {
+    consumer.consumeMcpCallAuthorization(authorization, toolId, args);
+  });
+  assert.throws(
+    () => consumer.consumeMcpCallAuthorization(authorization, toolId, args),
+    /aprovação humana válida/,
+  );
+});
+
 const resolveTool: KaozTool = {
   id: "mcp:davinci-resolve-local:resolve_create_timeline",
   name: "resolve_create_timeline",

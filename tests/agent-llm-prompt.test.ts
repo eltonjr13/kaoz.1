@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -103,4 +103,59 @@ test("resposta sem tool call recebe correção para usar as ferramentas do host"
   assert.match(instruction, /fornecidas pelo host Kaoz\.1/);
   assert.match(instruction, /ID LISTADO ACIMA/);
   assert.match(instruction, /Nao mencione StitchMCP/);
+});
+
+test("continuação Playwright respeita a sequência navegar, aguardar e capturar", () => {
+  const prompt = `[HISTORICO DA CONVERSA]:
+USUARIO:
+Use exclusivamente o MCP Playwright Browser. Abra o canal, aguarde 5 segundos, leia o primeiro vídeo e informe título e data. Não use pesquisa web.
+
+KAOZ.1 (VOCE):
+Aguardando aprovação.
+
+USUARIO:
+aprovar ABC123`;
+  const tools = [
+    "mcp:playwright-browser:browser_navigate",
+    "mcp:playwright-browser:browser_wait_for",
+    "mcp:playwright-browser:browser_snapshot",
+  ];
+
+  assert.deepEqual(
+    requiredPlaywrightMcpContinuation(prompt, tools[0], tools),
+    { toolId: tools[1], args: { time: 5 } },
+  );
+  assert.deepEqual(
+    requiredPlaywrightMcpContinuation(prompt, tools[1], tools),
+    { toolId: tools[2], args: {} },
+  );
+  assert.equal(requiredPlaywrightMcpContinuation(prompt, tools[2], tools), null);
+  assert.equal(canFinishAfterPlaywrightMcpTool(tools[2]), true);
+  assert.equal(canFinishAfterPlaywrightMcpTool(tools[0]), false);
+});
+
+test("continuação usa o pedido Playwright mais recente, não um histórico antigo", () => {
+  const prompt = `USUARIO:
+Use o MCP Playwright Browser, aguarde 30 segundos e leia a página.
+
+KAOZ.1 (VOCE):
+Concluído.
+
+USUÁRIO:
+Use o MCP Playwright Browser, aguarde 2 segundos e informe o título.
+
+KAOZ.1 (VOCÊ):
+Aguardando aprovação.
+
+USUÁRIO:
+aprovar TOKEN`;
+  const waitTool = "mcp:playwright-browser:browser_wait_for";
+  assert.deepEqual(
+    requiredPlaywrightMcpContinuation(
+      prompt,
+      "mcp:playwright-browser:browser_navigate",
+      [waitTool],
+    ),
+    { toolId: waitTool, args: { time: 2 } },
+  );
 });

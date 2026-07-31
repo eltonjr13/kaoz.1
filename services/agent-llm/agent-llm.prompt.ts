@@ -29,6 +29,46 @@ export function isPlaywrightMcpToolId(toolId: string): boolean {
   return toolId.startsWith(PLAYWRIGHT_MCP_TOOL_PREFIX);
 }
 
+export type PlaywrightMcpContinuation = Readonly<{
+  toolId: string;
+  args: Readonly<Record<string, unknown>>;
+}>;
+
+export function requiredPlaywrightMcpContinuation(
+  prompt: string,
+  completedToolId: string,
+  availableToolIds: readonly string[],
+): PlaywrightMcpContinuation | null {
+  if (!isPlaywrightMcpToolId(completedToolId)) return null;
+  const request = latestExplicitPlaywrightUserRequest(prompt);
+  const normalized = normalizeText(request);
+  const available = new Set(availableToolIds);
+  const waitToolId = `${PLAYWRIGHT_MCP_TOOL_PREFIX}browser_wait_for`;
+  const snapshotToolId = `${PLAYWRIGHT_MCP_TOOL_PREFIX}browser_snapshot`;
+
+  if (completedToolId.endsWith(":browser_navigate")) {
+    const seconds = requestedWaitSeconds(normalized);
+    if (seconds !== null && available.has(waitToolId)) {
+      return { toolId: waitToolId, args: Object.freeze({ time: seconds }) };
+    }
+    if (requiresPageReading(normalized) && available.has(snapshotToolId)) {
+      return { toolId: snapshotToolId, args: Object.freeze({}) };
+    }
+  }
+  if (
+    completedToolId.endsWith(":browser_wait_for") &&
+    requiresPageReading(normalized) &&
+    available.has(snapshotToolId)
+  ) {
+    return { toolId: snapshotToolId, args: Object.freeze({}) };
+  }
+  return null;
+}
+
+export function canFinishAfterPlaywrightMcpTool(toolId: string): boolean {
+  return toolId.endsWith(":browser_snapshot") || toolId.endsWith(":browser_find");
+}
+
 export function shouldSelectSkillTools(
   explicitPlaywrightMcpIntent: boolean,
   spotifyIntent: boolean,
@@ -53,6 +93,27 @@ function playwrightToolPriority(toolId: string): number {
     toolName as (typeof PLAYWRIGHT_MCP_TOOL_PRIORITY)[number],
   );
   return index === -1 ? PLAYWRIGHT_MCP_TOOL_PRIORITY.length : index;
+}
+
+function latestExplicitPlaywrightUserRequest(prompt: string): string {
+  const userBlockPattern = /USU(?:A|Á)RIO:\s*\n([\s\S]*?)(?=\n\n(?:USU(?:A|Á)RIO|KAOZ\.1|\[))/giu;
+  const userBlocks = [...prompt.matchAll(userBlockPattern)].map((match) => match[1]?.trim() || "");
+  return [...userBlocks].reverse().find(isExplicitPlaywrightMcpRequest) || prompt;
+}
+
+function requestedWaitSeconds(normalized: string): number | null {
+  const match = /\b(?:aguarde|aguardar|espere|esperar|wait)\s+(?:por\s+)?(\d+(?:[.,]\d+)?)\s*(?:segundos?|seconds?)\b/.exec(normalized);
+  if (!match) return null;
+  const seconds = Number(match[1].replace(",", "."));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+function requiresPageReading(normalized: string): boolean {
+  return /\b(?:leia|ler|informe|informar|extraia|extrair|titulo|data|conteudo|video|pagina)\b/.test(normalized);
+}
+
+function normalizeText(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 export function connectorPublishProvider(text: string): "discord" | "bluesky" | "telegram" | null {

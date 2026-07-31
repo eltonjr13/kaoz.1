@@ -36,8 +36,6 @@ export type McpToolCallOptions = Readonly<{
 }>;
 
 export class McpManager {
-  private static instance: McpManager;
-  private static initializationPromise: Promise<McpManager> | null = null;
   private settings: McpSettings = { servers: [] };
   private connectableServers: McpServerConfig[] = [];
   private invalidStatuses: McpServerStatus[] = [];
@@ -50,23 +48,24 @@ export class McpManager {
   private constructor() {}
 
   public static async getInstance(): Promise<McpManager> {
-    if (McpManager.instance) {
-      return McpManager.instance;
+    const state = getGlobalMcpManagerState();
+    if (state.instance) {
+      return state.instance;
     }
 
-    if (!McpManager.initializationPromise) {
-      McpManager.initializationPromise = (async () => {
+    if (!state.initializationPromise) {
+      state.initializationPromise = (async () => {
         const instance = new McpManager();
         await instance.loadSettings();
         await instance.initializeConnections();
-        McpManager.instance = instance;
+        state.instance = instance;
         return instance;
       })().finally(() => {
-        McpManager.initializationPromise = null;
+        state.initializationPromise = null;
       });
     }
 
-    return McpManager.initializationPromise;
+    return state.initializationPromise;
   }
 
   public async loadSettings(): Promise<McpSettings> {
@@ -436,6 +435,21 @@ export class McpManager {
     }
   }
 
+}
+
+type GlobalMcpManagerState = {
+  instance?: McpManager;
+  initializationPromise: Promise<McpManager> | null;
+};
+
+function getGlobalMcpManagerState(): GlobalMcpManagerState {
+  const scope = process as NodeJS.Process & {
+    __kaoz1McpManagerState?: GlobalMcpManagerState;
+  };
+  if (!scope.__kaoz1McpManagerState) {
+    scope.__kaoz1McpManagerState = { initializationPromise: null };
+  }
+  return scope.__kaoz1McpManagerState;
 }
 
 function requestOptions(timeoutMs: number, signal?: AbortSignal) {
