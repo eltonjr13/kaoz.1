@@ -6,6 +6,10 @@ import type {
   ToolResult,
 } from "../../tools/tool.types.ts";
 import { truncateToolResult } from "../orchestrator.budget.ts";
+import {
+  PLAYWRIGHT_MCP_SERVER_ID,
+  isPlaywrightMcpToolAllowed,
+} from "../../mcp/playwright.config.ts";
 
 export const MCP_TOOL_TIMEOUT_MS = 45_000;
 
@@ -29,8 +33,11 @@ export function createMcpKaozTool(
 export async function discoverMcpTools(): Promise<KaozTool[]> {
   const manager = await getMcpManager();
   const entries = await manager.getAllTools();
-  return entries.map(({ serverId, tool }) =>
-    createMcpKaozTool(serverId, tool),
+  return entries.flatMap(({ serverId, tool }) =>
+    serverId === PLAYWRIGHT_MCP_SERVER_ID &&
+    !isPlaywrightMcpToolAllowed(tool.name)
+      ? []
+      : [createMcpKaozTool(serverId, tool)],
   );
 }
 
@@ -44,7 +51,9 @@ export async function executeMcpTool(
   const known = (await manager.getAllTools()).some(
     (entry) =>
       entry.serverId === serverId &&
-      entry.tool.name === toolName,
+      entry.tool.name === toolName &&
+      (serverId !== PLAYWRIGHT_MCP_SERVER_ID ||
+        isPlaywrightMcpToolAllowed(toolName)),
   );
   if (!known) {
     throw new Error("Ferramenta MCP indisponível ou servidor desconectado.");

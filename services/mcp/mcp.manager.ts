@@ -10,6 +10,10 @@ import { buildSafeMcpEnvironment } from "./mcp.security";
 import { consumeMcpCallAuthorization } from "./mcp-call.authorization";
 import { mcpToolId } from "./mcp-tool-id";
 import {
+  PLAYWRIGHT_MCP_ENV_KEYS,
+  isPlaywrightMcpConfig,
+} from "./playwright.config";
+import {
   DAVINCI_RESOLVE_ENV_KEYS,
   isDavinciResolveConfig,
   validateMcpServerConfig,
@@ -176,7 +180,9 @@ export class McpManager {
           process.env,
           isDavinciResolveConfig(config)
             ? DAVINCI_RESOLVE_ENV_KEYS
-            : undefined,
+            : isPlaywrightMcpConfig(config)
+              ? PLAYWRIGHT_MCP_ENV_KEYS
+              : undefined,
         )
       });
     } else {

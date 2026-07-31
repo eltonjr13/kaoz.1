@@ -1,6 +1,10 @@
 import path from "node:path";
 
 import type { McpServerConfig, McpSettings } from "./mcp.types.ts";
+import {
+  isPlaywrightMcpConfig,
+  validatePlaywrightMcpConfig,
+} from "./playwright.config.ts";
 
 export const DAVINCI_RESOLVE_SERVER_ID = "davinci-resolve-local";
 export const DAVINCI_RESOLVE_PRESET_ID = "davinci-resolve-local";
@@ -132,6 +136,9 @@ export function validateMcpServerConfig(
   }
   if (config.transport !== "stdio" && config.transport !== "sse") {
     throw new Error("Transporte MCP inválido.");
+  }
+  if (isPlaywrightMcpConfig(config)) {
+    return validatePlaywrightMcpConfig(config, root);
   }
   if (
     config.id === DAVINCI_RESOLVE_SERVER_ID ||

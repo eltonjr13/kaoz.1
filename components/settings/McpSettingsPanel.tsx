@@ -25,16 +25,6 @@ interface McpPreset {
 
 const MCP_PRESETS: McpPreset[] = [
   {
-    name: "Chrome Automator (Puppeteer)",
-    description: "Navegação automatizada no Chrome para interações web com o Puppeteer.",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-puppeteer"],
-    env: {
-      PUPPETEER_EXECUTABLE_PATH: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-    }
-  },
-  {
     name: "Brave Search API",
     description: "Busca global na web usando a API oficial do Brave Search.",
     transport: "stdio",

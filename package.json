@@ -74,6 +74,7 @@
     "@google/genai": "^2.7.0",
     "@gradio/client": "^2.2.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@playwright/mcp": "0.0.78",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-tooltip": "^1.2.10",
     "electron-updater": "^6.7.2",

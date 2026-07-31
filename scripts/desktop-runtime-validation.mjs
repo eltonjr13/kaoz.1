@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 
 export const requiredDesktopRuntimePackages = Object.freeze([
   "@modelcontextprotocol/sdk",
+  "@playwright/mcp",
   "cross-spawn",
   "next",
   "playwright",

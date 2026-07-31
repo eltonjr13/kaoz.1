@@ -5,6 +5,7 @@ import {
   createDavinciResolvePreset,
   validateMcpSettings,
 } from "@/services/mcp/davinci-resolve.config";
+import { createPlaywrightMcpPreset } from "@/services/mcp/playwright.config";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET() {
     return NextResponse.json({
       settings,
       statuses,
-      presets: [createDavinciResolvePreset()],
+      presets: [createPlaywrightMcpPreset(), createDavinciResolvePreset()],
     });
   } catch (err: unknown) {
     return NextResponse.json(
