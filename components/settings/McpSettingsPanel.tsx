@@ -5,6 +5,7 @@ import {
   Terminal, Globe, Cpu, Database, Info, Settings 
 } from "lucide-react";
 import type { McpSettings, McpServerConfig, McpServerStatus } from "@/services/mcp/mcp.types";
+import { enableMcpServer } from "./mcp-settings";
 
 interface StatusMessage {
   text: string;
@@ -163,25 +164,26 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
   const handleSave = async (newSettings: McpSettings) => {
     setBusyAction("save");
     try {
-      const res = await fetch("/api/mcp/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newSettings)
-      });
-      const data = await readApiResponse<{ settings: McpSettings }>(res);
-      setSettings(data.settings);
-      
-      // Clear edit mode for all servers after saving
-      setEditingServers({});
-      
-      onStatusMessage({ text: "Configurações MCP salvas e servidores reconectados.", type: "success" });
-      setTimeout(loadSettings, 1000); // Reload statuses
+      await persistSettings(newSettings, "Configurações MCP salvas e servidores reconectados.");
     } catch (err: unknown) {
       onStatusMessage({ text: `Erro: ${getErrorMessage(err)}`, type: "error" });
     } finally {
       setBusyAction(null);
     }
   };
+
+  async function persistSettings(newSettings: McpSettings, successMessage: string) {
+    const res = await fetch("/api/mcp/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newSettings)
+    });
+    const data = await readApiResponse<{ settings: McpSettings }>(res);
+    setSettings(data.settings);
+    setEditingServers({});
+    onStatusMessage({ text: successMessage, type: "success" });
+    setTimeout(loadSettings, 1000);
+  }
 
   const handleTest = async (server: McpServerConfig) => {
     setBusyAction(`test-${server.id}`);
@@ -211,7 +213,15 @@ export function McpSettingsPanel({ onStatusMessage }: { onStatusMessage: (messag
           type: "info",
         });
       } else if (data.connected) {
-        onStatusMessage({ text: `Conexão teste com ${server.name} foi bem sucedida. ${data.tools.length} ferramentas encontradas.`, type: "success" });
+        if (!server.enabled) {
+          const enabledSettings = enableMcpServer(settings, server.id);
+          await persistSettings(
+            enabledSettings,
+            `Conexão teste com ${server.name} foi bem sucedida. MCP ativado e salvo com ${data.tools.length} ferramentas.`,
+          );
+        } else {
+          onStatusMessage({ text: `Conexão teste com ${server.name} foi bem sucedida. ${data.tools.length} ferramentas encontradas.`, type: "success" });
+        }
       } else {
         onStatusMessage({ text: `Falha na conexão teste: ${data.error}`, type: "error" });
       }

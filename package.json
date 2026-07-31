@@ -38,7 +38,7 @@
     "test:voice-expression": "node --experimental-strip-types --no-warnings --test tests/agent-voice-expression.test.ts",
     "test:tool-safety": "node --experimental-strip-types --no-warnings --test tests/tool-safety.test.ts",
     "test:tool-execution": "node --experimental-strip-types --no-warnings --test tests/tool-execution-service.test.ts tests/tool-approval.test.ts",
-    "test:playwright-mcp": "node --experimental-strip-types --no-warnings --test tests/playwright-mcp.test.ts",
+    "test:playwright-mcp": "node --experimental-strip-types --no-warnings --test tests/playwright-mcp.test.ts tests/mcp-settings.test.ts",
     "test:davinci-resolve": "npm run test:davinci-resolve:ts && npm run test:davinci-resolve:python",
     "test:davinci-resolve:ts": "node --experimental-strip-types --no-warnings --test tests/davinci-resolve-mcp.test.ts tests/davinci-free.test.ts",
     "test:davinci-resolve:python": "node scripts/test-davinci-resolve-python.mjs",
