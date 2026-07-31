@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, selectExplicitPlaywrightMcpTools } from "./agent-llm.prompt.ts";
 import {
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
@@ -832,6 +832,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   const connectorProvider = connectorPublishProvider(normalizedPrompt);
   const connectorPublishIntent = connectorProvider !== null;
+  const explicitPlaywrightMcpIntent = isExplicitPlaywrightMcpRequest(toolIntentPrompt);
 
   if (extractToolApprovalToken(toolIntentPrompt)) {
     let approved: Awaited<
@@ -875,7 +876,9 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     }
   }
   
-  let relevantTools = connectorProvider
+  let relevantTools = explicitPlaywrightMcpIntent
+    ? selectExplicitPlaywrightMcpTools(allTools)
+    : connectorProvider
     ? allTools.filter((tool) => tool.id === `social:${connectorProvider}:publish`)
     : spotifyIntent
     ? allTools.filter((tool) => {

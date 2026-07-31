@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, missingConnectorToolCallInstruction } from "../services/agent-llm/agent-llm.prompt.ts";
+import { compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, selectExplicitPlaywrightMcpTools } from "../services/agent-llm/agent-llm.prompt.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -65,4 +65,21 @@ test("falha do conector retorna erro real e afirma que nada foi enviado", () => 
   assert.equal(response.action, null);
   assert.match(response.message, /HTTP 429/);
   assert.match(response.message, /Nada foi enviado/);
+});
+
+test("pedido explícito pelo Playwright seleciona somente as ferramentas desse MCP", () => {
+  assert.equal(isExplicitPlaywrightMcpRequest("Use exclusivamente o MCP Playwright Browser."), true);
+  assert.equal(isExplicitPlaywrightMcpRequest("Abra o navegador sem indicar MCP."), false);
+  assert.deepEqual(
+    selectExplicitPlaywrightMcpTools([
+      { id: "mcp:playwright-browser:browser_navigate" },
+      { id: "mcp:playwright-browser:browser_snapshot" },
+      { id: "mcp:spotify:search_tracks" },
+      { id: "native:web-research" },
+    ]),
+    [
+      { id: "mcp:playwright-browser:browser_navigate" },
+      { id: "mcp:playwright-browser:browser_snapshot" },
+    ],
+  );
 });

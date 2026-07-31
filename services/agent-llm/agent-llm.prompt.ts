@@ -1,5 +1,17 @@
 export const ANTIGRAVITY_INLINE_PROMPT_BUDGET = 27_500;
 const PUBLISH_VERB_PATTERN = /\b(publicar|publique|publica|postar|poste|posta|enviar|envie|envia|mandar|mande|manda)\b/;
+const PLAYWRIGHT_MCP_TOOL_PREFIX = "mcp:playwright-browser:";
+
+export function isExplicitPlaywrightMcpRequest(text: string): boolean {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /\b(?:mcp\s+)?playwright(?:\s+browser)?\b/.test(normalized);
+}
+
+export function selectExplicitPlaywrightMcpTools<T extends { id: string }>(
+  tools: readonly T[],
+): T[] {
+  return tools.filter((tool) => tool.id.startsWith(PLAYWRIGHT_MCP_TOOL_PREFIX));
+}
 
 export function connectorPublishProvider(text: string): "discord" | "bluesky" | "telegram" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
