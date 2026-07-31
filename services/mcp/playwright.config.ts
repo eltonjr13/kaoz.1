@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { getFlowStorageRoot } from "@/lib/runtime-paths";
+import { getFlowStorageRoot } from "../../lib/runtime-paths.ts";
 
 import type { McpServerConfig } from "./mcp.types.ts";
 
@@ -63,8 +63,6 @@ export function createPlaywrightMcpPreset(
       "none",
       "--image-responses",
       "omit",
-      "--caps",
-      "core",
     ],
     env: {
       ELECTRON_RUN_AS_NODE: "1",
@@ -92,7 +90,10 @@ export function validatePlaywrightMcpConfig(
     }
   }
 
-  return createPlaywrightMcpPreset(root);
+  return {
+    ...createPlaywrightMcpPreset(root),
+    enabled: config.enabled,
+  };
 }
 
 export function isPlaywrightMcpConfig(

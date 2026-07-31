@@ -137,6 +137,13 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
       [path.join(root, "node_modules", "cross-spawn", "index.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "next", "package.json"), JSON.stringify({ name: "next", main: "index.js" })],
       [path.join(root, "node_modules", "next", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@playwright", "mcp", "package.json"), JSON.stringify({
+        name: "@playwright/mcp",
+        main: "index.js",
+        dependencies: { playwright: "1.0.0", "playwright-core": "1.0.0" },
+      })],
+      [path.join(root, "node_modules", "@playwright", "mcp", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "@playwright", "mcp", "cli.js"), "module.exports = {}\n"],
       [path.join(root, "node_modules", "playwright", "package.json"), JSON.stringify({
         name: "playwright",
         main: "index.js",
@@ -169,6 +176,14 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
     assert.equal(
       resolved["@modelcontextprotocol/sdk"],
       path.join(standalone, "node_modules", "@modelcontextprotocol", "sdk", "client", "index.js"),
+    );
+    assert.equal(
+      resolved["@playwright/mcp"],
+      path.join(standalone, "node_modules", "@playwright", "mcp", "index.js"),
+    );
+    assert.equal(
+      await readFile(path.join(standalone, "node_modules", "@playwright", "mcp", "cli.js"), "utf8"),
+      "module.exports = {}\n",
     );
     assert.equal(resolved.playwright, path.join(standalone, "node_modules", "playwright", "index.js"));
     assert.equal(
