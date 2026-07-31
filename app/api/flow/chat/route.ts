@@ -20,6 +20,7 @@ import { materializeResponseArtifacts } from "@/services/artifacts/artifact.serv
 import { skillRegistry } from "@/services/skills/skill.registry";
 import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
 import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt";
+import { extractMcpMention } from "@/services/mcp/mcp-mention";
 import { extractToolApprovalToken } from "@/services/tools/tool-approval.service";
 import { getConversationMemoryStore, LOCAL_PROFILE_ID as LOCAL_ARCHIVE_PROFILE_ID } from "@/services/conversation-memory/conversation-memory.store";
 import { recallArchivedConversations } from "@/services/conversation-memory/conversation-memory.recall";
@@ -161,7 +162,7 @@ function needsExternalTools(messages: ChatMessage[]): boolean {
   const selectedSkill = skillRegistry.select(text);
   const skillHasExecutableTools = selectedSkill.id !== "general.execute-goal" &&
     (Boolean(selectedSkill.tools?.length) || Boolean(selectedSkill.preferredTools.length));
-  return normalized.startsWith("/") || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || connectorPublishProvider(normalized) !== null || skillHasExecutableTools;
+  return normalized.startsWith("/") || extractMcpMention(text) !== null || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || connectorPublishProvider(normalized) !== null || skillHasExecutableTools;
 }
 
 async function loadCortexChatContext(input: {

@@ -66,15 +66,26 @@ export function requiredPlaywrightMcpContinuation(
 }
 
 export function canFinishAfterPlaywrightMcpTool(toolId: string): boolean {
-  return toolId.endsWith(":browser_snapshot") || toolId.endsWith(":browser_find");
+  return toolId.endsWith(":browser_snapshot") || toolId.endsWith(":browser_find") || toolId.endsWith(":browser_take_screenshot");
 }
 
 export function shouldSelectSkillTools(
   explicitPlaywrightMcpIntent: boolean,
   spotifyIntent: boolean,
   connectorPublishIntent: boolean,
+  mcpMentionIntent = false,
 ): boolean {
-  return !explicitPlaywrightMcpIntent && !spotifyIntent && !connectorPublishIntent;
+  return !explicitPlaywrightMcpIntent && !spotifyIntent && !connectorPublishIntent && !mcpMentionIntent;
+}
+
+export function missingMcpMentionToolCallInstruction(alias: string, previousOutput: string): string {
+  return `
+
+[CORRECAO OBRIGATORIA - MCP @${alias} NAO EXECUTADO]
+As ferramentas MCP listadas acima estao conectadas ao runtime do Kaoz.1 e foram escolhidas explicitamente pelo usuario com @${alias}.
+Resposta anterior: ${JSON.stringify(previousOutput.slice(0, 2_000))}
+Responda SOMENTE com a proxima chamada necessaria no formato <TOOL_CALL>{"toolId":"ID LISTADO ACIMA","args":{}}</TOOL_CALL>.
+`;
 }
 
 export function missingPlaywrightToolCallInstruction(previousOutput: string): string {

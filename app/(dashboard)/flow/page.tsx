@@ -51,6 +51,12 @@ import { isBuildSkillsIntent } from "@/services/skills/skill.intent";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 import type { SkillToolDefinition } from "@/services/skills/skill.types";
+import {
+  activeMcpMentionQuery,
+  buildMcpMentionOptions,
+  replaceActiveMcpMention,
+  type McpMentionOption,
+} from "@/services/mcp/mcp-mention";
 import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
 import { ArtifactCards } from "@/components/artifacts/artifact-viewer";
 import { goalHelpText, parseGoalCommand } from "@/services/goals/goal-command";
@@ -1000,6 +1006,10 @@ export default function FlowDashboardPage() {
   const [slashSearch, setSlashSearch] = useState("");
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsError, setSkillsError] = useState("");
+  const [mcpMentionOptions, setMcpMentionOptions] = useState<McpMentionOption[]>([]);
+  const [mcpMentionsLoading, setMcpMentionsLoading] = useState(false);
+  const [mcpMentionsError, setMcpMentionsError] = useState("");
+  const mcpMentionsRequestedRef = useRef(false);
   const [skillBuilderActive, setSkillBuilderActive] = useState(false);
 
   useEffect(() => {
@@ -1032,6 +1042,33 @@ export default function FlowDashboardPage() {
   }, [draftMessage]);
 
   const filteredSkills = availableSkills.filter(s => s.id.toLowerCase().includes(slashSearch) || s.name.toLowerCase().includes(slashSearch));
+  const mcpMentionSearch = activeMcpMentionQuery(draftMessage);
+  const showMcpMentionMenu = mcpMentionSearch !== null;
+  const filteredMcpMentionOptions = mcpMentionOptions.filter((option) =>
+    option.alias.includes(mcpMentionSearch || "") || option.name.toLowerCase().includes(mcpMentionSearch || "")
+  );
+
+  useEffect(() => {
+    if (!showMcpMentionMenu || mcpMentionsRequestedRef.current) return;
+    mcpMentionsRequestedRef.current = true;
+    setMcpMentionsLoading(true);
+    fetch("/api/mcp/config")
+      .then((response) => {
+        if (!response.ok) throw new Error("Falha na rede");
+        return response.json();
+      })
+      .then((payload) => {
+        setMcpMentionOptions(buildMcpMentionOptions(payload));
+        setMcpMentionsError("");
+      })
+      .catch((error) => {
+        console.error(error);
+        setMcpMentionsError("Erro ao carregar MCPs.");
+        mcpMentionsRequestedRef.current = false;
+      })
+      .finally(() => setMcpMentionsLoading(false));
+  }, [showMcpMentionMenu]);
+
   const [editing3dImageMessageId, setEditing3dImageMessageId] = useState<string | null>(null);
   const [editing3dBaseImagePath, setEditing3dBaseImagePath] = useState<string | null>(null);
   const [preparing3dBaseMessageId, setPreparing3dBaseMessageId] = useState<string | null>(null);
@@ -4021,6 +4058,51 @@ export default function FlowDashboardPage() {
                         >
                           <span className="text-sm font-medium text-white">{s.name}</span>
                           <span className="text-xs text-white/40 truncate w-full mt-0.5">{s.description || s.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showMcpMentionMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                  className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#9D7CFF]/20"
+                >
+                  <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#9D7CFF] uppercase tracking-wider">MCPs disponíveis</p>
+
+                  {mcpMentionsLoading ? (
+                    <div className="px-3 py-4 text-xs text-white/50 text-center flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" size={14} /> Carregando...
+                    </div>
+                  ) : mcpMentionsError ? (
+                    <div className="px-3 py-3 text-xs text-red-400 text-center">
+                      {mcpMentionsError}
+                    </div>
+                  ) : filteredMcpMentionOptions.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-white/50 text-center">
+                      Nenhum MCP habilitado encontrado.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1 max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 pr-1">
+                      {filteredMcpMentionOptions.map((option) => (
+                        <button
+                          key={option.serverId}
+                          type="button"
+                          onClick={() => setDraftMessage(replaceActiveMcpMention(draftMessage, option.alias))}
+                          className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 hover:bg-white/10 text-left transition-colors"
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-white">@{option.alias}</span>
+                            <span className="block text-xs text-white/40 truncate mt-0.5">{option.name}</span>
+                          </span>
+                          <span className={option.connected ? "shrink-0 text-[10px] text-emerald-400" : "shrink-0 text-[10px] text-amber-400"}>
+                            {option.connected ? `${option.toolCount} ferramentas` : "desconectado"}
+                          </span>
                         </button>
                       ))}
                     </div>

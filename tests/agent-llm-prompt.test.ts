@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { activeMcpMentionQuery, buildMcpMentionOptions, extractMcpMention, replaceActiveMcpMention, selectMentionedMcpTools } from "../services/mcp/mcp-mention.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
   const latest = "Encontre tendências virais recentes sobre inteligência artificial para pequenos negócios.";
@@ -93,6 +94,54 @@ test("pedido Playwright exclusivo não é sobrescrito pela seleção genérica d
   assert.equal(shouldSelectSkillTools(false, false, false), true);
   assert.equal(shouldSelectSkillTools(false, true, false), false);
   assert.equal(shouldSelectSkillTools(false, false, true), false);
+  assert.equal(shouldSelectSkillTools(false, false, false, true), false);
+});
+
+test("mencao @ seleciona somente as ferramentas do MCP indicado", () => {
+  const tools = [
+    { id: "mcp:playwright-browser:browser_navigate" },
+    { id: "mcp:playwright-browser:browser_snapshot" },
+    { id: "mcp:spotify-mcp-server-local:search_tracks" },
+    { id: "native:web-research" },
+  ];
+  const servers = [
+    { id: "playwright-browser", name: "Playwright Browser", presetId: "playwright-browser" },
+    { id: "spotify-mcp-server-local", name: "Spotify API" },
+  ];
+
+  assert.equal(extractMcpMention("@playwright abra o YouTube"), "playwright");
+  assert.equal(extractMcpMention("envie para usuario@example.com"), null);
+  assert.deepEqual(selectMentionedMcpTools(tools, "@spotify busque uma faixa", servers), [tools[2]]);
+  assert.deepEqual(selectMentionedMcpTools(tools, "@playwright abra o YouTube", servers), [tools[0], tools[1]]);
+  assert.deepEqual(selectMentionedMcpTools(tools, "@desconhecido teste", servers), []);
+});
+
+test("autocomplete MCP cria aliases legiveis e preserva o texto ao selecionar", () => {
+  const options = buildMcpMentionOptions({
+    settings: {
+      servers: [
+        { id: "playwright-browser", presetId: "playwright-browser", name: "Playwright Browser", enabled: true, transport: "stdio" },
+        { id: "server-uuid", name: "Chrome Automator", enabled: true, transport: "stdio" },
+        { id: "disabled", name: "Desabilitado", enabled: false, transport: "stdio" },
+      ],
+    },
+    statuses: [
+      { id: "playwright-browser", connected: true, error: null, tools: [{ name: "browser_navigate", inputSchema: {} }] },
+      { id: "server-uuid", connected: false, error: "offline", tools: [] },
+    ],
+  });
+
+  assert.deepEqual(options.map((option) => option.alias), ["playwright", "chrome"]);
+  assert.equal(options[0].connected, true);
+  assert.equal(options[0].toolCount, 1);
+  assert.equal(activeMcpMentionQuery("faca isso com @play"), "play");
+  assert.equal(replaceActiveMcpMention("faca isso com @play", "playwright"), "faca isso com @playwright ");
+});
+
+test("resposta generica sem chamada recebe correcao para o MCP mencionado", () => {
+  const instruction = missingMcpMentionToolCallInstruction("spotify", "nao esta disponivel");
+  assert.match(instruction, /MCP @spotify NAO EXECUTADO/);
+  assert.match(instruction, /ID LISTADO ACIMA/);
 });
 
 test("resposta sem tool call recebe correção para usar as ferramentas do host", () => {
@@ -132,6 +181,7 @@ aprovar ABC123`;
   assert.equal(requiredPlaywrightMcpContinuation(prompt, tools[2], tools), null);
   assert.equal(canFinishAfterPlaywrightMcpTool(tools[2]), true);
   assert.equal(canFinishAfterPlaywrightMcpTool(tools[0]), false);
+  assert.equal(canFinishAfterPlaywrightMcpTool("mcp:playwright-browser:browser_take_screenshot"), true);
 });
 
 test("continuação usa o pedido Playwright mais recente, não um histórico antigo", () => {

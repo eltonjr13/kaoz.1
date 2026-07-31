@@ -6,7 +6,8 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
+import { extractMcpMention, selectMentionedMcpTools } from "../mcp/mcp-mention.ts";
 import {
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
@@ -833,6 +834,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const connectorProvider = connectorPublishProvider(normalizedPrompt);
   const connectorPublishIntent = connectorProvider !== null;
   const explicitPlaywrightMcpIntent = isExplicitPlaywrightMcpRequest(toolIntentPrompt);
+  const mcpMention = extractMcpMention(toolIntentPrompt);
   let approvedPlaywrightStep: Awaited<
     ReturnType<typeof executeApprovedMcpToolFromIntent>
   > = null;
@@ -906,8 +908,16 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   }
 
   const playwrightMcpIntent = explicitPlaywrightMcpIntent || approvedPlaywrightStep !== null;
+  const configuredMcpServers = mcpMention
+    ? (await (await import("../mcp/mcp.manager.ts")).McpManager.getInstance()).getSettings().servers
+    : [];
+  const mentionedMcpTools = mcpMention
+    ? selectMentionedMcpTools(allTools, toolIntentPrompt, configuredMcpServers)
+    : [];
   let relevantTools = playwrightMcpIntent
     ? selectExplicitPlaywrightMcpTools(allTools)
+    : mcpMention
+    ? mentionedMcpTools
     : connectorProvider
     ? allTools.filter((tool) => tool.id === `social:${connectorProvider}:publish`)
     : spotifyIntent
@@ -921,7 +931,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       })
     : [];
 
-  if (shouldSelectSkillTools(playwrightMcpIntent, spotifyIntent, connectorPublishIntent)) {
+  if (shouldSelectSkillTools(playwrightMcpIntent, spotifyIntent, connectorPublishIntent, mcpMention !== null)) {
     const { skillRegistry } = await import("../skills/skill.registry.ts");
     let selectedSkill = skillRegistry.select(toolIntentPrompt);
     if (selectedSkill.id === "general.execute-goal" && WEB_INTENT_PATTERN.test(normalizedPrompt)) {
@@ -935,6 +945,12 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     if (playwrightMcpIntent) {
       return JSON.stringify({
         message: "O MCP Playwright Browser não apresentou ferramentas conectadas ao runtime do Kaoz.1. Abra Configurações > MCP, teste a conexão e mantenha o servidor ativado.",
+        action: null,
+      });
+    }
+    if (mcpMention) {
+      return JSON.stringify({
+        message: `O MCP @${mcpMention} não apresentou ferramentas conectadas ao runtime do Kaoz.1. Abra Configurações > MCP, teste a conexão e mantenha o servidor ativado.`,
         action: null,
       });
     }
@@ -967,12 +983,22 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
         currentPrompt += missingPlaywrightToolCallInstruction(cliOutput);
         continue;
       }
+      if (mcpMention && loop === 0) {
+        currentPrompt += missingMcpMentionToolCallInstruction(mcpMention, cliOutput);
+        continue;
+      }
       if (connectorProvider) {
         return JSON.stringify({ message: `Não consegui executar a publicação no ${connectorProvider}: o modelo não chamou a ferramenta autorizada. Nada foi enviado.`, action: null });
       }
       if (playwrightMcpIntent) {
         return JSON.stringify({
           message: "O MCP Playwright Browser está conectado, mas o modelo selecionado não emitiu a chamada de ferramenta exigida. Nenhuma pesquisa web alternativa foi usada.",
+          action: null,
+        });
+      }
+      if (mcpMention) {
+        return JSON.stringify({
+          message: `O MCP @${mcpMention} está conectado, mas o modelo selecionado não emitiu a chamada de ferramenta exigida.`,
           action: null,
         });
       }
