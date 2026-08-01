@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, File, FileJson, FileText, Loader2, X } from "lucide-react";
+import { Download, Eye, File, FileJson, FileText, Image as ImageIcon, Loader2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 
@@ -17,7 +17,7 @@ function artifactUrl(artifact: ExecutionArtifact): string {
 function canPreview(artifact: ExecutionArtifact): boolean {
   if (typeof artifact.previewAvailable === "boolean") return artifact.previewAvailable;
   const mime = artifact.mimeType || "";
-  return mime === "application/pdf" || mime.startsWith("text/") || mime.startsWith("application/json");
+  return artifact.type === "image" || mime.startsWith("image/") || mime === "application/pdf" || mime.startsWith("text/") || mime.startsWith("application/json");
 }
 
 function formatSize(size?: number): string {
@@ -28,6 +28,7 @@ function formatSize(size?: number): string {
 }
 
 function artifactIcon(artifact: ExecutionArtifact) {
+  if (artifact.type === "image" || artifact.mimeType?.startsWith("image/")) return <ImageIcon size={17} />;
   if (artifact.type === "json") return <FileJson size={17} />;
   if (["markdown", "pdf", "document", "text", "csv", "html"].includes(artifact.type)) return <FileText size={17} />;
   return <File size={17} />;
@@ -85,6 +86,10 @@ function ArtifactPreview({ artifact, onClose }: { artifact: ExecutionArtifact; o
             <div className="flex h-full items-center justify-center gap-2 text-sm text-white/50"><Loader2 size={16} className="animate-spin" /> Carregando documento...</div>
           ) : error ? (
             <div className="flex h-full items-center justify-center p-8 text-sm text-red-300">{error}</div>
+          ) : artifact.type === "image" || artifact.mimeType?.startsWith("image/") ? (
+            <div className="flex h-full items-center justify-center p-4">
+              <img src={url} alt={artifact.name} className="max-h-full max-w-full object-contain" />
+            </div>
           ) : artifact.type === "pdf" || artifact.mimeType === "application/pdf" ? (
             <iframe title={artifact.name} src={url} className="h-full min-h-[70vh] w-full border-0 bg-white" />
           ) : artifact.type === "html" || artifact.mimeType?.startsWith("text/html") ? (
@@ -110,8 +115,15 @@ export function ArtifactCards({ artifacts, className = "" }: { artifacts: Execut
       <div className={`grid w-full gap-2 sm:grid-cols-2 ${className}`}>
         {artifacts.map((artifact) => {
           const url = artifactUrl(artifact);
+          const isImage = artifact.type === "image" || artifact.mimeType?.startsWith("image/");
           return (
-            <div key={artifact.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-3">
+            <div key={artifact.id} className={isImage ? "sm:col-span-2" : undefined}>
+              {isImage && url && (
+                <button type="button" onClick={() => setActiveId(artifact.id)} className="mb-2 block w-full overflow-hidden rounded-xl border border-white/10 bg-black/30" aria-label={`Visualizar ${artifact.name}`}>
+                  <img src={url} alt={artifact.name} className="max-h-[480px] w-full object-contain" />
+                </button>
+              )}
+              <div className="flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-black/25 p-3">
               <span className="rounded-lg bg-[#9D7CFF]/15 p-2 text-[#9D7CFF]">{artifactIcon(artifact)}</span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-white/90">{artifact.name}</div>
@@ -127,6 +139,7 @@ export function ArtifactCards({ artifacts, className = "" }: { artifacts: Execut
                   <Download size={15} />
                 </a>
               )}
+              </div>
             </div>
           );
         })}
