@@ -1,7 +1,10 @@
 import path from "node:path";
 import type { McpToolSchema } from "../../mcp/mcp.types.ts";
 import { mcpToolId, parseMcpToolId } from "../../mcp/mcp-tool-id.ts";
-import { registerExistingArtifact } from "../../artifacts/artifact.service.ts";
+import {
+  registerContentArtifact,
+  registerExistingArtifact,
+} from "../../artifacts/artifact.service.ts";
 import type {
   KaozTool,
   ToolContext,
@@ -76,18 +79,92 @@ export async function executeMcpTool(
       authorization: context?.mcpCallAuthorization,
     },
   );
-  const screenshotPath = resolvePlaywrightScreenshotPath(serverId, toolName, result);
-  const artifact = screenshotPath
-    ? await registerExistingArtifact({
-        path: screenshotPath,
+  const screenshotImage = extractPlaywrightScreenshotImage(serverId, toolName, result);
+  const screenshotPath = screenshotImage
+    ? null
+    : resolvePlaywrightScreenshotPath(serverId, toolName, result);
+  const artifact = screenshotImage
+    ? await registerContentArtifact({
+        content: screenshotImage.content,
+        name: screenshotImage.name,
         type: "image",
-        mimeType: screenshotPath.toLowerCase().endsWith(".jpeg") || screenshotPath.toLowerCase().endsWith(".jpg")
-          ? "image/jpeg"
-          : "image/png",
+        mimeType: screenshotImage.mimeType,
         metadata: { source: "playwright-mcp", serverId, toolName },
       })
-    : undefined;
-  return { output: truncateToolResult(result), artifacts: artifact ? [artifact] : undefined };
+    : screenshotPath
+      ? await registerExistingArtifact({
+          path: screenshotPath,
+          type: "image",
+          mimeType: screenshotPath.toLowerCase().endsWith(".jpeg") || screenshotPath.toLowerCase().endsWith(".jpg")
+            ? "image/jpeg"
+            : "image/png",
+          metadata: { source: "playwright-mcp", serverId, toolName },
+        })
+      : undefined;
+  return {
+    output: truncateToolResult(compactScreenshotResult(result)),
+    artifacts: artifact ? [artifact] : undefined,
+  };
+}
+
+type PlaywrightScreenshotImage = {
+  content: Uint8Array;
+  mimeType: "image/png" | "image/jpeg";
+  name: string;
+};
+
+export function extractPlaywrightScreenshotImage(
+  serverId: string,
+  toolName: string,
+  result: unknown,
+): PlaywrightScreenshotImage | null {
+  if (!isPlaywrightScreenshotTool(serverId, toolName)) return null;
+  if (!result || typeof result !== "object") return null;
+  const content = (result as { content?: unknown }).content;
+  if (!Array.isArray(content)) return null;
+
+  for (const item of content) {
+    const image = decodeScreenshotImage(item);
+    if (image) return image;
+  }
+  return null;
+}
+
+function isPlaywrightScreenshotTool(serverId: string, toolName: string): boolean {
+  return serverId === PLAYWRIGHT_MCP_SERVER_ID && toolName === "browser_take_screenshot";
+}
+
+function decodeScreenshotImage(item: unknown): PlaywrightScreenshotImage | null {
+  if (!item || typeof item !== "object") return null;
+  const image = item as { type?: unknown; data?: unknown; mimeType?: unknown };
+  if (image.type !== "image") return null;
+  if (typeof image.data !== "string") return null;
+  if (image.mimeType !== "image/png" && image.mimeType !== "image/jpeg") return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) return null;
+  const bytes = Buffer.from(image.data, "base64");
+  if (!bytes.length) return null;
+  const extension = image.mimeType === "image/jpeg" ? "jpg" : "png";
+  return {
+    content: bytes,
+    mimeType: image.mimeType,
+    name: `playwright-screenshot-${new Date().toISOString().replaceAll(":", "-")}.${extension}`,
+  };
+}
+
+function compactScreenshotResult(result: unknown): unknown {
+  if (!result || typeof result !== "object") return result;
+  const record = result as Record<string, unknown>;
+  if (!Array.isArray(record.content)) return result;
+  return {
+    ...record,
+    content: record.content.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const block = item as Record<string, unknown>;
+      return block.type === "image"
+        ? { type: "text", text: "[captura de tela anexada como imagem]" }
+        : item;
+    }),
+  };
 }
 
 export function resolvePlaywrightScreenshotPath(

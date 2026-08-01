@@ -9,7 +9,11 @@ import {
   isPlaywrightMcpToolAllowed,
   validatePlaywrightMcpConfig,
 } from "../services/mcp/playwright.config.ts";
-import { isMcpToolAllowed, resolvePlaywrightScreenshotPath } from "../services/orchestrator/adapters/mcp.adapter.ts";
+import {
+  extractPlaywrightScreenshotImage,
+  isMcpToolAllowed,
+  resolvePlaywrightScreenshotPath,
+} from "../services/orchestrator/adapters/mcp.adapter.ts";
 
 test("preset Playwright usa o runtime empacotado com perfil isolado", () => {
   const root = path.join(process.cwd(), "dist", "standalone");
@@ -26,7 +30,7 @@ test("preset Playwright usa o runtime empacotado com perfil isolado", () => {
     "--codegen",
     "none",
     "--image-responses",
-    "omit",
+    "allow",
   ]);
   assert.equal(preset.args?.includes("--user-data-dir"), false);
 });
@@ -89,6 +93,28 @@ test("resultado de screenshot do Playwright aponta somente para o arquivo local 
   );
   assert.equal(
     resolvePlaywrightScreenshotPath("another-server", "browser_take_screenshot", result, root),
+    null,
+  );
+});
+
+test("resultado de screenshot do Playwright preserva os bytes para exibir a imagem no chat", () => {
+  const png = Buffer.from("imagem-binaria");
+  const image = extractPlaywrightScreenshotImage(
+    PLAYWRIGHT_MCP_SERVER_ID,
+    "browser_take_screenshot",
+    {
+      content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }],
+    },
+  );
+
+  assert.ok(image);
+  assert.equal(image.mimeType, "image/png");
+  assert.match(image.name, /^playwright-screenshot-.+\.png$/);
+  assert.deepEqual(Buffer.from(image.content), png);
+  assert.equal(
+    extractPlaywrightScreenshotImage("another-server", "browser_take_screenshot", {
+      content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }],
+    }),
     null,
   );
 });

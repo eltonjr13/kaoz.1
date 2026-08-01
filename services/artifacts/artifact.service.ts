@@ -236,7 +236,7 @@ export async function registerContentArtifact(params: {
 }
 
 export function isPreviewableMimeType(mimeType = ""): boolean {
-  return mimeType === "application/pdf" || mimeType.startsWith("text/") || mimeType.startsWith("application/json");
+  return mimeType.startsWith("image/") || mimeType === "application/pdf" || mimeType.startsWith("text/") || mimeType.startsWith("application/json");
 }
 
 export async function materializeResponseArtifacts(params: {

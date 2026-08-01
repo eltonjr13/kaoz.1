@@ -25,6 +25,17 @@ test.after(async () => {
   await Promise.all([...createdIds].map((id) => rm(path.join(process.cwd(), ".generated", "artifacts", id), { recursive: true, force: true })));
 });
 
+test("marca imagens registradas como visualizaveis no chat", async () => {
+  const artifact = await registerContentArtifact({
+    name: "captura.png",
+    content: Buffer.from("imagem"),
+    type: "image",
+    mimeType: "image/png",
+  });
+  remember([artifact]);
+  assert.equal(artifact.previewAvailable, true);
+});
+
 test("detecta formatos somente quando existe intenção de criar ou exportar", () => {
   assert.deepEqual(inferRequestedArtifactFormats("Como funciona um PDF?"), []);
   assert.deepEqual(

@@ -55,7 +55,7 @@ export function createPlaywrightMcpPreset(
       "--codegen",
       "none",
       "--image-responses",
-      "omit",
+      "allow",
     ],
     env: {
       ELECTRON_RUN_AS_NODE: "1",
