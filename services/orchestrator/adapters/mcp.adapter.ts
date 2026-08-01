@@ -97,7 +97,7 @@ export function resolvePlaywrightScreenshotPath(
   workspaceRoot = process.cwd(),
 ): string | null {
   if (serverId !== PLAYWRIGHT_MCP_SERVER_ID || toolName !== "browser_take_screenshot") return null;
-  const text = typeof result === "string" ? result : JSON.stringify(result);
+  const text = collectMcpResultText(result);
   const match = /(?:^|[\s"'`])((?:\.?[\\/])?\.playwright-mcp[\\/][^\s"'`<>]+\.(?:png|jpe?g))/i.exec(text);
   if (!match?.[1]) return null;
 
@@ -106,6 +106,20 @@ export function resolvePlaywrightScreenshotPath(
   const relative = path.relative(outputDirectory, screenshotPath);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
   return screenshotPath;
+}
+
+function collectMcpResultText(value: unknown, remaining = 10_000): string {
+  if (remaining < 1 || value === null || value === undefined) return "";
+  if (typeof value === "string") return value.slice(0, remaining);
+  if (typeof value !== "object") return "";
+  const values = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
+  let collected = "";
+  for (const item of values) {
+    const next = collectMcpResultText(item, remaining - collected.length);
+    collected += next ? `\n${next}` : "";
+    if (collected.length >= remaining) break;
+  }
+  return collected;
 }
 
 async function getMcpManager() {

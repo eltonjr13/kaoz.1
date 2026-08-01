@@ -9,7 +9,7 @@ import {
   isPlaywrightMcpToolAllowed,
   validatePlaywrightMcpConfig,
 } from "../services/mcp/playwright.config.ts";
-import { isMcpToolAllowed } from "../services/orchestrator/adapters/mcp.adapter.ts";
+import { isMcpToolAllowed, resolvePlaywrightScreenshotPath } from "../services/orchestrator/adapters/mcp.adapter.ts";
 
 test("preset Playwright usa o runtime empacotado com perfil isolado", () => {
   const root = path.join(process.cwd(), "dist", "standalone");
@@ -70,4 +70,25 @@ test("política não expõe execução arbitrária nem acesso a arquivos do Play
     assert.equal(isMcpToolAllowed(PLAYWRIGHT_MCP_SERVER_ID, toolName), true, toolName);
   }
   assert.equal(isMcpToolAllowed("another-server", "browser_run_code_unsafe"), true);
+});
+
+test("resultado de screenshot do Playwright aponta somente para o arquivo local permitido", () => {
+  const root = path.join(process.cwd(), "workspace-fixture");
+  const expected = path.join(root, ".playwright-mcp", "page-2026-08-01.png");
+  const result = {
+    content: [{ type: "text", text: "Screenshot saved to .playwright-mcp\\page-2026-08-01.png" }],
+  };
+
+  assert.equal(
+    resolvePlaywrightScreenshotPath(PLAYWRIGHT_MCP_SERVER_ID, "browser_take_screenshot", result, root),
+    expected,
+  );
+  assert.equal(
+    resolvePlaywrightScreenshotPath(PLAYWRIGHT_MCP_SERVER_ID, "browser_take_screenshot", "../outside.png", root),
+    null,
+  );
+  assert.equal(
+    resolvePlaywrightScreenshotPath("another-server", "browser_take_screenshot", result, root),
+    null,
+  );
 });

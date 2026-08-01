@@ -22,7 +22,7 @@ import {
   extractToolApprovalToken,
   requestMcpToolApproval,
 } from "../services/tools/tool-approval.service.ts";
-import { presentApprovedMcpResult } from "../services/tools/tool-approval.presentation.ts";
+import { approvedImageArtifactResponse, presentApprovedMcpResult } from "../services/tools/tool-approval.presentation.ts";
 import { ToolExecutionService } from "../services/tools/tool-execution.service.ts";
 import type { KaozTool } from "../services/tools/tool.types.ts";
 
@@ -628,6 +628,28 @@ test("aprovação DaVinci executa pelo ToolExecutionService e gera auditoria", a
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("print aprovado retorna um artifact de imagem para o chat renderizar", () => {
+  const response = JSON.parse(approvedImageArtifactResponse({
+    output: { saved: true },
+    artifacts: [{
+      id: "screenshot-id",
+      type: "image",
+      name: "page.png",
+      url: "/api/artifacts/screenshot-id",
+      mimeType: "image/png",
+    }],
+  }));
+
+  assert.match(response.message, /imagem est.. anexada/i);
+  assert.deepEqual(response.artifacts, [{
+    id: "screenshot-id",
+    type: "image",
+    name: "page.png",
+    url: "/api/artifacts/screenshot-id",
+    mimeType: "image/png",
+  }]);
 });
 
 async function walkSource(root: string): Promise<string[]> {
