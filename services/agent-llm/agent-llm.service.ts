@@ -13,7 +13,7 @@ import {
   extractToolApprovalToken,
   requestMcpToolApproval,
 } from "../tools/tool-approval.service.ts";
-import { presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
+import { approvedImageArtifactResponse, presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
 import { sanitizePublicErrorMessage, sanitizeSensitiveValue } from "../orchestrator/orchestrator.policy.ts";
 
 type ProcessResult = {
@@ -878,6 +878,12 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     }
     if (approved) {
       if (isPlaywrightMcpToolId(approved.tool.id)) {
+        if (
+          approved.tool.id.endsWith(":browser_take_screenshot") &&
+          approved.result.artifacts?.some((artifact) => artifact.type === "image" || artifact.mimeType?.startsWith("image/"))
+        ) {
+          return approvedImageArtifactResponse(approved.result);
+        }
         const continuation = requiredPlaywrightMcpContinuation(
           prompt,
           approved.tool.id,

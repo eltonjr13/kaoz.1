@@ -30,6 +30,17 @@ export async function presentApprovedMcpResult(
   }
 }
 
+export function approvedImageArtifactResponse(result: ToolResult): string {
+  const artifacts = result.artifacts?.filter(
+    (artifact) => artifact.type === "image" || artifact.mimeType?.startsWith("image/"),
+  ) || [];
+  return JSON.stringify({
+    message: "Capturei o print solicitado. A imagem está anexada abaixo para visualizar ou baixar.",
+    action: null,
+    artifacts,
+  });
+}
+
 function serializeSafely(value: unknown): string {
   try {
     return JSON.stringify(value);

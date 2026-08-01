@@ -1,5 +1,7 @@
+import path from "node:path";
 import type { McpToolSchema } from "../../mcp/mcp.types.ts";
 import { mcpToolId, parseMcpToolId } from "../../mcp/mcp-tool-id.ts";
+import { registerExistingArtifact } from "../../artifacts/artifact.service.ts";
 import type {
   KaozTool,
   ToolContext,
@@ -74,7 +76,36 @@ export async function executeMcpTool(
       authorization: context?.mcpCallAuthorization,
     },
   );
-  return { output: truncateToolResult(result) };
+  const screenshotPath = resolvePlaywrightScreenshotPath(serverId, toolName, result);
+  const artifact = screenshotPath
+    ? await registerExistingArtifact({
+        path: screenshotPath,
+        type: "image",
+        mimeType: screenshotPath.toLowerCase().endsWith(".jpeg") || screenshotPath.toLowerCase().endsWith(".jpg")
+          ? "image/jpeg"
+          : "image/png",
+        metadata: { source: "playwright-mcp", serverId, toolName },
+      })
+    : undefined;
+  return { output: truncateToolResult(result), artifacts: artifact ? [artifact] : undefined };
+}
+
+export function resolvePlaywrightScreenshotPath(
+  serverId: string,
+  toolName: string,
+  result: unknown,
+  workspaceRoot = process.cwd(),
+): string | null {
+  if (serverId !== PLAYWRIGHT_MCP_SERVER_ID || toolName !== "browser_take_screenshot") return null;
+  const text = typeof result === "string" ? result : JSON.stringify(result);
+  const match = /(?:^|[\s"'`])((?:\.?[\\/])?\.playwright-mcp[\\/][^\s"'`<>]+\.(?:png|jpe?g))/i.exec(text);
+  if (!match?.[1]) return null;
+
+  const screenshotPath = path.resolve(workspaceRoot, match[1]);
+  const outputDirectory = path.resolve(workspaceRoot, ".playwright-mcp");
+  const relative = path.relative(outputDirectory, screenshotPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return screenshotPath;
 }
 
 async function getMcpManager() {
