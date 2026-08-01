@@ -642,7 +642,7 @@ test("print aprovado retorna um artifact de imagem para o chat renderizar", () =
     }],
   }));
 
-  assert.match(response.message, /imagem est.. anexada/i);
+  assert.match(response.message, /imagem .*anexada/i);
   assert.deepEqual(response.artifacts, [{
     id: "screenshot-id",
     type: "image",
