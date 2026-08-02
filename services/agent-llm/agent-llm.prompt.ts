@@ -29,6 +29,13 @@ export function isPlaywrightMcpToolId(toolId: string): boolean {
   return toolId.startsWith(PLAYWRIGHT_MCP_TOOL_PREFIX);
 }
 
+export function canExecutePlaywrightMcpWithoutApproval(
+  explicitPlaywrightMcpIntent: boolean,
+  toolId: string,
+): boolean {
+  return explicitPlaywrightMcpIntent && isPlaywrightMcpToolId(toolId);
+}
+
 export type PlaywrightMcpContinuation = Readonly<{
   toolId: string;
   args: Readonly<Record<string, unknown>>;

@@ -9,6 +9,7 @@ import {
 } from "../orchestrator/orchestrator.policy.ts";
 import type { KaozTool, ToolResult } from "./tool.types.ts";
 import { assertToolArguments } from "./tool.validation.ts";
+import { isPlaywrightMcpToolId } from "../agent-llm/agent-llm.prompt.ts";
 
 const APPROVAL_TTL_MS = 15 * 60_000;
 const CONSUMED_RETENTION_MS = 60 * 60_000;
@@ -29,7 +30,7 @@ type ResolvedToolApproval = PendingToolApproval & Readonly<{
 }>;
 
 export type McpApprovalGrant = Readonly<{
-  kind: "mcp-human-step";
+  kind: "mcp-human-step" | "mcp-explicit-playwright-session";
   toolId: string;
   fingerprint: string;
 }>;
@@ -286,7 +287,8 @@ export function consumeMcpApprovalGrant(
   issuedMcpApprovalGrants.delete(grant);
   const candidate = grant as Partial<McpApprovalGrant>;
   if (
-    candidate.kind !== "mcp-human-step" ||
+    (candidate.kind !== "mcp-human-step" &&
+      candidate.kind !== "mcp-explicit-playwright-session") ||
     candidate.toolId !== toolId ||
     candidate.fingerprint !== approvalFingerprint(toolId, args)
   ) {
@@ -294,6 +296,20 @@ export function consumeMcpApprovalGrant(
       "A aprovação humana não corresponde à ferramenta e aos argumentos.",
     );
   }
+}
+
+export function issueExplicitPlaywrightMcpGrant(
+  toolId: string,
+  args: Readonly<Record<string, unknown>>,
+): McpApprovalGrant {
+  if (!isPlaywrightMcpToolId(toolId)) {
+    throw new Error("A autorizaÃ§Ã£o direta Ã© exclusiva do MCP Playwright Browser.");
+  }
+  return issueMcpGrant(
+    "mcp-explicit-playwright-session",
+    toolId,
+    args,
+  );
 }
 
 function findPendingApproval(
@@ -376,8 +392,16 @@ function issueMcpApprovalGrant(
   toolId: string,
   args: Readonly<Record<string, unknown>>,
 ): McpApprovalGrant {
+  return issueMcpGrant("mcp-human-step", toolId, args);
+}
+
+function issueMcpGrant(
+  kind: McpApprovalGrant["kind"],
+  toolId: string,
+  args: Readonly<Record<string, unknown>>,
+): McpApprovalGrant {
   const grant = Object.freeze({
-    kind: "mcp-human-step" as const,
+    kind,
     toolId,
     fingerprint: approvalFingerprint(toolId, args),
   });

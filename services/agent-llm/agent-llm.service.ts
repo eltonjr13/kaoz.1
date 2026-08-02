@@ -6,11 +6,12 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
 import { extractMcpMention, selectMentionedMcpTools } from "../mcp/mcp-mention.ts";
 import {
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
+  issueExplicitPlaywrightMcpGrant,
   requestMcpToolApproval,
 } from "../tools/tool-approval.service.ts";
 import { approvedImageArtifactResponse, presentApprovedMcpResult } from "../tools/tool-approval.presentation.ts";
@@ -977,8 +978,13 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       `Resultado: ${JSON.stringify(sanitizeSensitiveValue(approvedPlaywrightStep.result))}\n` +
       "Nao repita a mesma chamada. Solicite a proxima ferramenta Playwright necessaria ou responda com o resultado final se a tarefa terminou.";
   }
+  let completedPlaywrightSteps = 0;
+  let queuedPlaywrightCall: { toolId: string; args: Readonly<Record<string, unknown>> } | null = null;
   for (let loop = 0; loop < 10; loop++) {
-    const cliOutput = await executor(currentPrompt);
+    const cliOutput = queuedPlaywrightCall
+      ? `<TOOL_CALL>${JSON.stringify(queuedPlaywrightCall)}</TOOL_CALL>`
+      : await executor(currentPrompt);
+    queuedPlaywrightCall = null;
     const match = cliOutput.match(/<TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/TOOL_CALL>/i);
     if (!match) {
       if (connectorProvider && loop === 0) {
@@ -995,6 +1001,9 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       }
       if (connectorProvider) {
         return JSON.stringify({ message: `Não consegui executar a publicação no ${connectorProvider}: o modelo não chamou a ferramenta autorizada. Nada foi enviado.`, action: null });
+      }
+      if (playwrightMcpIntent && completedPlaywrightSteps > 0) {
+        return cliOutput;
       }
       if (playwrightMcpIntent) {
         return JSON.stringify({
@@ -1020,7 +1029,11 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       const tool = relevantTools.find((candidate) => candidate.id === toolId);
       if (!tool) throw new Error(`Ferramenta '${toolId}' não encontrada.`);
       const args = call.args || {};
-      if (tool.source === "mcp") {
+      const directPlaywrightExecution = canExecutePlaywrightMcpWithoutApproval(
+        playwrightMcpIntent,
+        tool.id,
+      );
+      if (tool.source === "mcp" && !directPlaywrightExecution) {
         const pending = await requestMcpToolApproval(tool, args);
         return JSON.stringify({
           message: pending.message,
@@ -1038,10 +1051,32 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
           approvalMode: "step",
           reason: "Ferramentas autorizadas pelo objetivo atual do usuário.",
         },
+        approvalGrant: directPlaywrightExecution
+          ? issueExplicitPlaywrightMcpGrant(tool.id, args)
+          : undefined,
         correlationId: `chat-tool-${crypto.randomUUID()}`,
       });
       const result = execution.result;
       if (connectorProvider) return connectorToolResultResponse(connectorProvider, result);
+      if (directPlaywrightExecution) {
+        completedPlaywrightSteps += 1;
+        if (
+          tool.id.endsWith(":browser_take_screenshot") &&
+          result.artifacts?.some((artifact) => artifact.type === "image" || artifact.mimeType?.startsWith("image/"))
+        ) {
+          return approvedImageArtifactResponse(result);
+        }
+        const continuation = requiredPlaywrightMcpContinuation(
+          prompt,
+          tool.id,
+          allTools.map((candidate) => candidate.id),
+        );
+        if (continuation) {
+          queuedPlaywrightCall = continuation;
+        } else if (canFinishAfterPlaywrightMcpTool(tool.id)) {
+          return presentCompletedPlaywrightMcpResult(prompt, result, executor);
+        }
+      }
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {
       if (connectorProvider) return connectorToolErrorResponse(connectorProvider, error);

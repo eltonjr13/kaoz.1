@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
 import { activeMcpMentionQuery, buildMcpMentionOptions, extractMcpMention, replaceActiveMcpMention, selectMentionedMcpTools } from "../services/mcp/mcp-mention.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
