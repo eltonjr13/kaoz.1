@@ -428,6 +428,9 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             subtask: task,
             fairnessKey: executionId,
             timeoutMs: task.timeout,
+            retryPolicy: task.ownerCapability === "chat-response"
+              ? { maxAttempts: 1 }
+              : undefined,
           })),
         );
       } catch (error) {
@@ -459,6 +462,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         executionReport = await scheduler.executeAll(executionAgents, {
           executionId,
           correlationId: executionId,
+          isRetryable: (_error, task) =>
+            task.ownerCapability !== "chat-response",
           agentContext: withExecutionContext(
             runtimeContext,
             executionContext,
@@ -777,6 +782,9 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
                 subtask: task,
                 fairnessKey: executionId,
                 timeoutMs: task.timeout,
+                retryPolicy: task.ownerCapability === "chat-response"
+                  ? { maxAttempts: 1 }
+                  : undefined,
               })),
             );
             executionAgents = this.createExecutionAgents({
@@ -800,6 +808,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             executionReport = await scheduler.executeAll(executionAgents, {
               executionId,
               correlationId,
+              isRetryable: (_error, task) =>
+                task.ownerCapability !== "chat-response",
               agentContext: runtimeContext,
               manageAgentLifecycle: false,
               onCheckpoint: async () => {

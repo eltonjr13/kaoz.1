@@ -282,6 +282,40 @@ test("fails when Planner fails and never executes a specialist", async () => {
   assert.equal(chief.listExecutionSessions().at(-1)?.status, "failed");
 });
 
+test("does not retry the terminal chat response after an execution failure", async () => {
+  let executions = 0;
+  const executedTasks: string[] = [];
+  const worker = new TestExecutionAgent<string>({
+    id: createAgentId("single-attempt-chat-response"),
+    capabilities: ["chat-response"],
+    execute: async (task) => {
+      executions += 1;
+      executedTasks.push(`${task.id}:${task.ownerCapability}`);
+      throw new Error("terminal response failed");
+    },
+  });
+  const chief = new ChiefAgent<string>({
+    clock: new FixedClock(),
+    idGenerator: createIdGenerator(),
+    executionClassifier,
+  });
+  await chief.initialize();
+
+  await assert.rejects(
+    chief.handleTask({
+      executionId: "execution-terminal-response-failure",
+      objective: "Return a response once.",
+      requiredCapability: "chat-response",
+      executionAgents: [worker],
+      estimatedTime: 1_000,
+    }),
+    /terminal response failed/,
+  );
+  console.error(chief.getMessageTraces().filter((trace) => trace.messageName === "agent.scheduler.execute-task"));
+  assert.deepEqual(executedTasks, [executedTasks[0]]);
+  assert.equal(executions, 1);
+});
+
 test("EXECUTION never responds before ExecutionWorkflow completes", async () => {
   let markStarted!: () => void;
   let releaseExecution!: (value: string) => void;

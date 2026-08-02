@@ -17,6 +17,7 @@ import {
 import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
 import { ChiefAgent } from "@/services/agents/chief/chief-agent";
 import { createChatSpecializedAgents } from "@/services/agents/chat/chat-specialized-agents";
+import { resolveChatResponseTimeout } from "@/services/agents/chat/chat-execution-timeout";
 import { ExecutionLayer } from "@/services/agents/execution/execution-layer";
 import { MessageBus } from "@/services/agents/messaging/message-bus";
 import type {
@@ -1184,7 +1185,7 @@ export async function chatWithAgent(
         requiredCapability: "chat-response",
         priority: 50,
         estimatedCost: 0,
-        estimatedTime: 60_000,
+        estimatedTime: resolveChatResponseTimeout(Boolean(options?.hasExternalTools)),
         confidence: 1,
         planGenerator: createChatPlanGenerator(messages, options),
         executionAgents: createChatExecutionAgents(
@@ -1303,7 +1304,7 @@ function createChatPlanGenerator(
         milestoneId: "response-ready",
         estimate: {
           effortPoints: 2,
-          durationMs: 60_000,
+          durationMs: resolveChatResponseTimeout(requiresTools),
           cost: 1,
           confidence: 0.9,
         },

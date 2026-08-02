@@ -1040,7 +1040,14 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
           action: null,
         });
       }
-      const context = { planId: "chat", runId: "chat", stepId: "chat", signal: AbortSignal.timeout(30000) };
+      const context = {
+        planId: "chat",
+        runId: "chat",
+        stepId: "chat",
+        signal: AbortSignal.timeout(
+          directPlaywrightExecution ? MCP_TOOL_TIMEOUT_MS : 30_000,
+        ),
+      };
       const execution = await toolExecutionService.execute({
         agentId: CHAT_TOOL_AGENT_ID,
         toolId,

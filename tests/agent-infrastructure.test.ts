@@ -2,10 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AbstractAgent,
+  CHAT_RESPONSE_TIMEOUT_MS,
+  CHAT_RESPONSE_WITH_EXTERNAL_TOOLS_TIMEOUT_MS,
   createAgentId,
+  resolveChatResponseTimeout,
   type AgentConfig,
   type AgentContext,
 } from "../services/agents/index.ts";
+
+test("chat reserva tempo compativel com o modelo e com sequencias de ferramentas", () => {
+  assert.equal(resolveChatResponseTimeout(false), CHAT_RESPONSE_TIMEOUT_MS);
+  assert.equal(
+    resolveChatResponseTimeout(true),
+    CHAT_RESPONSE_WITH_EXTERNAL_TOOLS_TIMEOUT_MS,
+  );
+  assert.equal(CHAT_RESPONSE_TIMEOUT_MS, 180_000);
+  assert.equal(CHAT_RESPONSE_WITH_EXTERNAL_TOOLS_TIMEOUT_MS, 600_000);
+});
 
 class TestAgent extends AbstractAgent<string, string, string, string> {
   readonly lifecycleEvents: string[] = [];
