@@ -97,6 +97,21 @@ test("pedido Playwright exclusivo não é sobrescrito pela seleção genérica d
   assert.equal(shouldSelectSkillTools(false, false, false, true), false);
 });
 
+test("pedido explicito autoriza somente ferramentas do MCP Playwright sem nova aprovacao", () => {
+  assert.equal(
+    canExecutePlaywrightMcpWithoutApproval(true, "mcp:playwright-browser:browser_navigate"),
+    true,
+  );
+  assert.equal(
+    canExecutePlaywrightMcpWithoutApproval(false, "mcp:playwright-browser:browser_navigate"),
+    false,
+  );
+  assert.equal(
+    canExecutePlaywrightMcpWithoutApproval(true, "mcp:spotify:search_tracks"),
+    false,
+  );
+});
+
 test("mencao @ seleciona somente as ferramentas do MCP indicado", () => {
   const tools = [
     { id: "mcp:playwright-browser:browser_navigate" },

@@ -18,13 +18,31 @@ import {
 } from "../services/orchestrator/orchestrator.policy.ts";
 import {
   ToolApprovalStore,
+  consumeMcpApprovalGrant,
   executeApprovedMcpToolFromIntent,
   extractToolApprovalToken,
+  issueExplicitPlaywrightMcpGrant,
   requestMcpToolApproval,
 } from "../services/tools/tool-approval.service.ts";
 import { approvedImageArtifactResponse, presentApprovedMcpResult } from "../services/tools/tool-approval.presentation.ts";
 import { ToolExecutionService } from "../services/tools/tool-execution.service.ts";
 import type { KaozTool } from "../services/tools/tool.types.ts";
+
+test("sessao Playwright explicita emite autorizacao MCP direta e de uso unico", () => {
+  const toolId = "mcp:playwright-browser:browser_navigate";
+  const args = { url: "https://example.com" };
+  const grant = issueExplicitPlaywrightMcpGrant(toolId, args);
+
+  consumeMcpApprovalGrant(grant, toolId, args);
+  assert.throws(
+    () => consumeMcpApprovalGrant(grant, toolId, args),
+    /autorizacao|aprova/i,
+  );
+  assert.throws(
+    () => issueExplicitPlaywrightMcpGrant("mcp:spotify:search_tracks", {}),
+    /Playwright Browser/,
+  );
+});
 
 test("autorização MCP de uso único funciona entre bundles do runtime", async () => {
   const moduleUrl = new URL("../services/mcp/mcp-call.authorization.ts", import.meta.url);
