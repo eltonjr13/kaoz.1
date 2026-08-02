@@ -284,13 +284,11 @@ test("fails when Planner fails and never executes a specialist", async () => {
 
 test("does not retry the terminal chat response after an execution failure", async () => {
   let executions = 0;
-  const executedTasks: string[] = [];
   const worker = new TestExecutionAgent<string>({
     id: createAgentId("single-attempt-chat-response"),
     capabilities: ["chat-response"],
-    execute: async (task) => {
+    execute: async () => {
       executions += 1;
-      executedTasks.push(`${task.id}:${task.ownerCapability}`);
       throw new Error("terminal response failed");
     },
   });
@@ -311,8 +309,6 @@ test("does not retry the terminal chat response after an execution failure", asy
     }),
     /terminal response failed/,
   );
-  console.error(chief.getMessageTraces().filter((trace) => trace.messageName === "agent.scheduler.execute-task"));
-  assert.deepEqual(executedTasks, [executedTasks[0]]);
   assert.equal(executions, 1);
 });
 

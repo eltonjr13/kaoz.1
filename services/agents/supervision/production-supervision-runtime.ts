@@ -45,6 +45,7 @@ export interface ProductionSupervisionRuntimeOptions {
   readonly plan: ExecutionPlan;
   readonly context?: AgentContext;
   readonly replan?: () => Promise<ExecutionPlan>;
+  readonly canReassignTask?: (task: ScheduledTask) => boolean;
   readonly dashboardStore?: SupervisionDashboardStore;
   readonly clock?: () => Date;
   readonly idGenerator?: () => string;
@@ -335,6 +336,15 @@ export class ProductionSupervisionRuntime {
       switch (action.type) {
         case "reassign-task":
           if (!action.taskId) {
+            status = "skipped";
+            break;
+          }
+          const task = this.options.scheduler.get(action.taskId);
+          if (
+            !task ||
+            (this.options.canReassignTask &&
+              !this.options.canReassignTask(task))
+          ) {
             status = "skipped";
             break;
           }

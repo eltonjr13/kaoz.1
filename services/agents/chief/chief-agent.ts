@@ -379,6 +379,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
         collaboratorSnapshots: () =>
           messaging.listAgentRuntimeSnapshots(),
         plan,
+        canReassignTask: (task) =>
+          task.subtask.ownerCapability !== "chat-response",
         context: withExecutionContext(runtimeContext, executionContext),
         replan: () =>
           messaging.gateway.request<
@@ -724,6 +726,8 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
               collaboratorSnapshots: () =>
                 messaging.listAgentRuntimeSnapshots(),
               plan,
+              canReassignTask: (task) =>
+                task.subtask.ownerCapability !== "chat-response",
               context: runtimeContext,
               replan: () =>
                 messaging.gateway.request<
