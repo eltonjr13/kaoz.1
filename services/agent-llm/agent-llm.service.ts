@@ -30,6 +30,8 @@ export type QueryOptions = {
   useExternalTools?: boolean;
   toolIntentText?: string;
   agent?: { provider: AgentLLMProvider; model: string };
+  jsonMode?: boolean;
+  maxOutputTokens?: number;
 };
 
 /** Models exposed by the Flow chat model selector. */
@@ -1174,10 +1176,15 @@ export async function runFastInferenceApi(
 
     const { OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+    const maxTokens = executionOptions.maxOutputTokens
+      ? Math.max(1, Math.min(32_000, Math.round(executionOptions.maxOutputTokens)))
+      : undefined;
     const response = await client.chat.completions.create({
       model: options.agent?.model || config.model,
       messages: [{ role: "user", content: currentPrompt }],
-      temperature: 0.7,
+      temperature: executionOptions.jsonMode ? 0.2 : 0.7,
+      ...(executionOptions.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
     });
     const text = response.choices[0]?.message?.content || "";
     executionOptions.onTextChunk?.(text);

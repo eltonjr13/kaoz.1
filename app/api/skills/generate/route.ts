@@ -5,6 +5,7 @@ import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "@/servic
 import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
 import { normalizeScriptPolicy } from "@/services/skills/skill.policy";
+import { querySkillGenerationJson } from "@/services/skills/skill.generation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,14 +19,6 @@ const MAX_TRANSCRIPT_CHARS = 4_500;
 const MAX_INSTALLED_SKILLS_CHARS = 1_500;
 const MAX_TOOLS_CONTEXT_CHARS = 3_000;
 const MAX_BUILD_SKILL_PROMPT_CHARS = 26_000;
-
-function extractJson(text: string): Record<string, unknown> {
-  const clean = text.replace(/^```json\s*|\s*```$/gi, "").trim();
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("O modelo não retornou uma resposta estruturada.");
-  return JSON.parse(clean.slice(start, end + 1)) as Record<string, unknown>;
-}
 
 function parseMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value)) return [];
@@ -181,9 +174,7 @@ ${transcript}`;
       throw new Error("O contexto do criador de skills ficou grande demais para um provedor CLI. Continue a conversa com um pedido mais curto ou selecione ZenMux, Cerebras ou IAMHC.");
     }
 
-    const output = await queryConfiguredAgentCli(prompt);
-    if (!output) throw new Error("O provedor Browser não está disponível para este criador. Selecione um provedor CLI ou API em Agente LLM.");
-    const parsed = extractJson(output);
+    const parsed = await querySkillGenerationJson(prompt, queryConfiguredAgentCli);
     const ready = parsed.ready === true;
     const skill = ready ? parseSkill(parsed.skill) : null;
     if (ready && !skill) throw new Error("O modelo gerou um pacote inconsistente. Peça para revisar IDs, scripts e ferramentas do rascunho.");
@@ -193,6 +184,7 @@ ${transcript}`;
       skill,
     });
   } catch (error) {
+    console.error("[BuildSkills] Falha ao gerar skill:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao consultar o modelo." }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "ai-ugc-reaction-studio",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "description": "Kaoz.1 AI content creation studio for Windows",
   "author": "Kaoz.1",
   "private": true,
@@ -43,7 +43,7 @@
     "test:davinci-resolve:ts": "node --experimental-strip-types --no-warnings --test tests/davinci-resolve-mcp.test.ts tests/davinci-free.test.ts",
     "test:davinci-resolve:python": "node scripts/test-davinci-resolve-python.mjs",
     "test:connectors": "node --experimental-strip-types --no-warnings --test tests/connectors-core.test.ts tests/discord-inbound.test.ts tests/telegram-inbound.test.ts tests/telegram-polling-offset.test.ts",
-    "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skills-governance.test.ts tests/skills-scripts.test.ts",
+    "test:skills": "node --experimental-strip-types --no-warnings --test tests/skill-intent.test.ts tests/skill-generation.test.ts tests/skills-governance.test.ts tests/skills-scripts.test.ts",
     "test:agent-prompt": "node --experimental-strip-types --no-warnings --test tests/agent-llm-prompt.test.ts",
     "test:agent-infrastructure": "node --experimental-strip-types --no-warnings --test tests/agent-infrastructure.test.ts",
     "test:agent-capabilities": "node --experimental-strip-types --no-warnings --test tests/agent-capabilities.test.ts",
