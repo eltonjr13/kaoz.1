@@ -431,7 +431,12 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
             fairnessKey: executionId,
             timeoutMs: task.timeout,
             retryPolicy: task.ownerCapability === "chat-response"
-              ? { maxAttempts: 1 }
+              ? {
+                  maxAttempts: 1,
+                  baseDelayMs: 0,
+                  backoffMultiplier: 1,
+                  maxDelayMs: 0,
+                }
               : undefined,
           })),
         );
@@ -787,7 +792,12 @@ export class ChiefAgent<TResponse> extends AbstractAgent<
                 fairnessKey: executionId,
                 timeoutMs: task.timeout,
                 retryPolicy: task.ownerCapability === "chat-response"
-                  ? { maxAttempts: 1 }
+                  ? {
+                      maxAttempts: 1,
+                      baseDelayMs: 0,
+                      backoffMultiplier: 1,
+                      maxDelayMs: 0,
+                    }
                   : undefined,
               })),
             );
