@@ -20,6 +20,25 @@ export async function GET(request: Request) {
   return NextResponse.json({ conversations, stats: { ...getConversationMemoryStore().stats(), hotBudgetTokens, hotBudgetLimit: 1500 } });
 }
 
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => null) as {
+    externalConversationId?: string;
+    title?: string;
+    createdAt?: string;
+  } | null;
+  if (!body?.externalConversationId) {
+    return NextResponse.json({ error: "externalConversationId e obrigatorio" }, { status: 400 });
+  }
+  const conversation = getConversationMemoryStore().createConversation({
+    channel: "flow",
+    externalUserId: LOCAL_PROFILE_ID,
+    externalConversationId: body.externalConversationId,
+    title: body.title,
+    createdAt: body.createdAt,
+  });
+  return NextResponse.json({ conversation }, { status: 201 });
+}
+
 export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null) as { externalConversationId?: string; title?: string } | null;
   if (!body?.externalConversationId || !body.title?.trim()) return NextResponse.json({ error: "Identificador e titulo sao obrigatorios" }, { status: 400 });

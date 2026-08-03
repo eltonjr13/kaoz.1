@@ -191,6 +191,36 @@ export class ConversationMemoryStore {
     return this.getIdentity(identityId);
   }
 
+  createConversation(input: {
+    channel: ConversationChannel;
+    accountId?: string;
+    externalUserId: string;
+    externalConversationId: string;
+    title?: string;
+    createdAt?: string;
+  }): ArchivedConversation {
+    const identity = this.observeIdentity(input);
+    const accountId = input.accountId || "";
+    const conversationId = stableId("conversation", input.channel, accountId, input.externalConversationId);
+    const createdAt = input.createdAt || new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO conversations(id, channel, account_id, external_conversation_id, identity_id, profile_id, title, metadata_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+      ON CONFLICT(channel, account_id, external_conversation_id) DO NOTHING
+    `).run(
+      conversationId,
+      input.channel,
+      accountId,
+      input.externalConversationId,
+      identity.id,
+      identity.effectiveProfileId,
+      input.title?.trim() || defaultTitle(input.channel),
+      createdAt,
+      createdAt
+    );
+    return this.getConversation(conversationId)!.conversation;
+  }
+
   upsertMessage(input: ArchiveMessageInput): { message: ArchivedMessage; consolidationJobCreated: boolean; profileId: string } {
     const cleanContent = input.content.trim();
     if (!cleanContent) throw new Error("Conteúdo da mensagem não pode ser vazio.");

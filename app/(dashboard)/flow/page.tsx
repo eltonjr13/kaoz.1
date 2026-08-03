@@ -999,6 +999,7 @@ export default function FlowDashboardPage() {
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
   const conversationLoadRequestRef = useRef(0);
+  const hasHandledNewRouteRef = useRef(false);
   const [agentModel, setAgentModel] = useState<AgentModel>(() => {
     if (typeof window === "undefined") return "gemini";
     const savedModel = readFlowStorage(AGENT_MODEL_KEY);
@@ -1072,6 +1073,29 @@ export default function FlowDashboardPage() {
       }
     }
   }, [router]);
+
+  const persistNewConversation = useCallback(async (conversation: ChatConversation) => {
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          externalConversationId: conversation.id,
+          title: conversation.title,
+          createdAt: conversation.createdAt,
+        }),
+      });
+      const data = await response.json() as { conversation?: { id: string }; error?: string };
+      if (!response.ok || !data.conversation) throw new Error(data.error || `HTTP ${response.status}`);
+      setChatConversations((previous) => previous.map((item) =>
+        item.id === conversation.id
+          ? { ...item, archiveId: data.conversation!.id, messageCount: 0, messagesLoaded: true }
+          : item
+      ));
+    } catch (error) {
+      console.warn(`Falha ao persistir a nova conversa ${conversation.id}:`, error);
+    }
+  }, []);
 
   useEffect(() => {
     setSkillsLoading(true);
@@ -1510,8 +1534,12 @@ export default function FlowDashboardPage() {
       : (legacyMessages.length > 0 ? [createChatConversation(legacyMessages)] : [createChatConversation()]);
     const savedActiveId = readFlowStorage(ACTIVE_CHAT_KEY);
     const initialRoutedConversationId = initialRoutedConversationIdRef.current;
+    const isNewConversationRoute = initialRoutedConversationId === "new";
+    const newConversation = isNewConversationRoute ? createChatConversation() : null;
     const requestedActiveId = initialRoutedConversationId || savedActiveId;
-    const activeConversation = initialConversations.find((conversation) => conversation.id === requestedActiveId) || initialConversations[0];
+    const activeConversation = newConversation
+      || initialConversations.find((conversation) => conversation.id === requestedActiveId)
+      || initialConversations[0];
     autoDownloaded3dModelsRef.current = new Set(
       initialConversations.flatMap((conversation) =>
         conversation.messages.flatMap((message) => message.model3dResult?.paths || (message.model3dResult?.path ? [message.model3dResult.path] : []))
@@ -1519,8 +1547,16 @@ export default function FlowDashboardPage() {
     );
 
     queueMicrotask(() => {
-      setChatConversations(initialConversations);
-      void activateConversation(activeConversation, initialRoutedConversationId ? "none" : "replace");
+      if (newConversation) hasHandledNewRouteRef.current = true;
+      setChatConversations(newConversation
+        ? [newConversation, ...initialConversations.filter((conversation) => conversation.messages.length > 0)]
+        : initialConversations
+      );
+      void activateConversation(
+        activeConversation,
+        newConversation || !initialRoutedConversationId ? "replace" : "none"
+      );
+      if (newConversation) void persistNewConversation(newConversation);
       setHasLoadedConversations(true);
     });
 
@@ -1557,6 +1593,10 @@ export default function FlowDashboardPage() {
           } satisfies ChatConversation;
         });
         if (!archived.length) return;
+        if (newConversation) {
+          setChatConversations([newConversation, ...archived.filter((item) => item.id !== newConversation.id)]);
+          return;
+        }
         const nextActiveId = archived.some((item) => item.id === requestedActiveId) ? requestedActiveId! : archived[0].id;
         const active = archived.find((item) => item.id === nextActiveId)!;
         setChatConversations(archived);
@@ -1566,13 +1606,24 @@ export default function FlowDashboardPage() {
       }
     };
     void hydrateArchive();
-  }, [activateConversation]);
+  }, [activateConversation, persistNewConversation]);
 
   useEffect(() => {
-    if (!hasLoadedConversations || !routedConversationId || routedConversationId === activeConversationId) return;
+    if (!hasLoadedConversations) return;
+    if (routedConversationId === "new") {
+      if (hasHandledNewRouteRef.current) return;
+      hasHandledNewRouteRef.current = true;
+      const conversation = createChatConversation();
+      setChatConversations((previous) => [conversation, ...previous]);
+      void activateConversation(conversation, "replace");
+      void persistNewConversation(conversation);
+      return;
+    }
+    hasHandledNewRouteRef.current = false;
+    if (!routedConversationId || routedConversationId === activeConversationId) return;
     const conversation = chatConversations.find((item) => item.id === routedConversationId);
     if (conversation) void activateConversation(conversation, "none");
-  }, [activateConversation, activeConversationId, chatConversations, hasLoadedConversations, routedConversationId]);
+  }, [activateConversation, activeConversationId, chatConversations, hasLoadedConversations, persistNewConversation, routedConversationId]);
 
   useEffect(() => {
     const recoverJobId = searchParams.get("recover3d") || "";
@@ -3320,14 +3371,10 @@ export default function FlowDashboardPage() {
   };
 
   const handleCreateConversation = () => {
-    if (chatConversations.length > 0 && !chatConversations[0].archiveId && chatConversations[0].messages.length === 0) {
-      void activateConversation(chatConversations[0]);
-      return;
-    }
-
     const conversation = createChatConversation();
     setChatConversations((previous) => [conversation, ...previous]);
     void activateConversation(conversation);
+    void persistNewConversation(conversation);
   };
 
   const handleExportConversation = () => {

@@ -50,6 +50,26 @@ test("importacao do Flow e idempotente e persiste apos reinicio", async () => {
   } finally { store?.close(); await rm(root, { recursive: true, force: true }); }
 });
 
+test("conversa vazia do Flow e criada imediatamente e persiste apos reinicio", async () => {
+  const { root, file } = await fixture();
+  let store: ConversationMemoryStore | undefined;
+  try {
+    store = new ConversationMemoryStore(file);
+    const created = store.createConversation({
+      channel: "flow",
+      externalUserId: LOCAL_PROFILE_ID,
+      externalConversationId: "chat-vazio",
+      title: "Nova conversa",
+    });
+    assert.equal(created.externalConversationId, "chat-vazio");
+    assert.equal(created.messageCount, 0);
+    store.close();
+    store = undefined;
+    store = new ConversationMemoryStore(file);
+    assert.equal(store.listConversations({ channel: "flow" })[0]?.externalConversationId, "chat-vazio");
+  } finally { store?.close(); await rm(root, { recursive: true, force: true }); }
+});
+
 test("busca fria respeita perfil, canal, data e somente roda com intencao de recordacao", async () => {
   const { root, file } = await fixture();
   const store = new ConversationMemoryStore(file);

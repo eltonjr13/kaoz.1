@@ -72,3 +72,17 @@ test("cada conversa do Flow possui uma rota propria", async () => {
   assert.match(page, /router\.replace\(conversationPath\)/);
   assert.match(conversationRoute, /export \{ default \} from "\.\.\/page"/);
 });
+
+test("Novo chat sempre cria um ID e a rota /flow/new inicia outra conversa", async () => {
+  const page = await readSource("app/(dashboard)/flow/page.tsx");
+  const conversationsRoute = await readSource("app/api/conversations/route.ts");
+
+  assert.match(page, /const isNewConversationRoute = initialRoutedConversationId === "new"/);
+  assert.match(page, /if \(routedConversationId === "new"\)/);
+  assert.match(page, /const handleCreateConversation = \(\) => \{\s*const conversation = createChatConversation\(\)/);
+  assert.doesNotMatch(page, /chatConversations\[0\]\.messages\.length === 0/);
+  assert.match(page, /activateConversation\(conversation, "replace"\)/);
+  assert.match(page, /fetch\("\/api\/conversations", \{\s*method: "POST"/);
+  assert.match(page, /persistNewConversation\(conversation\)/);
+  assert.match(conversationsRoute, /export async function POST\(request: Request\)/);
+});

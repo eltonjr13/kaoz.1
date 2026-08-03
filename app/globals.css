@@ -112,7 +112,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 168px;
+  width: 108px;
   padding-left: 14px;
   color: #c9c3df;
   font-size: 11px;
@@ -129,6 +129,204 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   align-self: stretch;
   flex: 1;
   -webkit-app-region: drag;
+}
+
+.kaoz1-desktop-titlebar__navigation {
+  display: flex;
+  gap: 2px;
+  padding-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.kaoz1-desktop-titlebar__navigation button,
+.kaoz1-desktop-titlebar__update {
+  display: grid;
+  height: 26px;
+  min-width: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: #9b9ba6;
+  transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+
+.kaoz1-desktop-titlebar__navigation button:hover:not(:disabled),
+.kaoz1-desktop-titlebar__update:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.kaoz1-desktop-titlebar__navigation button:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.kaoz1-desktop-titlebar__context {
+  display: flex;
+  min-width: 112px;
+  max-width: 164px;
+  align-self: stretch;
+  align-items: center;
+  padding: 0 12px;
+  overflow: hidden;
+  color: #c3c3ca;
+  font-size: 11px;
+  font-weight: 500;
+  -webkit-app-region: drag;
+}
+
+.kaoz1-desktop-titlebar__context span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kaoz1-desktop-titlebar__command-trigger {
+  display: flex;
+  width: min(300px, 25vw);
+  height: 26px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #858590;
+  font-size: 10px;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.kaoz1-desktop-titlebar__command-trigger:hover {
+  border-color: rgba(157, 124, 255, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  color: #d8d8de;
+}
+
+.kaoz1-desktop-titlebar__command-trigger span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kaoz1-desktop-titlebar kbd {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #72727d;
+  font: inherit;
+  font-size: 9px;
+}
+
+.kaoz1-desktop-titlebar__update {
+  display: flex;
+  margin: 5px 5px 5px 0;
+  padding: 0 8px;
+  gap: 4px;
+  color: #86d9aa;
+  font-size: 9px;
+  -webkit-app-region: no-drag;
+}
+
+.kaoz1-desktop-titlebar__update--error {
+  color: #fb7185;
+}
+
+.kaoz1-desktop-titlebar__spin {
+  animation: kaoz1-titlebar-spin 900ms linear infinite;
+}
+
+@keyframes kaoz1-titlebar-spin {
+  to { transform: rotate(360deg); }
+}
+
+.kaoz1-desktop-titlebar__command-backdrop {
+  position: fixed;
+  inset: var(--kaoz1-titlebar-height) 0 0;
+  z-index: 101;
+  border: 0;
+  background: rgba(0, 0, 0, 0.38);
+  -webkit-app-region: no-drag;
+}
+
+.kaoz1-desktop-titlebar__command-palette {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  z-index: 102;
+  width: min(480px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(16, 16, 20, 0.98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  transform: translateX(-50%);
+  -webkit-app-region: no-drag;
+}
+
+.kaoz1-desktop-titlebar__command-palette label {
+  display: flex;
+  height: 46px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #8f8f9a;
+}
+
+.kaoz1-desktop-titlebar__command-palette input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f3f3f5;
+  font-size: 12px;
+}
+
+.kaoz1-desktop-titlebar__command-results {
+  display: grid;
+  gap: 3px;
+  max-height: 330px;
+  padding: 7px;
+  overflow-y: auto;
+}
+
+.kaoz1-desktop-titlebar__command-results button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  color: #e5e5e8;
+  text-align: left;
+}
+
+.kaoz1-desktop-titlebar__command-results button:hover,
+.kaoz1-desktop-titlebar__command-results button:focus-visible {
+  outline: 0;
+  background: rgba(157, 124, 255, 0.12);
+}
+
+.kaoz1-desktop-titlebar__command-results button span {
+  width: 118px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kaoz1-desktop-titlebar__command-results button small,
+.kaoz1-desktop-titlebar__command-results p {
+  color: #858590;
+  font-size: 10px;
+}
+
+.kaoz1-desktop-titlebar__command-results p {
+  padding: 16px;
+  text-align: center;
 }
 
 .kaoz1-desktop-titlebar__controls {
@@ -159,6 +357,16 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 .kaoz1-desktop-titlebar__controls button:focus-visible {
   outline: 1px solid #9d7cff;
   outline-offset: -3px;
+}
+
+@media (max-width: 1120px) {
+  .kaoz1-desktop-titlebar__context {
+    display: none;
+  }
+
+  .kaoz1-desktop-titlebar__command-trigger {
+    width: 220px;
+  }
 }
 
 html[data-kaoz1-desktop="true"] .kaoz1-sidebar-dock {

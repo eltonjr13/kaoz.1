@@ -6,6 +6,10 @@ if (process.platform === "win32") {
     toggleMaximize: () => ipcRenderer.invoke("kaoz1-window:toggle-maximize"),
     close: () => ipcRenderer.invoke("kaoz1-window:close"),
     isMaximized: () => ipcRenderer.invoke("kaoz1-window:is-maximized"),
+    getNavigationState: () => ipcRenderer.invoke("kaoz1-navigation:get-state"),
+    goBack: () => ipcRenderer.invoke("kaoz1-navigation:back"),
+    goForward: () => ipcRenderer.invoke("kaoz1-navigation:forward"),
+    reload: () => ipcRenderer.invoke("kaoz1-navigation:reload"),
     getDesktopPreferences: () => ipcRenderer.invoke("kaoz1-desktop:get-preferences"),
     setCloseToTray: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-close-to-tray", enabled),
     chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
@@ -22,6 +26,11 @@ if (process.platform === "win32") {
       const handler = (_event, isMaximized) => listener(Boolean(isMaximized));
       ipcRenderer.on("kaoz1-window:maximized-changed", handler);
       return () => ipcRenderer.removeListener("kaoz1-window:maximized-changed", handler);
+    },
+    onNavigationStateChanged: (listener) => {
+      const handler = (_event, state) => listener(state);
+      ipcRenderer.on("kaoz1-navigation:state-changed", handler);
+      return () => ipcRenderer.removeListener("kaoz1-navigation:state-changed", handler);
     }
   });
 }

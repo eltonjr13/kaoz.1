@@ -176,6 +176,21 @@ function sendWindowState(target) {
   target.webContents.send("kaoz1-window:maximized-changed", target.isMaximized());
 }
 
+function getNavigationState(target) {
+  if (!target || target.isDestroyed()) return { canGoBack: false, canGoForward: false, isLoading: false };
+  const { navigationHistory } = target.webContents;
+  return {
+    canGoBack: navigationHistory.canGoBack(),
+    canGoForward: navigationHistory.canGoForward(),
+    isLoading: target.webContents.isLoading()
+  };
+}
+
+function sendNavigationState(target) {
+  if (!target || target.isDestroyed()) return;
+  target.webContents.send("kaoz1-navigation:state-changed", getNavigationState(target));
+}
+
 ipcMain.handle("kaoz1-window:minimize", (event) => {
   const target = getMainWindowForEvent(event);
   if (!target) return false;
@@ -201,6 +216,31 @@ ipcMain.handle("kaoz1-window:close", (event) => {
 ipcMain.handle("kaoz1-window:is-maximized", (event) => {
   const target = getMainWindowForEvent(event);
   return Boolean(target && target.isMaximized());
+});
+
+ipcMain.handle("kaoz1-navigation:get-state", (event) => {
+  return getNavigationState(getMainWindowForEvent(event));
+});
+
+ipcMain.handle("kaoz1-navigation:back", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target || !target.webContents.navigationHistory.canGoBack()) return false;
+  target.webContents.navigationHistory.goBack();
+  return true;
+});
+
+ipcMain.handle("kaoz1-navigation:forward", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target || !target.webContents.navigationHistory.canGoForward()) return false;
+  target.webContents.navigationHistory.goForward();
+  return true;
+});
+
+ipcMain.handle("kaoz1-navigation:reload", (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return false;
+  target.webContents.reload();
+  return true;
 });
 
 ipcMain.handle("kaoz1-desktop:get-preferences", (event) => {
@@ -390,6 +430,10 @@ function createWindow(url) {
   mainWindow.removeMenu();
   mainWindow.on("maximize", () => sendWindowState(mainWindow));
   mainWindow.on("unmaximize", () => sendWindowState(mainWindow));
+  mainWindow.webContents.on("did-navigate", () => sendNavigationState(mainWindow));
+  mainWindow.webContents.on("did-navigate-in-page", () => sendNavigationState(mainWindow));
+  mainWindow.webContents.on("did-start-loading", () => sendNavigationState(mainWindow));
+  mainWindow.webContents.on("did-stop-loading", () => sendNavigationState(mainWindow));
   mainWindow.on("close", (event) => {
     const shouldHide = shouldHideWindowOnClose({
       isQuitting: app.isQuitting,
@@ -407,6 +451,7 @@ function createWindow(url) {
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     sendWindowState(mainWindow);
+    sendNavigationState(mainWindow);
   });
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
     shell.openExternal(target);
