@@ -8,6 +8,8 @@ type SkillGenerationQuery = (
   options: SkillGenerationQueryOptions,
 ) => Promise<string | null>;
 
+type SkillGenerationValidator = (value: Record<string, unknown>) => void;
+
 const QUERY_OPTIONS: SkillGenerationQueryOptions = {
   jsonMode: true,
   maxOutputTokens: 16_000,
@@ -24,6 +26,7 @@ export function extractSkillGenerationJson(text: string): Record<string, unknown
 export async function querySkillGenerationJson(
   prompt: string,
   query: SkillGenerationQuery,
+  validate?: SkillGenerationValidator,
 ): Promise<Record<string, unknown>> {
   let structuralError: unknown;
 
@@ -37,7 +40,9 @@ export async function querySkillGenerationJson(
     }
 
     try {
-      return extractSkillGenerationJson(output);
+      const parsed = extractSkillGenerationJson(output);
+      validate?.(parsed);
+      return parsed;
     } catch (error) {
       structuralError = error;
     }

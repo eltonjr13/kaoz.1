@@ -36,3 +36,22 @@ test("não repete falhas do provedor que não sejam de estrutura", async () => {
   );
   assert.equal(calls, 1);
 });
+
+test("refaz JSON válido quando o pacote não passa na validação semântica", async () => {
+  let calls = 0;
+  const parsed = await querySkillGenerationJson(
+    "PROMPT",
+    async () => {
+      calls += 1;
+      return calls === 1
+        ? '{"ready":true,"skill":null}'
+        : '{"ready":true,"skill":{"id":"corrigida"}}';
+    },
+    (candidate) => {
+      if (candidate.ready === true && !candidate.skill) throw new Error("pacote inconsistente");
+    },
+  );
+
+  assert.equal(calls, 2);
+  assert.deepEqual(parsed.skill, { id: "corrigida" });
+});

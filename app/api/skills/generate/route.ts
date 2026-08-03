@@ -174,7 +174,11 @@ ${transcript}`;
       throw new Error("O contexto do criador de skills ficou grande demais para um provedor CLI. Continue a conversa com um pedido mais curto ou selecione ZenMux, Cerebras ou IAMHC.");
     }
 
-    const parsed = await querySkillGenerationJson(prompt, queryConfiguredAgentCli);
+    const parsed = await querySkillGenerationJson(prompt, queryConfiguredAgentCli, (candidate) => {
+      if (candidate.ready === true && !parseSkill(candidate.skill)) {
+        throw new Error("O modelo gerou um pacote inconsistente. Peça para revisar IDs, scripts e ferramentas do rascunho.");
+      }
+    });
     const ready = parsed.ready === true;
     const skill = ready ? parseSkill(parsed.skill) : null;
     if (ready && !skill) throw new Error("O modelo gerou um pacote inconsistente. Peça para revisar IDs, scripts e ferramentas do rascunho.");
