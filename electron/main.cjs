@@ -334,7 +334,7 @@ async function startProductionServer() {
   nextServer.stdout.pipe(log);
   nextServer.stderr.pipe(log);
   nextServer.once("exit", (code) => {
-    if (code && !app.isQuitting) dialog.showErrorBox("Kaoz.1", `O servidor local encerrou com código ${code}. Consulte ${logPath}.`);
+    if (code && !app.isQuitting && !installingUpdate) dialog.showErrorBox("Kaoz.1", `O servidor local encerrou com código ${code}. Consulte ${logPath}.`);
   });
 
   const url = `http://127.0.0.1:${port}`;
