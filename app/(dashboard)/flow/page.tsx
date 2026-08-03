@@ -262,10 +262,13 @@ export interface ChatMessageState {
 
 interface ChatConversation {
   id: string;
+  archiveId?: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   messages: ChatMessageState[];
+  messageCount?: number;
+  messagesLoaded?: boolean;
 }
 
 type SendMessageOptions = {
@@ -623,6 +626,19 @@ const readJsonArray = <T,>(value: string | null): T[] => {
   }
 };
 
+const fetchArchivedConversationMessages = async (archiveId: string): Promise<ChatMessageState[]> => {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(archiveId)}?limit=500`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const detail = await response.json() as { messages?: Array<{ externalMessageId: string; role: 'user' | 'assistant'; content: string; createdAt: string; metadata?: Record<string, unknown> }> };
+  return (detail.messages || []).map((message) => ({
+    ...(message.metadata || {}),
+    id: message.externalMessageId,
+    role: message.role,
+    content: message.content,
+    timestamp: message.createdAt,
+  } as ChatMessageState));
+};
+
 const formatExportDate = (value: string) => new Date(value).toLocaleString("pt-BR");
 
 const formatChatExport = (conversation: ChatConversation, messages: ChatMessageState[]) => {
@@ -935,6 +951,7 @@ export default function FlowDashboardPage() {
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
+  const [isConversationLoading, setIsConversationLoading] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; value: string } | null>(null);
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; messageId: string; role: 'user' | 'assistant' } | null>(null);
@@ -977,6 +994,7 @@ export default function FlowDashboardPage() {
   const applyingPlanIdsRef = useRef<Set<string>>(new Set());
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
+  const conversationLoadRequestRef = useRef(0);
   const [agentModel, setAgentModel] = useState<AgentModel>(() => {
     if (typeof window === "undefined") return "gemini";
     const savedModel = readFlowStorage(AGENT_MODEL_KEY);
@@ -1011,6 +1029,39 @@ export default function FlowDashboardPage() {
   const [mcpMentionsError, setMcpMentionsError] = useState("");
   const mcpMentionsRequestedRef = useRef(false);
   const [skillBuilderActive, setSkillBuilderActive] = useState(false);
+
+  const activateConversation = useCallback(async (conversation: ChatConversation) => {
+    const requestId = ++conversationLoadRequestRef.current;
+    setActiveConversationId(conversation.id);
+    setChatMessages(conversation.messages);
+    setDraftMessage("");
+
+    if (!conversation.archiveId || conversation.messagesLoaded) {
+      setIsConversationLoading(false);
+      return;
+    }
+
+    setIsConversationLoading(true);
+    try {
+      const messages = await fetchArchivedConversationMessages(conversation.archiveId);
+
+      if (conversationLoadRequestRef.current !== requestId) return;
+      setChatMessages(messages);
+      setChatConversations((previous) => previous.map((item) =>
+        item.id === conversation.id
+          ? { ...item, messages, messagesLoaded: true }
+          : item
+      ));
+    } catch (error) {
+      if (conversationLoadRequestRef.current === requestId) {
+        console.warn(`Falha ao carregar a conversa ${conversation.id}:`, error);
+      }
+    } finally {
+      if (conversationLoadRequestRef.current === requestId) {
+        setIsConversationLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     setSkillsLoading(true);
@@ -1480,38 +1531,31 @@ export default function FlowDashboardPage() {
         });
         const listResponse = await fetch('/api/conversations?limit=200');
         if (!listResponse.ok) return;
-        const list = await listResponse.json() as { conversations?: Array<{ id: string; externalConversationId: string; title: string; createdAt: string; updatedAt: string }> };
-        const loaded = await Promise.all((list.conversations || []).map(async (item) => {
-          const response = await fetch(`/api/conversations/${encodeURIComponent(item.id)}?limit=500`);
-          if (!response.ok) return null;
-          const detail = await response.json() as { messages?: Array<{ externalMessageId: string; role: 'user' | 'assistant'; content: string; createdAt: string; metadata?: Record<string, unknown> }> };
+        const list = await listResponse.json() as { conversations?: Array<{ id: string; externalConversationId: string; title: string; createdAt: string; updatedAt: string; messageCount: number }> };
+        const archived = (list.conversations || []).map((item) => {
+          const localConversation = initialConversations.find((conversation) => conversation.id === item.externalConversationId);
           return {
             id: item.externalConversationId,
+            archiveId: item.id,
             title: item.title,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
-            messages: (detail.messages || []).map((message) => ({
-              ...(message.metadata || {}),
-              id: message.externalMessageId,
-              role: message.role,
-              content: message.content,
-              timestamp: message.createdAt,
-            } as ChatMessageState))
+            messages: localConversation?.messages || [],
+            messageCount: item.messageCount,
+            messagesLoaded: false,
           } satisfies ChatConversation;
-        }));
-        const archived = loaded.filter((item): item is ChatConversation => Boolean(item));
+        });
         if (!archived.length) return;
         const nextActiveId = archived.some((item) => item.id === savedActiveId) ? savedActiveId! : archived[0].id;
         const active = archived.find((item) => item.id === nextActiveId)!;
         setChatConversations(archived);
-        setActiveConversationId(active.id);
-        setChatMessages(active.messages);
+        await activateConversation(active);
       } catch (error) {
         console.warn('Falha ao carregar arquivo SQLite; mantendo fallback local:', error);
       }
     };
     void hydrateArchive();
-  }, []);
+  }, [activateConversation]);
 
   useEffect(() => {
     const recoverJobId = searchParams.get("recover3d") || "";
@@ -1974,6 +2018,8 @@ export default function FlowDashboardPage() {
   }, []);
 
   const handleSendMessage = async (message: string, files: any[], pastedContent: any[], options: SendMessageOptions = {}) => {
+    if (isConversationLoading) return;
+
     if (editing3dImageMessageId) {
       await handleEdit3dBaseImage(editing3dImageMessageId, message, editing3dBaseImagePath);
       return;
@@ -3150,6 +3196,8 @@ export default function FlowDashboardPage() {
           : conversation
       )
     ]);
+    conversationLoadRequestRef.current += 1;
+    setIsConversationLoading(false);
     setActiveConversationId(branchConversation.id);
     setChatMessages(branchConversation.messages);
   };
@@ -3254,24 +3302,18 @@ export default function FlowDashboardPage() {
   const handleSelectConversation = (conversationId: string) => {
     const conversation = chatConversations.find((item) => item.id === conversationId);
     if (!conversation) return;
-    setActiveConversationId(conversation.id);
-    setChatMessages(conversation.messages);
-    setDraftMessage("");
+    void activateConversation(conversation);
   };
 
   const handleCreateConversation = () => {
-    if (chatConversations.length > 0 && chatConversations[0].messages.length === 0) {
-      setActiveConversationId(chatConversations[0].id);
-      setChatMessages([]);
-      setDraftMessage("");
+    if (chatConversations.length > 0 && !chatConversations[0].archiveId && chatConversations[0].messages.length === 0) {
+      void activateConversation(chatConversations[0]);
       return;
     }
 
     const conversation = createChatConversation();
     setChatConversations((previous) => [conversation, ...previous]);
-    setActiveConversationId(conversation.id);
-    setChatMessages([]);
-    setDraftMessage("");
+    void activateConversation(conversation);
   };
 
   const handleExportConversation = () => {
@@ -3300,9 +3342,7 @@ export default function FlowDashboardPage() {
     const nextConversations = remainingConversations.length > 0 ? remainingConversations : [nextConversation];
 
     setChatConversations(nextConversations);
-    setActiveConversationId(nextConversation.id);
-    setChatMessages(nextConversation.messages);
-    setDraftMessage("");
+    void activateConversation(nextConversation);
     void fetch(`/api/conversations?externalConversationId=${encodeURIComponent(activeConversationId)}`, { method: 'DELETE' });
   };
 
@@ -3314,9 +3354,7 @@ export default function FlowDashboardPage() {
       const nextConversation = remainingConversations[activeIndex] || remainingConversations[activeIndex - 1] || createChatConversation();
       
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [nextConversation]);
-      setActiveConversationId(nextConversation.id);
-      setChatMessages(nextConversation.messages);
-      setDraftMessage("");
+      void activateConversation(nextConversation);
     } else {
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [createChatConversation()]);
     }
@@ -3330,11 +3368,21 @@ export default function FlowDashboardPage() {
     void fetch('/api/conversations', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ externalConversationId: conversationId, title: newTitle }) });
   };
 
-  const handleExportSpecificConversation = (conversationId: string) => {
+  const handleExportSpecificConversation = async (conversationId: string) => {
     const conversation = chatConversations.find((c) => c.id === conversationId);
     if (!conversation) return;
-    
-    const messages = conversationId === activeConversationId ? chatMessages : conversation.messages;
+
+    let messages = conversationId === activeConversationId ? chatMessages : conversation.messages;
+    if (conversation.archiveId && !conversation.messagesLoaded && conversationId !== activeConversationId) {
+      try {
+        messages = await fetchArchivedConversationMessages(conversation.archiveId);
+        setChatConversations((previous) => previous.map((item) =>
+          item.id === conversation.id ? { ...item, messages, messagesLoaded: true } : item
+        ));
+      } catch (error) {
+        console.warn(`Falha ao carregar a conversa ${conversation.id} para exportacao:`, error);
+      }
+    }
     const sanitized = sanitizeChatMessages(messages);
     
     const exportConversation = {
@@ -3503,7 +3551,11 @@ export default function FlowDashboardPage() {
 
       {/* ── Chat Area ── */}
       <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-24 pb-48 md:px-10 lg:px-32">
-            {chatMessages.length === 0 && (
+            {isConversationLoading ? (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 size={28} className="animate-spin text-[#9D7CFF]" aria-label="Carregando conversa" />
+              </div>
+            ) : chatMessages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
                 <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
                 <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Kaoz.1.</h2>
@@ -4118,7 +4170,7 @@ export default function FlowDashboardPage() {
                   void handleStopJob(runningJob.id, runningJob.jobId!);
                 }
               }}
-              isLoading={isLoading}
+              isLoading={isLoading || isConversationLoading}
               value={draftMessage}
               onValueChange={setDraftMessage}
               initialFile={editAttachmentFile}

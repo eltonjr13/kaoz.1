@@ -52,3 +52,12 @@ test("falhas anteriores ao job continuam visiveis e Flow grava fora do app insta
   assert.match(flowUtils, /path\.join\(getFlowStorageRoot\(\), 'flow_project_url\.txt'\)/);
   assert.doesNotMatch(flowUtils, /const filePath = 'storage\/flow_project_url\.txt'/);
 });
+
+test("Flow carrega mensagens somente para a conversa ativa", async () => {
+  const page = await readSource("app/(dashboard)/flow/page.tsx");
+
+  assert.doesNotMatch(page, /Promise\.all\(\(list\.conversations \|\| \[\]\)\.map/);
+  assert.match(page, /archiveId: item\.id/);
+  assert.match(page, /void activateConversation\(conversation\)/);
+  assert.match(page, /fetchArchivedConversationMessages\(conversation\.archiveId\)/);
+});
