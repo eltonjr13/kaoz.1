@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "../services/agent-llm/agent-llm.prompt.ts";
+import { canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, playwrightToolErrorResponse, requiredPlaywrightMcpContinuation, requiredPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools, suppressToolProtocolStreaming } from "../services/agent-llm/agent-llm.prompt.ts";
 import { activeMcpMentionQuery, buildMcpMentionOptions, extractMcpMention, replaceActiveMcpMention, selectMentionedMcpTools } from "../services/mcp/mcp-mention.ts";
 
 test("compacta prompt grande preservando sistema, cauda e pedido atual", () => {
@@ -87,6 +87,31 @@ test("pedido explícito pelo Playwright seleciona somente as ferramentas desse M
       { id: "mcp:playwright-browser:browser_click" },
     ],
   );
+});
+
+test("pedido Playwright exige tool call antes de qualquer promessa", () => {
+  const instruction = requiredPlaywrightToolCallInstruction();
+  assert.match(instruction, /primeira resposta deve ser SOMENTE a primeira chamada/);
+  assert.match(instruction, /Nao responda com promessa/);
+  assert.match(instruction, /vou resolver/);
+});
+
+test("protocolo de ferramentas nao transmite respostas intermediarias ao chat", () => {
+  const chunks: string[] = [];
+  const original = { onTextChunk: (chunk: string) => chunks.push(chunk), toolIntentText: "@playwright" };
+  const suppressed = suppressToolProtocolStreaming(original);
+
+  suppressed.onTextChunk?.("Vou resolver isso agora.");
+  assert.deepEqual(chunks, []);
+  assert.equal(suppressed.toolIntentText, "@playwright");
+  assert.notEqual(suppressed, original);
+});
+
+test("falha Playwright retorna erro real sem prometer nova tentativa", () => {
+  const response = JSON.parse(playwrightToolErrorResponse("Servidor MCP desconectado."));
+  assert.match(response.message, /Servidor MCP desconectado/);
+  assert.doesNotMatch(response.message, /vou tentar|resetar|novamente/i);
+  assert.equal(response.action, null);
 });
 
 test("pedido Playwright exclusivo não é sobrescrito pela seleção genérica de skill", () => {

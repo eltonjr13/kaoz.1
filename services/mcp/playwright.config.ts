@@ -101,3 +101,20 @@ export function isPlaywrightMcpConfig(
 export function isPlaywrightMcpToolAllowed(toolName: string): boolean {
   return PLAYWRIGHT_MCP_ALLOWED_TOOL_NAMES.has(toolName);
 }
+
+export function normalizePlaywrightMcpToolArguments(
+  serverId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    serverId !== PLAYWRIGHT_MCP_SERVER_ID ||
+    toolName !== "browser_take_screenshot" ||
+    !("filename" in args)
+  ) {
+    return args;
+  }
+  const normalized = { ...args };
+  delete normalized.filename;
+  return normalized;
+}

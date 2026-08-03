@@ -11,7 +11,8 @@ import path from "node:path";
 import test from "node:test";
 
 import { createAgentId } from "../services/agents/core/agent-id.ts";
-import { consumeMcpCallAuthorization } from "../services/mcp/mcp-call.authorization.ts";
+import { consumeMcpCallAuthorization, issueMcpCallAuthorization } from "../services/mcp/mcp-call.authorization.ts";
+import { PLAYWRIGHT_MCP_SERVER_ID, normalizePlaywrightMcpToolArguments } from "../services/mcp/playwright.config.ts";
 import {
   redactSecrets,
   sanitizePublicErrorMessage,
@@ -41,6 +42,25 @@ test("sessao Playwright explicita emite autorizacao MCP direta e de uso unico", 
   assert.throws(
     () => issueExplicitPlaywrightMcpGrant("mcp:spotify:search_tracks", {}),
     /Playwright Browser/,
+  );
+});
+
+test("screenshot valida autorizacao antes de remover filename do transporte", () => {
+  const toolName = "browser_take_screenshot";
+  const toolId = `mcp:${PLAYWRIGHT_MCP_SERVER_ID}:${toolName}`;
+  const requestedArgs = { type: "png", filename: "cat_photos.png" };
+  const authorization = issueMcpCallAuthorization(toolId, requestedArgs);
+
+  assert.doesNotThrow(() => {
+    consumeMcpCallAuthorization(authorization, toolId, requestedArgs);
+  });
+  assert.deepEqual(
+    normalizePlaywrightMcpToolArguments(
+      PLAYWRIGHT_MCP_SERVER_ID,
+      toolName,
+      requestedArgs,
+    ),
+    { type: "png" },
   );
 });
 

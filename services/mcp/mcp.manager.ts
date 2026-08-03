@@ -12,6 +12,7 @@ import { mcpToolId } from "./mcp-tool-id.ts";
 import {
   PLAYWRIGHT_MCP_ENV_KEYS,
   isPlaywrightMcpConfig,
+  normalizePlaywrightMcpToolArguments,
 } from "./playwright.config.ts";
 import {
   DAVINCI_RESOLVE_ENV_KEYS,
@@ -321,6 +322,11 @@ export class McpManager {
       mcpToolId(serverId, toolName),
       args,
     );
+    const transportArgs = normalizePlaywrightMcpToolArguments(
+      serverId,
+      toolName,
+      args,
+    );
     const client = this.clients.get(serverId);
     if (!client) {
       throw new Error(`Servidor MCP ${serverId} não está conectado.`);
@@ -333,7 +339,7 @@ export class McpManager {
     let result: McpToolCallResult;
     try {
       result = await client.callTool(
-        { name: toolName, arguments: args },
+        { name: toolName, arguments: transportArgs },
         undefined,
         requestOptions(timeoutMs, options.signal),
       ) as McpToolCallResult;

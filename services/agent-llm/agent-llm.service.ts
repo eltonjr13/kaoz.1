@@ -6,7 +6,7 @@ import { readAgentLLMSettings } from "./agent-llm.settings.ts";
 import type { AgentLLMCommandStatus, AgentLLMProvider, AgentLLMRuntimeStatus, AgentLLMSettings } from "./agent-llm.types.ts";
 import { createAgentId } from "../agents/core/agent-id.ts";
 import { getApiProviderConfig } from "../api-providers/api-provider.settings.ts";
-import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, requiredPlaywrightMcpContinuation, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools } from "./agent-llm.prompt.ts";
+import { ANTIGRAVITY_INLINE_PROMPT_BUDGET, canExecutePlaywrightMcpWithoutApproval, canFinishAfterPlaywrightMcpTool, compactInlinePrompt, compactToolSchema, connectorPublishProvider, connectorToolErrorResponse, connectorToolResultResponse, isExplicitPlaywrightMcpRequest, isPlaywrightMcpToolId, missingConnectorToolCallInstruction, missingMcpMentionToolCallInstruction, missingPlaywrightToolCallInstruction, playwrightToolErrorResponse, requiredPlaywrightMcpContinuation, requiredPlaywrightToolCallInstruction, selectExplicitPlaywrightMcpTools, shouldSelectSkillTools, suppressToolProtocolStreaming } from "./agent-llm.prompt.ts";
 import { extractMcpMention, selectMentionedMcpTools } from "../mcp/mcp-mention.ts";
 import {
   executeApprovedMcpToolFromIntent,
@@ -711,33 +711,36 @@ export async function runSelectedChatModelCli(
   options: QueryOptions = {},
 ): Promise<string> {
   const settings = await readAgentLLMSettings();
+  const executionOptions = options.useExternalTools
+    ? suppressToolProtocolStreaming(options)
+    : options;
 
   const executor = async (currentPrompt: string) => {
-    if (model === "chatgpt") return runCodexCli(settings, currentPrompt, options);
+    if (model === "chatgpt") return runCodexCli(settings, currentPrompt, executionOptions);
 
-    const promptWithReference = options.referenceImagePath
-      ? `${currentPrompt}\n\n[Imagem de referencia local disponivel em: ${options.referenceImagePath}]`
+    const promptWithReference = executionOptions.referenceImagePath
+      ? `${currentPrompt}\n\n[Imagem de referencia local disponivel em: ${executionOptions.referenceImagePath}]`
       : currentPrompt;
 
     if (model === "gemini") {
       // In Kaoz.1, Gemini is provided by Antigravity (`agy`), which is
       // already configured and authenticated in the Agent LLM settings. Do not
       // invoke Google's unrelated `gemini` CLI here.
-      if (options.referenceImagePath) {
+      if (executionOptions.referenceImagePath) {
         throw new Error("Antigravity CLI nao suporta imagem de referencia via arg simples (ainda).");
       }
-      return runAntigravityCli(settings, currentPrompt, options);
+      return runAntigravityCli(settings, currentPrompt, executionOptions);
     }
 
     if (model === "claude") {
-      return runProviderPromptCli("Claude CLI", envOrDefault("CLAUDE_CLI_COMMAND", "claude"), envOrDefault("CLAUDE_CLI_MODEL", "claude-sonnet-4-5"), envOrDefault("CLAUDE_CLI_ARGS", "-p {prompt} --model {model} --output-format text"), promptWithReference, options, settings.timeoutMs);
+      return runProviderPromptCli("Claude CLI", envOrDefault("CLAUDE_CLI_COMMAND", "claude"), envOrDefault("CLAUDE_CLI_MODEL", "claude-sonnet-4-5"), envOrDefault("CLAUDE_CLI_ARGS", "-p {prompt} --model {model} --output-format text"), promptWithReference, executionOptions, settings.timeoutMs);
     }
 
-    return runProviderPromptCli("DeepSeek CLI", envOrDefault("DEEPSEEK_CLI_COMMAND", "deepseek"), envOrDefault("DEEPSEEK_CLI_MODEL", "deepseek-chat"), envOrDefault("DEEPSEEK_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, options, settings.timeoutMs);
+    return runProviderPromptCli("DeepSeek CLI", envOrDefault("DEEPSEEK_CLI_COMMAND", "deepseek"), envOrDefault("DEEPSEEK_CLI_MODEL", "deepseek-chat"), envOrDefault("DEEPSEEK_CLI_ARGS", "-p {prompt} --model {model}"), promptWithReference, executionOptions, settings.timeoutMs);
   };
 
   if (options.useExternalTools) {
-    return runCliWithToolsLoop(prompt, options, executor);
+    return runCliWithToolsLoop(prompt, executionOptions, executor);
   }
   return executor(prompt);
 }
@@ -794,7 +797,8 @@ export async function queryConfiguredAgentCli(prompt: string, options: QueryOpti
   }
 
   if (options.useExternalTools && settings.provider !== "cerebras" && settings.provider !== "zenmux-grok" && settings.provider !== "iamhc") {
-    return runCliWithToolsLoop(prompt, options, (p) => runAgentCli(settings, p, options));
+    const executionOptions = suppressToolProtocolStreaming(options);
+    return runCliWithToolsLoop(prompt, executionOptions, (p) => runAgentCli(settings, p, executionOptions));
   }
 
   return runAgentCli(settings, prompt, options);
@@ -972,6 +976,9 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   }
 
   let currentPrompt = prompt + toolsDescription;
+  if (playwrightMcpIntent) {
+    currentPrompt += requiredPlaywrightToolCallInstruction();
+  }
   if (approvedPlaywrightStep) {
     currentPrompt +=
       `\n[ETAPA PLAYWRIGHT MCP JA EXECUTADA]\nFerramenta: ${approvedPlaywrightStep.tool.id}\n` +
@@ -1087,6 +1094,9 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       currentPrompt += `\n<TOOL_RESULT>${JSON.stringify(result)}</TOOL_RESULT>\nContinue com a proxima chamada ou com a resposta final.`;
     } catch (error) {
       if (connectorProvider) return connectorToolErrorResponse(connectorProvider, error);
+      if (playwrightMcpIntent) {
+        return playwrightToolErrorResponse(sanitizePublicErrorMessage(error));
+      }
       const message = error instanceof Error ? error.message : String(error);
       currentPrompt += `\n<TOOL_RESULT>{"error":${JSON.stringify(message)}}</TOOL_RESULT>\nTente novamente ou responda ao usuario.`;
     }
@@ -1155,6 +1165,9 @@ export async function runFastInferenceApi(
   prompt: string,
   options: QueryOptions = {},
 ): Promise<string> {
+  const executionOptions = options.useExternalTools
+    ? suppressToolProtocolStreaming(options)
+    : options;
   const executor = async (currentPrompt: string) => {
     const config = await getApiProviderConfig(provider === "zenmux-grok" ? "zenmux" : provider);
     if (!config.apiKey) throw new Error(`Chave de API ausente para ${provider}.`);
@@ -1167,12 +1180,12 @@ export async function runFastInferenceApi(
       temperature: 0.7,
     });
     const text = response.choices[0]?.message?.content || "";
-    options.onTextChunk?.(text);
+    executionOptions.onTextChunk?.(text);
     return text;
   };
 
   if (options.useExternalTools) {
-    return runCliWithToolsLoop(prompt, options, executor);
+    return runCliWithToolsLoop(prompt, executionOptions, executor);
   }
   return executor(prompt);
 }

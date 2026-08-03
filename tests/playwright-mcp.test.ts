@@ -7,12 +7,12 @@ import {
   createPlaywrightMcpPreset,
   getPlaywrightMcpServerPath,
   isPlaywrightMcpToolAllowed,
+  normalizePlaywrightMcpToolArguments,
   validatePlaywrightMcpConfig,
 } from "../services/mcp/playwright.config.ts";
 import {
   extractPlaywrightScreenshotImage,
   isMcpToolAllowed,
-  normalizeMcpToolArguments,
   resolvePlaywrightScreenshotPath,
 } from "../services/orchestrator/adapters/mcp.adapter.ts";
 
@@ -124,7 +124,7 @@ test("screenshot remove filename para o Playwright devolver a imagem ao chat", (
   const original = { type: "png", filename: "cat_photos.png", fullPage: true };
 
   assert.deepEqual(
-    normalizeMcpToolArguments(
+    normalizePlaywrightMcpToolArguments(
       PLAYWRIGHT_MCP_SERVER_ID,
       "browser_take_screenshot",
       original,
@@ -133,7 +133,7 @@ test("screenshot remove filename para o Playwright devolver a imagem ao chat", (
   );
   assert.equal(original.filename, "cat_photos.png");
   assert.equal(
-    normalizeMcpToolArguments("another-server", "browser_take_screenshot", original),
+    normalizePlaywrightMcpToolArguments("another-server", "browser_take_screenshot", original),
     original,
   );
 });

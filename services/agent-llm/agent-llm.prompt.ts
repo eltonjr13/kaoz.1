@@ -105,6 +105,27 @@ Nao mencione StitchMCP, hermes, pesquisa web ou indisponibilidade. Responda SOME
 `;
 }
 
+export function requiredPlaywrightToolCallInstruction(): string {
+  return `
+
+[EXECUCAO OBRIGATORIA - PLAYWRIGHT MCP]
+O pedido do usuario exige execucao real pelas ferramentas mcp:playwright-browser:* listadas acima.
+Sua primeira resposta deve ser SOMENTE a primeira chamada necessaria no formato <TOOL_CALL>{"toolId":"ID LISTADO ACIMA","args":{}}</TOOL_CALL>.
+Nao responda com promessa, intencao futura, "vou abrir", "vou resolver", "so um momento" ou explicacao antes de executar.
+`;
+}
+
+export function suppressToolProtocolStreaming<T extends { onTextChunk?: (chunk: string) => void }>(options: T): T {
+  return options.onTextChunk ? { ...options, onTextChunk: undefined } : options;
+}
+
+export function playwrightToolErrorResponse(message: string): string {
+  return JSON.stringify({
+    message: `Nao foi possivel concluir a acao no Playwright: ${message}`,
+    action: null,
+  });
+}
+
 function playwrightToolPriority(toolId: string): number {
   const toolName = toolId.slice(PLAYWRIGHT_MCP_TOOL_PREFIX.length);
   const index = PLAYWRIGHT_MCP_TOOL_PRIORITY.indexOf(
