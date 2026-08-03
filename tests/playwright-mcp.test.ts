@@ -12,6 +12,7 @@ import {
 import {
   extractPlaywrightScreenshotImage,
   isMcpToolAllowed,
+  normalizeMcpToolArguments,
   resolvePlaywrightScreenshotPath,
 } from "../services/orchestrator/adapters/mcp.adapter.ts";
 
@@ -116,5 +117,23 @@ test("resultado de screenshot do Playwright preserva os bytes para exibir a imag
       content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }],
     }),
     null,
+  );
+});
+
+test("screenshot remove filename para o Playwright devolver a imagem ao chat", () => {
+  const original = { type: "png", filename: "cat_photos.png", fullPage: true };
+
+  assert.deepEqual(
+    normalizeMcpToolArguments(
+      PLAYWRIGHT_MCP_SERVER_ID,
+      "browser_take_screenshot",
+      original,
+    ),
+    { type: "png", fullPage: true },
+  );
+  assert.equal(original.filename, "cat_photos.png");
+  assert.equal(
+    normalizeMcpToolArguments("another-server", "browser_take_screenshot", original),
+    original,
   );
 });

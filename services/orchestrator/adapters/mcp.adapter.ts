@@ -69,10 +69,11 @@ export async function executeMcpTool(
   if (!known) {
     throw new Error("Ferramenta MCP indisponível ou servidor desconectado.");
   }
+  const normalizedArgs = normalizeMcpToolArguments(serverId, toolName, args);
   const result = await manager.callTool(
     serverId,
     toolName,
-    args,
+    normalizedArgs,
     {
       signal: context?.signal,
       timeoutMs: MCP_TOOL_TIMEOUT_MS,
@@ -132,6 +133,17 @@ export function extractPlaywrightScreenshotImage(
 
 function isPlaywrightScreenshotTool(serverId: string, toolName: string): boolean {
   return serverId === PLAYWRIGHT_MCP_SERVER_ID && toolName === "browser_take_screenshot";
+}
+
+export function normalizeMcpToolArguments(
+  serverId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isPlaywrightScreenshotTool(serverId, toolName) || !("filename" in args)) return args;
+  const normalized = { ...args };
+  delete normalized.filename;
+  return normalized;
 }
 
 function decodeScreenshotImage(item: unknown): PlaywrightScreenshotImage | null {
