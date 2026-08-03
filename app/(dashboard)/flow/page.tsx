@@ -30,7 +30,7 @@ import {
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import ReactMarkdown from "react-markdown";
 import { AnimatePresence, motion } from "framer-motion";
-import { useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
@@ -946,7 +946,11 @@ function CustomDropdown({
 }
 
 export default function FlowDashboardPage() {
+  const router = useRouter();
+  const params = useParams<{ conversationId?: string }>();
   const searchParams = useSearchParams();
+  const routedConversationId = params?.conversationId || "";
+  const initialRoutedConversationIdRef = useRef(routedConversationId);
   const [chatMessages, setChatMessages] = useState<ChatMessageState[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
@@ -1030,8 +1034,14 @@ export default function FlowDashboardPage() {
   const mcpMentionsRequestedRef = useRef(false);
   const [skillBuilderActive, setSkillBuilderActive] = useState(false);
 
-  const activateConversation = useCallback(async (conversation: ChatConversation) => {
+  const activateConversation = useCallback(async (
+    conversation: ChatConversation,
+    navigation: "push" | "replace" | "none" = "push"
+  ) => {
     const requestId = ++conversationLoadRequestRef.current;
+    const conversationPath = `/flow/${encodeURIComponent(conversation.id)}`;
+    if (navigation === "push") router.push(conversationPath);
+    if (navigation === "replace") router.replace(conversationPath);
     setActiveConversationId(conversation.id);
     setChatMessages(conversation.messages);
     setDraftMessage("");
@@ -1061,7 +1071,7 @@ export default function FlowDashboardPage() {
         setIsConversationLoading(false);
       }
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setSkillsLoading(true);
@@ -1499,7 +1509,9 @@ export default function FlowDashboardPage() {
       ? savedConversations
       : (legacyMessages.length > 0 ? [createChatConversation(legacyMessages)] : [createChatConversation()]);
     const savedActiveId = readFlowStorage(ACTIVE_CHAT_KEY);
-    const activeConversation = initialConversations.find((conversation) => conversation.id === savedActiveId) || initialConversations[0];
+    const initialRoutedConversationId = initialRoutedConversationIdRef.current;
+    const requestedActiveId = initialRoutedConversationId || savedActiveId;
+    const activeConversation = initialConversations.find((conversation) => conversation.id === requestedActiveId) || initialConversations[0];
     autoDownloaded3dModelsRef.current = new Set(
       initialConversations.flatMap((conversation) =>
         conversation.messages.flatMap((message) => message.model3dResult?.paths || (message.model3dResult?.path ? [message.model3dResult.path] : []))
@@ -1508,8 +1520,7 @@ export default function FlowDashboardPage() {
 
     queueMicrotask(() => {
       setChatConversations(initialConversations);
-      setActiveConversationId(activeConversation.id);
-      setChatMessages(activeConversation.messages);
+      void activateConversation(activeConversation, initialRoutedConversationId ? "none" : "replace");
       setHasLoadedConversations(true);
     });
 
@@ -1546,16 +1557,22 @@ export default function FlowDashboardPage() {
           } satisfies ChatConversation;
         });
         if (!archived.length) return;
-        const nextActiveId = archived.some((item) => item.id === savedActiveId) ? savedActiveId! : archived[0].id;
+        const nextActiveId = archived.some((item) => item.id === requestedActiveId) ? requestedActiveId! : archived[0].id;
         const active = archived.find((item) => item.id === nextActiveId)!;
         setChatConversations(archived);
-        await activateConversation(active);
+        await activateConversation(active, initialRoutedConversationId === active.id ? "none" : "replace");
       } catch (error) {
         console.warn('Falha ao carregar arquivo SQLite; mantendo fallback local:', error);
       }
     };
     void hydrateArchive();
   }, [activateConversation]);
+
+  useEffect(() => {
+    if (!hasLoadedConversations || !routedConversationId || routedConversationId === activeConversationId) return;
+    const conversation = chatConversations.find((item) => item.id === routedConversationId);
+    if (conversation) void activateConversation(conversation, "none");
+  }, [activateConversation, activeConversationId, chatConversations, hasLoadedConversations, routedConversationId]);
 
   useEffect(() => {
     const recoverJobId = searchParams.get("recover3d") || "";
@@ -3196,10 +3213,7 @@ export default function FlowDashboardPage() {
           : conversation
       )
     ]);
-    conversationLoadRequestRef.current += 1;
-    setIsConversationLoading(false);
-    setActiveConversationId(branchConversation.id);
-    setChatMessages(branchConversation.messages);
+    void activateConversation(branchConversation);
   };
 
   const handleReturnToMessage = (messageId: string) => {
@@ -3342,7 +3356,7 @@ export default function FlowDashboardPage() {
     const nextConversations = remainingConversations.length > 0 ? remainingConversations : [nextConversation];
 
     setChatConversations(nextConversations);
-    void activateConversation(nextConversation);
+    void activateConversation(nextConversation, "replace");
     void fetch(`/api/conversations?externalConversationId=${encodeURIComponent(activeConversationId)}`, { method: 'DELETE' });
   };
 
@@ -3354,7 +3368,7 @@ export default function FlowDashboardPage() {
       const nextConversation = remainingConversations[activeIndex] || remainingConversations[activeIndex - 1] || createChatConversation();
       
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [nextConversation]);
-      void activateConversation(nextConversation);
+      void activateConversation(nextConversation, "replace");
     } else {
       setChatConversations(remainingConversations.length > 0 ? remainingConversations : [createChatConversation()]);
     }

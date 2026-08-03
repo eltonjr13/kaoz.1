@@ -61,3 +61,14 @@ test("Flow carrega mensagens somente para a conversa ativa", async () => {
   assert.match(page, /void activateConversation\(conversation\)/);
   assert.match(page, /fetchArchivedConversationMessages\(conversation\.archiveId\)/);
 });
+
+test("cada conversa do Flow possui uma rota propria", async () => {
+  const page = await readSource("app/(dashboard)/flow/page.tsx");
+  const conversationRoute = await readSource("app/(dashboard)/flow/[conversationId]/page.tsx");
+
+  assert.match(page, /useParams<\{ conversationId\?: string \}>\(\)/);
+  assert.match(page, /`\/flow\/\$\{encodeURIComponent\(conversation\.id\)\}`/);
+  assert.match(page, /router\.push\(conversationPath\)/);
+  assert.match(page, /router\.replace\(conversationPath\)/);
+  assert.match(conversationRoute, /export \{ default \} from "\.\.\/page"/);
+});
