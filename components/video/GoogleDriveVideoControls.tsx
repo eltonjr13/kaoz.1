@@ -75,6 +75,35 @@ function loadPickerScript() {
   return pickerScriptPromise;
 }
 
+export async function pickGoogleDriveFolder() {
+  await loadPickerScript();
+  const session = await json(await fetch("/api/google-drive", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "picker-session" }),
+  })) as { accessToken?: string; apiKey?: string; appId?: string };
+  if (!session.accessToken || !session.apiKey || !session.appId) throw new Error("Sessão do Google Picker incompleta.");
+  const google = pickerApi();
+  if (!google?.picker) throw new Error("Google Picker indisponível.");
+  return new Promise<PickerDocument | null>((resolve) => {
+    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(true);
+    new google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(session.accessToken!)
+      .setDeveloperKey(session.apiKey!)
+      .setAppId(session.appId!)
+      .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
+      .setCallback((data) => {
+        if (data.action === google.picker.Action.PICKED && data.docs?.[0]?.id) resolve(data.docs[0]);
+        else if (data.action) resolve(null);
+      })
+      .build()
+      .setVisible(true);
+  });
+}
+
 async function json(response: Response) {
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${response.status}`);

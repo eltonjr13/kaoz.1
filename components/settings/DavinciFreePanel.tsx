@@ -27,8 +27,12 @@ import {
   Subtitles,
   Video,
 } from "lucide-react";
-import { GoogleDriveVideoControls } from "@/components/video/GoogleDriveVideoControls";
-import type { GoogleDriveSelection } from "@/services/google-drive/google-drive.types";
+import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
+import type {
+  GoogleDriveConnectionStatus,
+  GoogleDriveCourseManifest,
+  GoogleDriveSelection,
+} from "@/services/google-drive/google-drive.types";
 
 type Status = {
   runnerInstalled: boolean;
@@ -116,12 +120,17 @@ type BatchDiscovery = {
 
 type BatchJob = {
   id: string;
-  status: "queued" | "running" | "completed" | "completed-with-errors";
+  version?: 1 | 2;
+  status: "queued" | "running" | "cancelled" | "completed" | "completed-with-errors";
+  source?: { type: "local" } | { type: "google-drive"; manifestId: string; rootFolderName: string };
   folderPath: string;
   courseName: string;
   total: number;
   completed: number;
   failed: number;
+  outputFolderUrl?: string;
+  moduleIdentities?: Record<string, { title: string }>;
+  error?: string;
   currentItemId?: string;
   courseIdentity?: {
     title: string;
@@ -135,8 +144,13 @@ type BatchJob = {
     index: number;
     relativePath: string;
     moduleName: string;
-    status: "pending" | "analyzing" | "rendering" | "completed" | "failed";
+    lessonName?: string;
+    moduleId?: string;
+    status: "pending" | "downloading" | "analyzing" | "rendering" | "uploading" | "completed" | "failed" | "cancelled";
     previewPath?: string;
+    remoteOutputUrl?: string;
+    bytesTransferred?: number;
+    totalBytes?: number;
     error?: string;
   }>;
 };
@@ -175,6 +189,12 @@ function clock(seconds: number) {
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }
 
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
 function waveformBarHeight(peak: number, maximumPercent: number) {
   return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
 }
@@ -186,6 +206,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [batchFolder, setBatchFolder] = useState("");
   const [batchDiscovery, setBatchDiscovery] = useState<BatchDiscovery | null>(null);
   const [batch, setBatch] = useState<BatchJob | null>(null);
+  const [batchSource, setBatchSource] = useState<"local" | "google-drive">("local");
+  const [driveBatchDiscovery, setDriveBatchDiscovery] = useState<GoogleDriveCourseManifest | null>(null);
+  const [driveConnection, setDriveConnection] = useState<GoogleDriveConnectionStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<"single" | "batch">("single");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -228,6 +251,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     );
   }, [onStatusMessage, refresh]);
 
+  const refreshDriveConnection = useCallback(async () => {
+    const response = await fetch("/api/google-drive", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Falha ao consultar o Google Drive.");
+    setDriveConnection(data.status || null);
+    return data.status as GoogleDriveConnectionStatus | null;
+  }, []);
+
+  useEffect(() => {
+    refreshDriveConnection().catch(() => undefined);
+  }, [refreshDriveConnection]);
+
   const fetchBatch = useCallback(async (batchId?: string) => {
     const response = await fetch("/api/davinci-free", {
       method: "POST",
@@ -239,7 +274,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (data?.id) {
       const restored = data as BatchJob;
       setBatch(restored);
-      setBatchFolder(restored.folderPath);
+      setBatchSource(restored.source?.type === "google-drive" ? "google-drive" : "local");
+      setBatchFolder(restored.source?.type === "google-drive" ? restored.source.rootFolderName : restored.folderPath);
       setForm((current) => ({
         ...current,
         courseName: restored.courseName,
@@ -427,6 +463,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function discoverBatch() {
+    setDriveBatchDiscovery(null);
     let folderPath = "";
     if (window.kaoz1Desktop?.chooseCourseFolder) {
       const selected = await window.kaoz1Desktop.chooseCourseFolder();
@@ -457,6 +494,57 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  async function discoverDriveBatch() {
+    const connection = await refreshDriveConnection();
+    if (!connection?.batchReady) {
+      onStatusMessage({
+        text: connection?.connected
+          ? "Reconecte o Google Drive nas Configurações para autorizar o processamento em lote."
+          : "Conecte o Google Drive nas Configurações primeiro.",
+        type: "error",
+      });
+      return;
+    }
+    setBusy("drive-picker");
+    try {
+      const selected = await pickGoogleDriveFolder();
+      if (!selected?.id) return;
+      setBatchFolder(selected.name || "Pasta do Google Drive");
+      setBatchDiscovery(null);
+      const result = await action("discover-drive-batch", { rootFolderId: selected.id });
+      if (!result?.id) return;
+      const discovery = result as GoogleDriveCourseManifest;
+      setDriveBatchDiscovery(discovery);
+      setForm((current) => ({ ...current, courseName: discovery.root.name }));
+      if (!discovery.valid) {
+        onStatusMessage({ text: "A estrutura do curso possui erros. Corrija as aulas indicadas antes de iniciar.", type: "error" });
+        return;
+      }
+      await startDriveBatch(discovery);
+    } catch (error) {
+      onStatusMessage({ text: error instanceof Error ? error.message : String(error), type: "error" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function startDriveBatch(discovery: GoogleDriveCourseManifest) {
+    const result = await action("start-batch", {
+      requestId: `course-drive-batch-${crypto.randomUUID()}`,
+      manifestId: discovery.id,
+      courseName: discovery.root.name,
+      style: form.style,
+      captionsEnabled: form.captionsEnabled,
+      musicPath: form.musicPath,
+      musicDb: Number(form.musicDb),
+      useAgent: true,
+    });
+    if (result?.id) {
+      setBatch(result as BatchJob);
+      onStatusMessage({ text: "Lote do Drive iniciado com até duas aulas em paralelo.", type: "success" });
+    }
+  }
+
   async function startBatch(folderPath = batchFolder, courseName = form.courseName) {
     const result = await action("start-batch", {
       requestId: `course-batch-${crypto.randomUUID()}`,
@@ -480,6 +568,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   async function retryBatch() {
     if (!batch) return;
     const result = await action("retry-batch", { batchId: batch.id });
+    if (result?.id) setBatch(result as BatchJob);
+  }
+
+  async function changeBatchState(actionName: "cancel-batch" | "resume-batch") {
+    if (!batch) return;
+    const result = await action(actionName, { batchId: batch.id });
     if (result?.id) setBatch(result as BatchJob);
   }
 
@@ -1462,25 +1556,51 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/30 p-1.5">
+            <button
+              type="button"
+              onClick={() => setBatchSource("local")}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "local" ? "bg-violet-500 text-white" : "text-zinc-400 hover:bg-white/5"}`}
+            >
+              Pasta local
+            </button>
+            <button
+              type="button"
+              onClick={() => setBatchSource("google-drive")}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "google-drive" ? "bg-blue-500 text-white" : "text-zinc-400 hover:bg-white/5"}`}
+            >
+              Google Drive
+            </button>
+          </div>
+
           <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Pasta selecionada</p>
             <div className="flex items-center justify-between gap-3">
               <p className="truncate font-mono text-xs text-zinc-200">
-                {batchFolder || "Clique no botão para escolher a pasta no Explorador do Windows."}
+                {batchFolder || (batchSource === "google-drive"
+                  ? "Escolha a pasta VIDEOS_CURSO no Google Drive."
+                  : "Clique no botão para escolher a pasta no Explorador do Windows.")}
               </p>
             </div>
+            {batchSource === "google-drive" && !driveConnection?.batchReady && (
+              <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-2 text-[10px] text-amber-200">
+                {driveConnection?.connected
+                  ? "Reconexão necessária nas Configurações para autorizar drive.readonly."
+                  : "Conecte sua conta do Google Drive nas Configurações."}
+              </p>
+            )}
             <div className="pt-2">
               <button
                 disabled={!!busy || ["queued", "running"].includes(batch?.status || "")}
-                onClick={discoverBatch}
+                onClick={batchSource === "google-drive" ? discoverDriveBatch : discoverBatch}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:brightness-110 disabled:opacity-40"
               >
-                {busy === "discover-batch" || busy === "choose-folder" || busy === "start-batch" ? (
+                {busy === "discover-batch" || busy === "discover-drive-batch" || busy === "drive-picker" || busy === "choose-folder" || busy === "start-batch" ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (
                   <FolderSearch size={15} />
                 )}
-                Selecionar pasta e processar
+                {batchSource === "google-drive" ? "Selecionar VIDEOS_CURSO e processar" : "Selecionar pasta e processar"}
               </button>
             </div>
           </div>
@@ -1498,6 +1618,40 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     </span>
                     <span className="font-medium text-zinc-200">{video.moduleName}</span>
                     <span className="truncate text-zinc-500 font-mono">{video.relativePath}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {driveBatchDiscovery && (
+            <div className={`space-y-3 rounded-xl border p-4 ${driveBatchDiscovery.valid ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-red-500/25 bg-red-500/[0.05]"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <p className={driveBatchDiscovery.valid ? "font-semibold text-emerald-300" : "font-semibold text-red-300"}>
+                  {driveBatchDiscovery.lessons.length} aulas em {driveBatchDiscovery.modules.length} módulos
+                </p>
+                <p className="text-zinc-400">
+                  Disco: {formatBytes(driveBatchDiscovery.requiredLocalBytes)} necessários · {formatBytes(driveBatchDiscovery.availableLocalBytes)} disponíveis
+                </p>
+              </div>
+              {driveBatchDiscovery.issues.length > 0 && (
+                <div className="space-y-1 rounded-lg border border-red-500/20 bg-black/40 p-3 text-[10px] text-red-200">
+                  {driveBatchDiscovery.issues.map((issue, index) => (
+                    <p key={`${issue.code}-${issue.moduleName}-${issue.lessonName}-${index}`}>
+                      {issue.moduleName}/{issue.lessonName}: {issue.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <div className="max-h-56 space-y-2 overflow-y-auto">
+                {driveBatchDiscovery.modules.map((module) => (
+                  <div key={module.id} className="rounded-lg border border-white/10 bg-black/40 p-3">
+                    <p className="mb-2 text-[11px] font-bold text-blue-200">{module.index}. {module.name}</p>
+                    <div className="space-y-1 text-[10px] text-zinc-400">
+                      {module.lessons.map((lesson) => (
+                        <p key={lesson.id}>{lesson.lessonIndex}. {lesson.lessonName} · {lesson.file.name}</p>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
