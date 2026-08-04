@@ -405,13 +405,13 @@ export class GoogleDriveService {
   private async metadata(fileId: string): Promise<DriveEntry> {
     if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) throw new Error("Arquivo do Google Drive inválido.");
     const token = await this.accessToken();
-    const fields = "id,name,mimeType,size,parents,webViewLink,trashed,appProperties,capabilities(canDownload)";
+    const fields = "id,name,mimeType,size,modifiedTime,md5Checksum,parents,webViewLink,trashed,appProperties,capabilities(canDownload)";
     const response = await this.fetcher(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(fields)}&supportsAllDrives=true`, {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(await responseError(response));
     const raw = await response.json() as {
-      id?: string; name?: string; mimeType?: string; size?: string; parents?: string[];
+      id?: string; name?: string; mimeType?: string; size?: string; modifiedTime?: string; md5Checksum?: string; parents?: string[];
       webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
       capabilities?: { canDownload?: boolean };
     };
@@ -421,6 +421,8 @@ export class GoogleDriveService {
       name: safeDriveFileName(raw.name),
       mimeType: raw.mimeType,
       sizeBytes: raw.size ? Number(raw.size) : undefined,
+      modifiedTime: raw.modifiedTime,
+      md5Checksum: raw.md5Checksum,
       parentId: raw.parents?.[0],
       webViewLink: raw.webViewLink,
       canDownload: raw.capabilities?.canDownload !== false,
@@ -438,7 +440,7 @@ export class GoogleDriveService {
         q: `'${parentId.replaceAll("'", "\\'")}' in parents and trashed = false`,
         spaces: "drive",
         pageSize: "1000",
-        fields: "nextPageToken,files(id,name,mimeType,size,parents,webViewLink,trashed,appProperties,capabilities(canDownload))",
+        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,md5Checksum,parents,webViewLink,trashed,appProperties,capabilities(canDownload))",
         supportsAllDrives: "true",
         includeItemsFromAllDrives: "true",
         ...(pageToken ? { pageToken } : {}),
@@ -450,7 +452,7 @@ export class GoogleDriveService {
       const page = await response.json() as {
         nextPageToken?: string;
         files?: Array<{
-          id?: string; name?: string; mimeType?: string; size?: string; parents?: string[];
+          id?: string; name?: string; mimeType?: string; size?: string; modifiedTime?: string; md5Checksum?: string; parents?: string[];
           webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
           capabilities?: { canDownload?: boolean };
         }>;
@@ -462,6 +464,8 @@ export class GoogleDriveService {
           name: safeDriveFileName(raw.name),
           mimeType: raw.mimeType,
           sizeBytes: raw.size ? Number(raw.size) : undefined,
+          modifiedTime: raw.modifiedTime,
+          md5Checksum: raw.md5Checksum,
           parentId: raw.parents?.[0],
           webViewLink: raw.webViewLink,
           canDownload: raw.capabilities?.canDownload !== false,

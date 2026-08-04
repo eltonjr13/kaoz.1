@@ -22,6 +22,8 @@ export interface GoogleDriveSelection {
   name: string;
   mimeType: string;
   sizeBytes?: number;
+  modifiedTime?: string;
+  md5Checksum?: string;
   parentId?: string;
   webViewLink?: string;
 }
