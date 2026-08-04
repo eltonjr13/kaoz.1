@@ -152,6 +152,13 @@ test("Resolve Free expõe ferramentas rastreáveis e mutações com aprovação 
     assert.notEqual(start, -1);
     assert.match(registry.slice(start, registry.indexOf("\n", start)), /approvalMode:"step"/);
   }
+  const startBatch = registry.slice(
+    registry.indexOf('{id:"davinci-free:start-batch"'),
+    registry.indexOf("\n", registry.indexOf('{id:"davinci-free:start-batch"')),
+  );
+  assert.match(startBatch, /required:\["requestId","courseName"\]/);
+  assert.match(startBatch, /manifestId:\{type:"string"\}/);
+  assert.doesNotMatch(startBatch, /required:\[[^\]]*"folderPath"/);
 });
 
 test("lote do curso usa ordem natural, identidade compartilhada e fila persistente", async () => {

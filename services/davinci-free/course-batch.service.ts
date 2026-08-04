@@ -668,6 +668,9 @@ export async function startCourseBatch(rawInput: Record<string, unknown>) {
     return existing;
   }
   if (cleanText(rawInput.manifestId)) return startGoogleDriveBatch(rawInput, id, normalizedRequestId);
+  if (!cleanText(rawInput.folderPath)) {
+    throw new Error("Informe uma pasta local ou selecione uma pasta do Google Drive.");
+  }
   const discovered = await discoverCourseBatch(rawInput);
   const job: CourseBatchJob = {
     version: 1,
