@@ -563,6 +563,113 @@ export class GoogleDriveService {
     return this.store.readManifest(id);
   }
 
+  private async createFolder(
+    parentId: string,
+    name: string,
+    appProperties: Record<string, string>,
+  ) {
+    const response = await this.fetcher(`${DRIVE_API}/files?supportsAllDrives=true&fields=id,name,mimeType,parents,webViewLink,appProperties`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await this.accessToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name, mimeType: DRIVE_FOLDER_MIME, parents: [parentId], appProperties }),
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+    const raw = await response.json() as { id?: string; name?: string; webViewLink?: string; appProperties?: Record<string, string> };
+    if (!raw.id) throw new Error("O Google Drive não confirmou a pasta criada.");
+    return {
+      fileId: raw.id,
+      name: raw.name || name,
+      mimeType: DRIVE_FOLDER_MIME,
+      parentId,
+      webViewLink: raw.webViewLink || `https://drive.google.com/drive/folders/${raw.id}`,
+      canDownload: false,
+      trashed: false,
+      appProperties: raw.appProperties || appProperties,
+    } satisfies DriveEntry;
+  }
+
+  private async ensureManagedFolder(
+    parentId: string,
+    name: string,
+    sourceId: string,
+    properties: Record<string, string>,
+  ) {
+    const children = await this.listChildren(parentId);
+    const existing = children.find((entry) =>
+      entry.mimeType === DRIVE_FOLDER_MIME &&
+      entry.name === name &&
+      entry.appProperties?.kaozSourceId === sourceId,
+    );
+    return existing || this.createFolder(parentId, name, {
+      kaozManaged: "true",
+      kaozSourceId: sourceId,
+      ...properties,
+    });
+  }
+
+  private async ensureOutputRoot(manifest: GoogleDriveCourseManifest) {
+    if (!manifest.root.parentId) throw new Error("A pasta-raiz precisa ter uma pasta pai no Google Drive.");
+    const siblings = await this.listChildren(manifest.root.parentId);
+    const managed = siblings.find((entry) =>
+      entry.mimeType === DRIVE_FOLDER_MIME &&
+      entry.appProperties?.kaozSourceRootId === manifest.root.fileId,
+    );
+    if (managed) return managed;
+    const occupied = new Set(siblings.map((entry) => entry.name));
+    let name = `${manifest.root.name}_EDITADO`;
+    if (occupied.has(name)) name = `${manifest.root.name}_EDITADO - Kaoz.1`;
+    for (let suffix = 2; occupied.has(name); suffix += 1) {
+      name = `${manifest.root.name}_EDITADO - Kaoz.1 - ${suffix}`;
+    }
+    return this.createFolder(manifest.root.parentId, name, {
+      kaozManaged: "true",
+      kaozSourceId: manifest.root.fileId,
+      kaozSourceRootId: manifest.root.fileId,
+    });
+  }
+
+  private async ensureLessonOutput(
+    manifest: GoogleDriveCourseManifest,
+    lesson: GoogleDriveCourseLesson,
+  ) {
+    const root = await this.ensureOutputRoot(manifest);
+    const moduleFolder = await this.ensureManagedFolder(root.fileId, lesson.moduleName, lesson.moduleId, {
+      kaozSourceRootId: manifest.root.fileId,
+      kaozKind: "module",
+    });
+    const lessonFolder = await this.ensureManagedFolder(moduleFolder.fileId, lesson.lessonName, lesson.lessonId, {
+      kaozSourceRootId: manifest.root.fileId,
+      kaozKind: "lesson",
+    });
+    return { root, lessonFolder };
+  }
+
+  async prepareCourseUpload(input: {
+    manifestId: string;
+    itemId: string;
+    renderKey: string;
+  }) {
+    const manifest = await this.store.readManifest(input.manifestId);
+    const lesson = manifest?.lessons.find((item) => item.id === input.itemId);
+    if (!manifest || !lesson) throw new Error("Aula não encontrada no manifesto do Google Drive.");
+    const { root, lessonFolder } = await this.ensureLessonOutput(manifest, lesson);
+    const existingFiles = (await this.listChildren(lessonFolder.fileId))
+      .filter((entry) => entry.mimeType !== DRIVE_FOLDER_MIME);
+    const existing = existingFiles.find((entry) => entry.appProperties?.kaozRenderKey === input.renderKey);
+    if (existing) return { reused: true, root, folder: lessonFolder, file: existing } as const;
+    const baseName = editedDriveFileName(lesson.file.name);
+    const parsed = path.parse(baseName);
+    const occupied = new Set(existingFiles.map((entry) => entry.name));
+    let remoteName = baseName;
+    for (let version = 2; occupied.has(remoteName); version += 1) {
+      remoteName = `${parsed.name} v${version}${parsed.ext}`;
+    }
+    return { reused: false, root, folder: lessonFolder, remoteName, lesson } as const;
+  }
+
   private async saveJob(job: GoogleDriveTransferJob) {
     this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
       const jobs = await this.store.listTransfers();
@@ -661,6 +768,9 @@ export class GoogleDriveService {
       return { reused: true, localPath: existingPath } as const;
     }
     const metadata = await this.metadata(lesson.file.fileId);
+    if (metadata.trashed || !metadata.canDownload || !isVideo(metadata)) {
+      throw new Error("O vídeo da aula não está mais disponível para download.");
+    }
     return {
       reused: false,
       transfer: await this.queueDownload(metadata, resolved, { batchId: input.batchId, itemId: input.itemId }),
@@ -868,6 +978,10 @@ export class GoogleDriveService {
         sourceName: job.sourceName.replace(/ - editado Kaoz\.1\.mp4$/i, ".mp4"),
         folderId: job.remoteFolderId,
         idempotencyKey: job.idempotencyKey,
+        remoteName: job.sourceName,
+        batchId: job.batchId,
+        itemId: job.itemId,
+        appProperties: job.remoteAppProperties,
       });
     }
     throw new Error("A transferência não possui dados suficientes para repetir.");

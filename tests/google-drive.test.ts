@@ -13,16 +13,20 @@ import {
 import { GoogleDriveStore } from "../services/google-drive/google-drive.store.ts";
 import type {
   GoogleDriveStoredState,
+  GoogleDriveCourseManifest,
   GoogleDriveTransferJob,
 } from "../services/google-drive/google-drive.types.ts";
 
 class MemoryStore {
   state: GoogleDriveStoredState = { version: 1 };
   transfers: GoogleDriveTransferJob[] = [];
+  manifests = new Map<string, GoogleDriveCourseManifest>();
   async readState() { return structuredClone(this.state); }
   async writeState(state: GoogleDriveStoredState) { this.state = structuredClone(state); }
   async listTransfers() { return structuredClone(this.transfers); }
   async writeTransfers(jobs: GoogleDriveTransferJob[]) { this.transfers = structuredClone(jobs); }
+  async readManifest(id: string) { return structuredClone(this.manifests.get(id) || null); }
+  async writeManifest(manifest: GoogleDriveCourseManifest) { this.manifests.set(manifest.id, structuredClone(manifest)); }
   root() { return os.tmpdir(); }
 }
 
@@ -83,6 +87,8 @@ test("OAuth valida state, guarda refresh token e revoga ao desconectar", async (
   await assert.rejects(service.finishAuthorization({ code: "code", state: `${state}x` }), /Estado OAuth inválido/);
   const status = await service.finishAuthorization({ code: "code", state });
   assert.equal(status.connected, true);
+  assert.equal(status.batchReady, false);
+  assert.deepEqual(status.missingScopes, ["https://www.googleapis.com/auth/drive.readonly"]);
   assert.equal(status.email, "editor@example.com");
   assert.equal(store.state.oauth?.refreshToken, "refresh-secret");
   assert.ok(mocked.calls.some((call) => call.body?.includes("client_secret=desktop-secret")));
@@ -99,6 +105,57 @@ test("OAuth valida state, guarda refresh token e revoga ao desconectar", async (
   await reloadedService.disconnect();
   assert.equal((await reloadedService.status()).connected, false);
   assert.ok(mocked.calls.some((call) => call.url.includes("/revoke")));
+});
+
+test("OAuth novo solicita drive.readonly para habilitar lotes", async () => {
+  const store = new MemoryStore();
+  const service = new GoogleDriveService(store, mockFetch().fetcher);
+  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" });
+  const authorization = await service.beginAuthorization("http://127.0.0.1:3000/api/google-drive/oauth/callback");
+  const scopes = new URL(authorization.authorizationUrl).searchParams.get("scope")?.split(" ") || [];
+  assert.ok(scopes.includes("https://www.googleapis.com/auth/drive.file"));
+  assert.ok(scopes.includes("https://www.googleapis.com/auth/drive.readonly"));
+});
+
+test("descobre curso paginado em ordem natural e persiste manifesto", async () => {
+  const runtime = await mkdtemp(path.join(os.tmpdir(), "kaoz-drive-course-"));
+  process.env.KAOZ1_DATA_DIR = runtime;
+  const store = new MemoryStore();
+  store.state = {
+    version: 1,
+    configuration: { clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" },
+    oauth: {
+      refreshToken: "refresh-secret",
+      scope: "openid https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly",
+      connectedAt: new Date().toISOString(),
+    },
+  };
+  const folder = "application/vnd.google-apps.folder";
+  const fetcher: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "access", expires_in: 3600 });
+    if (url.includes("/files/root-course-123") && !url.includes("?alt=media")) {
+      return Response.json({ id: "root-course-123", name: "VIDEOS_CURSO", mimeType: folder, parents: ["parent-drive-123"], trashed: false });
+    }
+    if (!url.includes("/files?")) return new Response("not mocked", { status: 404 });
+    const parsed = new URL(url);
+    const query = parsed.searchParams.get("q") || "";
+    const page = parsed.searchParams.get("pageToken");
+    if (query.includes("root-course-123") && !page) return Response.json({ nextPageToken: "page-2", files: [{ id: "module-10-id", name: "MODULO_10", mimeType: folder }] });
+    if (query.includes("root-course-123") && page === "page-2") return Response.json({ files: [{ id: "module-2-id", name: "MODULO_2", mimeType: folder }] });
+    if (query.includes("module-2-id")) return Response.json({ files: [{ id: "lesson-2-id", name: "AULA_2", mimeType: folder }] });
+    if (query.includes("module-10-id")) return Response.json({ files: [{ id: "lesson-10-id", name: "AULA_1", mimeType: folder }] });
+    if (query.includes("lesson-2-id")) return Response.json({ files: [{ id: "video-2-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "20", capabilities: { canDownload: true } }] });
+    if (query.includes("lesson-10-id")) return Response.json({ files: [{ id: "video-10-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "10", capabilities: { canDownload: true } }] });
+    return Response.json({ files: [] });
+  };
+  const service = new GoogleDriveService(store, fetcher);
+  const manifest = await service.discoverCourse("root-course-123");
+  assert.equal(manifest.valid, true);
+  assert.equal(manifest.totalBytes, 30);
+  assert.deepEqual(manifest.modules.map((module) => module.name), ["MODULO_2", "MODULO_10"]);
+  assert.equal(manifest.lessons[0].index, 1);
+  assert.deepEqual(await service.readCourseManifest(manifest.id), manifest);
 });
 
 test("estado OAuth persistido não contém credenciais em texto puro", async () => {
