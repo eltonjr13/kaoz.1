@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 
 import { getRuntimeDataRoot } from "../../lib/runtime-paths.ts";
 import {
@@ -18,13 +18,48 @@ type EncryptedEnvelope = {
 };
 
 const DEFAULT_ROOT = path.join(getRuntimeDataRoot(), "google-drive");
+const WRITE_QUEUES = new Map<string, Promise<void>>();
+const WINDOWS_RENAME_RETRIES = 6;
 
-async function atomicWrite(filePath: string, content: string) {
+function transientRenameError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
+}
+
+async function renameWithRetry(temporary: string, filePath: string) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(temporary, filePath);
+      return;
+    } catch (error) {
+      if (!transientRenameError(error) || attempt >= WINDOWS_RENAME_RETRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25 * (2 ** attempt)));
+    }
+  }
+}
+
+async function atomicWriteNow(filePath: string, content: string) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const temporary = `${filePath}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, filePath);
-  await chmod(filePath, 0o600).catch(() => undefined);
+  try {
+    await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
+    await renameWithRetry(temporary, filePath);
+    await chmod(filePath, 0o600).catch(() => undefined);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function atomicWrite(filePath: string, content: string) {
+  const previous = WRITE_QUEUES.get(filePath) || Promise.resolve();
+  const current = previous.catch(() => undefined).then(() => atomicWriteNow(filePath, content));
+  WRITE_QUEUES.set(filePath, current);
+  try {
+    await current;
+  } finally {
+    if (WRITE_QUEUES.get(filePath) === current) WRITE_QUEUES.delete(filePath);
+  }
 }
 
 async function encryptionKey(root: string) {

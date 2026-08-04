@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -112,6 +112,26 @@ test("estado OAuth persistido não contém credenciais em texto puro", async () 
   const raw = await readFile(path.join(root, "state.enc.json"), "utf8");
   assert.doesNotMatch(raw, /refresh-secret|desktop-secret|AIza-secret|editor@example.com/);
   assert.equal((await store.readState()).oauth?.refreshToken, "refresh-secret");
+});
+
+test("store serializa gravações concorrentes sem deixar arquivos temporários", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "kaoz-drive-concurrent-"));
+  const stores = Array.from({ length: 4 }, () => new GoogleDriveStore(root));
+  const now = new Date().toISOString();
+  await Promise.all(Array.from({ length: 32 }, (_, index) => stores[index % stores.length].writeTransfers([{
+    version: 1,
+    id: `job-${index}`,
+    kind: "download",
+    status: "queued",
+    createdAt: now,
+    updatedAt: now,
+    bytesTransferred: 0,
+    sourceName: `video-${index}.mp4`,
+  }])));
+  const persisted = await stores[0].listTransfers();
+  assert.equal(persisted.length, 1);
+  assert.match(persisted[0].id, /^job-\d+$/);
+  assert.equal((await readdir(root)).some((name) => name.endsWith(".tmp")), false);
 });
 
 test("download e upload retomável persistem progresso e evitam duplicata", async () => {
