@@ -26,7 +26,7 @@ type DocsView = {
 };
 type GooglePickerApi = {
   picker: {
-    Action: { PICKED: string };
+    Action: { PICKED: string; CANCEL: string };
     Feature: { SUPPORT_DRIVES: unknown };
     ViewId: { DOCS_VIDEOS: unknown; FOLDERS: unknown };
     DocsView: new (viewId: unknown) => DocsView;
@@ -97,7 +97,7 @@ export async function pickGoogleDriveFolder() {
       .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
       .setCallback((data) => {
         if (data.action === google.picker.Action.PICKED && data.docs?.[0]?.id) resolve(data.docs[0]);
-        else if (data.action) resolve(null);
+        else if (data.action === google.picker.Action.CANCEL) resolve(null);
       })
       .build()
       .setVisible(true);

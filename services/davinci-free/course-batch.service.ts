@@ -522,9 +522,26 @@ async function loadJob(id: string) {
   return readFile(jobPath(id), "utf8").then((raw) => JSON.parse(raw) as CourseBatchJob).catch(() => null);
 }
 
-function resumePersistedJob(job: CourseBatchJob | null) {
-  if (job?.version === 2 && ["queued", "running"].includes(job.status) && !job.cancelRequested) launchBatch(job.id);
+async function recoverInterruptedLegacyJob(job: CourseBatchJob | null) {
+  if (!job || job.version !== 1 || !["queued", "running"].includes(job.status) || activeJobs.has(job.id)) return job;
+  for (const item of job.items) {
+    if (["pending", "downloading", "analyzing", "rendering", "uploading"].includes(item.status)) {
+      item.status = "failed";
+      item.error = "Processamento interrompido por uma reinicialização do Kaoz.1. Use Repetir falhas.";
+    }
+  }
+  job.status = "completed-with-errors";
+  job.error = "Este lote local foi interrompido antes da conclusão.";
+  job.currentItemId = undefined;
+  updateCounts(job);
+  await saveJob(job);
   return job;
+}
+
+async function resumePersistedJob(job: CourseBatchJob | null) {
+  const recovered = await recoverInterruptedLegacyJob(job);
+  if (recovered?.version === 2 && ["queued", "running"].includes(recovered.status) && !recovered.cancelRequested) launchBatch(recovered.id);
+  return recovered;
 }
 
 async function latestCourseBatch() {
@@ -537,7 +554,7 @@ async function latestCourseBatch() {
 
 export async function readCourseBatch(rawInput: Record<string, unknown>) {
   const id = cleanText(rawInput.batchId);
-  return resumePersistedJob(id ? await loadJob(id) : await latestCourseBatch());
+  return await resumePersistedJob(id ? await loadJob(id) : await latestCourseBatch());
 }
 
 async function executeBatch(id: string, signal: AbortSignal) {

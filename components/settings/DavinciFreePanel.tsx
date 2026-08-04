@@ -195,6 +195,17 @@ function formatBytes(bytes: number) {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+function driveBatchConnectionError(connection: GoogleDriveConnectionStatus | null) {
+  if (connection?.batchReady) return "";
+  return connection?.connected
+    ? "Reconecte o Google Drive nas Configurações para autorizar o processamento em lote."
+    : "Conecte o Google Drive nas Configurações primeiro.";
+}
+
+function caughtMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function waveformBarHeight(peak: number, maximumPercent: number) {
   return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
 }
@@ -274,8 +285,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (data?.id) {
       const restored = data as BatchJob;
       setBatch(restored);
-      setBatchSource(restored.source?.type === "google-drive" ? "google-drive" : "local");
-      setBatchFolder(restored.source?.type === "google-drive" ? restored.source.rootFolderName : restored.folderPath);
+      if (!batchId) {
+        setBatchSource(restored.source?.type === "google-drive" ? "google-drive" : "local");
+        setBatchFolder(restored.source?.type === "google-drive" ? restored.source.rootFolderName : restored.folderPath);
+      }
       setForm((current) => ({
         ...current,
         courseName: restored.courseName,
@@ -496,20 +509,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function discoverDriveBatch() {
     const connection = await refreshDriveConnection();
-    if (!connection?.batchReady) {
-      onStatusMessage({
-        text: connection?.connected
-          ? "Reconecte o Google Drive nas Configurações para autorizar o processamento em lote."
-          : "Conecte o Google Drive nas Configurações primeiro.",
-        type: "error",
-      });
+    const connectionError = driveBatchConnectionError(connection);
+    if (connectionError) {
+      onStatusMessage({ text: connectionError, type: "error" });
       return;
     }
     setBusy("drive-picker");
     try {
       const selected = await pickGoogleDriveFolder();
       if (!selected?.id) return;
-      setBatchFolder(selected.name || "Pasta do Google Drive");
+      setBatchFolder(selected.name ?? "Pasta do Google Drive");
       setBatchDiscovery(null);
       const result = await action("discover-drive-batch", { rootFolderId: selected.id });
       if (!result?.id) return;
@@ -522,7 +531,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       }
       await startDriveBatch(discovery);
     } catch (error) {
-      onStatusMessage({ text: error instanceof Error ? error.message : String(error), type: "error" });
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
     } finally {
       setBusy(null);
     }

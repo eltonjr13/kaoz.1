@@ -274,4 +274,6 @@ test("interface mantém Drive e DaVinci como destinos independentes", async () =
   assert.match(editor, /previewStale/);
   assert.match(driveControls, /Enviar render ao Drive/);
   assert.match(driveControls, /Importar vídeo/);
+  assert.match(driveControls, /data\.action === google\.picker\.Action\.CANCEL/);
+  assert.doesNotMatch(driveControls, /else if \(data\.action\) resolve\(null\)/);
 });
