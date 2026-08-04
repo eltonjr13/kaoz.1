@@ -483,8 +483,16 @@ async function uploadDriveItem(job: CourseBatchJob, item: CourseBatchItem, ident
   item.remoteOutputUrl = completed.remoteUrl;
 }
 
+function driveItemReady(item: CourseBatchItem) {
+  return Boolean(item.planId && !["failed", "cancelled"].includes(item.status));
+}
+
+function interruption(signal: AbortSignal, error: unknown) {
+  return signal.aborted || (error as Error).name === "AbortError";
+}
+
 async function finishDriveItem(job: CourseBatchJob, item: CourseBatchItem, signal: AbortSignal) {
-  if (!item.planId || item.status === "failed" || item.status === "cancelled") return;
+  if (!driveItemReady(item)) return;
   const identity = job.moduleIdentities?.[item.moduleId || ""];
   if (!identity) return;
   try {
@@ -495,7 +503,7 @@ async function finishDriveItem(job: CourseBatchJob, item: CourseBatchItem, signa
     item.status = "completed";
     item.completedAt = new Date().toISOString();
   } catch (error) {
-    item.status = signal.aborted || (error as Error).name === "AbortError" ? "cancelled" : "failed";
+    item.status = interruption(signal, error) ? "cancelled" : "failed";
     item.error = item.status === "failed" ? errorMessage(error) : undefined;
     item.completedAt = new Date().toISOString();
   }
@@ -514,20 +522,22 @@ async function loadJob(id: string) {
   return readFile(jobPath(id), "utf8").then((raw) => JSON.parse(raw) as CourseBatchJob).catch(() => null);
 }
 
-export async function readCourseBatch(rawInput: Record<string, unknown>) {
-  const id = cleanText(rawInput.batchId);
-  if (id) {
-    const job = await loadJob(id);
-    if (job?.version === 2 && ["queued", "running"].includes(job.status) && !job.cancelRequested) launchBatch(job.id);
-    return job;
-  }
+function resumePersistedJob(job: CourseBatchJob | null) {
+  if (job?.version === 2 && ["queued", "running"].includes(job.status) && !job.cancelRequested) launchBatch(job.id);
+  return job;
+}
+
+async function latestCourseBatch() {
   const files = await readdir(ROOT).catch(() => []);
   const jobs = await Promise.all(files.filter((name) => /^[a-f0-9]{16}\.json$/.test(name))
     .map((name) => loadJob(name.replace(/\.json$/, ""))));
-  const latest = jobs.filter((job): job is CourseBatchJob => Boolean(job))
+  return jobs.filter((job): job is CourseBatchJob => Boolean(job))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] || null;
-  if (latest?.version === 2 && ["queued", "running"].includes(latest.status) && !latest.cancelRequested) launchBatch(latest.id);
-  return latest;
+}
+
+export async function readCourseBatch(rawInput: Record<string, unknown>) {
+  const id = cleanText(rawInput.batchId);
+  return resumePersistedJob(id ? await loadJob(id) : await latestCourseBatch());
 }
 
 async function executeBatch(id: string, signal: AbortSignal) {

@@ -34,6 +34,19 @@ const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 type FetchLike = typeof fetch;
 type CachedToken = { value: string; expiresAt: number };
 type OAuthTokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
+type RawDriveEntry = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  size?: string;
+  modifiedTime?: string;
+  md5Checksum?: string;
+  parents?: string[];
+  webViewLink?: string;
+  trashed?: boolean;
+  appProperties?: Record<string, string>;
+  capabilities?: { canDownload?: boolean };
+};
 type DriveEntry = GoogleDriveSelection & {
   canDownload: boolean;
   trashed: boolean;
@@ -137,6 +150,77 @@ function naturalEntries(entries: DriveEntry[]) {
   return [...entries].sort((left, right) => NATURAL_COLLATOR.compare(left.name, right.name));
 }
 
+function missingDriveScopes(state: GoogleDriveStoredState) {
+  if (!state.oauth) return [...REQUIRED_DRIVE_SCOPES];
+  const granted = new Set(String(state.oauth.scope).split(/\s+/));
+  return REQUIRED_DRIVE_SCOPES.filter((scope) => !granted.has(scope));
+}
+
+function driveConfigured(configuration?: GoogleDriveConfiguration) {
+  return Boolean(configuration?.clientId && configuration.clientSecret && configuration.apiKey && configuration.appId);
+}
+
+function defaultDriveFolder(configuration?: GoogleDriveConfiguration) {
+  if (!configuration?.defaultFolderId) return undefined;
+  return { id: configuration.defaultFolderId, name: configuration.defaultFolderName || "Pasta selecionada" };
+}
+
+function driveEntry(raw: RawDriveEntry): DriveEntry | null {
+  if (!raw.id || !raw.name || !raw.mimeType) return null;
+  return {
+    fileId: raw.id,
+    name: safeDriveFileName(raw.name),
+    mimeType: raw.mimeType,
+    sizeBytes: raw.size ? Number(raw.size) : undefined,
+    modifiedTime: raw.modifiedTime,
+    md5Checksum: raw.md5Checksum,
+    parentId: raw.parents?.[0],
+    webViewLink: raw.webViewLink,
+    canDownload: raw.capabilities?.canDownload !== false,
+    trashed: raw.trashed === true,
+    appProperties: raw.appProperties,
+  };
+}
+
+function childrenQuery(parentId: string, pageToken: string) {
+  const query = new URLSearchParams({
+    q: `'${parentId.replaceAll("'", "\\'")}' in parents and trashed = false`,
+    spaces: "drive",
+    pageSize: "1000",
+    fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,md5Checksum,parents,webViewLink,trashed,appProperties,capabilities(canDownload))",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  if (pageToken) query.set("pageToken", pageToken);
+  return query;
+}
+
+async function reusableFile(filePath: string, expectedBytes?: number) {
+  const existing = await stat(filePath).catch(() => null);
+  return Boolean(existing?.isFile() && (!expectedBytes || existing.size === expectedBytes));
+}
+
+async function localRender(localPath: string) {
+  const resolved = path.resolve(localPath);
+  const allowedRoot = path.resolve(getLocalDataDir());
+  if (resolved !== allowedRoot && !resolved.startsWith(`${allowedRoot}${path.sep}`)) {
+    throw new Error("O render deve estar dentro do diretório local do editor.");
+  }
+  const info = await stat(resolved).catch(() => null);
+  if (!info?.isFile() || path.extname(resolved).toLowerCase() !== ".mp4") {
+    throw new Error("Render MP4 local não encontrado.");
+  }
+  return { resolved, info };
+}
+
+function completedUpload(jobs: GoogleDriveTransferJob[], idempotencyKey: string) {
+  return jobs.find((item) =>
+    item.kind === "upload" &&
+    item.idempotencyKey === idempotencyKey &&
+    item.status === "completed",
+  );
+}
+
 function courseIssue(
   code: GoogleDriveCourseIssue["code"],
   moduleName: string,
@@ -192,20 +276,15 @@ export class GoogleDriveService {
 
   async status(): Promise<GoogleDriveConnectionStatus> {
     const state = await this.store.readState();
-    const grantedScopes = new Set(String(state.oauth?.scope || "").split(/\s+/));
-    const missingScopes = state.oauth
-      ? REQUIRED_DRIVE_SCOPES.filter((scope) => !grantedScopes.has(scope))
-      : [...REQUIRED_DRIVE_SCOPES];
+    const missingScopes = missingDriveScopes(state);
     return {
       version: GOOGLE_DRIVE_STATE_VERSION,
-      configured: Boolean(state.configuration?.clientId && state.configuration.clientSecret && state.configuration.apiKey && state.configuration.appId),
+      configured: driveConfigured(state.configuration),
       connected: Boolean(state.oauth?.refreshToken),
       batchReady: Boolean(state.oauth?.refreshToken) && missingScopes.length === 0,
       missingScopes,
       email: state.oauth?.email,
-      defaultFolder: state.configuration?.defaultFolderId
-        ? { id: state.configuration.defaultFolderId, name: state.configuration.defaultFolderName || "Pasta selecionada" }
-        : undefined,
+      defaultFolder: defaultDriveFolder(state.configuration),
       lastCheckedAt: state.lastCheckedAt,
       lastError: state.lastError,
     };
@@ -410,25 +489,9 @@ export class GoogleDriveService {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(await responseError(response));
-    const raw = await response.json() as {
-      id?: string; name?: string; mimeType?: string; size?: string; modifiedTime?: string; md5Checksum?: string; parents?: string[];
-      webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
-      capabilities?: { canDownload?: boolean };
-    };
-    if (!raw.id || !raw.name || !raw.mimeType) throw new Error("Metadados incompletos do arquivo selecionado.");
-    return {
-      fileId: raw.id,
-      name: safeDriveFileName(raw.name),
-      mimeType: raw.mimeType,
-      sizeBytes: raw.size ? Number(raw.size) : undefined,
-      modifiedTime: raw.modifiedTime,
-      md5Checksum: raw.md5Checksum,
-      parentId: raw.parents?.[0],
-      webViewLink: raw.webViewLink,
-      canDownload: raw.capabilities?.canDownload !== false,
-      trashed: raw.trashed === true,
-      appProperties: raw.appProperties,
-    };
+    const entry = driveEntry(await response.json() as RawDriveEntry);
+    if (!entry) throw new Error("Metadados incompletos do arquivo selecionado.");
+    return entry;
   }
 
   private async listChildren(parentId: string) {
@@ -436,42 +499,18 @@ export class GoogleDriveService {
     const entries: DriveEntry[] = [];
     let pageToken = "";
     do {
-      const query = new URLSearchParams({
-        q: `'${parentId.replaceAll("'", "\\'")}' in parents and trashed = false`,
-        spaces: "drive",
-        pageSize: "1000",
-        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,md5Checksum,parents,webViewLink,trashed,appProperties,capabilities(canDownload))",
-        supportsAllDrives: "true",
-        includeItemsFromAllDrives: "true",
-        ...(pageToken ? { pageToken } : {}),
-      });
+      const query = childrenQuery(parentId, pageToken);
       const response = await this.fetcher(`${DRIVE_API}/files?${query}`, {
         headers: { authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error(await responseError(response));
       const page = await response.json() as {
         nextPageToken?: string;
-        files?: Array<{
-          id?: string; name?: string; mimeType?: string; size?: string; modifiedTime?: string; md5Checksum?: string; parents?: string[];
-          webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
-          capabilities?: { canDownload?: boolean };
-        }>;
+        files?: RawDriveEntry[];
       };
       for (const raw of page.files || []) {
-        if (!raw.id || !raw.name || !raw.mimeType) continue;
-        entries.push({
-          fileId: raw.id,
-          name: safeDriveFileName(raw.name),
-          mimeType: raw.mimeType,
-          sizeBytes: raw.size ? Number(raw.size) : undefined,
-          modifiedTime: raw.modifiedTime,
-          md5Checksum: raw.md5Checksum,
-          parentId: raw.parents?.[0],
-          webViewLink: raw.webViewLink,
-          canDownload: raw.capabilities?.canDownload !== false,
-          trashed: raw.trashed === true,
-          appProperties: raw.appProperties,
-        });
+        const entry = driveEntry(raw);
+        if (entry) entries.push(entry);
       }
       pageToken = page.nextPageToken || "";
     } while (pageToken);
@@ -767,8 +806,7 @@ export class GoogleDriveService {
     if (!resolved.startsWith(`${allowedRoot}${path.sep}`)) throw new Error("Destino local do lote inválido.");
     await mkdir(resolved, { recursive: true });
     const existingPath = path.join(resolved, safeDriveFileName(lesson.file.name));
-    const existing = await stat(existingPath).catch(() => null);
-    if (existing?.isFile() && (!lesson.file.sizeBytes || existing.size === lesson.file.sizeBytes)) {
+    if (await reusableFile(existingPath, lesson.file.sizeBytes)) {
       return { reused: true, localPath: existingPath } as const;
     }
     const metadata = await this.metadata(lesson.file.fileId);
@@ -837,19 +875,11 @@ export class GoogleDriveService {
     itemId?: string;
     appProperties?: Record<string, string>;
   }) {
-    const resolved = path.resolve(input.localPath);
-    const allowedRoot = path.resolve(getLocalDataDir());
-    if (resolved !== allowedRoot && !resolved.startsWith(`${allowedRoot}${path.sep}`)) {
-      throw new Error("O render deve estar dentro do diretório local do editor.");
-    }
-    const info = await stat(resolved).catch(() => null);
-    if (!info?.isFile() || path.extname(resolved).toLowerCase() !== ".mp4") throw new Error("Render MP4 local não encontrado.");
+    const { resolved, info } = await localRender(input.localPath);
     const state = await this.store.readState();
     const folderId = input.folderId || state.configuration?.defaultFolderId;
     if (!folderId) throw new Error("Escolha uma pasta de destino no Google Drive.");
-    const existing = (await this.store.listTransfers()).find(
-      (item) => item.kind === "upload" && item.idempotencyKey === input.idempotencyKey && item.status === "completed",
-    );
+    const existing = completedUpload(await this.store.listTransfers(), input.idempotencyKey);
     if (existing) return existing;
     const now = new Date().toISOString();
     const job: GoogleDriveTransferJob = {

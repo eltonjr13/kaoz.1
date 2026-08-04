@@ -55,6 +55,29 @@ function mockFetch() {
   return { fetcher, calls };
 }
 
+function courseListResponse(url: string, folder: string) {
+  const parsed = new URL(url);
+  const query = parsed.searchParams.get("q") || "";
+  const page = parsed.searchParams.get("pageToken");
+  if (query.includes("root-course-123") && !page) return Response.json({ nextPageToken: "page-2", files: [{ id: "module-10-id", name: "MODULO_10", mimeType: folder }] });
+  if (query.includes("root-course-123")) return Response.json({ files: [{ id: "module-2-id", name: "MODULO_2", mimeType: folder }] });
+  if (query.includes("module-2-id")) return Response.json({ files: [{ id: "lesson-2-id", name: "AULA_2", mimeType: folder }] });
+  if (query.includes("module-10-id")) return Response.json({ files: [{ id: "lesson-10-id", name: "AULA_1", mimeType: folder }] });
+  if (query.includes("lesson-2-id")) return Response.json({ files: [{ id: "video-2-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "20", modifiedTime: "2026-08-04T10:00:00.000Z", md5Checksum: "checksum-2", capabilities: { canDownload: true } }] });
+  if (query.includes("lesson-10-id")) return Response.json({ files: [{ id: "video-10-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "10", capabilities: { canDownload: true } }] });
+  return Response.json({ files: [] });
+}
+
+function courseDiscoveryFetch(folder: string): typeof fetch {
+  return async (input) => {
+    const url = String(input);
+    if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "access", expires_in: 3600 });
+    if (url.includes("/files/root-course-123")) return Response.json({ id: "root-course-123", name: "VIDEOS_CURSO", mimeType: folder, parents: ["parent-drive-123"], trashed: false });
+    if (url.includes("/files?")) return courseListResponse(url, folder);
+    return new Response("not mocked", { status: 404 });
+  };
+}
+
 async function waitForJob(service: GoogleDriveService, id: string) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const job = await service.getTransfer(id);
@@ -131,25 +154,7 @@ test("descobre curso paginado em ordem natural e persiste manifesto", async () =
     },
   };
   const folder = "application/vnd.google-apps.folder";
-  const fetcher: typeof fetch = async (input, init = {}) => {
-    const url = String(input);
-    if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "access", expires_in: 3600 });
-    if (url.includes("/files/root-course-123") && !url.includes("?alt=media")) {
-      return Response.json({ id: "root-course-123", name: "VIDEOS_CURSO", mimeType: folder, parents: ["parent-drive-123"], trashed: false });
-    }
-    if (!url.includes("/files?")) return new Response("not mocked", { status: 404 });
-    const parsed = new URL(url);
-    const query = parsed.searchParams.get("q") || "";
-    const page = parsed.searchParams.get("pageToken");
-    if (query.includes("root-course-123") && !page) return Response.json({ nextPageToken: "page-2", files: [{ id: "module-10-id", name: "MODULO_10", mimeType: folder }] });
-    if (query.includes("root-course-123") && page === "page-2") return Response.json({ files: [{ id: "module-2-id", name: "MODULO_2", mimeType: folder }] });
-    if (query.includes("module-2-id")) return Response.json({ files: [{ id: "lesson-2-id", name: "AULA_2", mimeType: folder }] });
-    if (query.includes("module-10-id")) return Response.json({ files: [{ id: "lesson-10-id", name: "AULA_1", mimeType: folder }] });
-    if (query.includes("lesson-2-id")) return Response.json({ files: [{ id: "video-2-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "20", modifiedTime: "2026-08-04T10:00:00.000Z", md5Checksum: "checksum-2", capabilities: { canDownload: true } }] });
-    if (query.includes("lesson-10-id")) return Response.json({ files: [{ id: "video-10-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "10", capabilities: { canDownload: true } }] });
-    return Response.json({ files: [] });
-  };
-  const service = new GoogleDriveService(store, fetcher);
+  const service = new GoogleDriveService(store, courseDiscoveryFetch(folder));
   const manifest = await service.discoverCourse("root-course-123");
   assert.equal(manifest.valid, true);
   assert.equal(manifest.totalBytes, 30);
