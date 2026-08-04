@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { sortCourseVideoPaths } from "../services/davinci-free/course-batch.order.ts";
+import { runCourseBatchPool } from "../services/davinci-free/course-batch.pool.ts";
 import { chooseCourseFolder } from "../services/davinci-free/course-folder-picker.ts";
 import {
   analyzeCourseIdentity,
@@ -205,6 +206,29 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(panel, /await startBatch\(folderPath, discovery\.suggestedCourseName\)/);
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
+});
+
+test("lote do Google Drive limita execução a duas aulas e mantém o DaVinci opcional", async () => {
+  let active = 0;
+  let maximum = 0;
+  await runCourseBatchPool([1, 2, 3, 4, 5, 6], async () => {
+    active += 1;
+    maximum = Math.max(maximum, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+  });
+  assert.equal(maximum, 2);
+
+  const batch = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
+    "utf8",
+  );
+  assert.match(batch, /"downloading"/);
+  assert.match(batch, /"uploading"/);
+  assert.match(batch, /moduleIdentities/);
+  assert.match(batch, /cancelCourseBatch/);
+  assert.match(batch, /resumeCourseBatch/);
+  assert.doesNotMatch(batch, /approveIntelligentEdit|createDavinciFreePlan/);
 });
 
 test(

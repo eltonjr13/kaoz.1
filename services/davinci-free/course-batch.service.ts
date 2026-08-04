@@ -23,6 +23,7 @@ import { applyCourseEditorialStandard } from "./intelligent-edit.review";
 import type { IntelligentCourseIdentity, IntelligentEditStyle } from "./intelligent-edit.types";
 import { sortCourseVideoPaths } from "./course-batch.order";
 import { analyzeCourseIdentity } from "./course-identity.service";
+import { runCourseBatchPool } from "./course-batch.pool";
 import {
   chooseCourseFolder as runCourseFolderPicker,
   normalizeExistingLocalCourseDirectory,
@@ -322,19 +323,6 @@ async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourse
   }
 }
 
-async function runPool<T>(items: T[], worker: (item: T) => Promise<void>, concurrency = 2) {
-  let next = 0;
-  const run = async () => {
-    for (;;) {
-      const index = next;
-      next += 1;
-      if (index >= items.length) return;
-      await worker(items[index]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run));
-}
-
 function throwIfCancelled(job: CourseBatchJob, signal: AbortSignal) {
   if (signal.aborted || job.cancelRequested) throw new DOMException("Lote cancelado.", "AbortError");
 }
@@ -511,10 +499,10 @@ async function finishDriveItem(job: CourseBatchJob, item: CourseBatchItem, signa
 }
 
 async function executeDriveBatch(job: CourseBatchJob, signal: AbortSignal) {
-  await runPool(job.items, (item) => prepareDriveItem(job, item, signal));
+  await runCourseBatchPool(job.items, (item) => prepareDriveItem(job, item, signal));
   throwIfCancelled(job, signal);
   await resolveModuleIdentities(job, signal);
-  await runPool(job.items, (item) => finishDriveItem(job, item, signal));
+  await runCourseBatchPool(job.items, (item) => finishDriveItem(job, item, signal));
 }
 
 async function loadJob(id: string) {

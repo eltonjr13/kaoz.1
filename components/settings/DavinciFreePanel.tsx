@@ -1669,18 +1669,32 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     Estado: <span className="font-semibold text-violet-300">{batch.status}</span>
                     {batch.failed > 0 ? ` · ${batch.failed} com falha` : ""}
                   </p>
+                  {batch.error && <p className="mt-1 text-[10px] text-red-300">{batch.error}</p>}
                 </div>
-                {batch.failed > 0 && !["queued", "running"].includes(batch.status) && (
-                  <button
-                    disabled={!!busy}
-                    onClick={retryBatch}
-                    className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3.5 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 disabled:opacity-40"
-                  >
-                    <RotateCcw size={13} />
-                    Repetir falhas
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {["queued", "running"].includes(batch.status) && (
+                    <button disabled={!!busy} onClick={() => changeBatchState("cancel-batch")} className="rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-200 disabled:opacity-40">Cancelar lote</button>
+                  )}
+                  {batch.status === "cancelled" && (
+                    <button disabled={!!busy} onClick={() => changeBatchState("resume-batch")} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-1.5 text-xs font-semibold text-blue-200 disabled:opacity-40">Retomar lote</button>
+                  )}
+                  {batch.failed > 0 && !["queued", "running"].includes(batch.status) && (
+                    <button
+                      disabled={!!busy}
+                      onClick={retryBatch}
+                      className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3.5 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 disabled:opacity-40"
+                    >
+                      <RotateCcw size={13} />
+                      Repetir falhas
+                    </button>
+                  )}
+                </div>
               </div>
+              {batch.outputFolderUrl && (
+                <a href={batch.outputFolderUrl} target="_blank" rel="noreferrer" className="block text-[11px] font-bold text-blue-300 hover:underline">
+                  Abrir pasta de resultados no Google Drive
+                </a>
+              )}
               <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-emerald-400 transition-all duration-500"
@@ -1696,8 +1710,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       key={item.id}
                       className="rounded-lg border border-white/10 bg-zinc-900/60 p-3 text-[11px] flex items-center justify-between"
                     >
-                      <span className="font-semibold text-zinc-200 truncate">{item.index}. {item.moduleName}</span>
-                      <span className="text-emerald-300 font-bold uppercase text-[10px]">{item.status}</span>
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-zinc-200">{item.index}. {item.moduleName}{item.lessonName ? ` / ${item.lessonName}` : ""}</p>
+                        {item.error && <p className="truncate text-[10px] text-red-300">{item.error}</p>}
+                        {item.remoteOutputUrl && <a href={item.remoteOutputUrl} target="_blank" rel="noreferrer" className="text-[10px] text-blue-300 hover:underline">Abrir vídeo no Drive</a>}
+                      </div>
+                      <div className="ml-3 shrink-0 text-right">
+                        <span className="text-emerald-300 font-bold uppercase text-[10px]">{item.status}</span>
+                        {item.totalBytes && ["downloading", "uploading"].includes(item.status) && (
+                          <p className="text-[9px] text-zinc-500">{Math.round(((item.bytesTransferred || 0) / item.totalBytes) * 100)}%</p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
