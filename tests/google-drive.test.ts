@@ -145,7 +145,7 @@ test("descobre curso paginado em ordem natural e persiste manifesto", async () =
     if (query.includes("root-course-123") && page === "page-2") return Response.json({ files: [{ id: "module-2-id", name: "MODULO_2", mimeType: folder }] });
     if (query.includes("module-2-id")) return Response.json({ files: [{ id: "lesson-2-id", name: "AULA_2", mimeType: folder }] });
     if (query.includes("module-10-id")) return Response.json({ files: [{ id: "lesson-10-id", name: "AULA_1", mimeType: folder }] });
-    if (query.includes("lesson-2-id")) return Response.json({ files: [{ id: "video-2-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "20", capabilities: { canDownload: true } }] });
+    if (query.includes("lesson-2-id")) return Response.json({ files: [{ id: "video-2-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "20", modifiedTime: "2026-08-04T10:00:00.000Z", md5Checksum: "checksum-2", capabilities: { canDownload: true } }] });
     if (query.includes("lesson-10-id")) return Response.json({ files: [{ id: "video-10-file", name: "VIDEO.MP4", mimeType: "video/mp4", size: "10", capabilities: { canDownload: true } }] });
     return Response.json({ files: [] });
   };
@@ -155,6 +155,7 @@ test("descobre curso paginado em ordem natural e persiste manifesto", async () =
   assert.equal(manifest.totalBytes, 30);
   assert.deepEqual(manifest.modules.map((module) => module.name), ["MODULO_2", "MODULO_10"]);
   assert.equal(manifest.lessons[0].index, 1);
+  assert.equal(manifest.lessons[0].file.md5Checksum, "checksum-2");
   assert.deepEqual(await service.readCourseManifest(manifest.id), manifest);
 });
 

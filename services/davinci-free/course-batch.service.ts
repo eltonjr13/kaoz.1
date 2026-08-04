@@ -6,6 +6,7 @@ import {
   readdir,
   rename,
   stat,
+  statfs,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -71,6 +72,8 @@ export interface CourseBatchItem {
   lessonIndex?: number;
   remoteFileId?: string;
   remoteFileUrl?: string;
+  remoteModifiedTime?: string;
+  remoteChecksum?: string;
   remoteOutputId?: string;
   remoteOutputUrl?: string;
   transferId?: string;
@@ -425,6 +428,8 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
   return crypto.createHash("sha256").update(JSON.stringify({
     source: item.remoteFileId,
     sourceBytes: item.totalBytes,
+    sourceModifiedAt: item.remoteModifiedTime,
+    sourceChecksum: item.remoteChecksum,
     style: job.style,
     captionsEnabled: job.captionsEnabled,
     musicPath: job.musicPath,
@@ -598,6 +603,8 @@ function driveItems(id: string, manifest: GoogleDriveCourseManifest): CourseBatc
     lessonIndex: lesson.lessonIndex,
     remoteFileId: lesson.file.fileId,
     remoteFileUrl: lesson.file.webViewLink,
+    remoteModifiedTime: lesson.file.modifiedTime,
+    remoteChecksum: lesson.file.md5Checksum,
     totalBytes: lesson.file.sizeBytes,
     status: "pending",
   }));
@@ -608,7 +615,10 @@ async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: stri
   const manifest = await googleDriveService.readCourseManifest(manifestId);
   if (!manifest) throw new Error("Manifesto do Google Drive não encontrado. Descubra a pasta novamente.");
   if (!manifest.valid) throw new Error("A estrutura do curso possui erros e não pode ser iniciada.");
-  if (manifest.availableLocalBytes < manifest.requiredLocalBytes) throw new Error("Espaço local insuficiente para baixar e renderizar este curso.");
+  await mkdir(ROOT, { recursive: true });
+  const disk = await statfs(ROOT);
+  const availableLocalBytes = Number(disk.bavail) * Number(disk.bsize);
+  if (availableLocalBytes < manifest.requiredLocalBytes) throw new Error("Espaço local insuficiente para baixar e renderizar este curso.");
   const job: CourseBatchJob = {
     version: 2,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || manifest.root.name).slice(0, 100)),
