@@ -27,6 +27,8 @@ import {
   Subtitles,
   Video,
 } from "lucide-react";
+import { GoogleDriveVideoControls } from "@/components/video/GoogleDriveVideoControls";
+import type { GoogleDriveSelection } from "@/services/google-drive/google-drive.types";
 
 type Status = {
   runnerInstalled: boolean;
@@ -197,6 +199,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [musicWaveform, setMusicWaveform] = useState<number[]>([]);
   const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
   const [previewStale, setPreviewStale] = useState<boolean>(false);
+  const [driveSourceOrigin, setDriveSourceOrigin] = useState<GoogleDriveSelection | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
@@ -286,6 +289,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
       sourcePath: form.sourcePath,
+      sourceOrigin: driveSourceOrigin ? { ...driveSourceOrigin, provider: "google-drive" } : undefined,
       courseName: form.courseName,
       moduleName: form.moduleName,
       style: form.style,
@@ -780,9 +784,26 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     className={fieldClass}
                     placeholder="C:\Videos\aula.mp4"
                     value={form.sourcePath}
-                    onChange={update("sourcePath")}
+                    onChange={(event) => {
+                      setDriveSourceOrigin(null);
+                      setForm((current) => ({ ...current, sourcePath: event.target.value }));
+                    }}
                   />
                 </label>
+
+                <GoogleDriveVideoControls
+                  planId={analysis?.id}
+                  renderReady={Boolean(analysis?.artifacts.previewPath) && !previewStale}
+                  onImported={(localPath, selection) => {
+                    setDriveSourceOrigin(selection);
+                    setForm((current) => ({
+                      ...current,
+                      sourcePath: localPath,
+                      moduleName: current.moduleName || selection.name.replace(/\.[^.]+$/, ""),
+                    }));
+                  }}
+                  onStatusMessage={onStatusMessage}
+                />
 
                 <label className="block space-y-1 text-zinc-300 font-semibold">
                   Nome do curso (identidade compartilhada)
@@ -1572,16 +1593,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             ) : (
               <Film size={14} />
             )}
-            {analysis?.artifacts.previewPath ? "Renderizar novamente" : "Renderizar prévia"}
+            {analysis?.artifacts.previewPath ? "Renderizar novamente" : "Renderizar vídeo"}
           </button>
 
           <button
-            disabled={!!busy || !analysis?.artifacts.previewPath || !!status?.pendingPlan}
+            disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-5 py-2 text-xs font-bold text-black shadow-lg shadow-emerald-500/20 hover:brightness-110 disabled:opacity-40 transition-all"
           >
             <CheckCircle size={15} />
-            Aprovar e preparar para o Resolve
+            Preparar para o DaVinci (opcional)
           </button>
         </div>
       </footer>

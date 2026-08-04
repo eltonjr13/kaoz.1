@@ -94,6 +94,27 @@ function safeLabel(value: string, maximum = 100) {
     .slice(0, maximum);
 }
 
+function googleDriveSourceOrigin(value: unknown): IntelligentEditAnalysisInput["sourceOrigin"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const origin = value as Record<string, unknown>;
+  const fileId = cleanText(origin.fileId);
+  const name = safeLabel(cleanText(origin.name), 180);
+  const mimeType = cleanText(origin.mimeType).slice(0, 100);
+  if (origin.provider !== "google-drive" || !/^[a-zA-Z0-9_-]{10,}$/.test(fileId) || !name || !mimeType) return undefined;
+  const sizeBytes = Number(origin.sizeBytes);
+  return {
+    provider: "google-drive",
+    fileId,
+    name,
+    mimeType,
+    ...(Number.isSafeInteger(sizeBytes) && sizeBytes >= 0 ? { sizeBytes } : {}),
+    ...(typeof origin.parentId === "string" ? { parentId: origin.parentId.slice(0, 200) } : {}),
+    ...(typeof origin.webViewLink === "string" && origin.webViewLink.startsWith("https://drive.google.com/")
+      ? { webViewLink: origin.webViewLink.slice(0, 500) }
+      : {}),
+  };
+}
+
 function requestId(value: unknown) {
   const normalized = cleanText(value);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{7,79}$/.test(normalized)) {
@@ -759,6 +780,7 @@ export async function analyzeIntelligentEdit(
   const input: IntelligentEditAnalysisInput = {
     requestId: requestId(rawInput.requestId),
     sourcePath: (await localFile(rawInput.sourcePath, "Vídeo", VIDEO_EXTENSIONS, true))!,
+    sourceOrigin: googleDriveSourceOrigin(rawInput.sourceOrigin),
     courseName: safeLabel(cleanText(rawInput.courseName), 100) || undefined,
     moduleName: safeLabel(cleanText(rawInput.moduleName, "Módulo"), 100),
     style: (["subtle", "balanced", "dynamic"].includes(String(rawInput.style))
@@ -834,6 +856,7 @@ export async function analyzeIntelligentEdit(
     requestId: input.requestId,
     sourceHash,
     sourcePath: input.sourcePath,
+    sourceOrigin: input.sourceOrigin,
     createdAt: new Date().toISOString(),
     style: input.style || "subtle",
     design: courseThemeDesign(

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Bot, CheckCircle2, Clock3, Link2, Loader2, MessageCircle, PlugZap, Save, Send, ShieldCheck, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus, TelegramPollingRuntimeStatus } from "@/services/connectors/connector.types";
 import { isConnectorInboundEnabled } from "@/services/connectors/connector.catalog";
+import { GoogleDriveSettingsCard } from "@/components/settings/GoogleDriveSettingsCard";
 
 interface StatusMessage { text: string; type: "success" | "error" | "info"; }
 interface Overview { catalog: ConnectorDefinition[]; accounts: ConnectorAccount[]; history: ConnectorHistoryEntry[]; inboundHistory: ConnectorInboundHistoryEntry[]; discordGateway: DiscordGatewayRuntimeStatus; telegramPolling: TelegramPollingRuntimeStatus; }
@@ -251,6 +252,8 @@ export function ConnectorsSettingsPanel({ onStatusMessage }: { onStatusMessage: 
         </div>
         <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-[10px] font-bold text-emerald-300"><ShieldCheck size={13} /> Credenciais cifradas localmente</div>
       </div>
+
+      <GoogleDriveSettingsCard onStatusMessage={onStatusMessage} />
 
       <div className="grid gap-4 lg:grid-cols-2 items-start">
         {overview.catalog.map((definition) => {

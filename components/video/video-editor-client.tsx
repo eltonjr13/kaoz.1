@@ -29,7 +29,7 @@ export function VideoEditorClient() {
                 Edição de vídeo
               </h1>
               <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-400 md:text-sm">
-                Analise, revise e renderize aulas com decisões editoriais inteligentes antes de enviá-las ao DaVinci Resolve.
+                Importe do computador ou Google Drive, edite e renderize localmente. Depois, envie ao Drive ou prepare para o DaVinci se quiser.
               </p>
             </div>
 
@@ -78,4 +78,3 @@ export function VideoEditorClient() {
     </div>
   );
 }
-

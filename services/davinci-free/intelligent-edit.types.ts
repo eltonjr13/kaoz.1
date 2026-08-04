@@ -136,6 +136,15 @@ export interface IntelligentEditPlan {
   requestId: string;
   sourceHash: string;
   sourcePath: string;
+  sourceOrigin?: {
+    provider: "google-drive";
+    fileId: string;
+    name: string;
+    mimeType: string;
+    sizeBytes?: number;
+    parentId?: string;
+    webViewLink?: string;
+  };
   createdAt: string;
   style: IntelligentEditStyle;
   design?: IntelligentEditDesign;
@@ -203,6 +212,7 @@ export interface IntelligentEditPlan {
 export interface IntelligentEditAnalysisInput {
   requestId: string;
   sourcePath: string;
+  sourceOrigin?: IntelligentEditPlan["sourceOrigin"];
   courseName?: string;
   moduleName: string;
   style?: IntelligentEditStyle;
