@@ -78,6 +78,34 @@ function courseDiscoveryFetch(folder: string): typeof fetch {
   };
 }
 
+function adaptiveCourseDiscoveryFetch(folder: string): typeof fetch {
+  return async (input) => {
+    const url = String(input);
+    if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "access", expires_in: 3600 });
+    if (url.includes("/files/adaptive-root-123")) {
+      return Response.json({ id: "adaptive-root-123", name: "CURSO_LIVRE", mimeType: folder, parents: ["parent-drive-123"], trashed: false });
+    }
+    if (!url.includes("/files?")) return new Response("not mocked", { status: 404 });
+    const query = new URL(url).searchParams.get("q") || "";
+    if (query.includes("adaptive-root-123")) return Response.json({ files: [
+      { id: "module-flex-123", name: "Módulo Flexível", mimeType: folder },
+      { id: "root-video-123", name: "Apresentação.mp4", mimeType: "video/mp4", size: "5", capabilities: { canDownload: true } },
+    ] });
+    if (query.includes("module-flex-123")) return Response.json({ files: [
+      { id: "empty-folder-123", name: "Materiais", mimeType: folder },
+      { id: "section-folder-123", name: "Seção", mimeType: folder },
+    ] });
+    if (query.includes("section-folder-123")) return Response.json({ files: [
+      { id: "lesson-folder-123", name: "Aula profunda", mimeType: folder },
+    ] });
+    if (query.includes("lesson-folder-123")) return Response.json({ files: [
+      { id: "video-part-1-123", name: "Parte 1.mp4", mimeType: "video/mp4", size: "10", capabilities: { canDownload: true } },
+      { id: "video-part-2-123", name: "Parte 2.mov", mimeType: "video/quicktime", size: "20", capabilities: { canDownload: true } },
+    ] });
+    return Response.json({ files: [] });
+  };
+}
+
 async function waitForJob(service: GoogleDriveService, id: string) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const job = await service.getTransfer(id);
@@ -162,6 +190,33 @@ test("descobre curso paginado em ordem natural e persiste manifesto", async () =
   assert.equal(manifest.lessons[0].index, 1);
   assert.equal(manifest.lessons[0].file.md5Checksum, "checksum-2");
   assert.deepEqual(await service.readCourseManifest(manifest.id), manifest);
+});
+
+test("adapta a descoberta a vídeos diretos, níveis intermediários e múltiplos vídeos por pasta", async () => {
+  const runtime = await mkdtemp(path.join(os.tmpdir(), "kaoz-drive-adaptive-course-"));
+  process.env.KAOZ1_DATA_DIR = runtime;
+  const store = new MemoryStore();
+  store.state = {
+    version: 1,
+    configuration: { clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" },
+    oauth: {
+      refreshToken: "refresh-secret",
+      scope: "openid https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly",
+      connectedAt: new Date().toISOString(),
+    },
+  };
+  const folder = "application/vnd.google-apps.folder";
+  const service = new GoogleDriveService(store, adaptiveCourseDiscoveryFetch(folder));
+  const manifest = await service.discoverCourse("adaptive-root-123");
+  assert.equal(manifest.valid, true);
+  assert.equal(manifest.lessons.length, 3);
+  assert.equal(manifest.totalBytes, 35);
+  assert.deepEqual(manifest.modules.map((module) => module.name), ["Conteúdo geral", "Módulo Flexível"]);
+  assert.deepEqual(manifest.modules[1].lessons.map((lesson) => lesson.lessonName), [
+    "Seção › Aula profunda — Parte 1",
+    "Seção › Aula profunda — Parte 2",
+  ]);
+  assert.equal(manifest.issues.length, 0);
 });
 
 test("estado OAuth persistido não contém credenciais em texto puro", async () => {

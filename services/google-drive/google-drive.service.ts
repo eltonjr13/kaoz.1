@@ -517,67 +517,101 @@ export class GoogleDriveService {
     return naturalEntries(entries);
   }
 
-  private async discoverLesson(
-    module: DriveEntry,
-    moduleIndex: number,
-    lesson: DriveEntry,
-    lessonIndex: number,
-  ) {
-    const children = await this.listChildren(lesson.fileId);
-    const videos = children.filter(isVideo);
-    const issues: GoogleDriveCourseIssue[] = [];
-    if (videos.length === 0) {
-      issues.push(courseIssue("missing-video", module.name, lesson.name, "A pasta da aula não contém um vídeo compatível diretamente nela."));
-    }
-    if (videos.length > 1) {
-      issues.push(courseIssue("multiple-videos", module.name, lesson.name, "A pasta da aula contém mais de um vídeo compatível."));
-    }
-    const video = videos[0];
-    if (video && !video.canDownload) {
-      issues.push(courseIssue("download-denied", module.name, lesson.name, "O vídeo da aula não permite download."));
-    }
-    const item: GoogleDriveCourseLesson | undefined = video ? {
-      id: crypto.createHash("sha256").update(`${module.fileId}:${lesson.fileId}:${video.fileId}`).digest("hex").slice(0, 16),
-      index: 0,
-      moduleId: module.fileId,
-      moduleName: module.name,
-      moduleIndex,
-      lessonId: lesson.fileId,
-      lessonName: lesson.name,
-      lessonIndex,
-      file: video,
-    } : undefined;
-    return { item, issues };
+  private async discoverVideos(
+    folder: DriveEntry,
+    relativeFolders: DriveEntry[] = [],
+  ): Promise<Array<{ folder: DriveEntry; relativeFolders: DriveEntry[]; video: DriveEntry }>> {
+    const children = await this.listChildren(folder.fileId);
+    const directVideos = children
+      .filter(isVideo)
+      .map((video) => ({ folder, relativeFolders, video }));
+    const nestedVideos = await Promise.all(
+      children
+        .filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME)
+        .map((child) => this.discoverVideos(child, [...relativeFolders, child])),
+    );
+    return [...directVideos, ...nestedVideos.flat()];
   }
 
-  private async discoverModule(module: DriveEntry, moduleIndex: number) {
-    const lessonFolders = (await this.listChildren(module.fileId))
-      .filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME);
-    const results = await Promise.all(
-      lessonFolders.map((lesson, index) => this.discoverLesson(module, moduleIndex, lesson, index + 1)),
-    );
-    const lessons = results.flatMap((result) => result.item ? [result.item] : []);
+  private courseModule(
+    module: DriveEntry,
+    moduleIndex: number,
+    found: Array<{ folder: DriveEntry; relativeFolders: DriveEntry[]; video: DriveEntry }>,
+  ) {
+    const videoCountByFolder = new Map<string, number>();
+    for (const entry of found) {
+      videoCountByFolder.set(entry.folder.fileId, (videoCountByFolder.get(entry.folder.fileId) || 0) + 1);
+    }
+    const issues: GoogleDriveCourseIssue[] = [];
+    const lessons = found.map((entry, index): GoogleDriveCourseLesson => {
+      const folderPath = entry.relativeFolders.map((folder) => folder.name).join(" › ");
+      const videoTitle = path.parse(entry.video.name).name || entry.video.name;
+      const lessonName = !folderPath
+        ? videoTitle
+        : (videoCountByFolder.get(entry.folder.fileId) || 0) > 1
+          ? `${folderPath} — ${videoTitle}`
+          : folderPath;
+      if (!entry.video.canDownload) {
+        issues.push(courseIssue("download-denied", module.name, lessonName, "O vídeo da aula não permite download."));
+      }
+      return {
+        id: crypto.createHash("sha256").update(`${module.fileId}:${entry.video.fileId}`).digest("hex").slice(0, 16),
+        index: 0,
+        moduleId: module.fileId,
+        moduleName: module.name,
+        moduleIndex,
+        lessonId: crypto.createHash("sha256").update(`${entry.folder.fileId}:${entry.video.fileId}`).digest("hex").slice(0, 20),
+        lessonName,
+        lessonIndex: index + 1,
+        file: entry.video,
+      };
+    });
     const courseModule: GoogleDriveCourseModule = {
       id: module.fileId,
       name: module.name,
       index: moduleIndex,
       lessons,
     };
-    return { module: courseModule, issues: results.flatMap((result) => result.issues) };
+    return { module: courseModule, issues };
+  }
+
+  private async discoverModule(module: DriveEntry, moduleIndex: number) {
+    return this.courseModule(module, moduleIndex, await this.discoverVideos(module));
   }
 
   async discoverCourse(rootFolderId: string): Promise<GoogleDriveCourseManifest> {
     await this.assertBatchScope();
     const root = await this.metadata(rootFolderId);
     if (root.trashed || root.mimeType !== DRIVE_FOLDER_MIME) throw new Error("Selecione uma pasta-raiz válida do Google Drive.");
-    const moduleFolders = (await this.listChildren(root.fileId))
-      .filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME);
-    const discovered = await Promise.all(
+    const rootChildren = await this.listChildren(root.fileId);
+    const moduleFolders = rootChildren.filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME);
+    const rootVideos = rootChildren.filter(isVideo);
+    const scannedModules = await Promise.all(
       moduleFolders.map((module, index) => this.discoverModule(module, index + 1)),
     );
+    const rootModule = rootVideos.length > 0
+      ? this.courseModule(
+        { ...root, name: moduleFolders.length > 0 ? "Conteúdo geral" : root.name },
+        1,
+        rootVideos.map((video) => ({ folder: root, relativeFolders: [], video })),
+      )
+      : null;
+    const discovered = [rootModule, ...scannedModules]
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry?.module.lessons.length))
+      .map((entry, index) => ({
+        ...entry,
+        module: {
+          ...entry.module,
+          index: index + 1,
+          lessons: entry.module.lessons.map((lesson) => ({ ...lesson, moduleIndex: index + 1 })),
+        },
+      }));
     const lessons = discovered.flatMap((entry) => entry.module.lessons);
     lessons.forEach((lesson, index) => { lesson.index = index + 1; });
     const issues = discovered.flatMap((entry) => entry.issues);
+    if (lessons.length === 0) {
+      issues.push(courseIssue("missing-video", root.name, "", "Nenhum vídeo compatível foi encontrado nesta pasta ou em suas subpastas."));
+    }
     if (lessons.length > MAX_COURSE_VIDEOS) {
       issues.push(courseIssue("too-many-videos", root.name, "", `O lote excede o limite de ${MAX_COURSE_VIDEOS} vídeos.`));
     }
