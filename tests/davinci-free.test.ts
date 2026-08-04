@@ -180,10 +180,6 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
     path.join(process.cwd(), "services", "davinci-free", "course-folder-picker.ts"),
     "utf8",
   );
-  const panel = await readFile(
-    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
-    "utf8",
-  );
   assert.match(batch, /course-batches/);
   assert.match(picker, /Shell\.Application/);
   assert.match(picker, /BrowseForFolder/);
@@ -225,6 +221,10 @@ test("lote do Google Drive limita execução a duas aulas e mantém o DaVinci op
 
   const batch = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
     "utf8",
   );
   assert.match(batch, /"downloading"/);
