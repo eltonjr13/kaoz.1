@@ -30,6 +30,8 @@ export interface GoogleDriveConnectionStatus {
   version: typeof GOOGLE_DRIVE_STATE_VERSION;
   configured: boolean;
   connected: boolean;
+  batchReady: boolean;
+  missingScopes: string[];
   email?: string;
   defaultFolder?: { id: string; name: string };
   lastCheckedAt?: string;
@@ -52,6 +54,56 @@ export interface GoogleDriveTransferJob {
   remoteUrl?: string;
   error?: string;
   idempotencyKey?: string;
+  batchId?: string;
+  itemId?: string;
+  remoteAppProperties?: Record<string, string>;
+}
+
+export type GoogleDriveCourseIssueCode =
+  | "missing-video"
+  | "multiple-videos"
+  | "download-denied"
+  | "invalid-video"
+  | "too-many-videos";
+
+export interface GoogleDriveCourseIssue {
+  code: GoogleDriveCourseIssueCode;
+  moduleName: string;
+  lessonName: string;
+  message: string;
+}
+
+export interface GoogleDriveCourseLesson {
+  id: string;
+  index: number;
+  moduleId: string;
+  moduleName: string;
+  moduleIndex: number;
+  lessonId: string;
+  lessonName: string;
+  lessonIndex: number;
+  file: GoogleDriveSelection;
+}
+
+export interface GoogleDriveCourseModule {
+  id: string;
+  name: string;
+  index: number;
+  lessons: GoogleDriveCourseLesson[];
+}
+
+export interface GoogleDriveCourseManifest {
+  version: 1;
+  id: string;
+  root: GoogleDriveSelection;
+  createdAt: string;
+  totalBytes: number;
+  requiredLocalBytes: number;
+  availableLocalBytes: number;
+  valid: boolean;
+  issues: GoogleDriveCourseIssue[];
+  modules: GoogleDriveCourseModule[];
+  lessons: GoogleDriveCourseLesson[];
 }
 
 export interface GoogleDriveStoredState {

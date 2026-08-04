@@ -8,13 +8,19 @@ import {
   GOOGLE_DRIVE_STATE_VERSION,
   type GoogleDriveConfiguration,
   type GoogleDriveConnectionStatus,
+  type GoogleDriveCourseIssue,
+  type GoogleDriveCourseLesson,
+  type GoogleDriveCourseManifest,
+  type GoogleDriveCourseModule,
   type GoogleDriveSelection,
   type GoogleDriveStoredState,
   type GoogleDriveTransferJob,
 } from "./google-drive.types.ts";
 
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const SCOPES = ["openid", "email", "profile", DRIVE_SCOPE].join(" ");
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const REQUIRED_DRIVE_SCOPES = [DRIVE_FILE_SCOPE, DRIVE_READONLY_SCOPE];
+const SCOPES = ["openid", "email", "profile", ...REQUIRED_DRIVE_SCOPES].join(" ");
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mxf", ".avi", ".mkv", ".webm"]);
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -28,6 +34,15 @@ const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 type FetchLike = typeof fetch;
 type CachedToken = { value: string; expiresAt: number };
 type OAuthTokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
+type DriveEntry = GoogleDriveSelection & {
+  canDownload: boolean;
+  trashed: boolean;
+  appProperties?: Record<string, string>;
+};
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+const COURSE_DISK_RESERVE = 1024 ** 3;
+const MAX_COURSE_VIDEOS = 500;
+const NATURAL_COLLATOR = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 
 function base64Url(value: Buffer) {
   return value.toString("base64url");
@@ -105,7 +120,7 @@ async function exchangeAuthorizationCode(
 
 function validateOAuthTokens(tokens: OAuthTokenResponse) {
   if (!tokens.access_token || !tokens.refresh_token) throw new Error("O Google não retornou os tokens necessários.");
-  if (!String(tokens.scope || "").split(/\s+/).includes(DRIVE_SCOPE)) {
+  if (!String(tokens.scope || "").split(/\s+/).includes(DRIVE_FILE_SCOPE)) {
     throw new Error("O acesso a arquivos do Google Drive não foi autorizado.");
   }
   return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token };
@@ -116,6 +131,19 @@ function isVideo(metadata: { name?: string; mimeType?: string }) {
     metadata.mimeType?.startsWith("video/") ||
     VIDEO_EXTENSIONS.has(path.extname(metadata.name || "").toLowerCase()),
   );
+}
+
+function naturalEntries(entries: DriveEntry[]) {
+  return [...entries].sort((left, right) => NATURAL_COLLATOR.compare(left.name, right.name));
+}
+
+function courseIssue(
+  code: GoogleDriveCourseIssue["code"],
+  moduleName: string,
+  lessonName: string,
+  message: string,
+): GoogleDriveCourseIssue {
+  return { code, moduleName, lessonName, message };
 }
 
 function validatePendingAuthorization(stored: GoogleDriveStoredState, input: { state?: string; error?: string }) {
@@ -164,10 +192,16 @@ export class GoogleDriveService {
 
   async status(): Promise<GoogleDriveConnectionStatus> {
     const state = await this.store.readState();
+    const grantedScopes = new Set(String(state.oauth?.scope || "").split(/\s+/));
+    const missingScopes = state.oauth
+      ? REQUIRED_DRIVE_SCOPES.filter((scope) => !grantedScopes.has(scope))
+      : [...REQUIRED_DRIVE_SCOPES];
     return {
       version: GOOGLE_DRIVE_STATE_VERSION,
       configured: Boolean(state.configuration?.clientId && state.configuration.clientSecret && state.configuration.apiKey && state.configuration.appId),
       connected: Boolean(state.oauth?.refreshToken),
+      batchReady: Boolean(state.oauth?.refreshToken) && missingScopes.length === 0,
+      missingScopes,
       email: state.oauth?.email,
       defaultFolder: state.configuration?.defaultFolderId
         ? { id: state.configuration.defaultFolderId, name: state.configuration.defaultFolderName || "Pasta selecionada" }
@@ -236,7 +270,7 @@ export class GoogleDriveService {
         oauth: {
           refreshToken,
           email: profile.email,
-          scope: tokens.scope || DRIVE_SCOPE,
+          scope: tokens.scope || DRIVE_FILE_SCOPE,
           connectedAt: new Date().toISOString(),
         },
         pendingAuthorization: undefined,
@@ -293,6 +327,14 @@ export class GoogleDriveService {
         ? { id: state.configuration.defaultFolderId, name: state.configuration.defaultFolderName || "Pasta selecionada" }
         : undefined,
     };
+  }
+
+  private async assertBatchScope() {
+    const status = await this.status();
+    if (!status.connected) throw new Error("Conecte o Google Drive nas Configurações primeiro.");
+    if (!status.batchReady) {
+      throw new Error("Reconexão necessária para processamento em lote: autorize o acesso somente leitura ao Google Drive.");
+    }
   }
 
   async testConnection() {
@@ -360,17 +402,18 @@ export class GoogleDriveService {
     return this.status();
   }
 
-  private async metadata(fileId: string): Promise<GoogleDriveSelection & { canDownload: boolean; trashed: boolean }> {
+  private async metadata(fileId: string): Promise<DriveEntry> {
     if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) throw new Error("Arquivo do Google Drive inválido.");
     const token = await this.accessToken();
-    const fields = "id,name,mimeType,size,parents,webViewLink,trashed,capabilities(canDownload)";
+    const fields = "id,name,mimeType,size,parents,webViewLink,trashed,appProperties,capabilities(canDownload)";
     const response = await this.fetcher(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(fields)}&supportsAllDrives=true`, {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(await responseError(response));
     const raw = await response.json() as {
       id?: string; name?: string; mimeType?: string; size?: string; parents?: string[];
-      webViewLink?: string; trashed?: boolean; capabilities?: { canDownload?: boolean };
+      webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
+      capabilities?: { canDownload?: boolean };
     };
     if (!raw.id || !raw.name || !raw.mimeType) throw new Error("Metadados incompletos do arquivo selecionado.");
     return {
@@ -382,7 +425,142 @@ export class GoogleDriveService {
       webViewLink: raw.webViewLink,
       canDownload: raw.capabilities?.canDownload !== false,
       trashed: raw.trashed === true,
+      appProperties: raw.appProperties,
     };
+  }
+
+  private async listChildren(parentId: string) {
+    const token = await this.accessToken();
+    const entries: DriveEntry[] = [];
+    let pageToken = "";
+    do {
+      const query = new URLSearchParams({
+        q: `'${parentId.replaceAll("'", "\\'")}' in parents and trashed = false`,
+        spaces: "drive",
+        pageSize: "1000",
+        fields: "nextPageToken,files(id,name,mimeType,size,parents,webViewLink,trashed,appProperties,capabilities(canDownload))",
+        supportsAllDrives: "true",
+        includeItemsFromAllDrives: "true",
+        ...(pageToken ? { pageToken } : {}),
+      });
+      const response = await this.fetcher(`${DRIVE_API}/files?${query}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      const page = await response.json() as {
+        nextPageToken?: string;
+        files?: Array<{
+          id?: string; name?: string; mimeType?: string; size?: string; parents?: string[];
+          webViewLink?: string; trashed?: boolean; appProperties?: Record<string, string>;
+          capabilities?: { canDownload?: boolean };
+        }>;
+      };
+      for (const raw of page.files || []) {
+        if (!raw.id || !raw.name || !raw.mimeType) continue;
+        entries.push({
+          fileId: raw.id,
+          name: safeDriveFileName(raw.name),
+          mimeType: raw.mimeType,
+          sizeBytes: raw.size ? Number(raw.size) : undefined,
+          parentId: raw.parents?.[0],
+          webViewLink: raw.webViewLink,
+          canDownload: raw.capabilities?.canDownload !== false,
+          trashed: raw.trashed === true,
+          appProperties: raw.appProperties,
+        });
+      }
+      pageToken = page.nextPageToken || "";
+    } while (pageToken);
+    return naturalEntries(entries);
+  }
+
+  private async discoverLesson(
+    module: DriveEntry,
+    moduleIndex: number,
+    lesson: DriveEntry,
+    lessonIndex: number,
+  ) {
+    const children = await this.listChildren(lesson.fileId);
+    const videos = children.filter(isVideo);
+    const issues: GoogleDriveCourseIssue[] = [];
+    if (videos.length === 0) {
+      issues.push(courseIssue("missing-video", module.name, lesson.name, "A pasta da aula não contém um vídeo compatível diretamente nela."));
+    }
+    if (videos.length > 1) {
+      issues.push(courseIssue("multiple-videos", module.name, lesson.name, "A pasta da aula contém mais de um vídeo compatível."));
+    }
+    const video = videos[0];
+    if (video && !video.canDownload) {
+      issues.push(courseIssue("download-denied", module.name, lesson.name, "O vídeo da aula não permite download."));
+    }
+    const item: GoogleDriveCourseLesson | undefined = video ? {
+      id: crypto.createHash("sha256").update(`${module.fileId}:${lesson.fileId}:${video.fileId}`).digest("hex").slice(0, 16),
+      index: 0,
+      moduleId: module.fileId,
+      moduleName: module.name,
+      moduleIndex,
+      lessonId: lesson.fileId,
+      lessonName: lesson.name,
+      lessonIndex,
+      file: video,
+    } : undefined;
+    return { item, issues };
+  }
+
+  private async discoverModule(module: DriveEntry, moduleIndex: number) {
+    const lessonFolders = (await this.listChildren(module.fileId))
+      .filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME);
+    const results = await Promise.all(
+      lessonFolders.map((lesson, index) => this.discoverLesson(module, moduleIndex, lesson, index + 1)),
+    );
+    const lessons = results.flatMap((result) => result.item ? [result.item] : []);
+    const courseModule: GoogleDriveCourseModule = {
+      id: module.fileId,
+      name: module.name,
+      index: moduleIndex,
+      lessons,
+    };
+    return { module: courseModule, issues: results.flatMap((result) => result.issues) };
+  }
+
+  async discoverCourse(rootFolderId: string): Promise<GoogleDriveCourseManifest> {
+    await this.assertBatchScope();
+    const root = await this.metadata(rootFolderId);
+    if (root.trashed || root.mimeType !== DRIVE_FOLDER_MIME) throw new Error("Selecione uma pasta-raiz válida do Google Drive.");
+    const moduleFolders = (await this.listChildren(root.fileId))
+      .filter((entry) => entry.mimeType === DRIVE_FOLDER_MIME);
+    const discovered = await Promise.all(
+      moduleFolders.map((module, index) => this.discoverModule(module, index + 1)),
+    );
+    const lessons = discovered.flatMap((entry) => entry.module.lessons);
+    lessons.forEach((lesson, index) => { lesson.index = index + 1; });
+    const issues = discovered.flatMap((entry) => entry.issues);
+    if (lessons.length > MAX_COURSE_VIDEOS) {
+      issues.push(courseIssue("too-many-videos", root.name, "", `O lote excede o limite de ${MAX_COURSE_VIDEOS} vídeos.`));
+    }
+    const totalBytes = lessons.reduce((total, lesson) => total + (lesson.file.sizeBytes || 0), 0);
+    const localRoot = path.join(getLocalDataDir(), "davinci-resolve-free", "course-batches");
+    await mkdir(localRoot, { recursive: true });
+    const disk = await statfs(localRoot);
+    const manifest: GoogleDriveCourseManifest = {
+      version: 1,
+      id: crypto.randomBytes(12).toString("hex"),
+      root,
+      createdAt: new Date().toISOString(),
+      totalBytes,
+      requiredLocalBytes: totalBytes * 2 + COURSE_DISK_RESERVE,
+      availableLocalBytes: Number(disk.bavail) * Number(disk.bsize),
+      valid: issues.length === 0 && lessons.length > 0 && lessons.length <= MAX_COURSE_VIDEOS,
+      issues,
+      modules: discovered.map((entry) => entry.module),
+      lessons,
+    };
+    await this.store.writeManifest(manifest);
+    return manifest;
+  }
+
+  async readCourseManifest(id: string) {
+    return this.store.readManifest(id);
   }
 
   private async saveJob(job: GoogleDriveTransferJob) {
@@ -435,6 +613,14 @@ export class GoogleDriveService {
         throw new Error("Espaço em disco insuficiente para importar o vídeo.");
       }
     }
+    return this.queueDownload(metadata, directory);
+  }
+
+  private async queueDownload(
+    metadata: DriveEntry,
+    directory: string,
+    tags: { batchId?: string; itemId?: string } = {},
+  ) {
     const now = new Date().toISOString();
     const job: GoogleDriveTransferJob = {
       version: GOOGLE_DRIVE_STATE_VERSION,
@@ -449,10 +635,36 @@ export class GoogleDriveService {
       remoteFileId: metadata.fileId,
       remoteFolderId: metadata.parentId,
       remoteUrl: metadata.webViewLink,
+      ...tags,
     };
     await this.saveJob(job);
     queueMicrotask(() => void this.download(job, metadata, directory));
     return job;
+  }
+
+  async startCourseDownload(input: {
+    manifestId: string;
+    itemId: string;
+    batchId: string;
+    directory: string;
+  }) {
+    const manifest = await this.store.readManifest(input.manifestId);
+    const lesson = manifest?.lessons.find((item) => item.id === input.itemId);
+    if (!lesson) throw new Error("Aula não encontrada no manifesto do Google Drive.");
+    const resolved = path.resolve(input.directory);
+    const allowedRoot = path.resolve(getLocalDataDir());
+    if (!resolved.startsWith(`${allowedRoot}${path.sep}`)) throw new Error("Destino local do lote inválido.");
+    await mkdir(resolved, { recursive: true });
+    const existingPath = path.join(resolved, safeDriveFileName(lesson.file.name));
+    const existing = await stat(existingPath).catch(() => null);
+    if (existing?.isFile() && (!lesson.file.sizeBytes || existing.size === lesson.file.sizeBytes)) {
+      return { reused: true, localPath: existingPath } as const;
+    }
+    const metadata = await this.metadata(lesson.file.fileId);
+    return {
+      reused: false,
+      transfer: await this.queueDownload(metadata, resolved, { batchId: input.batchId, itemId: input.itemId }),
+    } as const;
   }
 
   private async download(job: GoogleDriveTransferJob, metadata: GoogleDriveSelection, directory: string) {
@@ -501,7 +713,16 @@ export class GoogleDriveService {
     }
   }
 
-  async startUpload(input: { localPath: string; sourceName: string; folderId?: string; idempotencyKey: string }) {
+  async startUpload(input: {
+    localPath: string;
+    sourceName: string;
+    folderId?: string;
+    idempotencyKey: string;
+    remoteName?: string;
+    batchId?: string;
+    itemId?: string;
+    appProperties?: Record<string, string>;
+  }) {
     const resolved = path.resolve(input.localPath);
     const allowedRoot = path.resolve(getLocalDataDir());
     if (resolved !== allowedRoot && !resolved.startsWith(`${allowedRoot}${path.sep}`)) {
@@ -526,10 +747,13 @@ export class GoogleDriveService {
       updatedAt: now,
       bytesTransferred: 0,
       totalBytes: info.size,
-      sourceName: editedDriveFileName(input.sourceName),
+      sourceName: input.remoteName ? safeDriveFileName(input.remoteName) : editedDriveFileName(input.sourceName),
       localPath: resolved,
       remoteFolderId: folderId,
       idempotencyKey: input.idempotencyKey,
+      batchId: input.batchId,
+      itemId: input.itemId,
+      remoteAppProperties: input.appProperties,
     };
     await this.saveJob(job);
     queueMicrotask(() => void this.upload(job));
@@ -569,7 +793,12 @@ export class GoogleDriveService {
           "x-upload-content-type": "video/mp4",
           "x-upload-content-length": String(job.totalBytes || 0),
         },
-        body: JSON.stringify({ name: job.sourceName, mimeType: "video/mp4", parents: [job.remoteFolderId] }),
+        body: JSON.stringify({
+          name: job.sourceName,
+          mimeType: "video/mp4",
+          parents: [job.remoteFolderId],
+          appProperties: job.remoteAppProperties,
+        }),
         signal,
       });
     if (!start.ok) throw new Error(await responseError(start));

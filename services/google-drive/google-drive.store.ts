@@ -6,6 +6,7 @@ import { getRuntimeDataRoot } from "../../lib/runtime-paths.ts";
 import {
   GOOGLE_DRIVE_STATE_VERSION,
   type GoogleDriveStoredState,
+  type GoogleDriveCourseManifest,
   type GoogleDriveTransferJob,
 } from "./google-drive.types.ts";
 
@@ -143,6 +144,20 @@ export class GoogleDriveStore {
     await atomicWrite(path.join(this.rootPath, "transfers.json"), `${JSON.stringify(jobs.slice(-100), null, 2)}\n`);
   }
 
+  async readManifest(id: string): Promise<GoogleDriveCourseManifest | null> {
+    if (!/^[a-f0-9]{24}$/.test(id)) return null;
+    return readFile(path.join(this.rootPath, "manifests", `${id}.json`), "utf8")
+      .then((raw) => JSON.parse(raw) as GoogleDriveCourseManifest)
+      .catch(() => null);
+  }
+
+  async writeManifest(manifest: GoogleDriveCourseManifest) {
+    await atomicWrite(
+      path.join(this.rootPath, "manifests", `${manifest.id}.json`),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+  }
+
   root() {
     return this.rootPath;
   }
@@ -150,7 +165,8 @@ export class GoogleDriveStore {
 
 export type GoogleDriveStoreLike = Pick<
   GoogleDriveStore,
-  "readState" | "writeState" | "listTransfers" | "writeTransfers" | "root"
+  "readState" | "writeState" | "listTransfers" | "writeTransfers" |
+  "readManifest" | "writeManifest" | "root"
 >;
 
 export const googleDriveStore = new GoogleDriveStore();
