@@ -37,6 +37,9 @@ function DriveConnectionActions(props: {
       <button disabled={!!busy} onClick={save} className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-40">{busy === "save" ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar</button>
       {status?.connected ? (
         <>
+          {!status.batchReady && (
+            <button disabled={!!busy} onClick={connect} className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-black hover:bg-amber-300 disabled:opacity-40"><ExternalLink size={14} /> Reconectar para lotes</button>
+          )}
           <button disabled={!!busy} onClick={test} className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-40">{busy === "test" ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} Testar conexão</button>
           <button disabled={!!busy} onClick={disconnect} className="inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-40"><LogOut size={14} /> Desconectar</button>
         </>
@@ -173,7 +176,10 @@ export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: 
       </div>
 
       <DriveConnectionActions status={status} busy={busy} save={() => void save()} connect={() => void connect()} test={() => void test()} disconnect={() => void disconnect()} />
-      <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">Ative as APIs Google Drive e Google Picker no mesmo projeto Cloud. O Kaoz.1 solicita apenas <code className="text-zinc-300">drive.file</code>; arquivos e pastas precisam ser escolhidos no Picker.</p>
+      {status?.connected && !status.batchReady && (
+        <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2 text-[10px] text-amber-200">Reconexão necessária para processamento em lote. A conexão antiga não possui o escopo <code>drive.readonly</code>.</p>
+      )}
+      <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">Ative as APIs Google Drive e Google Picker no mesmo projeto Cloud. O Kaoz.1 usa <code className="text-zinc-300">drive.file</code> para criar resultados e <code className="text-zinc-300">drive.readonly</code> para descobrir a estrutura dos cursos selecionados.</p>
     </section>
   );
 }
