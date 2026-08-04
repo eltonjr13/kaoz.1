@@ -27,6 +27,7 @@ const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
 type FetchLike = typeof fetch;
 type CachedToken = { value: string; expiresAt: number };
+type OAuthTokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
 
 function base64Url(value: Buffer) {
   return value.toString("base64url");
@@ -52,14 +53,20 @@ export function editedDriveFileName(sourceName: string) {
   return `${parsed.name || "video"} - editado Kaoz.1.mp4`;
 }
 
-function cleanConfiguration(input: Record<string, unknown>): GoogleDriveConfiguration {
-  const clientId = typeof input.clientId === "string" ? input.clientId.trim() : "";
-  const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-  const appId = typeof input.appId === "string" ? input.appId.trim() : "";
+function trimmedField(input: Record<string, unknown>, key: string) {
+  return typeof input[key] === "string" ? input[key].trim() : "";
+}
+
+function cleanConfiguration(input: Record<string, unknown>, existingClientSecret = ""): GoogleDriveConfiguration {
+  const clientId = trimmedField(input, "clientId");
+  const clientSecret = trimmedField(input, "clientSecret") || existingClientSecret;
+  const apiKey = trimmedField(input, "apiKey");
+  const appId = trimmedField(input, "appId");
   if (!clientId.endsWith(".apps.googleusercontent.com")) throw new Error("Client ID OAuth Desktop inválido.");
+  if (!clientSecret) throw new Error("Client Secret OAuth Desktop é obrigatório.");
   if (!apiKey) throw new Error("API key do Google Picker é obrigatória.");
   if (!/^\d+$/.test(appId)) throw new Error("Project Number/App ID deve conter apenas números.");
-  return { clientId, apiKey, appId };
+  return { clientId, clientSecret, apiKey, appId };
 }
 
 function errorMessage(error: unknown) {
@@ -72,6 +79,36 @@ function errorMessage(error: unknown) {
 async function responseError(response: Response) {
   const body = await response.text().catch(() => "");
   return `Google Drive respondeu HTTP ${response.status}${body ? `: ${body.slice(0, 300)}` : ""}`;
+}
+
+async function exchangeAuthorizationCode(
+  fetcher: FetchLike,
+  configuration: GoogleDriveConfiguration,
+  pending: NonNullable<GoogleDriveStoredState["pendingAuthorization"]>,
+  code: string,
+) {
+  const response = await fetcher(TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: configuration.clientId,
+      client_secret: configuration.clientSecret,
+      code,
+      code_verifier: pending.codeVerifier,
+      grant_type: "authorization_code",
+      redirect_uri: pending.redirectUri,
+    }),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  return response.json() as Promise<OAuthTokenResponse>;
+}
+
+function validateOAuthTokens(tokens: OAuthTokenResponse) {
+  if (!tokens.access_token || !tokens.refresh_token) throw new Error("O Google não retornou os tokens necessários.");
+  if (!String(tokens.scope || "").split(/\s+/).includes(DRIVE_SCOPE)) {
+    throw new Error("O acesso a arquivos do Google Drive não foi autorizado.");
+  }
+  return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token };
 }
 
 function isVideo(metadata: { name?: string; mimeType?: string }) {
@@ -107,8 +144,8 @@ export class GoogleDriveService {
   }
 
   async saveConfiguration(input: Record<string, unknown>) {
-    const configuration = cleanConfiguration(input);
     const current = await this.store.readState();
+    const configuration = cleanConfiguration(input, current.configuration?.clientSecret);
     const clientChanged = current.configuration?.clientId !== configuration.clientId;
     await this.store.writeState({
       ...current,
@@ -129,7 +166,7 @@ export class GoogleDriveService {
     const state = await this.store.readState();
     return {
       version: GOOGLE_DRIVE_STATE_VERSION,
-      configured: Boolean(state.configuration?.clientId && state.configuration.apiKey && state.configuration.appId),
+      configured: Boolean(state.configuration?.clientId && state.configuration.clientSecret && state.configuration.apiKey && state.configuration.appId),
       connected: Boolean(state.oauth?.refreshToken),
       email: state.oauth?.email,
       defaultFolder: state.configuration?.defaultFolderId
@@ -144,6 +181,7 @@ export class GoogleDriveService {
     const state = await this.store.readState();
     return {
       clientId: state.configuration?.clientId || "",
+      clientSecretConfigured: Boolean(state.configuration?.clientSecret),
       apiKey: state.configuration?.apiKey || "",
       appId: state.configuration?.appId || "",
     };
@@ -178,48 +216,42 @@ export class GoogleDriveService {
 
   async finishAuthorization(input: { code?: string; state?: string; error?: string }) {
     const stored = await this.store.readState();
-    if (!input.code) throw new Error("Código OAuth ausente.");
-    const { pending, configuration } = validatePendingAuthorization(stored, input);
-    const response = await this.fetcher(TOKEN_ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: configuration.clientId,
-        code: input.code,
-        code_verifier: pending.codeVerifier,
-        grant_type: "authorization_code",
-        redirect_uri: pending.redirectUri,
-      }),
-    });
-    if (!response.ok) throw new Error(await responseError(response));
-    const tokens = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
-    if (!tokens.access_token || !tokens.refresh_token) throw new Error("O Google não retornou os tokens necessários.");
-    if (!String(tokens.scope || "").split(/\s+/).includes(DRIVE_SCOPE)) {
-      throw new Error("O acesso a arquivos do Google Drive não foi autorizado.");
+    try {
+      if (!input.code) throw new Error("Código OAuth ausente.");
+      const { pending, configuration } = validatePendingAuthorization(stored, input);
+      const tokens = await exchangeAuthorizationCode(this.fetcher, configuration, pending, input.code);
+      const { accessToken, refreshToken } = validateOAuthTokens(tokens);
+      const profileResponse = await this.fetcher(USERINFO_ENDPOINT, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const profile = profileResponse.ok
+        ? await profileResponse.json() as { email?: string }
+        : {};
+      this.cachedToken = {
+        value: accessToken,
+        expiresAt: Date.now() + Math.max(60, Number(tokens.expires_in) || 3600) * 1000,
+      };
+      await this.store.writeState({
+        ...stored,
+        oauth: {
+          refreshToken,
+          email: profile.email,
+          scope: tokens.scope || DRIVE_SCOPE,
+          connectedAt: new Date().toISOString(),
+        },
+        pendingAuthorization: undefined,
+        lastCheckedAt: new Date().toISOString(),
+        lastError: undefined,
+      });
+      return this.status();
+    } catch (error) {
+      await this.store.writeState({
+        ...stored,
+        lastCheckedAt: new Date().toISOString(),
+        lastError: errorMessage(error),
+      });
+      throw error;
     }
-    const profileResponse = await this.fetcher(USERINFO_ENDPOINT, {
-      headers: { authorization: `Bearer ${tokens.access_token}` },
-    });
-    const profile = profileResponse.ok
-      ? await profileResponse.json() as { email?: string }
-      : {};
-    this.cachedToken = {
-      value: tokens.access_token,
-      expiresAt: Date.now() + Math.max(60, Number(tokens.expires_in) || 3600) * 1000,
-    };
-    await this.store.writeState({
-      ...stored,
-      oauth: {
-        refreshToken: tokens.refresh_token,
-        email: profile.email,
-        scope: tokens.scope || DRIVE_SCOPE,
-        connectedAt: new Date().toISOString(),
-      },
-      pendingAuthorization: undefined,
-      lastCheckedAt: new Date().toISOString(),
-      lastError: undefined,
-    });
-    return this.status();
   }
 
   private async accessToken() {
@@ -231,6 +263,7 @@ export class GoogleDriveService {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_id: state.configuration.clientId,
+        client_secret: state.configuration.clientSecret,
         refresh_token: state.oauth.refreshToken,
         grant_type: "refresh_token",
       }),

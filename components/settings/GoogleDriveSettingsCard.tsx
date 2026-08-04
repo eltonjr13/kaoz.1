@@ -7,7 +7,7 @@ import type { GoogleDriveConnectionStatus } from "@/services/google-drive/google
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
 type Overview = {
   status: GoogleDriveConnectionStatus;
-  configuration: { clientId: string; apiKey: string; appId: string };
+  configuration: { clientId: string; clientSecretConfigured: boolean; apiKey: string; appId: string };
 };
 
 async function json(response: Response) {
@@ -56,14 +56,14 @@ function DriveDestination({ status }: { status: GoogleDriveConnectionStatus | nu
 
 export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
   const [status, setStatus] = useState<GoogleDriveConnectionStatus | null>(null);
-  const [form, setForm] = useState({ clientId: "", apiKey: "", appId: "" });
+  const [form, setForm] = useState({ clientId: "", clientSecret: "", apiKey: "", appId: "" });
   const [busy, setBusy] = useState<string | null>("load");
 
   const load = useCallback(async () => {
     const response = await fetch("/api/google-drive", { cache: "no-store" });
     const data = await json(response) as unknown as Overview;
     setStatus(data.status);
-    setForm(data.configuration);
+    setForm({ clientId: data.configuration.clientId, clientSecret: "", apiKey: data.configuration.apiKey, appId: data.configuration.appId });
   }, []);
 
   useEffect(() => {
@@ -105,6 +105,10 @@ export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: 
         setStatus(overview.status);
         if (overview.status.connected) {
           onStatusMessage({ text: `Google Drive conectado${overview.status.email ? ` como ${overview.status.email}` : ""}.`, type: "success" });
+          return;
+        }
+        if (overview.status.lastError) {
+          onStatusMessage({ text: overview.status.lastError, type: "error" });
           return;
         }
       }
@@ -161,8 +165,9 @@ export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: 
         <DriveStatusBadge status={status} />
       </div>
 
-      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
         <label className="space-y-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Client ID OAuth Desktop<input className={inputClass} value={form.clientId} onChange={(event) => setForm((current) => ({ ...current, clientId: event.target.value }))} placeholder="...apps.googleusercontent.com" /></label>
+        <label className="space-y-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Client Secret OAuth Desktop<input className={inputClass} type="password" value={form.clientSecret} onChange={(event) => setForm((current) => ({ ...current, clientSecret: event.target.value }))} placeholder="Cole o secret do cliente Desktop" /></label>
         <label className="space-y-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">API key do Picker<input className={inputClass} type="password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder="AIza..." /></label>
         <label className="space-y-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Project Number / App ID<input className={inputClass} value={form.appId} onChange={(event) => setForm((current) => ({ ...current, appId: event.target.value }))} placeholder="123456789012" /></label>
       </div>

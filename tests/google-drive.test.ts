@@ -27,7 +27,7 @@ class MemoryStore {
 }
 
 function mockFetch() {
-  const calls: Array<{ url: string; method: string }> = [];
+  const calls: Array<{ url: string; method: string; body?: string }> = [];
   const routes: Array<{ matches: (url: string) => boolean; respond: (url: string, init: RequestInit) => Response }> = [
     { matches: (url) => url === "https://oauth2.googleapis.com/token", respond: (_url, init) => String(init.body).includes("grant_type=authorization_code")
       ? Response.json({ access_token: "access-auth", refresh_token: "refresh-secret", expires_in: 3600, scope: "openid email profile https://www.googleapis.com/auth/drive.file" })
@@ -44,7 +44,7 @@ function mockFetch() {
   const fetcher: typeof fetch = async (input, init = {}) => {
     const url = String(input);
     const method = init.method || "GET";
-    calls.push({ url, method });
+    calls.push({ url, method, body: init.body ? String(init.body) : undefined });
     const route = routes.find((candidate) => candidate.matches(url));
     return route?.respond(url, init) || new Response("not mocked", { status: 404 });
   };
@@ -77,7 +77,7 @@ test("OAuth valida state, guarda refresh token e revoga ao desconectar", async (
   const store = new MemoryStore();
   const mocked = mockFetch();
   const service = new GoogleDriveService(store, mocked.fetcher);
-  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", apiKey: "AIza-test", appId: "123456789" });
+  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" });
   const authorization = await service.beginAuthorization("http://127.0.0.1:3000/api/google-drive/oauth/callback");
   const state = new URL(authorization.authorizationUrl).searchParams.get("state")!;
   await assert.rejects(service.finishAuthorization({ code: "code", state: `${state}x` }), /Estado OAuth inválido/);
@@ -85,9 +85,19 @@ test("OAuth valida state, guarda refresh token e revoga ao desconectar", async (
   assert.equal(status.connected, true);
   assert.equal(status.email, "editor@example.com");
   assert.equal(store.state.oauth?.refreshToken, "refresh-secret");
+  assert.ok(mocked.calls.some((call) => call.body?.includes("client_secret=desktop-secret")));
   assert.doesNotMatch(JSON.stringify(await service.status()), /refresh-secret/);
-  await service.disconnect();
-  assert.equal((await service.status()).connected, false);
+  assert.deepEqual(await service.publicConfiguration(), {
+    clientId: "desktop.apps.googleusercontent.com",
+    clientSecretConfigured: true,
+    apiKey: "AIza-test",
+    appId: "123456789",
+  });
+  const reloadedService = new GoogleDriveService(store, mocked.fetcher);
+  await reloadedService.testConnection();
+  assert.ok(mocked.calls.some((call) => call.body?.includes("grant_type=refresh_token") && call.body.includes("client_secret=desktop-secret")));
+  await reloadedService.disconnect();
+  assert.equal((await reloadedService.status()).connected, false);
   assert.ok(mocked.calls.some((call) => call.url.includes("/revoke")));
 });
 
@@ -96,11 +106,11 @@ test("estado OAuth persistido não contém credenciais em texto puro", async () 
   const store = new GoogleDriveStore(root);
   await store.writeState({
     version: 1,
-    configuration: { clientId: "desktop.apps.googleusercontent.com", apiKey: "AIza-secret", appId: "123456789" },
+    configuration: { clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-secret", appId: "123456789" },
     oauth: { refreshToken: "refresh-secret", email: "editor@example.com", scope: "drive.file", connectedAt: new Date().toISOString() },
   });
   const raw = await readFile(path.join(root, "state.enc.json"), "utf8");
-  assert.doesNotMatch(raw, /refresh-secret|AIza-secret|editor@example.com/);
+  assert.doesNotMatch(raw, /refresh-secret|desktop-secret|AIza-secret|editor@example.com/);
   assert.equal((await store.readState()).oauth?.refreshToken, "refresh-secret");
 });
 
@@ -110,7 +120,7 @@ test("download e upload retomável persistem progresso e evitam duplicata", asyn
   const store = new MemoryStore();
   const mocked = mockFetch();
   const service = new GoogleDriveService(store, mocked.fetcher);
-  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", apiKey: "AIza-test", appId: "123456789" });
+  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" });
   const authorization = await service.beginAuthorization("http://127.0.0.1:3000/api/google-drive/oauth/callback");
   await service.finishAuthorization({ code: "code", state: new URL(authorization.authorizationUrl).searchParams.get("state")! });
   await service.setDefaultFolder({ fileId: "folder-123456", name: "Renders" });
@@ -144,7 +154,7 @@ test("rejeita arquivo sem permissão ou que não seja vídeo", async () => {
     return base.fetcher(input, init);
   };
   const service = new GoogleDriveService(store, fetcher);
-  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", apiKey: "AIza-test", appId: "123456789" });
+  await service.saveConfiguration({ clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret", apiKey: "AIza-test", appId: "123456789" });
   const authorization = await service.beginAuthorization("http://127.0.0.1:3000/api/google-drive/oauth/callback");
   await service.finishAuthorization({ code: "code", state: new URL(authorization.authorizationUrl).searchParams.get("state")! });
   await assert.rejects(service.startDownload("not-video-123"), /arquivo de vídeo compatível/);

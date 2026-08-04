@@ -10,6 +10,7 @@ export type GoogleDriveTransferStatus =
 
 export interface GoogleDriveConfiguration {
   clientId: string;
+  clientSecret: string;
   apiKey: string;
   appId: string;
   defaultFolderId?: string;
