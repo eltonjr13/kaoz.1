@@ -76,6 +76,26 @@ test("policy priority selects streaming and background before generic execution"
   );
 });
 
+test("classifies explicit skill invocation before generic message length", () => {
+  const classifier = new PolicyBasedExecutionClassifier();
+  const longObjective = `/criar-capa-atualizacao ${"detalhes do changelog ".repeat(30)}`;
+
+  const execution = classifier.classify({
+    message: longObjective,
+    explicitSkillInvocation: true,
+  });
+  assert.equal(execution.mode, ExecutionMode.EXECUTION);
+  assert.deepEqual(execution.reason.matchedSignals, ["explicit-skill:execution"]);
+
+  const textOnly = classifier.classify({
+    message: `${longObjective} gere apenas o prompt`,
+    explicitSkillInvocation: true,
+    textOnlySkillInvocation: true,
+  });
+  assert.equal(textOnly.mode, ExecutionMode.ANALYSIS);
+  assert.deepEqual(textOnly.reason.matchedSignals, ["explicit-skill:text-only"]);
+});
+
 test("supports immutable custom policies without changing the classifier", () => {
   const policy = defineExecutionPolicy({
     id: "custom-policy",

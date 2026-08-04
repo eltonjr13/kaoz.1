@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { SkillRegistry, validateSkill } from "../services/skills/skill.registry.ts";
+import {
+  SkillRegistry,
+  allowsToolForSkillOutputMode,
+  buildSkillPromptContext,
+  isTextOnlySkillRequest,
+  resolveSkillInvocation,
+  validateSkill,
+} from "../services/skills/skill.registry.ts";
 import { createSkillScriptHandler } from "../services/orchestrator/adapters/skill-script.adapter.ts";
 import { skillRegistry } from "../services/skills/skill.registry.ts";
 import type { KaozSkill } from "../services/skills/skill.types.ts";
@@ -35,6 +42,25 @@ test("seleciona skill específica por intenção e respeita comando explícito",
   assert.equal(skillRegistry.select("analise as métricas e retenção deste vídeo").id, "analisador-de-metricas");
   assert.equal(skillRegistry.select("/gerador-de-hashtags gere tags para culinária").id, "gerador-de-hashtags");
   assert.equal(skillRegistry.select("crie uma skill para organizar despesas").id, "build-skills");
+});
+
+test("resolve explicit command, injects instructions and blocks writes in text-only mode", () => {
+  const invocation = resolveSkillInvocation("/build-skills gere apenas o prompt, nao precisa da imagem");
+  assert.ok(invocation);
+  assert.equal(invocation.skill.id, "build-skills");
+  assert.equal(invocation.explicit, true);
+  assert.equal(invocation.outputMode, "text-only");
+  assert.equal(invocation.objective, "gere apenas o prompt, nao precisa da imagem");
+  assert.equal(isTextOnlySkillRequest("ps me gerer apenas o prompt nao precisa da imagem"), true);
+  assert.equal(allowsToolForSkillOutputMode({ effect: "read" }, invocation.outputMode), true);
+  assert.equal(allowsToolForSkillOutputMode({ effect: "write" }, invocation.outputMode), false);
+  assert.equal(allowsToolForSkillOutputMode({ effect: "external" }, invocation.outputMode), false);
+
+  const context = buildSkillPromptContext(invocation);
+  assert.match(context, /\[SKILL ATIVA\]/);
+  assert.match(context, /\[INSTRUCOES DA SKILL\]/);
+  assert.match(context, /MODO DE SAIDA: text-only/);
+  assert.match(context, /retorne action: null/);
 });
 
 test("roteia pedidos do DaVinci para as 14 ferramentas MCP protegidas", () => {

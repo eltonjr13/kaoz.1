@@ -14,7 +14,9 @@ const PLAYWRIGHT_MCP_TOOL_PRIORITY = [
 
 export function isExplicitPlaywrightMcpRequest(text: string): boolean {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return /\b(?:mcp\s+)?playwright(?:\s+browser)?\b/.test(normalized);
+  const playwright = "(?:mcp\\s+)?playwright(?:\\s+(?:mcp|browser))?";
+  const action = "(?:use|using|utilize|execute|run|open|navigate|browse|access|search|test|control|usar|utilize|utilizar|executar|rode|rodar|abra|abrir|navegue|navegar|acesse|acessar|pesquise|pesquisar|teste|testar|controle|controlar)";
+  return new RegExp(`(?:\\b${action}\\b[\\s\\S]{0,80}\\b${playwright}\\b|^\\s*[/@]playwright\\b)`).test(normalized);
 }
 
 export function selectExplicitPlaywrightMcpTools<T extends { id: string }>(

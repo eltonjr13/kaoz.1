@@ -71,6 +71,11 @@ test("falha do conector retorna erro real e afirma que nada foi enviado", () => 
 test("pedido explícito pelo Playwright seleciona somente as ferramentas desse MCP", () => {
   assert.equal(isExplicitPlaywrightMcpRequest("Use exclusivamente o MCP Playwright Browser."), true);
   assert.equal(isExplicitPlaywrightMcpRequest("Abra o navegador sem indicar MCP."), false);
+  assert.equal(
+    isExplicitPlaywrightMcpRequest("Playwright MCP: execution details appear only as changelog content."),
+    false,
+  );
+  assert.equal(isExplicitPlaywrightMcpRequest("Navigate using Playwright."), true);
   assert.deepEqual(
     selectExplicitPlaywrightMcpTools([
       { id: "mcp:playwright-browser:browser_snapshot" },

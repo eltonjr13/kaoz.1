@@ -97,6 +97,8 @@ export class ExecutionLayer<TResponse> {
 
     const decision = this.classifier.classify({
       message: request.objective.objective,
+      explicitSkillInvocation: request.objective.contextData?.skillExplicit === true,
+      textOnlySkillInvocation: request.objective.contextData?.skillOutputMode === "text-only",
     });
     append("classified", {
       mode: decision.mode,

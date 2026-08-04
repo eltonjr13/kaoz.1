@@ -17,7 +17,7 @@ import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionContext } from "@/lib/ai/agent-voice";
 import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
 import { materializeResponseArtifacts } from "@/services/artifacts/artifact.service";
-import { skillRegistry } from "@/services/skills/skill.registry";
+import { buildSkillPromptContext, resolveSkillInvocation, skillRegistry } from "@/services/skills/skill.registry";
 import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
 import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt";
 import { extractMcpMention } from "@/services/mcp/mcp-mention";
@@ -159,6 +159,10 @@ function needsExternalTools(messages: ChatMessage[]): boolean {
   const text = getLatestUserMessageText(messages);
   const normalized = normalizeCommandText(text);
   if (extractToolApprovalToken(text)) return true;
+  const invocation = resolveSkillInvocation(text);
+  if (invocation?.explicit && invocation.outputMode === "text-only") {
+    return Boolean(invocation.skill.tools?.some((tool) => (tool.effect || "write") === "read"));
+  }
   const selectedSkill = skillRegistry.select(text);
   const skillHasExecutableTools = selectedSkill.id !== "general.execute-goal" &&
     (Boolean(selectedSkill.tools?.length) || Boolean(selectedSkill.preferredTools.length));
@@ -432,6 +436,7 @@ export async function POST(request: Request) {
     const agentMessages = goalMode
       ? replaceLatestUserMessage(messages, latestUserText)
       : messages;
+    const skillInvocation = goalMode ? null : resolveSkillInvocation(latestUserText);
     const wantsExternalTools = needsExternalTools(agentMessages);
     const hasExternalTools = wantsExternalTools;
     const outputIntent = classifyOutputIntent(latestUserText, getSkillArtifactHint(latestUserText));
@@ -503,6 +508,10 @@ export async function POST(request: Request) {
           imageAspectRatio: resolvedImageAspectRatio,
           characterRuntime,
           goalMode,
+          skillId: skillInvocation?.skill.id,
+          skillPromptContext: skillInvocation ? buildSkillPromptContext(skillInvocation) : undefined,
+          skillExplicit: skillInvocation?.explicit,
+          skillOutputMode: skillInvocation?.outputMode,
         }
       );
       const protectedResponse = protectOutputIntent(response, outputIntent, actionContinuation);

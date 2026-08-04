@@ -7,6 +7,15 @@ import { normalizeSkillTool, validateSkillPermissions, validateToolScriptExists 
 
 export type SkillRevision = { id: string; skillId: string; version: string; createdAt: string; reason: "publish" | "rollback" };
 
+export type SkillOutputMode = "default" | "text-only";
+
+export type SkillInvocation = Readonly<{
+  skill: KaozSkill;
+  explicit: boolean;
+  objective: string;
+  outputMode: SkillOutputMode;
+}>;
+
 const referenceExtensions = new Set([".md", ".txt", ".json"]);
 const scriptExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".py"]);
 
@@ -121,6 +130,59 @@ function skillIntentScore(objective: string, skill: KaozSkill): number {
   for (const term of terms) if (haystack.includes(term)) score += term.length >= 7 ? 3 : 1;
   if (haystack.includes(normalized.trim())) score += 5;
   return score;
+}
+
+const TEXT_ONLY_SKILL_PATTERNS = [
+  /\b(?:apenas|somente|so)\s+(?:o\s+)?prompt\b/,
+  /\b(?:gere|gerar|gerer|crie|criar|entregue|entregar)\s+(?:apenas|somente|so)\s+(?:o\s+)?prompt\b/,
+  /\bnao\s+(?:precisa|preciso)\s+(?:da?|de\s+uma?)\s+imagem\b/,
+  /\bnao\s+(?:precisa|preciso)\s+(?:gerar|criar|produzir)\s+(?:uma?\s+)?imagem\b/,
+  /\bnao\s+(?:gere|gerar|crie|criar|produza|produzir)\s+(?:a\s+)?imagem\b/,
+  /\bsem\s+(?:gerar\s+)?(?:uma?\s+)?imagem\b/,
+  /\bprompt\s+only\b/,
+  /\bwithout\s+(?:generating\s+)?(?:an?\s+)?image\b/,
+] as const;
+
+export function isTextOnlySkillRequest(objective: string): boolean {
+  const normalized = normalizeSkillIntent(objective);
+  return TEXT_ONLY_SKILL_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function allowsToolForSkillOutputMode(
+  tool: Readonly<{ effect?: "read" | "write" | "external" | "destructive" }>,
+  outputMode: SkillOutputMode,
+): boolean {
+  return outputMode === "default" || tool.effect === "read";
+}
+
+export function resolveSkillInvocation(objective: string): SkillInvocation | null {
+  const normalized = normalizeSkillIntent(objective);
+  const commandMatch = normalized.match(/^\s*\/([a-z0-9.-]+)(?:\s|$)/);
+  const explicitSkill = commandMatch ? skillRegistry.get(commandMatch[1]) : undefined;
+  if (commandMatch && !explicitSkill) return null;
+
+  const skill = explicitSkill || skillRegistry.select(objective);
+  if (!explicitSkill && skill.id === "general.execute-goal") return null;
+
+  const commandLength = commandMatch?.[0].length || 0;
+  return Object.freeze({
+    skill,
+    explicit: Boolean(explicitSkill),
+    objective: commandLength ? objective.slice(commandLength).trim() : objective.trim(),
+    outputMode: isTextOnlySkillRequest(objective) ? "text-only" : "default",
+  });
+}
+
+export function buildSkillPromptContext(invocation: SkillInvocation): string {
+  const references = (invocation.skill.references || [])
+    .map((reference) => `\n[REFERENCIA DA SKILL: ${reference.name}]\n${reference.content.trim()}`)
+    .join("")
+    .slice(0, 12_000);
+  const outputRule = invocation.outputMode === "text-only"
+    ? "O usuario solicitou somente a resposta textual. Nao chame ferramentas de escrita ou geracao, nao gere imagem/arquivo e retorne action: null."
+    : "Siga o fluxo operacional da skill e use somente as ferramentas autorizadas para ela.";
+
+  return `[SKILL ATIVA]\nID: ${invocation.skill.id}\nNOME: ${invocation.skill.name}\nINVOCACAO EXPLICITA: ${invocation.explicit ? "sim" : "nao"}\nMODO DE SAIDA: ${invocation.outputMode}\nOBJETIVO SEM O COMANDO: ${invocation.objective}\n\n[INSTRUCOES DA SKILL]\n${invocation.skill.instructions.trim()}${references}\n\n[REGRA DE EXECUCAO DA SKILL]\n${outputRule}`;
 }
 
 const fallbackSkills: KaozSkill[] = [

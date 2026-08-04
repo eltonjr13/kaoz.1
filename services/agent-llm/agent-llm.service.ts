@@ -837,10 +837,12 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
   const allTools = await toolExecutionService.listTools();
   const toolIntentPrompt = options.toolIntentText?.trim() || extractLatestUserPrompt(prompt);
   const normalizedPrompt = normalizeToolIntentText(toolIntentPrompt);
+  const { allowsToolForSkillOutputMode, buildSkillPromptContext, resolveSkillInvocation } = await import("../skills/skill.registry.ts");
+  const skillInvocation = resolveSkillInvocation(toolIntentPrompt);
   const spotifyIntent = hasSpotifyIntent(normalizedPrompt);
   const connectorProvider = connectorPublishProvider(normalizedPrompt);
   const connectorPublishIntent = connectorProvider !== null;
-  const explicitPlaywrightMcpIntent = isExplicitPlaywrightMcpRequest(toolIntentPrompt);
+  const explicitPlaywrightMcpIntent = !skillInvocation?.explicit && isExplicitPlaywrightMcpRequest(toolIntentPrompt);
   const mcpMention = extractMcpMention(toolIntentPrompt);
   let approvedPlaywrightStep: Awaited<
     ReturnType<typeof executeApprovedMcpToolFromIntent>
@@ -944,15 +946,29 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
       })
     : [];
 
+  let activeSkill = skillInvocation?.skill;
   if (shouldSelectSkillTools(playwrightMcpIntent, spotifyIntent, connectorPublishIntent, mcpMention !== null)) {
     const { skillRegistry } = await import("../skills/skill.registry.ts");
-    let selectedSkill = skillRegistry.select(toolIntentPrompt);
+    let selectedSkill = activeSkill || skillRegistry.select(toolIntentPrompt);
     if (selectedSkill.id === "general.execute-goal" && WEB_INTENT_PATTERN.test(normalizedPrompt)) {
       selectedSkill = skillRegistry.get("research.web-research") || selectedSkill;
     }
+    activeSkill = selectedSkill;
     const allowedIds = new Set([...selectedSkill.preferredTools, ...(selectedSkill.tools || []).map((tool) => tool.id)]);
     relevantTools = allTools.filter((tool) => allowedIds.has(tool.id));
+    if (skillInvocation?.outputMode === "text-only") {
+      relevantTools = relevantTools.filter((tool) => allowsToolForSkillOutputMode(tool, skillInvocation.outputMode));
+    }
   }
+
+  const resolvedSkillContext = skillInvocation
+    ? `\n\n${buildSkillPromptContext(skillInvocation)}`
+    : activeSkill && activeSkill.id !== "general.execute-goal"
+    ? `\n\n${buildSkillPromptContext({ skill: activeSkill, explicit: false, objective: toolIntentPrompt, outputMode: "default" })}`
+    : "";
+  const skillContext = resolvedSkillContext && prompt.includes("[SKILL ATIVA]")
+    ? ""
+    : resolvedSkillContext;
 
   if (relevantTools.length === 0) {
     if (playwrightMcpIntent) {
@@ -967,7 +983,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
         action: null,
       });
     }
-    return executor(prompt);
+    return executor(prompt + skillContext);
   }
   const allowedToolIds = new Set(relevantTools.map((tool) => tool.id));
 
@@ -977,7 +993,7 @@ async function runCliWithToolsLoop(prompt: string, options: QueryOptions, execut
     if (toolsDescription.length + line.length <= 6_000) toolsDescription += line;
   }
 
-  let currentPrompt = prompt + toolsDescription;
+  let currentPrompt = prompt + skillContext + toolsDescription;
   if (playwrightMcpIntent) {
     currentPrompt += requiredPlaywrightToolCallInstruction();
   }

@@ -10,6 +10,8 @@ import type {
 
 export interface ExecutionClassificationInput {
   readonly message: string;
+  readonly explicitSkillInvocation?: boolean;
+  readonly textOnlySkillInvocation?: boolean;
 }
 
 export interface ExecutionClassifier {
@@ -28,9 +30,20 @@ export class PolicyBasedExecutionClassifier
     const message = requireMessage(input.message);
     const normalized = normalizeText(message);
     const tokens = new Set(normalized.match(/[a-z0-9]+/g) ?? []);
-    const matched = this.policy.rules
-      .map((rule) => matchRule(rule, normalized, tokens))
-      .find((result) => result !== undefined);
+    const skillRuleId = input.textOnlySkillInvocation ? "analysis" : "execution";
+    const skillRule = input.explicitSkillInvocation
+      ? this.policy.rules.find((rule) => rule.id === skillRuleId)
+      : undefined;
+    const matched = skillRule
+      ? {
+          rule: skillRule,
+          signals: Object.freeze([
+            `explicit-skill:${input.textOnlySkillInvocation ? "text-only" : "execution"}`,
+          ]),
+        }
+      : this.policy.rules
+          .map((rule) => matchRule(rule, normalized, tokens))
+          .find((result) => result !== undefined);
     const selected = matched ?? {
       rule: this.policy.fallbackRule,
       signals: Object.freeze([]),
