@@ -1572,7 +1572,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
       <footer className="fixed bottom-0 left-0 right-0 h-[64px] bg-zinc-950/95 border-t border-white/10 px-6 backdrop-blur-xl z-50 flex items-center justify-between shadow-2xl">
         <div className="flex flex-col">
-          <span className="text-[11px] font-bold text-zinc-300">AIVideoPro v2.4.0</span>
+          <span className="text-[11px] font-bold text-zinc-300">Kaoz.1 v0.2.25</span>
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}
