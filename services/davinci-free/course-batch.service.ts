@@ -262,7 +262,7 @@ async function analyzeItem(job: CourseBatchJob, item: CourseBatchItem) {
   await saveJob(job);
 }
 
-async function analyzeLocalItems(job: CourseBatchJob) {
+async function analyzeBatchItems(job: CourseBatchJob) {
   for (const item of job.items) {
     if (item.status === "completed" || item.planId) continue;
     try {
@@ -283,7 +283,7 @@ async function analyzedPlans(job: CourseBatchJob, items = job.items) {
   return entries.filter((entry): entry is typeof entry & { plan: NonNullable<typeof entry.plan> } => Boolean(entry.plan));
 }
 
-async function resolveLocalIdentity(job: CourseBatchJob) {
+async function resolveBatchIdentity(job: CourseBatchJob) {
   const entries = await analyzedPlans(job);
   if (entries.length === 0) throw new Error("Nenhuma aula pôde ser analisada para definir a identidade.");
   const identity = await analyzeCourseIdentity({
@@ -308,7 +308,8 @@ async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourse
     try {
       const standardized = await applyCourseIdentity(plan, identity, index + 1);
       await applyCourseEditorialStandard(standardized);
-      item.previewPath = (await renderIntelligentEdit({ planId: standardized.id })).previewPath;
+      const rendered = await renderIntelligentEdit({ planId: standardized.id });
+      item.previewPath = rendered.previewPath;
       item.status = "completed";
       item.completedAt = new Date().toISOString();
     } catch (error) {
@@ -546,8 +547,8 @@ async function executeBatch(id: string, signal: AbortSignal) {
   try {
     if (job.version === 2 && job.source?.type === "google-drive") await executeDriveBatch(job, signal);
     else {
-      await analyzeLocalItems(job);
-      await renderLocalItems(job, await resolveLocalIdentity(job));
+      await analyzeBatchItems(job);
+      await renderLocalItems(job, await resolveBatchIdentity(job));
     }
     job.status = job.failed > 0 ? "completed-with-errors" : "completed";
   } catch (error) {

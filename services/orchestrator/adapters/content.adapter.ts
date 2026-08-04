@@ -25,8 +25,11 @@ import {
 } from "../../davinci-free/intelligent-edit.renderer";
 import {
   chooseCourseFolder,
+  cancelCourseBatch,
   discoverCourseBatch,
+  discoverGoogleDriveCourseBatch,
   readCourseBatch,
+  resumeCourseBatch,
   retryCourseBatch,
   startCourseBatch,
 } from "../../davinci-free/course-batch.service";
@@ -70,6 +73,9 @@ export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:discover-batch": async (args) => ({
     output: await discoverCourseBatch(args),
   }),
+  "davinci-free:discover-drive-batch": async (args) => ({
+    output: await discoverGoogleDriveCourseBatch(args),
+  }),
   "davinci-free:start-batch": async (args) => ({
     output: await startCourseBatch(args),
   }),
@@ -78,6 +84,12 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:retry-batch": async (args) => ({
     output: await retryCourseBatch(args),
+  }),
+  "davinci-free:cancel-batch": async (args) => ({
+    output: await cancelCourseBatch(args),
+  }),
+  "davinci-free:resume-batch": async (args) => ({
+    output: await resumeCourseBatch(args),
   }),
   "content:start-video-pipeline": async (args) => {
     const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";

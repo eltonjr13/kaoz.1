@@ -19,9 +19,12 @@ const TOOL_BY_ACTION = {
   "archive-pending": "davinci-free:archive-pending",
   "choose-folder": "davinci-free:choose-course-folder",
   "discover-batch": "davinci-free:discover-batch",
+  "discover-drive-batch": "davinci-free:discover-drive-batch",
   "start-batch": "davinci-free:start-batch",
   "batch-status": "davinci-free:get-batch",
   "retry-batch": "davinci-free:retry-batch",
+  "cancel-batch": "davinci-free:cancel-batch",
+  "resume-batch": "davinci-free:resume-batch",
 } as const;
 
 type Action = keyof typeof TOOL_BY_ACTION;
@@ -29,6 +32,7 @@ const READ_ACTIONS = new Set<Action>([
   "status",
   "get-analysis",
   "discover-batch",
+  "discover-drive-batch",
   "batch-status",
 ]);
 
