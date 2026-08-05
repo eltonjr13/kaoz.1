@@ -86,10 +86,16 @@ function trimmedField(input: Record<string, unknown>, key: string) {
 }
 
 function effectiveConfiguration(stored?: GoogleDriveConfiguration): GoogleDriveConfiguration | undefined {
-  const clientId = stored?.clientId || process.env.GOOGLE_DRIVE_CLIENT_ID || "";
-  const clientSecret = stored?.clientSecret || process.env.GOOGLE_DRIVE_CLIENT_SECRET || "";
-  const apiKey = stored?.apiKey || process.env.GOOGLE_DRIVE_API_KEY || "";
-  const appId = stored?.appId || process.env.GOOGLE_DRIVE_APP_ID || "";
+  const envClientId = (process.env.GOOGLE_DRIVE_CLIENT_ID || "").trim();
+  const envClientSecret = (process.env.GOOGLE_DRIVE_CLIENT_SECRET || "").trim();
+  const envApiKey = (process.env.GOOGLE_DRIVE_API_KEY || "").trim();
+  const envAppId = (process.env.GOOGLE_DRIVE_APP_ID || "").trim();
+
+  // Se o ambiente estiver configurado, ele tem prioridade para evitar conflito com credenciais antigas salvas localmente
+  const clientId = envClientId || (stored?.clientId || "").trim();
+  const clientSecret = envClientId ? envClientSecret : (stored?.clientSecret || "").trim();
+  const apiKey = envApiKey || (stored?.apiKey || "").trim();
+  const appId = envAppId || (stored?.appId || "").trim();
 
   if (clientId && clientSecret && apiKey && appId) {
     return {
@@ -100,10 +106,6 @@ function effectiveConfiguration(stored?: GoogleDriveConfiguration): GoogleDriveC
       defaultFolderId: stored?.defaultFolderId,
       defaultFolderName: stored?.defaultFolderName,
     };
-  }
-
-  if (stored?.clientId && stored.clientSecret && stored.apiKey && stored.appId) {
-    return stored;
   }
 
   return undefined;
