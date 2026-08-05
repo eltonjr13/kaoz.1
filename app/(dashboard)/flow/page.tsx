@@ -2733,9 +2733,9 @@ export default function FlowDashboardPage() {
     });
 
     provider.onStatus((status) => {
-      if (status === "recording" || status === "listening") {
+      if (status === "recording") {
         setVoiceStatus("Voz ativada. Pode falar.");
-      } else if (status === "transcribing") {
+      } else if (status === "sending") {
         setVoiceStatus("Transcrevendo audio...");
       }
     });
