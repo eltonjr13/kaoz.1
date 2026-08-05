@@ -161,14 +161,20 @@
     ],
     "nsis": {
       "guid": "e2d776a6-addb-51d9-a59f-3f9eb3027011",
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh",
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Kaoz.1"
+      "shortcutName": "Kaoz.1",
+      "installerIcon": "build/icon.png",
+      "uninstallerIcon": "build/icon.png",
+      "installerHeaderIcon": "build/icon.png",
+      "installerSidebar": "build/installerSidebar.png",
+      "installerHeader": "build/installerHeader.png",
+      "uninstallerSidebar": "build/installerSidebar.png"
     }
   },
   "overrides": {

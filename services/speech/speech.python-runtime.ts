@@ -44,9 +44,19 @@ function getPythonExecutable(provider: SpeechProviderName): string {
   if (provider === "parakeet" && process.env.STT_PARAKEET_PYTHON_PATH?.trim()) return process.env.STT_PARAKEET_PYTHON_PATH.trim();
   if (process.env.STT_PYTHON_PATH?.trim()) return process.env.STT_PYTHON_PATH.trim();
   if (process.env.PYTHON_PATH?.trim()) return process.env.PYTHON_PATH.trim();
-  const bundled = path.join(process.resourcesPath || "", "parakeet-runtime", "python", "python.exe");
-  if (fs.existsSync(bundled)) return bundled;
+  const bundledPackaged = path.join(process.resourcesPath || "", "parakeet-runtime", "python", "python.exe");
+  if (fs.existsSync(bundledPackaged)) return bundledPackaged;
+  const bundledLocal = path.join(process.cwd(), "build", "runtime", "parakeet", "python", "python.exe");
+  if (fs.existsSync(bundledLocal)) return bundledLocal;
   return "python";
+}
+
+function getBundledPackagesPath(): string | null {
+  const packaged = path.join(process.resourcesPath || "", "parakeet-runtime", "packages");
+  if (fs.existsSync(packaged)) return packaged;
+  const local = path.join(process.cwd(), "build", "runtime", "parakeet", "packages");
+  if (fs.existsSync(local)) return local;
+  return null;
 }
 
 function getScriptPath(provider: SpeechProviderName): string {
@@ -84,12 +94,12 @@ function getFfmpegExecutable(): string {
 function startManagedProcess(provider: SpeechProviderName): void {
   const baseUrl = new URL(getPythonBaseUrl());
   const runtimeRoot = path.join(getRuntimeDataRoot(), "parakeet");
-  const bundledPackages = path.join(process.resourcesPath || "", "parakeet-runtime", "packages");
+  const bundledPackages = getBundledPackagesPath();
   const child = spawn(getPythonExecutable(provider), [getScriptPath(provider)], {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      ...(provider === "parakeet" && fs.existsSync(bundledPackages) ? {
+      ...(bundledPackages ? {
         PYTHONPATH: [bundledPackages, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
       } : {}),
       STT_HOST: baseUrl.hostname || "127.0.0.1",

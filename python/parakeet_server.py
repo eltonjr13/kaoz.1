@@ -29,17 +29,6 @@ def parse_multipart_audio(headers, body):
     for part in message.iter_parts():
         disposition = part.get("Content-Disposition", "")
         name = part.get_param("name", header="content-disposition")
-LOCK = threading.Lock()
-
-
-def parse_multipart_audio(headers, body):
-    content_type = headers.get("Content-Type", "")
-    message = BytesParser(policy=policy.default).parsebytes(
-        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
-    )
-    for part in message.iter_parts():
-        disposition = part.get("Content-Disposition", "")
-        name = part.get_param("name", header="content-disposition")
         if "form-data" in disposition and name == "audio":
             return part.get_filename() or "speech.webm", part.get_payload(decode=True)
     return None, None
@@ -92,6 +81,28 @@ def transcribe_audio(audio_path):
         raise RuntimeError(STATE["message"])
     ffmpeg_bin = resolve_ffmpeg()
     wav_path = audio_path.with_name(f"{audio_path.stem}-parakeet.wav")
+    try:
+        result = subprocess.run(
+            [ffmpeg_bin, "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", str(wav_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(f"FFmpeg nao encontrado no caminho '{ffmpeg_bin}'. Verifique a instalacao do aplicativo.")
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Nao foi possivel converter o audio para transcricao: {result.stderr[-500:]}")
+    try:
+        waveform, sample_rate = sf.read(str(wav_path), dtype="float32")
+        return str(MODEL.recognize(waveform, sample_rate=sample_rate, channel="mean")).strip()
+    finally:
+        wav_path.unlink(missing_ok=True)
+
+
+class SpeechHandler(BaseHTTPRequestHandler):
+    def log_message(self, _format, *_args):
+        return
 
     def send_json(self, status, payload):
         data = json.dumps(payload).encode("utf-8")
