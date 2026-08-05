@@ -31,6 +31,7 @@ export interface GoogleDriveSelection {
 export interface GoogleDriveConnectionStatus {
   version: typeof GOOGLE_DRIVE_STATE_VERSION;
   configured: boolean;
+  isEnvConfigured?: boolean;
   connected: boolean;
   batchReady: boolean;
   missingScopes: string[];

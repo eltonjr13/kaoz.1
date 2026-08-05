@@ -85,11 +85,44 @@ function trimmedField(input: Record<string, unknown>, key: string) {
   return typeof input[key] === "string" ? input[key].trim() : "";
 }
 
+function effectiveConfiguration(stored?: GoogleDriveConfiguration): GoogleDriveConfiguration | undefined {
+  const clientId = stored?.clientId || process.env.GOOGLE_DRIVE_CLIENT_ID || "";
+  const clientSecret = stored?.clientSecret || process.env.GOOGLE_DRIVE_CLIENT_SECRET || "";
+  const apiKey = stored?.apiKey || process.env.GOOGLE_DRIVE_API_KEY || "";
+  const appId = stored?.appId || process.env.GOOGLE_DRIVE_APP_ID || "";
+
+  if (clientId && clientSecret && apiKey && appId) {
+    return {
+      clientId,
+      clientSecret,
+      apiKey,
+      appId,
+      defaultFolderId: stored?.defaultFolderId,
+      defaultFolderName: stored?.defaultFolderName,
+    };
+  }
+
+  if (stored?.clientId && stored.clientSecret && stored.apiKey && stored.appId) {
+    return stored;
+  }
+
+  return undefined;
+}
+
+function isEnvFullyConfigured() {
+  return Boolean(
+    process.env.GOOGLE_DRIVE_CLIENT_ID &&
+    process.env.GOOGLE_DRIVE_CLIENT_SECRET &&
+    process.env.GOOGLE_DRIVE_API_KEY &&
+    process.env.GOOGLE_DRIVE_APP_ID
+  );
+}
+
 function cleanConfiguration(input: Record<string, unknown>, existingClientSecret = ""): GoogleDriveConfiguration {
-  const clientId = trimmedField(input, "clientId");
-  const clientSecret = trimmedField(input, "clientSecret") || existingClientSecret;
-  const apiKey = trimmedField(input, "apiKey");
-  const appId = trimmedField(input, "appId");
+  const clientId = trimmedField(input, "clientId") || process.env.GOOGLE_DRIVE_CLIENT_ID || "";
+  const clientSecret = trimmedField(input, "clientSecret") || existingClientSecret || process.env.GOOGLE_DRIVE_CLIENT_SECRET || "";
+  const apiKey = trimmedField(input, "apiKey") || process.env.GOOGLE_DRIVE_API_KEY || "";
+  const appId = trimmedField(input, "appId") || process.env.GOOGLE_DRIVE_APP_ID || "";
   if (!clientId.endsWith(".apps.googleusercontent.com")) throw new Error("Client ID OAuth Desktop inválido.");
   if (!clientSecret) throw new Error("Client Secret OAuth Desktop é obrigatório.");
   if (!apiKey) throw new Error("API key do Google Picker é obrigatória.");
@@ -157,7 +190,8 @@ function missingDriveScopes(state: GoogleDriveStoredState) {
 }
 
 function driveConfigured(configuration?: GoogleDriveConfiguration) {
-  return Boolean(configuration?.clientId && configuration.clientSecret && configuration.apiKey && configuration.appId);
+  const config = effectiveConfiguration(configuration);
+  return Boolean(config?.clientId && config.clientSecret && config.apiKey && config.appId);
 }
 
 function defaultDriveFolder(configuration?: GoogleDriveConfiguration) {
@@ -233,14 +267,15 @@ function courseIssue(
 function validatePendingAuthorization(stored: GoogleDriveStoredState, input: { state?: string; error?: string }) {
   if (input.error) throw new Error(`Autorização recusada pelo Google: ${input.error}`);
   const pending = stored.pendingAuthorization;
-  if (!pending || !stored.configuration) throw new Error("Nenhuma autorização do Google Drive está pendente.");
+  const configuration = effectiveConfiguration(stored.configuration);
+  if (!pending || !configuration) throw new Error("Nenhuma autorização do Google Drive está pendente.");
   if (Date.parse(pending.expiresAt) <= Date.now()) throw new Error("A autorização expirou. Inicie novamente.");
   const receivedState = Buffer.from(input.state || "");
   const expectedState = Buffer.from(pending.state);
   if (receivedState.length !== expectedState.length || !crypto.timingSafeEqual(receivedState, expectedState)) {
     throw new Error("Estado OAuth inválido.");
   }
-  return { pending, configuration: stored.configuration };
+  return { pending, configuration };
 }
 
 export class GoogleDriveService {
@@ -276,15 +311,17 @@ export class GoogleDriveService {
 
   async status(): Promise<GoogleDriveConnectionStatus> {
     const state = await this.store.readState();
+    const config = effectiveConfiguration(state.configuration);
     const missingScopes = missingDriveScopes(state);
     return {
       version: GOOGLE_DRIVE_STATE_VERSION,
-      configured: driveConfigured(state.configuration),
+      configured: driveConfigured(config),
+      isEnvConfigured: isEnvFullyConfigured(),
       connected: Boolean(state.oauth?.refreshToken),
       batchReady: Boolean(state.oauth?.refreshToken) && missingScopes.length === 0,
       missingScopes,
       email: state.oauth?.email,
-      defaultFolder: defaultDriveFolder(state.configuration),
+      defaultFolder: defaultDriveFolder(config),
       lastCheckedAt: state.lastCheckedAt,
       lastError: state.lastError,
     };
@@ -292,17 +329,21 @@ export class GoogleDriveService {
 
   async publicConfiguration() {
     const state = await this.store.readState();
+    const config = effectiveConfiguration(state.configuration);
     return {
-      clientId: state.configuration?.clientId || "",
-      clientSecretConfigured: Boolean(state.configuration?.clientSecret),
-      apiKey: state.configuration?.apiKey || "",
-      appId: state.configuration?.appId || "",
+      clientId: config?.clientId || "",
+      clientSecretConfigured: Boolean(config?.clientSecret),
+      apiKey: config?.apiKey || "",
+      appId: config?.appId || "",
+      isEnvConfigured: isEnvFullyConfigured(),
+      hasCustomConfig: Boolean(state.configuration?.clientId),
     };
   }
 
   async beginAuthorization(redirectUri: string) {
     const state = await this.store.readState();
-    if (!state.configuration) throw new Error("Configure o Google Drive antes de conectar a conta.");
+    const config = effectiveConfiguration(state.configuration);
+    if (!config) throw new Error("Configure o Google Drive antes de conectar a conta.");
     const pkce = createPkcePair();
     const csrfState = base64Url(crypto.randomBytes(32));
     const pendingAuthorization = {
@@ -314,7 +355,7 @@ export class GoogleDriveService {
     await this.store.writeState({ ...state, pendingAuthorization, lastError: undefined });
     const url = new URL(AUTH_ENDPOINT);
     url.search = new URLSearchParams({
-      client_id: state.configuration.clientId,
+      client_id: config.clientId,
       redirect_uri: redirectUri,
       response_type: "code",
       scope: SCOPES,
@@ -370,13 +411,14 @@ export class GoogleDriveService {
   private async accessToken() {
     if (this.cachedToken && this.cachedToken.expiresAt > Date.now() + 60_000) return this.cachedToken.value;
     const state = await this.store.readState();
-    if (!state.configuration || !state.oauth?.refreshToken) throw new Error("Google Drive não está conectado.");
+    const config = effectiveConfiguration(state.configuration);
+    if (!config || !state.oauth?.refreshToken) throw new Error("Google Drive não está conectado.");
     const response = await this.fetcher(TOKEN_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: state.configuration.clientId,
-        client_secret: state.configuration.clientSecret,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
         refresh_token: state.oauth.refreshToken,
         grant_type: "refresh_token",
       }),
@@ -397,13 +439,14 @@ export class GoogleDriveService {
 
   async pickerSession() {
     const state = await this.store.readState();
-    if (!state.configuration) throw new Error("Google Drive não configurado.");
+    const config = effectiveConfiguration(state.configuration);
+    if (!config) throw new Error("Google Drive não configurado.");
     return {
       accessToken: await this.accessToken(),
-      apiKey: state.configuration.apiKey,
-      appId: state.configuration.appId,
-      defaultFolder: state.configuration.defaultFolderId
-        ? { id: state.configuration.defaultFolderId, name: state.configuration.defaultFolderName || "Pasta selecionada" }
+      apiKey: config.apiKey,
+      appId: config.appId,
+      defaultFolder: config.defaultFolderId
+        ? { id: config.defaultFolderId, name: config.defaultFolderName || "Pasta selecionada" }
         : undefined,
     };
   }
