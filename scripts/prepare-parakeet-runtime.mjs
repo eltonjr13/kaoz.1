@@ -39,7 +39,7 @@ if (!fs.existsSync(marker)) {
   console.log("Preparando dependencias locais do Parakeet...");
   await download("https://bootstrap.pypa.io/get-pip.py", getPip);
   run(pythonExe, [getPip, "--no-warn-script-location"]);
-  run(pythonExe, ["-m", "pip", "install", "--no-cache-dir", "--target", packagesRoot, "onnx-asr==0.11.0", "onnxruntime==1.27.0", "soundfile==0.14.0", "huggingface_hub==1.23.0"]);
+  run(pythonExe, ["-m", "pip", "install", "--no-cache-dir", "--target", packagesRoot, "onnx-asr==0.11.0", "onnxruntime==1.27.0", "soundfile==0.14.0", "huggingface_hub==1.23.0", "faster-whisper==1.1.1"]);
 }
 
 console.log(`Runtime Parakeet preparado em ${runtimeRoot}`);

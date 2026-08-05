@@ -29,6 +29,17 @@ def parse_multipart_audio(headers, body):
     for part in message.iter_parts():
         disposition = part.get("Content-Disposition", "")
         name = part.get_param("name", header="content-disposition")
+LOCK = threading.Lock()
+
+
+def parse_multipart_audio(headers, body):
+    content_type = headers.get("Content-Type", "")
+    message = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+    )
+    for part in message.iter_parts():
+        disposition = part.get("Content-Disposition", "")
+        name = part.get_param("name", header="content-disposition")
         if "form-data" in disposition and name == "audio":
             return part.get_filename() or "speech.webm", part.get_payload(decode=True)
     return None, None
@@ -40,7 +51,10 @@ def load_model():
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         with LOCK:
             STATE.update(state="downloading", message="Baixando o modelo Parakeet local (aprox. 670 MB)...")
-        model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", str(MODEL_DIR), quantization="int8")
+        from onnx_asr.loader import Manager
+
+        manager = Manager()
+        model = manager.create_asr("nemo-parakeet-tdt-0.6b-v3", local_dir=str(MODEL_DIR), quantization="int8", offline=False)
         with LOCK:
             MODEL = model
             STATE.update(state="ready", message="Parakeet local pronto para transcrever offline.")

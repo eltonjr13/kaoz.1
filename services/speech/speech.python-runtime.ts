@@ -45,7 +45,7 @@ function getPythonExecutable(provider: SpeechProviderName): string {
   if (process.env.STT_PYTHON_PATH?.trim()) return process.env.STT_PYTHON_PATH.trim();
   if (process.env.PYTHON_PATH?.trim()) return process.env.PYTHON_PATH.trim();
   const bundled = path.join(process.resourcesPath || "", "parakeet-runtime", "python", "python.exe");
-  if (provider === "parakeet" && fs.existsSync(bundled)) return bundled;
+  if (fs.existsSync(bundled)) return bundled;
   return "python";
 }
 

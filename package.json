@@ -161,11 +161,11 @@
     ],
     "nsis": {
       "guid": "e2d776a6-addb-51d9-a59f-3f9eb3027011",
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh",
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Kaoz.1"
