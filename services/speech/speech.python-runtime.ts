@@ -73,6 +73,14 @@ function stopManagedProcess(): void {
   runtimeState.startupError = null;
 }
 
+function getFfmpegExecutable(): string {
+  if (process.env.FFMPEG_PATH?.trim() && fs.existsSync(process.env.FFMPEG_PATH.trim())) return process.env.FFMPEG_PATH.trim();
+  if (ffmpegPath && fs.existsSync(ffmpegPath)) return ffmpegPath;
+  const bundled = path.join(process.resourcesPath || "", "server", "node_modules", "ffmpeg-static", "ffmpeg.exe");
+  if (fs.existsSync(bundled)) return bundled;
+  return "ffmpeg";
+}
+
 function startManagedProcess(provider: SpeechProviderName): void {
   const baseUrl = new URL(getPythonBaseUrl());
   const runtimeRoot = path.join(getRuntimeDataRoot(), "parakeet");
@@ -95,7 +103,7 @@ function startManagedProcess(provider: SpeechProviderName): void {
       STT_COMPUTE_TYPE: process.env.STT_COMPUTE_TYPE || "int8",
       STT_LANGUAGE: process.env.STT_LANGUAGE || "pt",
       PARAKEET_MODEL_DIR: process.env.PARAKEET_MODEL_DIR || path.join(runtimeRoot, "model"),
-      FFMPEG_PATH: process.env.FFMPEG_PATH || ffmpegPath || "ffmpeg",
+      FFMPEG_PATH: getFfmpegExecutable(),
     },
   });
   runtimeState.startupError = null;

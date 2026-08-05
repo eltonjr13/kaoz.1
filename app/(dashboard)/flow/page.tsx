@@ -34,6 +34,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import ModelViewer3D from "@/components/ui/ModelViewer3D";
 import GlassSurface from "@/components/ui/glass-surface/GlassSurface";
 import { playCartesiaVoiceWebSocket, playCartesiaVoiceStream } from "@/lib/cartesia";
+import { createSpeechProvider, type SpeechProvider } from "@/lib/speech/providers";
 import {
   compileAgentSpeech,
   compileFishAudioSpeech,
@@ -1204,7 +1205,7 @@ export default function FlowDashboardPage() {
   const shouldAutoScrollRef = useRef(true);
   const popoverRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
-  const voiceRecognitionRef = useRef<any>(null);
+  const voiceRecognitionRef = useRef<SpeechProvider | null>(null);
   const voiceMicrophoneReleaseRef = useRef<(() => void) | null>(null);
   const voiceEnabledRef = useRef(false);
   const voiceAwaitingCommandRef = useRef(false);
@@ -2697,14 +2698,7 @@ export default function FlowDashboardPage() {
     void handleVoiceCommand(transcript);
   };
 
-  const startVoiceWakeListening = () => {
-    const Recognition = getSpeechRecognitionConstructor();
-    if (!Recognition) {
-      setVoiceError("Reconhecimento de voz nativo indisponivel neste navegador.");
-      setVoiceStatus("Voz indisponivel.");
-      return;
-    }
-
+  const startVoiceWakeListening = async () => {
     try {
       const microphoneSession = acquireMicrophoneSession();
       voiceMicrophoneReleaseRef.current = microphoneSession.release;
@@ -2714,68 +2708,51 @@ export default function FlowDashboardPage() {
       return;
     }
 
-    voiceRecognitionRef.current?.abort();
-    const recognition = new Recognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "pt-BR";
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let index = event.resultIndex; index < event.results.length; index++) {
-        const result = event.results[index];
-        const transcript = result?.[0]?.transcript;
-        if (result?.isFinal && transcript) {
-          handleVoiceTranscript(transcript);
-        } else if (transcript) {
-          interim += transcript;
-        }
+    if (voiceRecognitionRef.current) {
+      try { await voiceRecognitionRef.current.stop(); } catch {}
+    }
+
+    const provider = createSpeechProvider();
+    voiceRecognitionRef.current = provider;
+
+    provider.onTranscript((transcript) => {
+      if (transcript) {
+        handleVoiceTranscript(transcript);
+        setVoiceTranscript(transcript);
       }
-      if (
-        interim &&
-        voiceSpeakingRef.current &&
-        !isLikelyAssistantEcho(interim, activeAssistantSpeechRef.current)
-      ) {
-        cancelAllVoicePlayback();
-        setVoiceStatus("Entendi, pode continuar.");
-      }
-      setVoiceTranscript(interim);
-    };
-    let endedWithError = false;
-    recognition.onerror = (event) => {
-      endedWithError = true;
-      const errorMessage = event.message || event.error || "Falha no reconhecimento de voz.";
+    });
+
+    provider.onError((error) => {
+      const errorMessage = error.message || "Falha no reconhecimento de voz.";
       setVoiceError(errorMessage);
       setVoiceStatus("Voz desligada apos erro de microfone.");
       voiceEnabledRef.current = false;
       setVoiceEnabled(false);
       voiceMicrophoneReleaseRef.current?.();
       voiceMicrophoneReleaseRef.current = null;
-    };
-    recognition.onend = () => {
-      if (!voiceEnabledRef.current || endedWithError) return;
-      window.setTimeout(() => {
-        if (!voiceEnabledRef.current) return;
-        try {
-          recognition.start();
-          setVoiceStatus("Voz ativada. Pode falar.");
-        } catch {
-          setVoiceStatus("Escuta pausada.");
-        }
-      }, 350);
-    };
+    });
 
-    voiceRecognitionRef.current = recognition;
+    provider.onStatus((status) => {
+      if (status === "recording" || status === "listening") {
+        setVoiceStatus("Voz ativada. Pode falar.");
+      } else if (status === "transcribing") {
+        setVoiceStatus("Transcrevendo audio...");
+      }
+    });
+
     voiceEnabledRef.current = true;
     setVoiceEnabled(true);
     setVoiceError("");
     setVoiceStatus("Voz ativada. Pode falar.");
 
     try {
-      recognition.start();
+      await provider.start();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel iniciar o microfone.";
       setVoiceError(message);
       setVoiceStatus("Voz indisponivel.");
+      voiceEnabledRef.current = false;
+      setVoiceEnabled(false);
       voiceMicrophoneReleaseRef.current?.();
       voiceMicrophoneReleaseRef.current = null;
     }
@@ -2788,8 +2765,10 @@ export default function FlowDashboardPage() {
     setVoiceAwaitingCommand(false);
     setVoiceStatus("Voz desligada.");
     setVoiceTranscript("");
-    voiceRecognitionRef.current?.abort();
-    voiceRecognitionRef.current = null;
+    if (voiceRecognitionRef.current) {
+      try { void voiceRecognitionRef.current.stop(); } catch {}
+      voiceRecognitionRef.current = null;
+    }
     voiceMicrophoneReleaseRef.current?.();
     voiceMicrophoneReleaseRef.current = null;
     cancelAllVoicePlayback();
@@ -2800,14 +2779,17 @@ export default function FlowDashboardPage() {
     if (voiceEnabledRef.current) {
       stopVoiceWakeListening();
     } else {
-      startVoiceWakeListening();
+      void startVoiceWakeListening();
     }
   };
 
   useEffect(() => {
     return () => {
       voiceEnabledRef.current = false;
-      voiceRecognitionRef.current?.abort();
+      if (voiceRecognitionRef.current) {
+        try { void voiceRecognitionRef.current.stop(); } catch {}
+        voiceRecognitionRef.current = null;
+      }
       voiceMicrophoneReleaseRef.current?.();
       voiceMicrophoneReleaseRef.current = null;
       cancelAllVoicePlayback();

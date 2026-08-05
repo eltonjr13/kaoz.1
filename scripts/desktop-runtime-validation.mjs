@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
+import { createRequire, isBuiltin } from "node:module";
 
 export const requiredDesktopRuntimePackages = Object.freeze([
   "@modelcontextprotocol/sdk",
   "@playwright/mcp",
   "cross-spawn",
+  "ffmpeg-static",
   "next",
   "playwright",
   "sharp",
@@ -85,6 +86,7 @@ export function ensureRuntimePackage(root, standaloneRoot, packageName) {
     ]);
     const requireFromPackage = createRequire(sourceManifest);
     for (const dependency of dependencies) {
+      if (isBuiltin(dependency)) continue;
       const dependencyRoot = (requireFromPackage.resolve.paths(dependency) ?? [])
         .map((searchPath) => path.join(searchPath, dependency))
         .find((candidate) => fs.existsSync(path.join(candidate, "package.json")));

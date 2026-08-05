@@ -68,28 +68,30 @@ def status_payload():
     return {**STATE, "downloadedBytes": downloaded_bytes, "totalBytes": MODEL_DOWNLOAD_BYTES}
 
 
+def resolve_ffmpeg():
+    env_path = os.getenv("FFMPEG_PATH")
+    if env_path and Path(env_path).is_file():
+        return str(env_path)
+    from shutil import which
+    found = which("ffmpeg")
+    if found:
+        return found
+    script_dir = Path(__file__).resolve().parent
+    for candidate in [
+        script_dir.parent / "node_modules" / "ffmpeg-static" / "ffmpeg.exe",
+        script_dir.parent / "node_modules" / "ffmpeg-static" / "ffmpeg",
+        script_dir.parent.parent / "node_modules" / "ffmpeg-static" / "ffmpeg.exe",
+    ]:
+        if candidate.is_file():
+            return str(candidate)
+    return env_path or "ffmpeg"
+
+
 def transcribe_audio(audio_path):
     if MODEL is None:
         raise RuntimeError(STATE["message"])
+    ffmpeg_bin = resolve_ffmpeg()
     wav_path = audio_path.with_name(f"{audio_path.stem}-parakeet.wav")
-    result = subprocess.run(
-        [FFMPEG_PATH, "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", str(wav_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Nao foi possivel converter o audio para transcricao: {result.stderr[-500:]}")
-    try:
-        waveform, sample_rate = sf.read(str(wav_path), dtype="float32")
-        return str(MODEL.recognize(waveform, sample_rate=sample_rate, channel="mean")).strip()
-    finally:
-        wav_path.unlink(missing_ok=True)
-
-
-class SpeechHandler(BaseHTTPRequestHandler):
-    def log_message(self, _format, *_args):
-        return
 
     def send_json(self, status, payload):
         data = json.dumps(payload).encode("utf-8")
