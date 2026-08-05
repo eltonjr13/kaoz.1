@@ -1,6 +1,6 @@
 {
   "name": "ai-ugc-reaction-studio",
-  "version": "0.2.29",
+  "version": "0.2.30",
   "description": "Kaoz.1 AI content creation studio for Windows",
   "author": "Kaoz.1",
   "private": true,
@@ -23,7 +23,8 @@
     "clean:check": "node scripts/clean-generated.mjs --include-release",
     "clean:caches": "node scripts/clean-generated.mjs --apply --include-release",
     "clean:all-generated": "node scripts/clean-generated.mjs --apply --include-release --include-desktop-runtime",
-    "test": "npm run typecheck && npm run test:product-surface && npm run test:chat-context && npm run test:flow-image && npm run test:flow-agents && npm run test:multiagent-migration && npm run test:image-prompt && npm run test:personality && npm run test:memory && npm run test:memory-archive && npm run test:voice-expression && npm run test:tool-safety && npm run test:tool-execution && npm run test:playwright-mcp && npm run test:davinci-resolve && npm run test:google-drive && npm run test:connectors && npm run test:skills && npm run test:agent-prompt && npm run test:agent-infrastructure && npm run test:agent-capabilities && npm run test:execution-classifier && npm run test:workflow-factory && npm run test:execution-layer && npm run test:agent-registry && npm run test:creative-domain && npm run test:campaign-director && npm run test:creative-workflow && npm run test:agent-messaging && npm run test:agent-shared-context && npm run test:planner-agent && npm run test:task-decomposer-agent && npm run test:agent-scheduler && npm run test:supervisor-agent && npm run test:production-supervision && npm run test:chief-agent && npm run test:artifacts && npm run test:updates && npm run test:desktop && npm run test:speech && npm run test:lipsync && npm run test:build-cleanup",
+    "test": "npm run typecheck && npm run test:product-surface && npm run test:chat-context && npm run test:flow-image && npm run test:flow-agents && npm run test:multiagent-migration && npm run test:image-prompt && npm run test:personality && npm run test:memory && npm run test:memory-archive && npm run test:voice-expression && npm run test:tool-safety && npm run test:tool-execution && npm run test:playwright-mcp && npm run test:davinci-resolve && npm run test:google-drive && npm run test:connectors && npm run test:skills && npm run test:agent-prompt && npm run test:agent-infrastructure && npm run test:agent-capabilities && npm run test:execution-classifier && npm run test:workflow-factory && npm run test:execution-layer && npm run test:agent-registry && npm run test:creative-domain && npm run test:campaign-director && npm run test:creative-workflow && npm run test:agent-messaging && npm run test:agent-shared-context && npm run test:planner-agent && npm run test:task-decomposer-agent && npm run test:agent-scheduler && npm run test:supervisor-agent && npm run test:production-supervision && npm run test:chief-agent && npm run test:artifacts && npm run test:updates && npm run test:desktop && npm run test:speech && npm run test:lipsync && npm run test:build-cleanup && npm run test:desktop-icon",
+    "test:desktop-icon": "node --no-warnings --test tests/desktop-icon.test.mjs",
     "lint": "eslint . --cache --cache-strategy content --concurrency 4 --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test:product-surface": "node --no-warnings --test tests/product-surface-retirement.test.mjs",
@@ -118,6 +119,7 @@
     "files": [
       "electron/**/*",
       "build/icon.png",
+      "build/icon.ico",
       "package.json"
     ],
     "extraResources": [
@@ -146,7 +148,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "artifactName": "Kaoz.1-Setup-${version}.${ext}",
       "target": [
         "nsis"
@@ -169,9 +171,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Kaoz.1",
-      "installerIcon": "build/icon.png",
-      "uninstallerIcon": "build/icon.png",
-      "installerHeaderIcon": "build/icon.png",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "installerSidebar": "build/installerSidebar.png",
       "installerHeader": "build/installerHeader.png",
       "uninstallerSidebar": "build/installerSidebar.png"

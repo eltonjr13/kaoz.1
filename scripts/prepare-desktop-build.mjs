@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { copyStandaloneManifest, ensureDesktopRuntimePackages } from "./desktop-runtime-validation.mjs";
+import { ensureDesktopIcon } from "./generate-desktop-icon.mjs";
 
 const root = process.cwd();
+await ensureDesktopIcon(root);
 const standaloneSource = path.join(root, ".next", "standalone");
 const output = path.join(root, "dist", "standalone");
 

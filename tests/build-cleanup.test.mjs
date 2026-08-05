@@ -166,6 +166,11 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
         main: "index.js",
       })],
       [path.join(root, "node_modules", "@img", "sharp-win32-x64", "index.js"), "module.exports = {}\n"],
+      [path.join(root, "node_modules", "ffmpeg-static", "package.json"), JSON.stringify({
+        name: "ffmpeg-static",
+        main: "index.js",
+      })],
+      [path.join(root, "node_modules", "ffmpeg-static", "index.js"), "module.exports = {}\n"],
     ];
     for (const [file, contents] of fixtures) {
       await mkdir(path.dirname(file), { recursive: true });
