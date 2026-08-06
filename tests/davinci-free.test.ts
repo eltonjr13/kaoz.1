@@ -534,14 +534,29 @@ test("desktop inclui o runner do Resolve Free", async () => {
   assert.match(smoke, /Kaoz1ApplyPlan\.py/);
 });
 
-test("lote de vídeos suporta filtragem por seleção prévia do usuário", async () => {
+test("lote de vídeos suporta filtragem por seleção prévia e pasta de download customizada", async () => {
   const batchService = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
     "utf8",
   );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  const driveService = await readFile(
+    path.join(process.cwd(), "services", "google-drive", "google-drive.service.ts"),
+    "utf8",
+  );
   assert.match(batchService, /selectedItemIds/);
   assert.match(batchService, /selectedRelativePaths/);
+  assert.match(batchService, /downloadFolder/);
+  assert.match(batchService, /localLessonDirectory/);
   assert.match(batchService, /Nenhuma aula selecionada para processar/);
   assert.match(batchService, /Nenhum vídeo selecionado para processar/);
+  assert.match(panel, /Pasta de Download e Processamento Local/);
+  assert.match(panel, /chooseDownloadFolder/);
+  assert.match(driveService, /customDownloadFolder/);
+  assert.match(driveService, /path\.isAbsolute\(resolved\)/);
 });
+
 

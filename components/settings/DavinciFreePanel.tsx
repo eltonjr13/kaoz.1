@@ -223,6 +223,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [selectedLocalVideos, setSelectedLocalVideos] = useState<string[]>([]);
   const [selectedDriveLessons, setSelectedDriveLessons] = useState<string[]>([]);
   const [batchSearchQuery, setBatchSearchQuery] = useState<string>("");
+  const [downloadFolder, setDownloadFolder] = useState<string>("");
   const [driveConnection, setDriveConnection] = useState<GoogleDriveConnectionStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<"single" | "batch">("single");
@@ -511,6 +512,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  async function chooseDownloadFolder() {
+    let folder = "";
+    if (window.kaoz1Desktop?.chooseCourseFolder) {
+      const selected = await window.kaoz1Desktop.chooseCourseFolder();
+      if (!selected) return;
+      folder = selected;
+    } else {
+      const selected = await action("choose-folder", {});
+      if (!selected?.folderPath) return;
+      folder = String(selected.folderPath);
+    }
+    setDownloadFolder(folder);
+    onStatusMessage({ text: `Pasta de download local alterada para: ${folder}`, type: "info" });
+  }
+
   async function discoverDriveBatch() {
     const connection = await refreshDriveConnection();
     const connectionError = driveBatchConnectionError(connection);
@@ -524,7 +540,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       if (!selected?.id) return;
       setBatchFolder(selected.name ?? "Pasta do Google Drive");
       setBatchDiscovery(null);
-      const result = await action("discover-drive-batch", { rootFolderId: selected.id });
+      const result = await action("discover-drive-batch", { rootFolderId: selected.id, downloadFolder: downloadFolder || undefined });
       if (!result?.id) return;
       const discovery = result as GoogleDriveCourseManifest;
       setDriveBatchDiscovery(discovery);
@@ -563,6 +579,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         musicDb: Number(form.musicDb),
         useAgent: true,
         selectedItemIds: selectedIds,
+        downloadFolder: downloadFolder || undefined,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -1646,6 +1663,33 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </button>
             </div>
           </div>
+
+          {batchSource === "google-drive" && (
+            <div className="space-y-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-300">
+                    Pasta de Download e Processamento Local (Disco)
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-200">
+                    {downloadFolder || "Padrão do Sistema (AppData no Disco C:)"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={chooseDownloadFolder}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-500/20 disabled:opacity-40 transition-all"
+                >
+                  <Folder size={14} />
+                  Alterar pasta / disco
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-400">
+                Escolha uma pasta em um disco com mais espaço (ex: D:\ ou E:\) se o Disco C: não possuir espaço suficiente para baixar as aulas.
+              </p>
+            </div>
+          )}
 
           {/* Seleção de Vídeos - Pasta Local */}
           {batchSource === "local" && batchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
