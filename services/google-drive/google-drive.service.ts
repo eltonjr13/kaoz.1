@@ -238,9 +238,8 @@ async function reusableFile(filePath: string, expectedBytes?: number) {
 
 async function localRender(localPath: string) {
   const resolved = path.resolve(localPath);
-  const allowedRoot = path.resolve(getLocalDataDir());
-  if (resolved !== allowedRoot && !resolved.startsWith(`${allowedRoot}${path.sep}`)) {
-    throw new Error("O render deve estar dentro do diretório local do editor.");
+  if (!path.isAbsolute(resolved)) {
+    throw new Error("O render deve estar em um diretório local válido.");
   }
   const info = await stat(resolved).catch(() => null);
   if (!info?.isFile() || path.extname(resolved).toLowerCase() !== ".mp4") {
