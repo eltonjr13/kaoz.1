@@ -623,7 +623,7 @@ export class GoogleDriveService {
     return this.courseModule(module, moduleIndex, await this.discoverVideos(module));
   }
 
-  async discoverCourse(rootFolderId: string): Promise<GoogleDriveCourseManifest> {
+  async discoverCourse(rootFolderId: string, customDownloadFolder?: string): Promise<GoogleDriveCourseManifest> {
     await this.assertBatchScope();
     const root = await this.metadata(rootFolderId);
     if (root.trashed || root.mimeType !== DRIVE_FOLDER_MIME) throw new Error("Selecione uma pasta-raiz válida do Google Drive.");
@@ -660,7 +660,9 @@ export class GoogleDriveService {
       issues.push(courseIssue("too-many-videos", root.name, "", `O lote excede o limite de ${MAX_COURSE_VIDEOS} vídeos.`));
     }
     const totalBytes = lessons.reduce((total, lesson) => total + (lesson.file.sizeBytes || 0), 0);
-    const localRoot = path.join(getLocalDataDir(), "davinci-resolve-free", "course-batches");
+    const localRoot = customDownloadFolder && path.isAbsolute(customDownloadFolder)
+      ? customDownloadFolder
+      : path.join(getLocalDataDir(), "davinci-resolve-free", "course-batches");
     await mkdir(localRoot, { recursive: true });
     const disk = await statfs(localRoot);
     const manifest: GoogleDriveCourseManifest = {
@@ -880,8 +882,7 @@ export class GoogleDriveService {
     const lesson = manifest?.lessons.find((item) => item.id === input.itemId);
     if (!lesson) throw new Error("Aula não encontrada no manifesto do Google Drive.");
     const resolved = path.resolve(input.directory);
-    const allowedRoot = path.resolve(getLocalDataDir());
-    if (!resolved.startsWith(`${allowedRoot}${path.sep}`)) throw new Error("Destino local do lote inválido.");
+    if (!path.isAbsolute(resolved)) throw new Error("Destino local do lote inválido.");
     await mkdir(resolved, { recursive: true });
     const existingPath = path.join(resolved, safeDriveFileName(lesson.file.name));
     if (await reusableFile(existingPath, lesson.file.sizeBytes)) {

@@ -207,8 +207,9 @@ export async function discoverCourseBatch(rawInput: Record<string, unknown>) {
 
 export async function discoverGoogleDriveCourseBatch(rawInput: Record<string, unknown>) {
   const rootFolderId = cleanText(rawInput.rootFolderId);
+  const downloadFolder = cleanText(rawInput.downloadFolder) || cleanText(rawInput.targetFolder);
   if (!rootFolderId) throw new Error("Selecione a pasta-raiz do curso no Google Drive.");
-  return googleDriveService.discoverCourse(rootFolderId);
+  return googleDriveService.discoverCourse(rootFolderId, downloadFolder);
 }
 
 async function atomicSave(id: string, content: string) {
@@ -356,10 +357,9 @@ function assertCompletedTransfer(transfer: GoogleDriveTransferJob) {
 }
 
 function localLessonDirectory(job: CourseBatchJob, item: CourseBatchItem) {
+  const baseDirectory = job.folderPath || path.join(ROOT, job.id, "media");
   return path.join(
-    ROOT,
-    job.id,
-    "media",
+    baseDirectory,
     safeDriveFileName(item.moduleName),
     safeDriveFileName(item.lessonName || `Aula ${item.index}`),
   );
@@ -637,13 +637,22 @@ function driveItems(id: string, manifest: GoogleDriveCourseManifest): CourseBatc
   }));
 }
 
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
 async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: string, normalizedRequestId: string) {
   const manifestId = cleanText(rawInput.manifestId);
   const manifest = await googleDriveService.readCourseManifest(manifestId);
   if (!manifest) throw new Error("Manifesto do Google Drive não encontrado. Descubra a pasta novamente.");
   if (!manifest.valid) throw new Error("A estrutura do curso possui erros e não pode ser iniciada.");
-  await mkdir(ROOT, { recursive: true });
-  const disk = await statfs(ROOT);
+
+  const downloadFolder = cleanText(rawInput.downloadFolder) || cleanText(rawInput.targetFolder);
+  const localRoot = downloadFolder && path.isAbsolute(downloadFolder) ? downloadFolder : ROOT;
+  await mkdir(localRoot, { recursive: true });
+  const disk = await statfs(localRoot);
   const availableLocalBytes = Number(disk.bavail) * Number(disk.bsize);
 
   const rawSelected = Array.isArray(rawInput.selectedItemIds)
@@ -658,7 +667,11 @@ async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: stri
   }
 
   const selectedRequiredBytes = lessonsToProcess.reduce((sum, l) => sum + (l.file.sizeBytes || 0), 0);
-  if (availableLocalBytes < selectedRequiredBytes) throw new Error("Espaço local insuficiente para baixar e renderizar as aulas selecionadas.");
+  if (availableLocalBytes < selectedRequiredBytes) {
+    throw new Error(
+      `Espaço local insuficiente na pasta '${localRoot}' (${formatBytes(availableLocalBytes)} disponíveis, ${formatBytes(selectedRequiredBytes)} necessários para as aulas selecionadas). Escolha outra pasta de download local com mais espaço.`
+    );
+  }
 
   const filteredManifest: GoogleDriveCourseManifest = {
     ...manifest,
@@ -670,7 +683,7 @@ async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: stri
     version: 2,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || manifest.root.name).slice(0, 100)),
     source: { type: "google-drive", manifestId, rootFolderId: manifest.root.fileId, rootFolderName: manifest.root.name },
-    folderPath: path.join(ROOT, id, "media"),
+    folderPath: path.join(localRoot, id, "media"),
     total: filteredManifest.lessons.length,
     items: driveItems(id, filteredManifest),
   };
