@@ -209,8 +209,9 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(panel, /Editar curso inteiro em lote/);
   assert.match(panel, /chooseCourseFolder/);
   assert.match(panel, /const selected = await window\.kaoz1Desktop\.chooseCourseFolder/);
-  assert.match(panel, /Selecionar pasta e processar/);
-  assert.match(panel, /await startBatch\(folderPath, discovery\.suggestedCourseName\)/);
+  assert.match(panel, /Buscar pasta no computador/);
+  assert.match(panel, /setSelectedLocalVideos/);
+  assert.match(panel, /Iniciar exportação por lote/);
   assert.match(panel, /window\.setInterval/);
   assert.match(panel, /Repetir falhas/);
 });
@@ -532,3 +533,15 @@ test("desktop inclui o runner do Resolve Free", async () => {
   assert.match(prepare, /davinciFreeSource/);
   assert.match(smoke, /Kaoz1ApplyPlan\.py/);
 });
+
+test("lote de vídeos suporta filtragem por seleção prévia do usuário", async () => {
+  const batchService = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
+    "utf8",
+  );
+  assert.match(batchService, /selectedItemIds/);
+  assert.match(batchService, /selectedRelativePaths/);
+  assert.match(batchService, /Nenhuma aula selecionada para processar/);
+  assert.match(batchService, /Nenhum vídeo selecionado para processar/);
+});
+

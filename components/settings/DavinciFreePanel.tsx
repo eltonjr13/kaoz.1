@@ -26,6 +26,7 @@ import {
   Palette,
   Subtitles,
   Video,
+  Search,
 } from "lucide-react";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
 import type {
@@ -219,6 +220,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [batch, setBatch] = useState<BatchJob | null>(null);
   const [batchSource, setBatchSource] = useState<"local" | "google-drive">("local");
   const [driveBatchDiscovery, setDriveBatchDiscovery] = useState<GoogleDriveCourseManifest | null>(null);
+  const [selectedLocalVideos, setSelectedLocalVideos] = useState<string[]>([]);
+  const [selectedDriveLessons, setSelectedDriveLessons] = useState<string[]>([]);
+  const [batchSearchQuery, setBatchSearchQuery] = useState<string>("");
   const [driveConnection, setDriveConnection] = useState<GoogleDriveConnectionStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<"single" | "batch">("single");
@@ -495,15 +499,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (result?.videos) {
       const discovery = result as BatchDiscovery;
       setBatchDiscovery(discovery);
+      setSelectedLocalVideos(discovery.videos.map((v) => v.relativePath));
       setForm((current) => ({
         ...current,
         courseName: discovery.suggestedCourseName,
       }));
       onStatusMessage({
-        text: `${String(result.total)} aulas encontradas. Iniciando o processamento automático.`,
+        text: `${String(result.total)} aulas encontradas. Selecione as aulas desejadas antes de iniciar.`,
         type: "info",
       });
-      await startBatch(folderPath, discovery.suggestedCourseName);
     }
   }
 
@@ -524,12 +528,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       if (!result?.id) return;
       const discovery = result as GoogleDriveCourseManifest;
       setDriveBatchDiscovery(discovery);
+      setSelectedDriveLessons(discovery.lessons.map((l) => l.id));
       setForm((current) => ({ ...current, courseName: discovery.root.name }));
       if (!discovery.valid) {
         onStatusMessage({ text: "A estrutura do curso possui erros. Corrija as aulas indicadas antes de iniciar.", type: "error" });
         return;
       }
-      await startDriveBatch(discovery);
+      onStatusMessage({
+        text: `${discovery.lessons.length} aulas encontradas no Drive. Selecione as aulas desejadas antes de iniciar.`,
+        type: "info",
+      });
     } catch (error) {
       onStatusMessage({ text: caughtMessage(error), type: "error" });
     } finally {
@@ -537,40 +545,65 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  async function startDriveBatch(discovery: GoogleDriveCourseManifest) {
-    const result = await action("start-batch", {
-      requestId: `course-drive-batch-${crypto.randomUUID()}`,
-      manifestId: discovery.id,
-      courseName: discovery.root.name,
-      style: form.style,
-      captionsEnabled: form.captionsEnabled,
-      musicPath: form.musicPath,
-      musicDb: Number(form.musicDb),
-      useAgent: true,
-    });
-    if (result?.id) {
-      setBatch(result as BatchJob);
-      onStatusMessage({ text: "Lote do Drive iniciado com até duas aulas em paralelo.", type: "success" });
+  async function startDriveBatch(discovery = driveBatchDiscovery, selectedIds = selectedDriveLessons) {
+    if (!discovery) return;
+    if (selectedIds.length === 0) {
+      onStatusMessage({ text: "Selecione pelo menos uma aula para exportar.", type: "error" });
+      return;
+    }
+    setBusy("start-batch");
+    try {
+      const result = await action("start-batch", {
+        requestId: `course-drive-batch-${crypto.randomUUID()}`,
+        manifestId: discovery.id,
+        courseName: discovery.root.name,
+        style: form.style,
+        captionsEnabled: form.captionsEnabled,
+        musicPath: form.musicPath,
+        musicDb: Number(form.musicDb),
+        useAgent: true,
+        selectedItemIds: selectedIds,
+      });
+      if (result?.id) {
+        setBatch(result as BatchJob);
+        onStatusMessage({ text: `Lote do Drive iniciado com ${selectedIds.length} aula(s) selecionada(s).`, type: "success" });
+      }
+    } catch (error) {
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
+    } finally {
+      setBusy(null);
     }
   }
 
-  async function startBatch(folderPath = batchFolder, courseName = form.courseName) {
-    const result = await action("start-batch", {
-      requestId: `course-batch-${crypto.randomUUID()}`,
-      folderPath,
-      courseName,
-      style: form.style,
-      captionsEnabled: form.captionsEnabled,
-      musicPath: form.musicPath,
-      musicDb: Number(form.musicDb),
-      useAgent: true,
-    });
-    if (result?.id) {
-      setBatch(result as BatchJob);
-      onStatusMessage({
-        text: "Lote iniciado. O processamento continuará em segundo plano, uma aula por vez.",
-        type: "success",
+  async function startBatch(folderPath = batchFolder, courseName = form.courseName, selectedPaths = selectedLocalVideos) {
+    if (selectedPaths.length === 0) {
+      onStatusMessage({ text: "Selecione pelo menos um vídeo para exportar.", type: "error" });
+      return;
+    }
+    setBusy("start-batch");
+    try {
+      const result = await action("start-batch", {
+        requestId: `course-batch-${crypto.randomUUID()}`,
+        folderPath,
+        courseName,
+        style: form.style,
+        captionsEnabled: form.captionsEnabled,
+        musicPath: form.musicPath,
+        musicDb: Number(form.musicDb),
+        useAgent: true,
+        selectedRelativePaths: selectedPaths,
       });
+      if (result?.id) {
+        setBatch(result as BatchJob);
+        onStatusMessage({
+          text: `Lote iniciado com ${selectedPaths.length} vídeo(s) selecionado(s). O processamento continuará em segundo plano.`,
+          type: "success",
+        });
+      }
+    } catch (error) {
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -1604,66 +1637,280 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 onClick={batchSource === "google-drive" ? discoverDriveBatch : discoverBatch}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:brightness-110 disabled:opacity-40"
               >
-                {busy === "discover-batch" || busy === "discover-drive-batch" || busy === "drive-picker" || busy === "choose-folder" || busy === "start-batch" ? (
+                {busy === "discover-batch" || busy === "discover-drive-batch" || busy === "drive-picker" || busy === "choose-folder" ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (
                   <FolderSearch size={15} />
                 )}
-                {batchSource === "google-drive" ? "Selecionar VIDEOS_CURSO e processar" : "Selecionar pasta e processar"}
+                {batchSource === "google-drive" ? "Buscar VIDEOS_CURSO no Drive" : "Buscar pasta no computador"}
               </button>
             </div>
           </div>
 
-          {batchDiscovery && (
-            <div className="space-y-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
-              <p className="text-xs font-semibold text-emerald-300">
-                {batchDiscovery.total} aulas encontradas e enviadas para a fila.
-              </p>
-              <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs">
-                {batchDiscovery.videos.map((video) => (
-                  <div key={video.sourcePath} className="flex items-center gap-3 text-[11px]">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300 font-mono text-[10px]">
-                      {video.index}
-                    </span>
-                    <span className="font-medium text-zinc-200">{video.moduleName}</span>
-                    <span className="truncate text-zinc-500 font-mono">{video.relativePath}</span>
+          {/* Seleção de Vídeos - Pasta Local */}
+          {batchSource === "local" && batchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
+            <div className="space-y-4 rounded-xl border border-violet-500/30 bg-black/40 p-4 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-violet-300">
+                    <Film size={15} />
+                    Seleção de Vídeos para Exportar
                   </div>
-                ))}
+                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                    {selectedLocalVideos.length} de {batchDiscovery.total} vídeos selecionados
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLocalVideos(batchDiscovery.videos.map((v) => v.relativePath))}
+                    className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
+                  >
+                    Selecionar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLocalVideos([])}
+                    className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
+                  >
+                    Desmarcar todos
+                  </button>
+                </div>
               </div>
+
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Filtrar vídeos por nome ou módulo..."
+                  value={batchSearchQuery}
+                  onChange={(e) => setBatchSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div className="max-h-60 space-y-1.5 overflow-y-auto pr-1">
+                {batchDiscovery.videos
+                  .filter(
+                    (video) =>
+                      !batchSearchQuery.trim() ||
+                      video.moduleName.toLowerCase().includes(batchSearchQuery.toLowerCase()) ||
+                      video.relativePath.toLowerCase().includes(batchSearchQuery.toLowerCase())
+                  )
+                  .map((video) => {
+                    const isSelected = selectedLocalVideos.includes(video.relativePath);
+                    return (
+                      <label
+                        key={video.sourcePath}
+                        className={`flex items-center gap-3 rounded-lg border p-2.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-violet-500/40 bg-violet-500/10 text-white"
+                            : "border-white/5 bg-black/20 text-zinc-400 hover:border-white/15 hover:bg-white/5"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedLocalVideos((prev) => [...prev, video.relativePath]);
+                            } else {
+                              setSelectedLocalVideos((prev) => prev.filter((p) => p !== video.relativePath));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-white/20 bg-black accent-violet-500"
+                        />
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/20 font-mono text-[10px] font-bold text-violet-300">
+                          {video.index}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-zinc-200">{video.moduleName}</p>
+                          <p className="truncate font-mono text-[10px] text-zinc-400">{video.relativePath}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                disabled={selectedLocalVideos.length === 0 || busy === "start-batch"}
+                onClick={() => startBatch()}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-600/25 transition-all hover:brightness-110 disabled:opacity-40"
+              >
+                {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                Iniciar exportação por lote ({selectedLocalVideos.length} vídeos selecionados)
+              </button>
             </div>
           )}
 
-          {driveBatchDiscovery && (
-            <div className={`space-y-3 rounded-xl border p-4 ${driveBatchDiscovery.valid ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-red-500/25 bg-red-500/[0.05]"}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <p className={driveBatchDiscovery.valid ? "font-semibold text-emerald-300" : "font-semibold text-red-300"}>
-                  {driveBatchDiscovery.lessons.length} aulas em {driveBatchDiscovery.modules.length} módulos
-                </p>
-                <p className="text-zinc-400">
-                  Disco: {formatBytes(driveBatchDiscovery.requiredLocalBytes)} necessários · {formatBytes(driveBatchDiscovery.availableLocalBytes)} disponíveis
-                </p>
+          {/* Seleção de Vídeos - Google Drive */}
+          {batchSource === "google-drive" && driveBatchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
+            <div
+              className={`space-y-4 rounded-xl border p-4 shadow-xl ${
+                driveBatchDiscovery.valid ? "border-blue-500/30 bg-black/40" : "border-red-500/25 bg-red-500/[0.04]"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
+                    <Film size={15} />
+                    Seleção de Aulas do Google Drive
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2.5 text-[11px] text-zinc-400">
+                    <span>
+                      {selectedDriveLessons.length} de {driveBatchDiscovery.lessons.length} aulas selecionadas
+                    </span>
+                    <span>·</span>
+                    <span className="font-semibold text-blue-200">
+                      Tamanho total:{" "}
+                      {formatBytes(
+                        driveBatchDiscovery.lessons
+                          .filter((l) => selectedDriveLessons.includes(l.id))
+                          .reduce((sum, l) => sum + (l.file.sizeBytes || 0), 0)
+                      )}
+                    </span>
+                    <span>·</span>
+                    <span className="text-zinc-500">Disco disponível: {formatBytes(driveBatchDiscovery.availableLocalBytes)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDriveLessons(driveBatchDiscovery.lessons.map((l) => l.id))}
+                    className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
+                  >
+                    Selecionar todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDriveLessons([])}
+                    className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
+                  >
+                    Desmarcar todas
+                  </button>
+                </div>
               </div>
+
               {driveBatchDiscovery.issues.length > 0 && (
-                <div className="space-y-1 rounded-lg border border-red-500/20 bg-black/40 p-3 text-[10px] text-red-200">
+                <div className="space-y-1 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-[10px] text-red-200">
                   {driveBatchDiscovery.issues.map((issue, index) => (
                     <p key={`${issue.code}-${issue.moduleName}-${issue.lessonName}-${index}`}>
-                      {issue.moduleName}/{issue.lessonName}: {issue.message}
+                      ⚠️ {issue.moduleName}/{issue.lessonName}: {issue.message}
                     </p>
                   ))}
                 </div>
               )}
-              <div className="max-h-56 space-y-2 overflow-y-auto">
-                {driveBatchDiscovery.modules.map((module) => (
-                  <div key={module.id} className="rounded-lg border border-white/10 bg-black/40 p-3">
-                    <p className="mb-2 text-[11px] font-bold text-blue-200">{module.index}. {module.name}</p>
-                    <div className="space-y-1 text-[10px] text-zinc-400">
-                      {module.lessons.map((lesson) => (
-                        <p key={lesson.id}>{lesson.lessonIndex}. {lesson.lessonName} · {lesson.file.name}</p>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por aula ou módulo no Drive..."
+                  value={batchSearchQuery}
+                  onChange={(e) => setBatchSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-blue-500"
+                />
               </div>
+
+              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                {driveBatchDiscovery.modules.map((module) => {
+                  const moduleLessonIds = module.lessons.map((l) => l.id);
+                  const selectedModuleLessons = moduleLessonIds.filter((id) => selectedDriveLessons.includes(id));
+                  const isAllModuleSelected = selectedModuleLessons.length === moduleLessonIds.length && moduleLessonIds.length > 0;
+                  const isSomeModuleSelected = selectedModuleLessons.length > 0 && !isAllModuleSelected;
+
+                  const filteredLessons = module.lessons.filter(
+                    (l) =>
+                      !batchSearchQuery.trim() ||
+                      module.name.toLowerCase().includes(batchSearchQuery.toLowerCase()) ||
+                      l.lessonName.toLowerCase().includes(batchSearchQuery.toLowerCase()) ||
+                      l.file.name.toLowerCase().includes(batchSearchQuery.toLowerCase())
+                  );
+
+                  if (filteredLessons.length === 0 && batchSearchQuery.trim()) return null;
+
+                  return (
+                    <div key={module.id} className="rounded-xl border border-white/10 bg-black/50 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isAllModuleSelected}
+                            ref={(input) => {
+                              if (input) input.indeterminate = isSomeModuleSelected;
+                            }}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedDriveLessons((prev) => Array.from(new Set([...prev, ...moduleLessonIds])));
+                              } else {
+                                setSelectedDriveLessons((prev) => prev.filter((id) => !moduleLessonIds.includes(id)));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-white/20 bg-black accent-blue-500"
+                          />
+                          <span className="text-xs font-bold text-blue-200">
+                            {module.index}. {module.name}
+                          </span>
+                        </label>
+                        <span className="text-[10px] font-medium text-zinc-400">
+                          {selectedModuleLessons.length}/{module.lessons.length} aulas selecionadas
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 pl-2">
+                        {filteredLessons.map((lesson) => {
+                          const isSelected = selectedDriveLessons.includes(lesson.id);
+                          return (
+                            <label
+                              key={lesson.id}
+                              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs transition-all cursor-pointer ${
+                                isSelected
+                                  ? "border-blue-500/40 bg-blue-500/10 text-zinc-100"
+                                  : "border-white/5 bg-black/30 text-zinc-400 hover:border-white/15 hover:bg-white/5"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedDriveLessons((prev) => [...prev, lesson.id]);
+                                    } else {
+                                      setSelectedDriveLessons((prev) => prev.filter((id) => id !== lesson.id));
+                                    }
+                                  }}
+                                  className="h-3.5 w-3.5 rounded border-white/20 bg-black accent-blue-500"
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-zinc-200 truncate">
+                                    {lesson.lessonIndex}. {lesson.lessonName}
+                                  </p>
+                                  <p className="font-mono text-[10px] text-zinc-400 truncate">{lesson.file.name}</p>
+                                </div>
+                              </div>
+                              <span className="shrink-0 font-mono text-[10px] text-zinc-400">
+                                {formatBytes(lesson.file.sizeBytes || 0)}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                disabled={selectedDriveLessons.length === 0 || !driveBatchDiscovery.valid || busy === "start-batch"}
+                onClick={() => startDriveBatch(driveBatchDiscovery)}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:brightness-110 disabled:opacity-40"
+              >
+                {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                Iniciar exportação por lote do Drive ({selectedDriveLessons.length} aulas selecionadas)
+              </button>
             </div>
           )}
 

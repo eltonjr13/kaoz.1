@@ -645,14 +645,34 @@ async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: stri
   await mkdir(ROOT, { recursive: true });
   const disk = await statfs(ROOT);
   const availableLocalBytes = Number(disk.bavail) * Number(disk.bsize);
-  if (availableLocalBytes < manifest.requiredLocalBytes) throw new Error("Espaço local insuficiente para baixar e renderizar este curso.");
+
+  const rawSelected = Array.isArray(rawInput.selectedItemIds)
+    ? rawInput.selectedItemIds.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  const lessonsToProcess = rawSelected.length > 0
+    ? manifest.lessons.filter((l) => rawSelected.includes(l.id) || rawSelected.includes(l.file.fileId))
+    : manifest.lessons;
+
+  if (lessonsToProcess.length === 0) {
+    throw new Error("Nenhuma aula selecionada para processar.");
+  }
+
+  const selectedRequiredBytes = lessonsToProcess.reduce((sum, l) => sum + (l.file.sizeBytes || 0), 0);
+  if (availableLocalBytes < selectedRequiredBytes) throw new Error("Espaço local insuficiente para baixar e renderizar as aulas selecionadas.");
+
+  const filteredManifest: GoogleDriveCourseManifest = {
+    ...manifest,
+    lessons: lessonsToProcess,
+    requiredLocalBytes: selectedRequiredBytes,
+  };
+
   const job: CourseBatchJob = {
     version: 2,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || manifest.root.name).slice(0, 100)),
     source: { type: "google-drive", manifestId, rootFolderId: manifest.root.fileId, rootFolderName: manifest.root.name },
     folderPath: path.join(ROOT, id, "media"),
-    total: manifest.lessons.length,
-    items: driveItems(id, manifest),
+    total: filteredManifest.lessons.length,
+    items: driveItems(id, filteredManifest),
   };
   await saveJob(job);
   launchBatch(id);
@@ -672,15 +692,31 @@ export async function startCourseBatch(rawInput: Record<string, unknown>) {
     throw new Error("Informe uma pasta local ou selecione uma pasta do Google Drive.");
   }
   const discovered = await discoverCourseBatch(rawInput);
+
+  const rawSelectedPaths = Array.isArray(rawInput.selectedRelativePaths)
+    ? rawInput.selectedRelativePaths.map((item) => String(item).trim()).filter(Boolean)
+    : Array.isArray(rawInput.selectedSourcePaths)
+    ? rawInput.selectedSourcePaths.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+
+  const videosToProcess = rawSelectedPaths.length > 0
+    ? discovered.videos.filter((v) => rawSelectedPaths.includes(v.relativePath) || rawSelectedPaths.includes(v.sourcePath))
+    : discovered.videos;
+
+  if (videosToProcess.length === 0) {
+    throw new Error("Nenhum vídeo selecionado para processar.");
+  }
+
   const job: CourseBatchJob = {
     version: 1,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || discovered.suggestedCourseName).slice(0, 100)),
     source: { type: "local" },
     folderPath: discovered.folderPath,
-    total: discovered.total,
-    items: discovered.videos.map((video) => ({
+    total: videosToProcess.length,
+    items: videosToProcess.map((video, idx) => ({
       id: crypto.createHash("sha256").update(`${id}:${video.relativePath}`).digest("hex").slice(0, 12),
       ...video,
+      index: idx + 1,
       status: "pending",
     })),
   };
