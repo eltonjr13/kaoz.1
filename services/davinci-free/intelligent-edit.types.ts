@@ -163,6 +163,9 @@ export interface IntelligentEditPlan {
     hasAudio: boolean;
     musicPath?: string;
     musicDb: number;
+    sfxEnabled?: boolean;
+    sfxVolumeDb?: number;
+    sfxPack?: "minimal" | "dynamic" | "tech";
   };
   transcript: TimedTranscriptSegment[];
   captions: IntelligentCaption[];
@@ -221,5 +224,8 @@ export interface IntelligentEditAnalysisInput {
   reuseCourseTheme?: boolean;
   musicPath?: string;
   musicDb?: number;
+  sfxEnabled?: boolean;
+  sfxVolumeDb?: number;
+  sfxPack?: "minimal" | "dynamic" | "tech";
   useAgent?: boolean;
 }
