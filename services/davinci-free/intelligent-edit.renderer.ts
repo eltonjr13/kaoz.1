@@ -341,7 +341,8 @@ function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
   const outputSize = axis === "x" ? "out_w" : "out_h";
   let expression = defaultValue;
   for (const event of [...candidates].reverse()) {
-    const coordinate = Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
+    const isZoom = event.kind === "zoom";
+    const coordinate = isZoom ? "0.5000" : Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
     const focused = `${coordinate}*${inputSize}-${outputSize}/2`;
     expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${focused},${expression})`;
   }

@@ -724,8 +724,8 @@ async function visualEditPlan(input: {
     if (!target) continue;
     const anchor = anchors.find((candidate) => candidate.index === index + 1);
     previousSubjectAnchor = stabilizeSubjectAnchor(anchor, previousSubjectAnchor);
-    target.x = previousSubjectAnchor.x;
-    target.y = previousSubjectAnchor.y;
+    target.x = 0.5;
+    target.y = 0.5;
     target.scale = 1.12;
   }
 

@@ -1136,21 +1136,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
-                {/* AI Subject Tracking Overlay */}
+                {/* AI Center Zoom Overlay */}
                 {activeMediaAsset === "source" && selectedEvent?.kind === "zoom" && (
                   <div
                     className="absolute border border-emerald-400/70 rounded-md pointer-events-none opacity-80 shadow-[0_0_15px_rgba(78,222,163,0.25)_inset] transition-all duration-300"
                     style={{
-                      top: selectedEvent.y ? `${Math.min(70, Math.max(10, selectedEvent.y * 100))}%` : "20%",
-                      left: selectedEvent.x ? `${Math.min(70, Math.max(10, selectedEvent.x * 100))}%` : "30%",
-                      width: selectedEvent.scale ? `${Math.min(45, 25 * selectedEvent.scale)}%` : "30%",
-                      height: selectedEvent.scale ? `${Math.min(50, 35 * selectedEvent.scale)}%` : "40%",
+                      top: "25%",
+                      left: "35%",
+                      width: "30%",
+                      height: "50%",
                     }}
                   >
                     <span className="absolute -top-4 left-0 text-[9px] text-emerald-300 font-mono bg-zinc-900/90 px-1.5 py-0.5 rounded border border-emerald-500/40">
-                      {analysis?.visual.source === "agent-contact-sheet"
-                        ? "Apresentador identificado"
-                        : "Âncora segura"}
+                      Zoom centralizado no vídeo
                     </span>
                   </div>
                 )}
