@@ -14,7 +14,12 @@ export type SFXType =
   | "fart"
   | "bone-crack"
   | "among-us"
-  | "faah";
+  | "faah"
+  | "error"
+  | "punch"
+  | "baby-laugh"
+  | "spiderman"
+  | "nemesis";
 
 const SFX_DIR = path.join(process.cwd(), "public", "sfx");
 
@@ -270,6 +275,11 @@ export async function ensureSfxLibrary(): Promise<Record<SFXType, string>> {
     "bone-crack": path.join(SFX_DIR, "bone-crack.wav"),
     "among-us": path.join(SFX_DIR, "among-us.wav"),
     faah: path.join(SFX_DIR, "faah.wav"),
+    error: path.join(SFX_DIR, "error.wav"),
+    punch: path.join(SFX_DIR, "punch.wav"),
+    "baby-laugh": path.join(SFX_DIR, "baby-laugh.wav"),
+    spiderman: path.join(SFX_DIR, "spiderman.wav"),
+    nemesis: path.join(SFX_DIR, "nemesis.wav"),
   };
 
   if (sfxInitialized) return paths;

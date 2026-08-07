@@ -617,21 +617,31 @@ export function buildEditEvents(input: {
   if (input.style === "meme") {
     const memeSoundTags = [
       "vine-boom",
+      "faah",
+      "fart",
+      "error",
+      "punch",
+      "baby-laugh",
+      "spiderman",
+      "nemesis",
       "anime-wow",
       "rizz",
-      "fart",
       "bone-crack",
       "among-us",
-      "faah",
     ] as const;
     const memeLabels = [
-      "Vine Boom (Dramático)",
+      "Vine Boom (Impacto)",
+      "FAAAH (Reação)",
+      "Fart Meme (Ops)",
+      "Windows Error (Erro)",
+      "Punch Hit (Pancada)",
+      "Baby Laugh (Risada)",
+      "Spider-Man Meme (Música)",
+      "Nemesis Reveal (Suspense)",
       "Anime WOW (Brilho)",
       "Rizz Sound (Carisma)",
-      "Fart Reverb (Ops)",
-      "Bone Crack (Pancada)",
+      "Bone Crack (Impacto)",
       "Among Us (Impostor)",
-      "FAAAH (Reação)",
     ];
 
     const triggers = events.filter((e) => e.kind === "zoom" || e.kind === "impact-text");

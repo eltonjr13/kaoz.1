@@ -87,7 +87,19 @@ export interface IntelligentEditEvent {
   subtitle?: string;
   reason: string;
   variant?: IntelligentEditTextVariant;
-  memeTag?: "vine-boom" | "anime-wow" | "rizz" | "fart" | "bone-crack" | "among-us" | "faah";
+  memeTag?:
+    | "vine-boom"
+    | "anime-wow"
+    | "rizz"
+    | "fart"
+    | "bone-crack"
+    | "among-us"
+    | "faah"
+    | "error"
+    | "punch"
+    | "baby-laugh"
+    | "spiderman"
+    | "nemesis";
   scale?: number;
   x?: number;
   y?: number;
