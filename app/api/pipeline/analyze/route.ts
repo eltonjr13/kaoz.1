@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+export const maxDuration = 3600;
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { findLocalAvatar } from "@/lib/local-store";
