@@ -377,6 +377,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       reuseCourseTheme: form.reuseCourseTheme,
       musicPath: form.musicPath,
       musicDb: Number(form.musicDb),
+      sfxEnabled: form.sfxEnabled,
+      sfxVolumeDb: Number(form.sfxVolumeDb),
+      sfxPack: form.sfxPack,
       useAgent: true,
     });
     if (result?.id) {
@@ -1081,10 +1084,51 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <input className={fieldClass} value={form.musicPath} onChange={update("musicPath")} />
                   </label>
                   <label className="space-y-1 text-zinc-400 font-medium">
-                    Volume dB
+                    Volume Música (dB)
                     <input className={fieldClass} value={form.musicDb} onChange={update("musicDb")} />
                   </label>
                 </div>
+
+                <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={form.sfxEnabled}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        sfxEnabled: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-emerald-500"
+                  />
+                  <span>
+                    <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
+                    <span className="text-[10px] text-zinc-400 leading-tight block">
+                      Dispara sons de whoosh, pop e chime em transições e cartões.
+                    </span>
+                  </span>
+                </label>
+
+                {form.sfxEnabled && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <label className="space-y-1 text-zinc-400 font-medium">
+                      Estilo de SFX
+                      <select
+                        className={fieldClass}
+                        value={form.sfxPack}
+                        onChange={(e) => setForm((current) => ({ ...current, sfxPack: e.target.value as "minimal" | "dynamic" | "tech" }))}
+                      >
+                        <option value="minimal">Minimalista (Suave)</option>
+                        <option value="dynamic">Dinâmico (Studio)</option>
+                        <option value="tech">Tech (Moderno)</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-zinc-400 font-medium">
+                      Volume SFX (dB)
+                      <input className={fieldClass} value={form.sfxVolumeDb} onChange={update("sfxVolumeDb")} />
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 
