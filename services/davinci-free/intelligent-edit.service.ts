@@ -815,6 +815,11 @@ export async function analyzeIntelligentEdit(
     reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
     musicDb: Math.min(-35, Math.max(-40, Number(rawInput.musicDb) || -38)),
+    sfxEnabled: rawInput.sfxEnabled !== false,
+    sfxVolumeDb: Math.min(-10, Math.max(-30, Number(rawInput.sfxVolumeDb) || -18)),
+    sfxPack: (["minimal", "dynamic", "tech"].includes(String(rawInput.sfxPack))
+      ? rawInput.sfxPack
+      : "dynamic") as "minimal" | "dynamic" | "tech",
     useAgent: rawInput.useAgent !== false,
   };
   const sourceHash = await sha256(input.sourcePath);
@@ -895,6 +900,9 @@ export async function analyzeIntelligentEdit(
       ...media,
       musicPath: input.musicPath,
       musicDb: input.musicDb ?? -38,
+      sfxEnabled: input.sfxEnabled !== false,
+      sfxVolumeDb: input.sfxVolumeDb ?? -18,
+      sfxPack: input.sfxPack || "dynamic",
     },
     transcript,
     captions,

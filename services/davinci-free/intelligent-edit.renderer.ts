@@ -13,6 +13,7 @@ import {
 import { resolveIntelligentEditDesign } from "./intelligent-edit.design";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { recordEditorialPreview } from "./intelligent-edit.review";
+import { ensureSfxLibrary } from "./sfx.service";
 
 function ffmpegPath() {
   const candidates = [
