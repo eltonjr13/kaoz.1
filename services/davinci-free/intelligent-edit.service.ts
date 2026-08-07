@@ -613,6 +613,47 @@ export function buildEditEvents(input: {
     ),
     reason: "Encerramento contextual e orientado à próxima ação.",
   });
+
+  if (input.style === "meme") {
+    const memeSoundTags = [
+      "vine-boom",
+      "anime-wow",
+      "rizz",
+      "fart",
+      "bone-crack",
+      "among-us",
+      "faah",
+    ] as const;
+    const memeLabels = [
+      "Vine Boom (Dramático)",
+      "Anime WOW (Brilho)",
+      "Rizz Sound (Carisma)",
+      "Fart Reverb (Ops)",
+      "Bone Crack (Pancada)",
+      "Among Us (Impostor)",
+      "FAAAH (Reação)",
+    ];
+
+    const triggers = events.filter((e) => e.kind === "zoom" || e.kind === "impact-text");
+    for (const [index, event] of triggers.entries()) {
+      const memeTag = memeSoundTags[index % memeSoundTags.length];
+      const memeLabel = memeLabels[index % memeLabels.length];
+      events.push({
+        id: `meme-sfx-${index + 1}`,
+        kind: "meme-sfx",
+        start: event.start,
+        duration: 0.8,
+        label: `🤡 ${memeLabel}`,
+        reason: "Efeito cômico acionado para o Modo Meme.",
+        memeTag,
+      });
+      if (event.kind === "zoom") {
+        event.scale = 1.32;
+        event.duration = 0.85;
+      }
+    }
+  }
+
   return events.sort((a, b) => a.start - b.start);
 }
 

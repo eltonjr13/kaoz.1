@@ -65,6 +65,17 @@ export const INTELLIGENT_EDIT_PALETTES: Record<
       muted: "#A8B2A3",
     },
   },
+  meme: {
+    palette: "meme",
+    colors: {
+      background: "#0D001A",
+      surface: "#2A004F",
+      primary: "#FFE600",
+      secondary: "#FF007F",
+      text: "#FFFFFF",
+      muted: "#00E5FF",
+    },
+  },
 };
 
 export const INTELLIGENT_COURSE_THEME_PRESETS: Record<

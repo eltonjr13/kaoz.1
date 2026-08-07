@@ -1,12 +1,13 @@
 export const INTELLIGENT_EDIT_PLAN_VERSION = 1 as const;
 
-export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic";
+export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic" | "meme";
 export type IntelligentEditPalette =
   | "kaoz"
   | "electric"
   | "premium"
   | "coral"
-  | "course-theme";
+  | "course-theme"
+  | "meme";
 export type IntelligentEditTextVariant = "concept" | "stat" | "action" | "quote";
 export type IntelligentCourseLayout = "roadmap" | "framework" | "editorial";
 export type IntelligentCourseThemeKey =
@@ -78,13 +79,15 @@ export interface IntelligentEditEvent {
     | "zoom"
     | "cut"
     | "cursor"
-    | "transition";
+    | "transition"
+    | "meme-sfx";
   start: number;
   duration: number;
   label: string;
   subtitle?: string;
   reason: string;
   variant?: IntelligentEditTextVariant;
+  memeTag?: "vine-boom" | "anime-wow" | "rizz" | "fart" | "bone-crack" | "among-us" | "faah";
   scale?: number;
   x?: number;
   y?: number;
