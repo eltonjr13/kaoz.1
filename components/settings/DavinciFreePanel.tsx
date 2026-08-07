@@ -23,6 +23,7 @@ import {
   ZoomIn,
   ZoomOut,
   Folder,
+  FolderOpen,
   Palette,
   Subtitles,
   Video,
@@ -984,15 +985,45 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </span>
                 <label className="block space-y-1 text-zinc-300 font-semibold">
                   Vídeo da aula
-                  <input
-                    className={fieldClass}
-                    placeholder="C:\Videos\aula.mp4"
-                    value={form.sourcePath}
-                    onChange={(event) => {
-                      setDriveSourceOrigin(null);
-                      setForm((current) => ({ ...current, sourcePath: event.target.value }));
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      className={fieldClass}
+                      placeholder="C:\Videos\aula.mp4"
+                      value={form.sourcePath}
+                      onChange={(event) => {
+                        setDriveSourceOrigin(null);
+                        setForm((current) => ({ ...current, sourcePath: event.target.value }));
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        let selectedPath = "";
+                        if (window.kaoz1Desktop?.chooseCourseFolder) {
+                          selectedPath = (await window.kaoz1Desktop.chooseCourseFolder()) || "";
+                        } else {
+                          const selected = await action("choose-folder", {});
+                          if (selected?.folderPath) {
+                            selectedPath = String(selected.folderPath);
+                          }
+                        }
+                        if (selectedPath) {
+                          setDriveSourceOrigin(null);
+                          setForm((current) => ({ ...current, sourcePath: selectedPath }));
+                          addLog("info", "Vídeo / Pasta selecionado:", selectedPath);
+                          onStatusMessage({
+                            text: `Caminho selecionado: ${selectedPath}`,
+                            type: "info",
+                          });
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/80 hover:border-emerald-400 transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-950/40 active:scale-95"
+                      title="Clique para abrir o seletor nativo e escolher o arquivo de vídeo ou pasta da aula"
+                    >
+                      <FolderOpen size={14} className="text-emerald-400" />
+                      <span>Selecionar Pasta</span>
+                    </button>
+                  </div>
                 </label>
 
                 <GoogleDriveVideoControls

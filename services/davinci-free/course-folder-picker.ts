@@ -31,8 +31,8 @@ export async function normalizeExistingLocalCourseDirectory(
     throw new Error("A pasta do curso deve usar um caminho local absoluto.");
   }
   const info = await stat(normalized).catch(() => null);
-  if (!info?.isDirectory()) {
-    throw new Error("A pasta do curso não foi encontrada.");
+  if (!info?.isDirectory() && !info?.isFile()) {
+    throw new Error("O arquivo ou pasta selecionada não foi encontrada.");
   }
   return normalized;
 }
@@ -41,7 +41,7 @@ export async function chooseCourseFolder(
   options: CourseFolderPickerOptions,
 ) {
   if (process.platform !== "win32") {
-    throw new Error("O seletor de pastas está disponível somente no Windows.");
+    throw new Error("O seletor está disponível somente no Windows.");
   }
   const pickerDirectory = options.pickerDirectory;
   await mkdir(pickerDirectory, { recursive: true });
@@ -53,7 +53,7 @@ export async function chooseCourseFolder(
     "Option Explicit",
     "Dim shell, folder, fso, output",
     'Set shell = CreateObject("Shell.Application")',
-    'Set folder = shell.BrowseForFolder(0, "Selecione a pasta do curso", &H41, 0)',
+    'Set folder = shell.BrowseForFolder(0, "Selecione a pasta ou vídeo da aula", &H4041, 0)',
     'Set fso = CreateObject("Scripting.FileSystemObject")',
     `Set output = fso.CreateTextFile("${escapedResultPath}", True, True)`,
     "If folder Is Nothing Then",
