@@ -222,6 +222,7 @@ async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
     ffmpegPath(),
     [
       "-hide_banner",
+      "-vn",
       "-i",
       sourcePath,
       "-af",
@@ -262,7 +263,7 @@ async function transcribeChunks(
 ) {
   const speech = getSpeechService();
   const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
-  const CONCURRENCY = 4;
+  const CONCURRENCY = 6;
 
   for (let index = 0; index < chunks.length; index += CONCURRENCY) {
     const batch = chunks.slice(index, index + CONCURRENCY);

@@ -505,6 +505,8 @@ async function renderCard(
   ].join(",");
   await runFfmpeg([
     "-y",
+    "-threads",
+    "0",
     "-f",
     "lavfi",
     "-i",
@@ -522,7 +524,7 @@ async function renderCard(
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    "superfast",
     "-crf",
     "20",
     "-pix_fmt",
@@ -542,6 +544,8 @@ async function renderBody(
 ) {
   await runFfmpeg([
     "-y",
+    "-threads",
+    "0",
     "-i",
     plan.sourcePath,
     "-map",
@@ -557,7 +561,7 @@ async function renderBody(
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    "superfast",
     "-crf",
     "20",
     "-pix_fmt",
@@ -577,7 +581,7 @@ async function concatenate(
   outroPath: string,
   outputPath: string,
 ) {
-  const args = ["-y", "-i", introPath, "-i", bodyPath, "-i", outroPath];
+  const args = ["-y", "-threads", "0", "-i", introPath, "-i", bodyPath, "-i", outroPath];
   const totalDuration = plan.media.durationSeconds + 8;
   if (plan.media.musicPath) {
     args.push("-stream_loop", "-1", "-i", plan.media.musicPath);
@@ -596,7 +600,7 @@ async function concatenate(
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    "superfast",
     "-crf",
     "20",
     "-pix_fmt",
@@ -629,9 +633,11 @@ export async function renderIntelligentEdit(
   await writeFile(bodyAssPath, bodyAss(plan), "utf8");
   await writeFile(introAssPath, titleAss(plan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(plan, "outro"), "utf8");
-  await renderCard(plan, "intro", introAssPath, introPath);
-  await renderBody(plan, bodyAssPath, bodyPath);
-  await renderCard(plan, "outro", outroAssPath, outroPath);
+  await Promise.all([
+    renderCard(plan, "intro", introAssPath, introPath),
+    renderBody(plan, bodyAssPath, bodyPath),
+    renderCard(plan, "outro", outroAssPath, outroPath),
+  ]);
   await concatenate(plan, introPath, bodyPath, outroPath, previewPath);
   const updated: IntelligentEditPlan = {
     ...plan,
