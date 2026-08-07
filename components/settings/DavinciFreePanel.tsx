@@ -274,6 +274,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     reuseCourseTheme: true,
     musicPath: "",
     musicDb: "-38",
+    sfxEnabled: true,
+    sfxVolumeDb: "-18",
+    sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
   });
 
   const refresh = useCallback(async () => {

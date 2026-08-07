@@ -585,20 +585,74 @@ async function concatenate(
 ) {
   const args = ["-y", "-threads", "0", "-i", introPath, "-i", bodyPath, "-i", outroPath];
   const totalDuration = plan.media.durationSeconds + 8;
+  let nextInputIndex = 3;
+  let musicInputIndex: number | null = null;
+
   if (plan.media.musicPath) {
     args.push("-stream_loop", "-1", "-i", plan.media.musicPath);
+    musicInputIndex = nextInputIndex++;
   }
+
+  const sfxEvents: Array<{ time: number; file: string }> = [];
+  if (plan.media.sfxEnabled !== false) {
+    const sfxPaths = await ensureSfxLibrary();
+    sfxEvents.push({ time: 0.1, file: sfxPaths.whoosh });
+    sfxEvents.push({ time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths.whoosh });
+
+    for (const event of plan.events) {
+      const time = event.start + 4;
+      if (event.kind === "transition" || event.kind === "cut") {
+        sfxEvents.push({ time, file: sfxPaths.whoosh });
+      } else if (event.kind === "impact-text" || event.kind === "lower-third") {
+        sfxEvents.push({ time, file: sfxPaths.pop });
+      } else if (event.kind === "zoom") {
+        sfxEvents.push({ time, file: sfxPaths.swoosh });
+      }
+    }
+  }
+
+  const sfxInputMap: Array<{ inputIdx: number; timeMs: number }> = [];
+  for (const sfx of sfxEvents.slice(0, 14)) {
+    args.push("-i", sfx.file);
+    sfxInputMap.push({ inputIdx: nextInputIndex++, timeMs: Math.round(sfx.time * 1000) });
+  }
+
   const concat = "[0:v][0:a][1:v][1:a][2:v][2:a]concat=n=3:v=1:a=1[vbase][voice]";
-  const filter = plan.media.musicPath
-    ? `${concat};[3:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`
-    : concat;
+  const filterParts: string[] = [concat];
+  let finalAudioLabel = "[voice]";
+
+  const sfxVolume = (plan.media.sfxVolumeDb ?? -18).toFixed(1);
+  const mixLabels: string[] = ["[voice]"];
+
+  if (musicInputIndex !== null) {
+    filterParts.push(
+      `[${musicInputIndex}:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5[music]`,
+    );
+    mixLabels.push("[music]");
+  }
+
+  sfxInputMap.forEach((item, idx) => {
+    const label = `[sfx${idx}]`;
+    filterParts.push(
+      `[${item.inputIdx}:a]adelay=${item.timeMs}|${item.timeMs},volume=${sfxVolume}dB${label}`,
+    );
+    mixLabels.push(label);
+  });
+
+  if (mixLabels.length > 1) {
+    filterParts.push(
+      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[aout]`,
+    );
+    finalAudioLabel = "[aout]";
+  }
+
   args.push(
     "-filter_complex",
-    filter,
+    filterParts.join(";"),
     "-map",
     "[vbase]",
     "-map",
-    plan.media.musicPath ? "[aout]" : "[voice]",
+    finalAudioLabel,
     "-c:v",
     "libx264",
     "-preset",
