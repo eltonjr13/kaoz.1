@@ -99,7 +99,7 @@ function normalizeMarkers(value: unknown, fps: number): DavinciFreeMarker[] {
     const item = entry as Record<string, unknown>;
     const seconds = Math.max(0, number(item.seconds, 0));
     const kind = text(item.kind, "kind") as DavinciFreeMarker["kind"];
-    const allowed = new Set(["lower-third", "zoom", "cursor", "transition", "caption", "review"]);
+    const allowed = new Set(["lower-third", "zoom", "cursor", "transition", "caption", "review", "meme-sfx"]);
     if (!allowed.has(kind)) throw new Error(`Tipo do marcador ${index + 1} inválido.`);
     return {
       frame: Math.round(seconds * fps),

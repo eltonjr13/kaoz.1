@@ -178,6 +178,7 @@ const kindLabel: Record<EditEvent["kind"], string> = {
   cut: "Corte de plano",
   cursor: "Cursor",
   transition: "Transição",
+  "meme-sfx": "Efeito Meme 🤡",
 };
 
 const kindColorClass: Record<EditEvent["kind"], string> = {
@@ -189,6 +190,7 @@ const kindColorClass: Record<EditEvent["kind"], string> = {
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
   cursor: "bg-blue-950/90 border-blue-500 text-blue-300",
   transition: "bg-pink-950/90 border-pink-500 text-pink-300",
+  "meme-sfx": "bg-yellow-950/90 border-yellow-400 text-yellow-300",
 };
 
 function clock(seconds: number) {
@@ -1029,6 +1031,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="subtle">Discreto (Subtle)</option>
                     <option value="balanced">Equilibrado (Balanced)</option>
                     <option value="dynamic">Dinâmico (Dynamic)</option>
+                    <option value="meme">🤡 Modo Meme (Edição Cômica)</option>
                   </select>
                 </label>
 
