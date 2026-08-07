@@ -36,7 +36,7 @@ def discover_script_dir():
 
 SCRIPT_DIR = discover_script_dir()
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "kaoz1-free-config.json")
-ALLOWED_KINDS = {"lower-third", "zoom", "cursor", "transition", "caption", "review"}
+ALLOWED_KINDS = {"lower-third", "zoom", "cursor", "transition", "caption", "review", "meme-sfx"}
 
 
 def call(target, method, *args):
