@@ -216,7 +216,7 @@ async function sha256(filePath: string) {
 async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
   const timeoutMs = Math.min(
     120 * 60_000,
-    Math.max(300_000, Math.ceil(durationSeconds * 1_500)),
+    Math.max(300_000, Math.ceil(durationSeconds * 1_000)),
   );
   const result = await runProcess(
     ffmpegPath(),
