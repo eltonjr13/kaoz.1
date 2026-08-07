@@ -58,7 +58,8 @@ type EditEvent = {
     | "zoom"
     | "cut"
     | "cursor"
-    | "transition";
+    | "transition"
+    | "meme-sfx";
   start: number;
   duration: number;
   label: string;

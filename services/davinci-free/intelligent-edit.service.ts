@@ -849,7 +849,7 @@ export async function analyzeIntelligentEdit(
     sourceOrigin: googleDriveSourceOrigin(rawInput.sourceOrigin),
     courseName: safeLabel(cleanText(rawInput.courseName), 100) || undefined,
     moduleName: safeLabel(cleanText(rawInput.moduleName, "Módulo"), 100),
-    style: (["subtle", "balanced", "dynamic"].includes(String(rawInput.style))
+    style: (["subtle", "balanced", "dynamic", "meme"].includes(String(rawInput.style))
       ? rawInput.style
       : "subtle") as IntelligentEditStyle,
     captionsEnabled: rawInput.captionsEnabled !== false,
