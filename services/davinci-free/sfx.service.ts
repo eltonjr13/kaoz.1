@@ -16,7 +16,7 @@ export type SFXType =
   | "among-us"
   | "faah";
 
-const SFX_DIR = path.join(getLocalDataDir(), "davinci-resolve-free", "sfx");
+const SFX_DIR = path.join(process.cwd(), "public", "sfx");
 
 function generateWavHeader(numSamples: number, sampleRate = 48000): Buffer {
   const bytesPerSample = 2; // 16-bit PCM

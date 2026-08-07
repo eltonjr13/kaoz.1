@@ -278,7 +278,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     musicPath: "",
     musicDb: "-38",
     sfxEnabled: true,
-    sfxVolumeDb: "-18",
+    sfxVolumeDb: "-12",
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
   });
 

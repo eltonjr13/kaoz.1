@@ -857,7 +857,7 @@ export async function analyzeIntelligentEdit(
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
     musicDb: Math.min(-35, Math.max(-40, Number(rawInput.musicDb) || -38)),
     sfxEnabled: rawInput.sfxEnabled !== false,
-    sfxVolumeDb: Math.min(-10, Math.max(-30, Number(rawInput.sfxVolumeDb) || -18)),
+    sfxVolumeDb: Math.min(-6, Math.max(-30, Number(rawInput.sfxVolumeDb) || -12)),
     sfxPack: (["minimal", "dynamic", "tech"].includes(String(rawInput.sfxPack))
       ? rawInput.sfxPack
       : "dynamic") as "minimal" | "dynamic" | "tech",

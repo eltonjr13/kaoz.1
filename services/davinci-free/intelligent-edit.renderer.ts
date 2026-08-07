@@ -601,7 +601,11 @@ async function concatenate(
 
     for (const event of plan.events) {
       const time = event.start + 4;
-      if (event.kind === "transition" || event.kind === "cut") {
+      if (event.kind === "meme-sfx" || event.memeTag) {
+        const tag = (event.memeTag || "vine-boom") as keyof typeof sfxPaths;
+        const file = sfxPaths[tag] || sfxPaths["vine-boom"];
+        sfxEvents.push({ time, file });
+      } else if (event.kind === "transition" || event.kind === "cut") {
         sfxEvents.push({ time, file: sfxPaths.whoosh });
       } else if (event.kind === "impact-text" || event.kind === "lower-third") {
         sfxEvents.push({ time, file: sfxPaths.pop });
@@ -621,7 +625,7 @@ async function concatenate(
   const filterParts: string[] = [concat];
   let finalAudioLabel = "[voice]";
 
-  const sfxVolume = (plan.media.sfxVolumeDb ?? -18).toFixed(1);
+  const sfxVolume = (plan.media.sfxVolumeDb ?? -12).toFixed(1);
   const mixLabels: string[] = ["[voice]"];
 
   if (musicInputIndex !== null) {
