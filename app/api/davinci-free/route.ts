@@ -3,6 +3,7 @@ import { createAgentId } from "@/services/agents/core/agent-id";
 import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 3600;
 
 const TOOL_BY_ACTION = {
   status: "davinci-free:get-status",
@@ -47,8 +48,15 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
       runId: crypto.randomUUID(),
       stepId: action,
       signal: AbortSignal.timeout(
-        action === "analyze" || action === "render-preview" || action === "choose-folder"
-          ? 15 * 60_000
+        [
+          "analyze",
+          "render-preview",
+          "choose-folder",
+          "start-batch",
+          "resume-batch",
+          "retry-batch",
+        ].includes(action)
+          ? 60 * 60_000
           : 125_000,
       ),
     },

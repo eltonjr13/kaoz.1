@@ -215,8 +215,8 @@ async function sha256(filePath: string) {
 
 async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
   const timeoutMs = Math.min(
-    60 * 60_000,
-    Math.max(120_000, Math.ceil(durationSeconds * 1_000)),
+    120 * 60_000,
+    Math.max(300_000, Math.ceil(durationSeconds * 1_500)),
   );
   const result = await runProcess(
     ffmpegPath(),
@@ -241,9 +241,9 @@ export function buildAudioChunks(duration: number, silenceEnds: number[]) {
   const chunks: Array<{ start: number; end: number }> = [];
   let start = 0;
   while (duration - start > 0.35) {
-    const minimum = start + 5;
-    const target = start + 11;
-    const maximum = Math.min(duration, start + 16);
+    const minimum = start + 8;
+    const target = start + 18;
+    const maximum = Math.min(duration, start + 30);
     const candidates = silenceEnds.filter((time) => time >= minimum && time <= maximum);
     const selected =
       candidates.sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0] ??
@@ -261,39 +261,63 @@ async function transcribeChunks(
   chunks: Array<{ start: number; end: number }>,
 ) {
   const speech = getSpeechService();
-  const segments: TimedTranscriptSegment[] = [];
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const output = path.join(directory, `speech-${String(index + 1).padStart(3, "0")}.wav`);
-    await runProcess(ffmpegPath(), [
-      "-y",
-      "-ss",
-      chunk.start.toFixed(3),
-      "-t",
-      (chunk.end - chunk.start).toFixed(3),
-      "-i",
-      sourcePath,
-      "-vn",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      output,
-    ]);
-    const bytes = await readFile(output);
-    const result = await speech.transcribe(
-      new File([bytes], path.basename(output), { type: "audio/wav" }),
+  const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
+  const CONCURRENCY = 4;
+
+  for (let index = 0; index < chunks.length; index += CONCURRENCY) {
+    const batch = chunks.slice(index, index + CONCURRENCY);
+    await Promise.all(
+      batch.map(async (chunk, batchOffset) => {
+        const chunkIndex = index + batchOffset;
+        const output = path.join(directory, `speech-${String(chunkIndex + 1).padStart(4, "0")}.wav`);
+        try {
+          await runProcess(
+            ffmpegPath(),
+            [
+              "-y",
+              "-ss",
+              chunk.start.toFixed(3),
+              "-t",
+              (chunk.end - chunk.start).toFixed(3),
+              "-i",
+              sourcePath,
+              "-vn",
+              "-ar",
+              "16000",
+              "-ac",
+              "1",
+              output,
+            ],
+            { timeoutMs: 120_000 },
+          );
+          const bytes = await readFile(output);
+          const result = await speech.transcribe(
+            new File([bytes], path.basename(output), { type: "audio/wav" }),
+          );
+          const text = result.text.trim();
+          if (text) {
+            rawResults.push({
+              index: chunkIndex,
+              start: chunk.start,
+              end: chunk.end,
+              text,
+            });
+          }
+        } catch (error) {
+          console.warn(`[transcribeChunks] Aviso no trecho ${chunkIndex + 1}/${chunks.length}:`, error);
+        }
+      }),
     );
-    const text = result.text.trim();
-    if (text) {
-      segments.push({
-        start: chunk.start,
-        end: chunk.end,
-        text,
-        source: "local-asr",
-      });
-    }
   }
+
+  rawResults.sort((a, b) => a.index - b.index);
+  const segments: TimedTranscriptSegment[] = rawResults.map((item) => ({
+    start: item.start,
+    end: item.end,
+    text: item.text,
+    source: "local-asr",
+  }));
+
   if (segments.length === 0) {
     throw new Error("A transcrição não retornou texto utilizável.");
   }

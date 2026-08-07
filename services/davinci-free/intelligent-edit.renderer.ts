@@ -23,7 +23,7 @@ function ffmpegPath() {
   return candidates.find((candidate) => existsSync(candidate)) || "ffmpeg";
 }
 
-function runFfmpeg(args: string[], timeoutMs = 60 * 60_000) {
+function runFfmpeg(args: string[], timeoutMs = 120 * 60_000) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(ffmpegPath(), args, { windowsHide: true });
     const stderr: Buffer[] = [];

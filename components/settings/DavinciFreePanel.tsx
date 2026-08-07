@@ -29,6 +29,11 @@ import {
   Search,
 } from "lucide-react";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
+import {
+  VideoEditorConsole,
+  type ConsoleLogEntry,
+  type ConsoleLogLevel,
+} from "@/components/video/video-editor-console";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -239,6 +244,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
   const [previewStale, setPreviewStale] = useState<boolean>(false);
   const [driveSourceOrigin, setDriveSourceOrigin] = useState<GoogleDriveSelection | null>(null);
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
+    {
+      id: "init-1",
+      timestamp: new Date().toLocaleTimeString("pt-BR"),
+      level: "info",
+      message: "Estúdio de Edição e Orquestrador inicializados.",
+      details: "Transcrição offline Parakeet/Whisper ativada. Suporte estendido a vídeos de longa duração.",
+    },
+  ]);
+
+  const addLog = useCallback((level: ConsoleLogLevel, message: string, details?: string) => {
+    const timestamp = new Date().toLocaleTimeString("pt-BR");
+    setConsoleLogs((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), timestamp, level, message, details },
+    ]);
+  }, []);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
@@ -340,6 +362,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function analyze() {
+    addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
       sourcePath: form.sourcePath,
@@ -359,27 +382,46 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       setPlayheadTime(0);
       setPlayerDuration(0);
       setPreviewStale(false);
+      addLog(
+        "success",
+        "Análise e transcrição concluídas!",
+        `ID do Plano: ${result.id} | Segundos: ${result.media?.durationSeconds || 0}s`,
+      );
       onStatusMessage({
         text: "Áudio transcrito e decisões de edição preparadas para revisão.",
         type: "success",
       });
+    } else {
+      addLog("error", "Análise não pôde ser concluída.");
     }
   }
 
   async function renderPreview() {
     if (!analysis) return;
+    addLog("info", "Salvando revisão e iniciando renderização de vídeo FFmpeg...", `Plano ID: ${analysis.id}`);
     const saved = await action("save-editorial-review", { planId: analysis.id, review });
-    if (!saved) return;
+    if (!saved) {
+      addLog("error", "Falha ao salvar a revisão editorial.");
+      return;
+    }
+    addLog("ffmpeg", "Executando codificação H.264 / AAC com legendas dinamicas e cartões de introdução...");
     const result = await action("render-preview", { planId: analysis.id });
     if (result?.plan) {
       setAnalysis(result.plan as Analysis);
       setPlayheadTime(0);
       setPlayerDuration(Number(result.durationSeconds) || 0);
       setPreviewStale(false);
+      addLog(
+        "success",
+        "Vídeo renderizado e pronto para reprodução!",
+        `Arquivo de vídeo: ${String(result.previewPath)}`,
+      );
       onStatusMessage({
         text: `Prévia renderizada em ${String(result.previewPath)}`,
         type: "success",
       });
+    } else {
+      addLog("error", "Erro ao renderizar o vídeo com FFmpeg.");
     }
   }
 
@@ -2029,6 +2071,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           )}
         </div>
       )}
+
+      {/* Console de Logs em Tempo Real */}
+      <div className="my-6 pb-16">
+        <VideoEditorConsole
+          logs={consoleLogs}
+          onClearLogs={() => setConsoleLogs([])}
+          isProcessing={Boolean(busy)}
+        />
+      </div>
 
       {status?.pendingPlan && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 backdrop-blur-xl shadow-xl flex items-center justify-between">
