@@ -115,38 +115,35 @@ export class SpeechService {
 
     try {
       await ensurePythonSpeechServer(runtimeProvider);
-    } catch (localError) {
-      if (runtimeProvider === "parakeet") {
-        const localMessage = localError instanceof Error ? localError.message : String(localError);
-        throw new Error(`Parakeet local indisponivel (${localMessage}).`);
+      const formData = new FormData();
+      const audioBuffer = await audio.arrayBuffer();
+      const audioBlob = new Blob([audioBuffer], {
+        type: audio.type || "application/octet-stream",
+      });
+      formData.set("audio", audioBlob, getFileName(audio));
+
+      const response = await fetch(getPythonTranscribeUrl(), {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as PythonSpeechResponse;
+      if (!response.ok) {
+        const message = typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.";
+        throw new Error(message);
       }
+
+      return {
+        text: typeof payload.text === "string" ? payload.text : "",
+      };
+    } catch (localError) {
       const cloudResult = await transcribeWithConfiguredCloud(audio);
       if (cloudResult) return cloudResult;
       const localMessage = localError instanceof Error ? localError.message : String(localError);
-      throw new Error(`Transcricao local indisponivel (${localMessage}). Configure uma chave OpenAI ou Gemini para usar o fallback no Windows.`);
+      throw new Error(
+        `Transcricao indisponivel (${localMessage}). Configure uma chave OpenAI ou Gemini para usar o fallback no Windows.`,
+      );
     }
-
-    const formData = new FormData();
-    const audioBuffer = await audio.arrayBuffer();
-    const audioBlob = new Blob([audioBuffer], {
-      type: audio.type || "application/octet-stream",
-    });
-    formData.set("audio", audioBlob, getFileName(audio));
-
-    const response = await fetch(getPythonTranscribeUrl(), {
-      method: "POST",
-      body: formData,
-    });
-
-    const payload = (await response.json().catch(() => ({}))) as PythonSpeechResponse;
-    if (!response.ok) {
-      const message = typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.";
-      throw new Error(message);
-    }
-
-    return {
-      text: typeof payload.text === "string" ? payload.text : "",
-    };
   }
 }
 

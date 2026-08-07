@@ -43,11 +43,11 @@ function getMode(provider: SpeechProviderName): string {
 function getPythonExecutable(provider: SpeechProviderName): string {
   if (provider === "parakeet" && process.env.STT_PARAKEET_PYTHON_PATH?.trim()) return process.env.STT_PARAKEET_PYTHON_PATH.trim();
   if (process.env.STT_PYTHON_PATH?.trim()) return process.env.STT_PYTHON_PATH.trim();
-  if (process.env.PYTHON_PATH?.trim()) return process.env.PYTHON_PATH.trim();
   const bundledPackaged = path.join(process.resourcesPath || "", "parakeet-runtime", "python", "python.exe");
   if (fs.existsSync(bundledPackaged)) return bundledPackaged;
   const bundledLocal = path.join(process.cwd(), "build", "runtime", "parakeet", "python", "python.exe");
   if (fs.existsSync(bundledLocal)) return bundledLocal;
+  if (process.env.PYTHON_PATH?.trim()) return process.env.PYTHON_PATH.trim();
   return "python";
 }
 
