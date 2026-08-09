@@ -281,6 +281,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     sfxEnabled: true,
     sfxVolumeDb: "-12",
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
+    outputResolution: "full-hd" as "full-hd" | "source",
   });
 
   const refresh = useCallback(async () => {
@@ -415,7 +416,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       return;
     }
     addLog("ffmpeg", "Executando codificação H.264 / AAC com legendas dinamicas e cartões de introdução...");
-    const result = await action("render-preview", { planId: analysis.id });
+    const result = await action("render-preview", {
+      planId: analysis.id,
+      outputResolution: form.outputResolution,
+    });
     if (result?.plan) {
       setAnalysis(result.plan as Analysis);
       setPlayheadTime(0);
@@ -424,7 +428,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       addLog(
         "success",
         "Vídeo renderizado e pronto para reprodução!",
-        `Arquivo de vídeo: ${String(result.previewPath)}`,
+        `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)}`,
       );
       onStatusMessage({
         text: `Prévia renderizada em ${String(result.previewPath)}`,
@@ -632,6 +636,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         useAgent: true,
         selectedItemIds: selectedIds,
         downloadFolder: downloadFolder || undefined,
+        outputResolution: form.outputResolution,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -661,6 +666,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         musicDb: Number(form.musicDb),
         useAgent: true,
         selectedRelativePaths: selectedPaths,
+        outputResolution: form.outputResolution,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -1064,6 +1070,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="dynamic">Dinâmico (Dynamic)</option>
                     <option value="meme">🤡 Modo Meme (Edição Cômica)</option>
                   </select>
+                </label>
+
+                <label className="block space-y-1 text-zinc-300 font-semibold">
+                  Resolução de saída
+                  <select
+                    className={fieldClass}
+                    value={form.outputResolution}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      outputResolution: event.target.value as "full-hd" | "source",
+                    }))}
+                  >
+                    <option value="full-hd">Full HD (recomendado)</option>
+                    <option value="source">Manter resolução original</option>
+                  </select>
+                  <span className="block text-[10px] font-normal leading-tight text-zinc-500">
+                    Full HD reduz vídeos 4K para até 1920×1080 (ou 1080×1920 em retrato), sem ampliar arquivos menores.
+                  </span>
                 </label>
 
                 <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
@@ -1736,6 +1760,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               Analisa todas as aulas primeiro, identifica o tema e a progressão do módulo e só então gera cada prévia com a mesma identidade. Nenhuma aula é enviada automaticamente ao Resolve.
             </p>
           </div>
+
+          <label className="block space-y-1 text-xs font-semibold text-zinc-300">
+            Resolução de saída do lote
+            <select
+              className={fieldClass}
+              value={form.outputResolution}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                outputResolution: event.target.value as "full-hd" | "source",
+              }))}
+            >
+              <option value="full-hd">Full HD (recomendado)</option>
+              <option value="source">Manter resolução original</option>
+            </select>
+          </label>
 
           <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/30 p-1.5">
             <button

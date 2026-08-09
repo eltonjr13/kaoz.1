@@ -22,6 +22,10 @@ import {
 import { renderIntelligentEdit } from "./intelligent-edit.renderer";
 import { applyCourseEditorialStandard } from "./intelligent-edit.review";
 import type { IntelligentCourseIdentity, IntelligentEditStyle } from "./intelligent-edit.types";
+import {
+  normalizeVideoOutputResolution,
+  type VideoOutputResolution,
+} from "./video-output-resolution";
 import { sortCourseVideoPaths } from "./course-batch.order";
 import { analyzeCourseIdentity } from "./course-identity.service";
 import { runCourseBatchPool } from "./course-batch.pool";
@@ -108,6 +112,7 @@ export interface CourseBatchJob {
   musicPath?: string;
   musicDb: number;
   useAgent: boolean;
+  outputResolution?: VideoOutputResolution;
   courseIdentity?: IntelligentCourseIdentity;
   moduleIdentities?: Record<string, IntelligentCourseIdentity>;
   outputFolderUrl?: string;
@@ -313,7 +318,10 @@ async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourse
     try {
       const standardized = await applyCourseIdentity(plan, identity, index + 1);
       await applyCourseEditorialStandard(standardized);
-      const rendered = await renderIntelligentEdit({ planId: standardized.id });
+      const rendered = await renderIntelligentEdit({
+        planId: standardized.id,
+        outputResolution: job.outputResolution,
+      });
       item.previewPath = rendered.previewPath;
       item.status = "completed";
       item.completedAt = new Date().toISOString();
@@ -434,6 +442,7 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
     captionsEnabled: job.captionsEnabled,
     musicPath: job.musicPath,
     musicDb: job.musicDb,
+    outputResolution: job.outputResolution,
     identity,
   })).digest("hex");
 }
@@ -446,7 +455,10 @@ async function renderDriveItem(job: CourseBatchJob, item: CourseBatchItem, ident
   await saveJob(job);
   const standardized = await applyCourseIdentity(plan, identity, item.lessonIndex || 1);
   await applyCourseEditorialStandard(standardized);
-  item.previewPath = (await renderIntelligentEdit({ planId: standardized.id })).previewPath;
+  item.previewPath = (await renderIntelligentEdit({
+    planId: standardized.id,
+    outputResolution: job.outputResolution,
+  })).previewPath;
   await saveJob(job);
 }
 
@@ -608,6 +620,7 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     musicPath: cleanText(input.musicPath) || undefined,
     musicDb: Math.min(-35, Math.max(-40, Number(input.musicDb) || -38)),
     useAgent: input.useAgent !== false,
+    outputResolution: normalizeVideoOutputResolution(input.outputResolution),
     createdAt: now,
     updatedAt: now,
     total: 0,

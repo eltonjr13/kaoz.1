@@ -28,6 +28,31 @@ import {
   sanitizeEditorialPreviewPath,
   sanitizeEditorialReviewTimestamp,
 } from "../services/davinci-free/editorial-review-metadata.ts";
+import {
+  normalizeVideoOutputResolution,
+  resolveVideoOutputDimensions,
+} from "../services/davinci-free/video-output-resolution.ts";
+
+test("saída de vídeo usa Full HD por padrão e permite manter a resolução", () => {
+  assert.equal(normalizeVideoOutputResolution(undefined), "full-hd");
+  assert.equal(normalizeVideoOutputResolution("source"), "source");
+  assert.deepEqual(resolveVideoOutputDimensions(3840, 2160, "full-hd"), {
+    width: 1920,
+    height: 1080,
+  });
+  assert.deepEqual(resolveVideoOutputDimensions(2160, 3840, "full-hd"), {
+    width: 1080,
+    height: 1920,
+  });
+  assert.deepEqual(resolveVideoOutputDimensions(1280, 720, "full-hd"), {
+    width: 1280,
+    height: 720,
+  });
+  assert.deepEqual(resolveVideoOutputDimensions(3840, 2160, "source"), {
+    width: 3840,
+    height: 2160,
+  });
+});
 
 test("stream de mídia interpreta ranges usados pelo player sem carregar o arquivo inteiro", () => {
   assert.deepEqual(parseMediaByteRange(null, 1_000), null);
@@ -560,5 +585,4 @@ test("lote de vídeos suporta filtragem por seleção prévia e pasta de downloa
   assert.match(driveService, /customDownloadFolder/);
   assert.match(driveService, /path\.isAbsolute\(resolved\)/);
 });
-
 

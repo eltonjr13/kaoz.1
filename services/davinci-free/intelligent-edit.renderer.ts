@@ -14,6 +14,10 @@ import { resolveIntelligentEditDesign } from "./intelligent-edit.design";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { recordEditorialPreview } from "./intelligent-edit.review";
 import { ensureSfxLibrary } from "./sfx.service";
+import {
+  normalizeVideoOutputResolution,
+  resolveVideoOutputDimensions,
+} from "./video-output-resolution";
 
 function ffmpegPath() {
   const candidates = [
@@ -372,6 +376,7 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
   const focusY = focalExpression(plan.events, "y");
   const transition = transitionExpression(plan.events);
   const filters = [
+    `scale=${plan.media.width}:${plan.media.height}:flags=lanczos`,
     `scale=w='trunc(iw*(${scale})/2)*2':h='trunc(ih*(${scale})/2)*2':eval=frame`,
     `crop=${plan.media.width}:${plan.media.height}:x='${focusX}':y='${focusY}'`,
     `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-0.95*(${transition})':eval=frame`,
@@ -682,6 +687,16 @@ export async function renderIntelligentEdit(
   const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
   const plan = await readIntelligentEditPlan(planId || undefined);
   if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const outputResolution = normalizeVideoOutputResolution(rawInput.outputResolution);
+  const outputDimensions = resolveVideoOutputDimensions(
+    plan.media.width,
+    plan.media.height,
+    outputResolution,
+  );
+  const renderPlan: IntelligentEditPlan = {
+    ...plan,
+    media: { ...plan.media, ...outputDimensions },
+  };
   const directory = plan.artifacts.directory;
   const bodyAssPath = path.join(directory, "body.ass");
   const introAssPath = path.join(directory, "intro.ass");
@@ -690,15 +705,15 @@ export async function renderIntelligentEdit(
   const bodyPath = path.join(directory, "body-edited.mp4");
   const outroPath = path.join(directory, "outro.mp4");
   const previewPath = path.join(directory, "preview-v4.mp4");
-  await writeFile(bodyAssPath, bodyAss(plan), "utf8");
-  await writeFile(introAssPath, titleAss(plan, "intro"), "utf8");
-  await writeFile(outroAssPath, titleAss(plan, "outro"), "utf8");
+  await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
+  await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
+  await writeFile(outroAssPath, titleAss(renderPlan, "outro"), "utf8");
   await Promise.all([
-    renderCard(plan, "intro", introAssPath, introPath),
-    renderBody(plan, bodyAssPath, bodyPath),
-    renderCard(plan, "outro", outroAssPath, outroPath),
+    renderCard(renderPlan, "intro", introAssPath, introPath),
+    renderBody(renderPlan, bodyAssPath, bodyPath),
+    renderCard(renderPlan, "outro", outroAssPath, outroPath),
   ]);
-  await concatenate(plan, introPath, bodyPath, outroPath, previewPath);
+  await concatenate(renderPlan, introPath, bodyPath, outroPath, previewPath);
   const updated: IntelligentEditPlan = {
     ...plan,
     artifacts: { ...plan.artifacts, previewPath },
@@ -708,6 +723,10 @@ export async function renderIntelligentEdit(
     planId: plan.id,
     plan: updated,
     previewPath,
+    outputResolution: {
+      mode: outputResolution,
+      ...outputDimensions,
+    },
     durationSeconds: plan.media.durationSeconds + 8,
     effectsApplied: {
       intro: true,
