@@ -18,6 +18,11 @@ import {
   normalizeVideoOutputResolution,
   resolveVideoOutputDimensions,
 } from "./video-output-resolution";
+import {
+  normalizeVideoEncoderPreference,
+  videoEncoderArguments,
+  type VideoEncoder,
+} from "./video-encoder";
 
 function ffmpegPath() {
   const candidates = [
@@ -47,6 +52,28 @@ function runFfmpeg(args: string[], timeoutMs = 60 * 60_000) {
       else reject(new Error(`FFmpeg falhou (${code}): ${Buffer.concat(stderr).toString("utf8").slice(-1_200)}`));
     });
   });
+}
+
+let amdAmfProbe: Promise<boolean> | undefined;
+
+function supportsAmdAmf() {
+  amdAmfProbe ||= runFfmpeg([
+    "-hide_banner",
+    "-loglevel", "error",
+    "-f", "lavfi",
+    "-i", "color=c=black:s=640x360:r=30:d=0.1",
+    "-frames:v", "1",
+    "-c:v", "h264_amf",
+    "-quality", "speed",
+    "-f", "null",
+    "-",
+  ], 15_000).then(() => true).catch(() => false);
+  return amdAmfProbe;
+}
+
+async function selectVideoEncoder(preference: unknown): Promise<VideoEncoder> {
+  if (normalizeVideoEncoderPreference(preference) === "cpu") return "libx264";
+  return await supportsAmdAmf() ? "amd-amf" : "libx264";
 }
 
 function assTime(seconds: number) {
@@ -496,6 +523,7 @@ async function renderCard(
   kind: "intro" | "outro",
   assPath: string,
   outputPath: string,
+  encoder: VideoEncoder,
 ) {
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
   const { colors } = resolveIntelligentEditDesign(plan);
@@ -528,14 +556,7 @@ async function renderCard(
     `afade=t=in:st=0:d=0.35,afade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
     "-t",
     duration.toFixed(3),
-    "-c:v",
-    "libx264",
-    "-preset",
-    "superfast",
-    "-crf",
-    "20",
-    "-pix_fmt",
-    "yuv420p",
+    ...videoEncoderArguments(encoder),
     "-c:a",
     "aac",
     "-ar",
@@ -548,6 +569,7 @@ async function renderBody(
   plan: IntelligentEditPlan,
   assPath: string,
   outputPath: string,
+  encoder: VideoEncoder,
 ) {
   await runFfmpeg([
     "-y",
@@ -565,14 +587,7 @@ async function renderBody(
     audioFilter(),
     "-r",
     plan.media.fps.toFixed(3),
-    "-c:v",
-    "libx264",
-    "-preset",
-    "superfast",
-    "-crf",
-    "20",
-    "-pix_fmt",
-    "yuv420p",
+    ...videoEncoderArguments(encoder),
     "-c:a",
     "aac",
     "-ar",
@@ -581,104 +596,123 @@ async function renderBody(
   ]);
 }
 
-async function concatenate(
+function concatFileEntry(filePath: string) {
+  const escaped = filePath.replaceAll("\\", "/").replaceAll("'", "'\\''");
+  return `file '${escaped}'`;
+}
+
+async function concatenateVideoSegments(
+  paths: string[],
+  concatPath: string,
+  joinedPath: string,
+) {
+  await writeFile(concatPath, `${paths.map(concatFileEntry).join("\n")}\n`, "utf8");
+  await runFfmpeg([
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", concatPath,
+    "-map", "0:v:0",
+    "-map", "0:a:0",
+    "-c", "copy",
+    joinedPath,
+  ]);
+}
+
+function sfxFileForEvent(
+  event: IntelligentEditEvent,
+  paths: Awaited<ReturnType<typeof ensureSfxLibrary>>,
+) {
+  if (event.kind === "meme-sfx" || event.memeTag) {
+    const tag = (event.memeTag || "vine-boom") as keyof typeof paths;
+    return paths[tag] || paths["vine-boom"];
+  }
+  if (event.kind === "transition" || event.kind === "cut") return paths.whoosh;
+  if (event.kind === "impact-text" || event.kind === "lower-third") return paths.pop;
+  if (event.kind === "zoom") return paths.swoosh;
+  return null;
+}
+
+async function collectSfxEvents(plan: IntelligentEditPlan) {
+  if (plan.media.sfxEnabled === false) return [];
+  const sfxPaths = await ensureSfxLibrary();
+  const events = [
+    { time: 0.1, file: sfxPaths.whoosh },
+    { time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths.whoosh },
+  ];
+  for (const event of plan.events) {
+    const file = sfxFileForEvent(event, sfxPaths);
+    if (file) events.push({ time: event.start + 4, file });
+  }
+  return events.slice(0, 14);
+}
+
+async function mixFinalAudio(
   plan: IntelligentEditPlan,
-  introPath: string,
-  bodyPath: string,
-  outroPath: string,
+  joinedPath: string,
   outputPath: string,
 ) {
-  const args = ["-y", "-threads", "0", "-i", introPath, "-i", bodyPath, "-i", outroPath];
+  const sfxEvents = await collectSfxEvents(plan);
+  if (!plan.media.musicPath && sfxEvents.length === 0) {
+    await runFfmpeg([
+      "-y", "-i", joinedPath,
+      "-map", "0:v:0", "-map", "0:a:0",
+      "-c", "copy", "-movflags", "+faststart", outputPath,
+    ]);
+    return;
+  }
+
+  const args = ["-y", "-i", joinedPath];
   const totalDuration = plan.media.durationSeconds + 8;
-  let nextInputIndex = 3;
-  let musicInputIndex: number | null = null;
+  const filterParts: string[] = [];
+  const mixLabels = ["[0:a]"];
+  let nextInputIndex = 1;
 
   if (plan.media.musicPath) {
     args.push("-stream_loop", "-1", "-i", plan.media.musicPath);
-    musicInputIndex = nextInputIndex++;
-  }
-
-  const sfxEvents: Array<{ time: number; file: string }> = [];
-  if (plan.media.sfxEnabled !== false) {
-    const sfxPaths = await ensureSfxLibrary();
-    sfxEvents.push({ time: 0.1, file: sfxPaths.whoosh });
-    sfxEvents.push({ time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths.whoosh });
-
-    for (const event of plan.events) {
-      const time = event.start + 4;
-      if (event.kind === "meme-sfx" || event.memeTag) {
-        const tag = (event.memeTag || "vine-boom") as keyof typeof sfxPaths;
-        const file = sfxPaths[tag] || sfxPaths["vine-boom"];
-        sfxEvents.push({ time, file });
-      } else if (event.kind === "transition" || event.kind === "cut") {
-        sfxEvents.push({ time, file: sfxPaths.whoosh });
-      } else if (event.kind === "impact-text" || event.kind === "lower-third") {
-        sfxEvents.push({ time, file: sfxPaths.pop });
-      } else if (event.kind === "zoom") {
-        sfxEvents.push({ time, file: sfxPaths.swoosh });
-      }
-    }
-  }
-
-  const sfxInputMap: Array<{ inputIdx: number; timeMs: number }> = [];
-  for (const sfx of sfxEvents.slice(0, 14)) {
-    args.push("-i", sfx.file);
-    sfxInputMap.push({ inputIdx: nextInputIndex++, timeMs: Math.round(sfx.time * 1000) });
-  }
-
-  const concat = "[0:v][0:a][1:v][1:a][2:v][2:a]concat=n=3:v=1:a=1[vbase][voice]";
-  const filterParts: string[] = [concat];
-  let finalAudioLabel = "[voice]";
-
-  const sfxVolume = (plan.media.sfxVolumeDb ?? -12).toFixed(1);
-  const mixLabels: string[] = ["[voice]"];
-
-  if (musicInputIndex !== null) {
     filterParts.push(
-      `[${musicInputIndex}:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5[music]`,
+      `[${nextInputIndex}:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5[music]`,
     );
     mixLabels.push("[music]");
+    nextInputIndex += 1;
   }
 
-  sfxInputMap.forEach((item, idx) => {
-    const label = `[sfx${idx}]`;
+  const sfxVolume = (plan.media.sfxVolumeDb ?? -12).toFixed(1);
+  sfxEvents.forEach((event, index) => {
+    args.push("-i", event.file);
+    const label = `[sfx${index}]`;
     filterParts.push(
-      `[${item.inputIdx}:a]adelay=${item.timeMs}|${item.timeMs},volume=${sfxVolume}dB${label}`,
+      `[${nextInputIndex}:a]adelay=${Math.round(event.time * 1000)}|${Math.round(event.time * 1000)},volume=${sfxVolume}dB${label}`,
     );
     mixLabels.push(label);
+    nextInputIndex += 1;
   });
-
-  if (mixLabels.length > 1) {
-    filterParts.push(
-      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[aout]`,
-    );
-    finalAudioLabel = "[aout]";
-  }
-
+  filterParts.push(
+    `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[aout]`,
+  );
   args.push(
-    "-filter_complex",
-    filterParts.join(";"),
-    "-map",
-    "[vbase]",
-    "-map",
-    finalAudioLabel,
-    "-c:v",
-    "libx264",
-    "-preset",
-    "superfast",
-    "-crf",
-    "20",
-    "-pix_fmt",
-    "yuv420p",
-    "-c:a",
-    "aac",
-    "-ar",
-    "48000",
-    "-movflags",
-    "+faststart",
+    "-filter_complex", filterParts.join(";"),
+    "-map", "0:v:0", "-map", "[aout]",
+    "-c:v", "copy",
+    "-c:a", "aac", "-ar", "48000",
+    "-movflags", "+faststart",
     outputPath,
   );
   await runFfmpeg(args);
+}
+
+async function renderSegments(
+  plan: IntelligentEditPlan,
+  paths: { introAss: string; bodyAss: string; outroAss: string; intro: string; body: string; outro: string },
+  encoder: VideoEncoder,
+) {
+  const results = await Promise.allSettled([
+    renderCard(plan, "intro", paths.introAss, paths.intro, encoder),
+    renderBody(plan, paths.bodyAss, paths.body, encoder),
+    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder),
+  ]);
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) throw failure.reason;
 }
 
 export async function renderIntelligentEdit(
@@ -697,6 +731,9 @@ export async function renderIntelligentEdit(
     ...plan,
     media: { ...plan.media, ...outputDimensions },
   };
+  const requestedEncoder = normalizeVideoEncoderPreference(rawInput.videoEncoder);
+  let encoder = await selectVideoEncoder(requestedEncoder);
+  let encoderFallback = false;
   const directory = plan.artifacts.directory;
   const bodyAssPath = path.join(directory, "body.ass");
   const introAssPath = path.join(directory, "intro.ass");
@@ -704,16 +741,34 @@ export async function renderIntelligentEdit(
   const introPath = path.join(directory, "intro.mp4");
   const bodyPath = path.join(directory, "body-edited.mp4");
   const outroPath = path.join(directory, "outro.mp4");
+  const concatPath = path.join(directory, "preview-concat.txt");
+  const joinedPath = path.join(directory, "preview-joined.mp4");
   const previewPath = path.join(directory, "preview-v4.mp4");
   await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
   await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(renderPlan, "outro"), "utf8");
-  await Promise.all([
-    renderCard(renderPlan, "intro", introAssPath, introPath),
-    renderBody(renderPlan, bodyAssPath, bodyPath),
-    renderCard(renderPlan, "outro", outroAssPath, outroPath),
-  ]);
-  await concatenate(renderPlan, introPath, bodyPath, outroPath, previewPath);
+  const segmentPaths = {
+    introAss: introAssPath,
+    bodyAss: bodyAssPath,
+    outroAss: outroAssPath,
+    intro: introPath,
+    body: bodyPath,
+    outro: outroPath,
+  };
+  try {
+    await renderSegments(renderPlan, segmentPaths, encoder);
+  } catch (error) {
+    if (encoder !== "amd-amf") throw error;
+    encoder = "libx264";
+    encoderFallback = true;
+    await renderSegments(renderPlan, segmentPaths, encoder);
+  }
+  await concatenateVideoSegments(
+    [introPath, bodyPath, outroPath],
+    concatPath,
+    joinedPath,
+  );
+  await mixFinalAudio(renderPlan, joinedPath, previewPath);
   const updated: IntelligentEditPlan = {
     ...plan,
     artifacts: { ...plan.artifacts, previewPath },
@@ -726,6 +781,11 @@ export async function renderIntelligentEdit(
     outputResolution: {
       mode: outputResolution,
       ...outputDimensions,
+    },
+    videoEncoder: {
+      requested: requestedEncoder,
+      used: encoder,
+      fallback: encoderFallback,
     },
     durationSeconds: plan.media.durationSeconds + 8,
     effectsApplied: {

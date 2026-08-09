@@ -282,6 +282,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     sfxVolumeDb: "-12",
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
     outputResolution: "full-hd" as "full-hd" | "source",
+    videoEncoder: "auto" as "auto" | "cpu",
   });
 
   const refresh = useCallback(async () => {
@@ -419,6 +420,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const result = await action("render-preview", {
       planId: analysis.id,
       outputResolution: form.outputResolution,
+      videoEncoder: form.videoEncoder,
     });
     if (result?.plan) {
       setAnalysis(result.plan as Analysis);
@@ -428,7 +430,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       addLog(
         "success",
         "Vídeo renderizado e pronto para reprodução!",
-        `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)}`,
+        `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)} | Encoder: ${String(result.videoEncoder?.used)}`,
       );
       onStatusMessage({
         text: `Prévia renderizada em ${String(result.previewPath)}`,
@@ -637,6 +639,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         selectedItemIds: selectedIds,
         downloadFolder: downloadFolder || undefined,
         outputResolution: form.outputResolution,
+        videoEncoder: form.videoEncoder,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -667,6 +670,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         useAgent: true,
         selectedRelativePaths: selectedPaths,
         outputResolution: form.outputResolution,
+        videoEncoder: form.videoEncoder,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -1087,6 +1091,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </select>
                   <span className="block text-[10px] font-normal leading-tight text-zinc-500">
                     Full HD reduz vídeos 4K para até 1920×1080 (ou 1080×1920 em retrato), sem ampliar arquivos menores.
+                  </span>
+                </label>
+
+                <label className="block space-y-1 text-zinc-300 font-semibold">
+                  Codificação de vídeo
+                  <select
+                    className={fieldClass}
+                    value={form.videoEncoder}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      videoEncoder: event.target.value as "auto" | "cpu",
+                    }))}
+                  >
+                    <option value="auto">GPU AMD automática (rápida)</option>
+                    <option value="cpu">CPU libx264 (compatibilidade)</option>
+                  </select>
+                  <span className="block text-[10px] font-normal leading-tight text-zinc-500">
+                    O modo automático usa AMD AMF e retorna para CPU se a aceleração não estiver disponível.
                   </span>
                 </label>
 
@@ -1773,6 +1795,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             >
               <option value="full-hd">Full HD (recomendado)</option>
               <option value="source">Manter resolução original</option>
+            </select>
+          </label>
+
+          <label className="block space-y-1 text-xs font-semibold text-zinc-300">
+            Codificação do lote
+            <select
+              className={fieldClass}
+              value={form.videoEncoder}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                videoEncoder: event.target.value as "auto" | "cpu",
+              }))}
+            >
+              <option value="auto">GPU AMD automática (rápida)</option>
+              <option value="cpu">CPU libx264 (compatibilidade)</option>
             </select>
           </label>
 

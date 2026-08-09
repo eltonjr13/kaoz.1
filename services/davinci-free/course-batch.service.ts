@@ -26,6 +26,10 @@ import {
   normalizeVideoOutputResolution,
   type VideoOutputResolution,
 } from "./video-output-resolution";
+import {
+  normalizeVideoEncoderPreference,
+  type VideoEncoderPreference,
+} from "./video-encoder";
 import { sortCourseVideoPaths } from "./course-batch.order";
 import { analyzeCourseIdentity } from "./course-identity.service";
 import { runCourseBatchPool } from "./course-batch.pool";
@@ -113,6 +117,7 @@ export interface CourseBatchJob {
   musicDb: number;
   useAgent: boolean;
   outputResolution?: VideoOutputResolution;
+  videoEncoder?: VideoEncoderPreference;
   courseIdentity?: IntelligentCourseIdentity;
   moduleIdentities?: Record<string, IntelligentCourseIdentity>;
   outputFolderUrl?: string;
@@ -321,6 +326,7 @@ async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourse
       const rendered = await renderIntelligentEdit({
         planId: standardized.id,
         outputResolution: job.outputResolution,
+        videoEncoder: job.videoEncoder,
       });
       item.previewPath = rendered.previewPath;
       item.status = "completed";
@@ -443,6 +449,7 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
     musicPath: job.musicPath,
     musicDb: job.musicDb,
     outputResolution: job.outputResolution,
+    videoEncoder: job.videoEncoder,
     identity,
   })).digest("hex");
 }
@@ -458,6 +465,7 @@ async function renderDriveItem(job: CourseBatchJob, item: CourseBatchItem, ident
   item.previewPath = (await renderIntelligentEdit({
     planId: standardized.id,
     outputResolution: job.outputResolution,
+    videoEncoder: job.videoEncoder,
   })).previewPath;
   await saveJob(job);
 }
@@ -621,6 +629,7 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     musicDb: Math.min(-35, Math.max(-40, Number(input.musicDb) || -38)),
     useAgent: input.useAgent !== false,
     outputResolution: normalizeVideoOutputResolution(input.outputResolution),
+    videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),
     createdAt: now,
     updatedAt: now,
     total: 0,

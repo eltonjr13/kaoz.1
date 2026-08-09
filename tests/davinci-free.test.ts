@@ -32,6 +32,17 @@ import {
   normalizeVideoOutputResolution,
   resolveVideoOutputDimensions,
 } from "../services/davinci-free/video-output-resolution.ts";
+import {
+  normalizeVideoEncoderPreference,
+  videoEncoderArguments,
+} from "../services/davinci-free/video-encoder.ts";
+
+test("encoder de vídeo prioriza AMD AMF e mantém fallback libx264", () => {
+  assert.equal(normalizeVideoEncoderPreference(undefined), "auto");
+  assert.equal(normalizeVideoEncoderPreference("cpu"), "cpu");
+  assert.deepEqual(videoEncoderArguments("amd-amf").slice(0, 2), ["-c:v", "h264_amf"]);
+  assert.deepEqual(videoEncoderArguments("libx264").slice(0, 2), ["-c:v", "libx264"]);
+});
 
 test("saída de vídeo usa Full HD por padrão e permite manter a resolução", () => {
   assert.equal(normalizeVideoOutputResolution(undefined), "full-hd");
@@ -436,6 +447,10 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /timeoutMs = 60 \* 60_000/);
   assert.match(renderer, /ensureSfxLibrary/);
   assert.match(renderer, /adelay/);
+  assert.match(renderer, /Promise\.allSettled/);
+  assert.match(renderer, /"-c:v", "copy"/);
+  assert.match(renderer, /selectVideoEncoder/);
+  assert.doesNotMatch(renderer, /\[vbase\]/);
   assert.match(renderer, /preview-v4\.mp4/);
   assert.doesNotMatch(renderer, /filters\.push\(`fade=t=out/);
   assert.match(analysis, /visual-contact-sheet\.jpg/);
@@ -585,4 +600,3 @@ test("lote de vídeos suporta filtragem por seleção prévia e pasta de downloa
   assert.match(driveService, /customDownloadFolder/);
   assert.match(driveService, /path\.isAbsolute\(resolved\)/);
 });
-
