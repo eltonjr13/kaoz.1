@@ -23,7 +23,6 @@ import {
   ZoomIn,
   ZoomOut,
   Folder,
-  FolderOpen,
   Palette,
   Subtitles,
   Video,
@@ -1029,30 +1028,29 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <button
                       type="button"
                       onClick={async () => {
-                        let selectedPath = "";
-                        if (window.kaoz1Desktop?.chooseCourseFolder) {
-                          selectedPath = (await window.kaoz1Desktop.chooseCourseFolder()) || "";
-                        } else {
-                          const selected = await action("choose-folder", {});
-                          if (selected?.folderPath) {
-                            selectedPath = String(selected.folderPath);
-                          }
+                        if (!window.kaoz1Desktop?.chooseVideoFile) {
+                          onStatusMessage({
+                            text: "O seletor de vídeo está disponível no aplicativo desktop.",
+                            type: "error",
+                          });
+                          return;
                         }
+                        const selectedPath = (await window.kaoz1Desktop.chooseVideoFile()) || "";
                         if (selectedPath) {
                           setDriveSourceOrigin(null);
                           setForm((current) => ({ ...current, sourcePath: selectedPath }));
-                          addLog("info", "Vídeo / Pasta selecionado:", selectedPath);
+                          addLog("info", "Vídeo selecionado:", selectedPath);
                           onStatusMessage({
-                            text: `Caminho selecionado: ${selectedPath}`,
+                            text: `Vídeo selecionado: ${selectedPath}`,
                             type: "info",
                           });
                         }
                       }}
                       className="inline-flex items-center gap-1.5 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/80 hover:border-emerald-400 transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-950/40 active:scale-95"
-                      title="Clique para abrir o seletor nativo e escolher o arquivo de vídeo ou pasta da aula"
+                      title="Clique para escolher o arquivo de vídeo da aula"
                     >
-                      <FolderOpen size={14} className="text-emerald-400" />
-                      <span>Selecionar Pasta</span>
+                      <Video size={14} className="text-emerald-400" />
+                      <span>Selecionar Vídeo</span>
                     </button>
                   </div>
                 </label>

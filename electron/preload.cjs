@@ -14,6 +14,7 @@ if (process.platform === "win32") {
     setCloseToTray: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-close-to-tray", enabled),
     setAutoDownloadUpdates: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-auto-download-updates", enabled),
     chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
+    chooseVideoFile: () => ipcRenderer.invoke("kaoz1-desktop:choose-video-file"),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("kaoz1-update:download"),

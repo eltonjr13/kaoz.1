@@ -26,6 +26,7 @@ declare global {
       setCloseToTray: (enabled: boolean) => Promise<{ closeToTray: boolean } | null>;
       setAutoDownloadUpdates: (enabled: boolean) => Promise<{ autoDownloadUpdates: boolean } | null>;
       chooseCourseFolder: () => Promise<string | null>;
+      chooseVideoFile: () => Promise<string | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       onNavigationStateChanged: (listener: (state: Kaoz1NavigationState) => void) => () => void;
       getUpdateStatus: () => Promise<Kaoz1UpdateStatus>;

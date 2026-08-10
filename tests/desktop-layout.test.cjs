@@ -59,6 +59,20 @@ test("settings persist automatic update downloads without automatic installation
   assert.match(main, /autoUpdater\.autoInstallOnAppQuit = false/);
 });
 
+test("aula única seleciona somente arquivos de vídeo e preserva o seletor de pasta do lote", () => {
+  const panel = fs.readFileSync(path.join(projectRoot, "components", "settings", "DavinciFreePanel.tsx"), "utf8");
+  const preload = fs.readFileSync(path.join(projectRoot, "electron", "preload.cjs"), "utf8");
+  const main = fs.readFileSync(path.join(projectRoot, "electron", "main.cjs"), "utf8");
+
+  assert.match(panel, /window\.kaoz1Desktop\.chooseVideoFile\(\)/);
+  assert.match(panel, /Selecionar Vídeo/);
+  assert.match(preload, /chooseVideoFile: \(\) => ipcRenderer\.invoke\("kaoz1-desktop:choose-video-file"\)/);
+  assert.match(main, /ipcMain\.handle\("kaoz1-desktop:choose-video-file"/);
+  assert.match(main, /extensions: \["mp4", "mov", "mxf", "avi", "mkv", "webm"\]/);
+  assert.match(main, /properties: \["openFile"\]/);
+  assert.match(main, /properties: \["openDirectory"\]/);
+});
+
 test("video editor footer uses the installed application version", () => {
   const panel = fs.readFileSync(path.join(projectRoot, "components", "settings", "DavinciFreePanel.tsx"), "utf8");
   const appVersion = fs.readFileSync(path.join(projectRoot, "lib", "app-version.ts"), "utf8");

@@ -280,6 +280,21 @@ ipcMain.handle("kaoz1-desktop:choose-course-folder", async (event) => {
   return selection.canceled ? null : selection.filePaths[0] || null;
 });
 
+ipcMain.handle("kaoz1-desktop:choose-video-file", async (event) => {
+  const target = getMainWindowForEvent(event);
+  if (!target) return null;
+  const selection = await dialog.showOpenDialog(target, {
+    title: "Selecionar vídeo da aula",
+    buttonLabel: "Usar este vídeo",
+    filters: [{
+      name: "Vídeos compatíveis",
+      extensions: ["mp4", "mov", "mxf", "avi", "mkv", "webm"],
+    }],
+    properties: ["openFile"],
+  });
+  return selection.canceled ? null : selection.filePaths[0] || null;
+});
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {
