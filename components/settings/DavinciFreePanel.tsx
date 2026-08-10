@@ -1691,10 +1691,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
+            <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10 bg-zinc-950 p-3">
+              <VideoEditorConsole
+                logs={consoleLogs}
+                onClearLogs={() => setConsoleLogs([])}
+                isProcessing={Boolean(busy)}
+              />
+            </div>
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 font-body-sm lg:col-span-3 lg:border-l lg:border-t-0">
+          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 flex items-center gap-2">
                 <Sparkles size={14} className="text-emerald-400" />
@@ -1706,15 +1713,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </p>
             </div>
 
-            {/* Course Identity Card */}
-            {analysis?.courseTheme && (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              {/* Course Identity Card */}
+              {analysis?.courseTheme && (
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
                 <p className="font-bold text-white">
                   Identidade {analysis.courseTheme.reused ? "reutilizada" : "criada"}: {analysis.courseTheme.label}
                 </p>
                 <p className="text-[11px] text-zinc-300 mt-1 leading-snug">{analysis.courseTheme.rationale}</p>
               </div>
-            )}
+              )}
 
             {/* Analysis summary */}
             <div className="grid grid-cols-2 border-y border-white/10 py-2">
@@ -1730,7 +1738,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Timeline Editorial & List */}
-            <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+            <div className="space-y-3">
               <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
                 <div>
                   <h4 className="text-xs font-bold text-white">Timeline editorial</h4>
@@ -1899,6 +1907,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   {analysis.cursorAnalysis.message}
                 </p>
               )}
+            </div>
             </div>
           </aside>
         </div>
@@ -2368,13 +2377,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Console de Logs em Tempo Real */}
-      <div className="my-6 pb-16">
-        <VideoEditorConsole
-          logs={consoleLogs}
-          onClearLogs={() => setConsoleLogs([])}
-          isProcessing={Boolean(busy)}
-        />
-      </div>
+      {activeMode === "batch" && (
+        <div className="my-6 pb-16">
+          <VideoEditorConsole
+            logs={consoleLogs}
+            onClearLogs={() => setConsoleLogs([])}
+            isProcessing={Boolean(busy)}
+          />
+        </div>
+      )}
 
       {status?.pendingPlan && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 backdrop-blur-xl shadow-xl flex items-center justify-between">
@@ -2393,7 +2404,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
-      <footer className="sticky bottom-0 z-40 flex min-h-[58px] items-center justify-between border-t border-white/10 bg-zinc-950/95 px-4 py-2 backdrop-blur-xl">
+      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-white/10 bg-zinc-950/95 px-4 py-2 backdrop-blur-xl">
         <div className="flex flex-col">
           <span className="flex items-center gap-2 text-[11px] font-medium text-zinc-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
