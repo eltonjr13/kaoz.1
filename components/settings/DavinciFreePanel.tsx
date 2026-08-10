@@ -1691,11 +1691,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10 bg-zinc-950 p-3">
+            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
                 onClearLogs={() => setConsoleLogs([])}
                 isProcessing={Boolean(busy)}
+                fillAvailableHeight
               />
             </div>
           </main>

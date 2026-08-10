@@ -31,6 +31,7 @@ type VideoEditorConsoleProps = {
   logs: ConsoleLogEntry[];
   onClearLogs: () => void;
   isProcessing?: boolean;
+  fillAvailableHeight?: boolean;
 };
 
 const levelBadgeStyles: Record<ConsoleLogLevel, { bg: string; text: string; icon: React.ElementType }> = {
@@ -41,7 +42,12 @@ const levelBadgeStyles: Record<ConsoleLogLevel, { bg: string; text: string; icon
   ffmpeg: { bg: "bg-violet-500/15 border-violet-500/30 text-violet-300", text: "FFMPEG", icon: Video },
 };
 
-export function VideoEditorConsole({ logs, onClearLogs, isProcessing = false }: VideoEditorConsoleProps) {
+export function VideoEditorConsole({
+  logs,
+  onClearLogs,
+  isProcessing = false,
+  fillAvailableHeight = false,
+}: VideoEditorConsoleProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [selectedLevel, setSelectedLevel] = useState<"all" | ConsoleLogLevel>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,7 +90,7 @@ export function VideoEditorConsole({ logs, onClearLogs, isProcessing = false }: 
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/90 shadow-2xl backdrop-blur-xl transition-all duration-300">
+    <div className={`overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/90 shadow-2xl backdrop-blur-xl transition-all duration-300 ${fillAvailableHeight ? "flex h-full min-h-0 flex-col" : ""}`}>
       {/* Header do Console */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-900/80 px-4 py-3">
         <div className="flex items-center gap-3">
@@ -160,7 +166,7 @@ export function VideoEditorConsole({ logs, onClearLogs, isProcessing = false }: 
       </div>
 
       {isOpen && (
-        <div className="p-3">
+        <div className={fillAvailableHeight ? "flex min-h-0 flex-1 flex-col p-3" : "p-3"}>
           {/* Barra de Filtros e Busca */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-3">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -200,7 +206,7 @@ export function VideoEditorConsole({ logs, onClearLogs, isProcessing = false }: 
           {/* Área de Logs Terminal */}
           <div
             ref={logContainerRef}
-            className="h-64 overflow-y-auto rounded-xl border border-black/80 bg-black/90 p-3 font-mono text-xs text-zinc-200 shadow-inner scrollbar-thin scrollbar-thumb-zinc-700"
+            className={`${fillAvailableHeight ? "min-h-32 flex-1" : "h-64"} overflow-y-auto rounded-xl border border-black/80 bg-black/90 p-3 font-mono text-xs text-zinc-200 shadow-inner scrollbar-thin scrollbar-thumb-zinc-700`}
           >
             {filteredLogs.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-zinc-500">
