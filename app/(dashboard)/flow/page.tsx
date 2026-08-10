@@ -897,7 +897,7 @@ function CustomDropdown({
                   return (
                     <div
                       key={option.value}
-                      className="px-2.5 py-1.5 text-xs rounded-lg mx-1 my-0.5 flex items-center bg-[#9D7CFF]/10 border border-[#9D7CFF]/20"
+                      className="px-2.5 py-1.5 text-xs rounded-lg mx-1 my-0.5 flex items-center bg-[#A6A297]/10 border border-[#A6A297]/20"
                     >
                       <input
                         type="text"
@@ -929,12 +929,12 @@ function CustomDropdown({
                     }}
                     className={`px-3 py-1.5 text-xs cursor-pointer transition-all duration-150 rounded-lg mx-1 my-0.5 flex items-center justify-between
                       ${option.value === value 
-                        ? "bg-[#9D7CFF]/20 text-white font-semibold border border-[#9D7CFF]/25" 
+                        ? "bg-[#A6A297]/20 text-white font-semibold border border-[#A6A297]/25"
                         : "text-white/80 hover:bg-white/[0.04] hover:text-white"
                       }`}
                   >
                     <span className="truncate pr-2">{option.label}</span>
-                    {option.value === value && <Check size={12} className="text-[#9D7CFF] shrink-0" />}
+                    {option.value === value && <Check size={12} className="text-[#A6A297] shrink-0" />}
                   </div>
                 );
               })
@@ -1423,7 +1423,7 @@ export default function FlowDashboardPage() {
             onChange={(e) => setUseCortexMemory(e.target.checked)}
             className="peer sr-only"
           />
-          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#8B5CF6]/80 peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+          <span className="relative h-6 w-10 shrink-0 rounded-full border border-white/10 bg-white/10 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white/70 after:transition-transform peer-checked:bg-[#736D5C] peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
         </label>
 
         <div className="flex flex-col gap-2">
@@ -3520,9 +3520,9 @@ export default function FlowDashboardPage() {
             style={{
               transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",
             }}
-            className="w-8 h-8 rounded-full flex items-center justify-center border bg-[#9D7CFF]/15 border-[#9D7CFF]/25"
+            className="w-8 h-8 rounded-full flex items-center justify-center border bg-[#A6A297]/15 border-[#A6A297]/25"
           >
-            <Bot size={17} className="text-[#9D7CFF]" />
+            <Bot size={17} className="text-[#A6A297]" />
           </div>
           <div 
             style={{
@@ -3570,7 +3570,7 @@ export default function FlowDashboardPage() {
               <div className="flex items-center gap-1">
                 <button 
                   onClick={(e) => { e.stopPropagation(); setIsBrowserOpen(!isBrowserOpen); }} 
-                  className={`p-2 rounded-xl transition-all duration-300 cursor-pointer ${isBrowserOpen ? "bg-[#9D7CFF]/15 text-[#9D7CFF]" : "hover:bg-white/10 hover:text-white text-white/40"}`} 
+                  className={`p-2 rounded-xl transition-all duration-300 cursor-pointer ${isBrowserOpen ? "bg-[#A6A297]/15 text-[#A6A297]" : "hover:bg-white/10 hover:text-white text-white/40"}`}
                   title="Visão do Agente (Manus)"
                 >
                   <Square size={16} />
@@ -3578,7 +3578,7 @@ export default function FlowDashboardPage() {
                 <div className="w-[1px] h-4 bg-white/10 mx-1" />
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
-                  className="p-2 hover:bg-[#9D7CFF]/15 hover:text-[#9D7CFF] rounded-xl transition-all duration-300 text-white/60 cursor-pointer" 
+                  className="p-2 hover:bg-[#A6A297]/15 hover:text-[#A6A297] rounded-xl transition-all duration-300 text-white/60 cursor-pointer"
                   title="Nova conversa"
                 >
                   <MessageSquarePlus size={16} />
@@ -3606,11 +3606,11 @@ export default function FlowDashboardPage() {
       <div ref={chatScrollContainerRef} className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-24 pb-48 md:px-10 lg:px-32">
             {isConversationLoading ? (
               <div className="flex flex-1 items-center justify-center">
-                <Loader2 size={28} className="animate-spin text-[#9D7CFF]" aria-label="Carregando conversa" />
+                <Loader2 size={28} className="animate-spin text-[#A6A297]" aria-label="Carregando conversa" />
               </div>
             ) : chatMessages.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center text-center opacity-70 mt-10">
-                <Bot size={48} className="text-[#9D7CFF] mb-4 opacity-80" />
+                <Bot size={48} className="text-[#A6A297] mb-4 opacity-80" />
                 <h2 className="text-xl font-light tracking-tight mb-2">Olá! Eu sou o Kaoz.1.</h2>
                 <p className="text-sm text-white/60 max-w-sm leading-relaxed">
                   Posso te ajudar a criar imagens, vídeos e criativos de anúncio. O que vamos criar hoje?
@@ -3627,8 +3627,8 @@ export default function FlowDashboardPage() {
                         <User size={12} className="text-white/80" />
                       </div>
                     ) : (
-                      <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center">
-                        <Bot size={12} className="text-[#9D7CFF]" />
+                      <div className="w-7 h-7 rounded-full bg-[#A6A297]/20 border border-[#A6A297]/30 flex items-center justify-center">
+                        <Bot size={12} className="text-[#A6A297]" />
                       </div>
                     )}
                   </div>
@@ -3670,9 +3670,9 @@ export default function FlowDashboardPage() {
                     )}
 
                     {msg.skillDraft && (
-                      <div className="mt-2 w-full max-w-lg rounded-[20px] border border-[#9D7CFF]/30 bg-[#0a0a0e] p-4 shadow-lg">
+                      <div className="mt-2 w-full max-w-lg rounded-[20px] border border-[#A6A297]/30 bg-[#1A1301] p-4 shadow-lg">
                         <div className="mb-3 flex items-center justify-between gap-3">
-                          <div><div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF]">Skill pronta para revisão</div><h3 className="mt-1 text-sm font-semibold text-white">{msg.skillDraft.name}</h3></div>
+                          <div><div className="text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">Skill pronta para revisão</div><h3 className="mt-1 text-sm font-semibold text-white">{msg.skillDraft.name}</h3></div>
                           <code className="rounded-lg bg-white/5 px-2 py-1 text-[10px] text-white/50">/{msg.skillDraft.id}</code>
                         </div>
                         <p className="mb-3 text-[11px] leading-relaxed text-white/60">{msg.skillDraft.description}</p>
@@ -3686,7 +3686,7 @@ export default function FlowDashboardPage() {
                             <div className="mt-3 space-y-3 max-h-56 overflow-auto">
                               {msg.skillDraft.references.map((ref) => (
                                 <div key={ref.name} className="border-t border-white/5 pt-2 first:border-0 first:pt-0">
-                                  <div className="text-[10px] font-bold text-[#9D7CFF]">{ref.name}</div>
+                                  <div className="text-[10px] font-bold text-[#A6A297]">{ref.name}</div>
                                   <pre className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-white/50">{ref.content}</pre>
                                 </div>
                               ))}
@@ -3711,7 +3711,7 @@ export default function FlowDashboardPage() {
                           type="button"
                           onClick={() => void handleSaveSkillDraft(msg.id)}
                           disabled={msg.skillDraft.saveStatus === 'saving' || msg.skillDraft.saveStatus === 'saved'}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#9D7CFF] px-3 py-2 text-[11px] font-semibold text-black disabled:opacity-60"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F2] px-3 py-2 text-[11px] font-semibold text-black disabled:opacity-60"
                         >
                           {msg.skillDraft.saveStatus === 'saving' && <Loader2 size={12} className="animate-spin"/>}
                           {msg.skillDraft.saveStatus === 'saved' ? 'Skill instalada' : msg.skillDraft.saveStatus === 'saving' ? 'Instalando...' : 'Revisado — instalar skill'}
@@ -3723,8 +3723,8 @@ export default function FlowDashboardPage() {
 
                     {/* Plan Card */}
                     {msg.plan && !msg.jobId && msg.jobStatus !== 'running' && (
-                      <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e] border border-[#9D7CFF]/30 shadow-lg">
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-[#9D7CFF] mb-2">
+                      <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#1A1301] border border-[#A6A297]/30 shadow-lg">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-[#A6A297] mb-2">
                             {msg.plan.kind === 'ad-creative' ? 'Plano de Criativos de Anúncio' : 'Plano do Agente'}
                           </div>
                           <div className="text-[12px] text-white/80 mb-3">{msg.plan.explanation}</div>
@@ -3756,7 +3756,7 @@ export default function FlowDashboardPage() {
                             <div className="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto pr-1">
                               {msg.plan.adCreativePlan.concepts.map((concept, idx) => (
                                 <div key={idx} className="bg-white/5 rounded-xl p-3 border border-white/5 text-[11px]">
-                                  <div className="font-semibold text-[#9D7CFF] mb-1">{concept.conceptName}</div>
+                                  <div className="font-semibold text-[#A6A297] mb-1">{concept.conceptName}</div>
                                   <div className="text-white/80 mb-1.5"><strong className="text-white/60">Copy:</strong> &quot;{concept.copyText}&quot;</div>
                                   <div className="text-white/50 leading-relaxed"><strong className="text-white/60">Prompt Visual:</strong> {concept.visualPrompt}</div>
                                 </div>
@@ -3780,12 +3780,12 @@ export default function FlowDashboardPage() {
                               <button
                                 onClick={() => void handlePrepare3dBase(msg.id)}
                                 disabled={preparing3dBaseMessageId === msg.id}
-                                className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] disabled:opacity-60 rounded-xl transition-all cursor-pointer"
+                                className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#F2F2F2] hover:bg-[#D6D4CD] disabled:opacity-60 rounded-xl transition-all cursor-pointer"
                               >
                                 {preparing3dBaseMessageId === msg.id ? 'Gerando base...' : 'Gerar base para revisao'}
                               </button>
                             ) : (
-                              <button onClick={() => void handleApplyPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#9D7CFF] hover:bg-[#b096ff] rounded-xl transition-all cursor-pointer">
+                              <button onClick={() => void handleApplyPlan(msg.id)} className="flex-1 py-1.5 text-center text-[11px] font-semibold text-black bg-[#F2F2F2] hover:bg-[#D6D4CD] rounded-xl transition-all cursor-pointer">
                                 Aplicar
                               </button>
                             )}
@@ -3797,7 +3797,7 @@ export default function FlowDashboardPage() {
                     {msg.jobId && msg.jobStatus === 'running' && (
                       <div className="mt-2 w-full max-w-sm rounded-[20px] p-4 bg-[#0a0a0e]/90 border border-white/5 flex flex-col gap-2">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-[#9D7CFF] flex items-center gap-1.5 font-semibold">
+                          <span className="text-[#A6A297] flex items-center gap-1.5 font-semibold">
                             <Loader2 size={12} className="animate-spin" /> Processando tarefa...
                           </span>
                         </div>
@@ -3849,7 +3849,7 @@ export default function FlowDashboardPage() {
                                          event.stopPropagation();
                                          void handleRegenerate3dImage(msg.id, idx);
                                        }}
-                                       className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/80 transition-colors hover:border-[#9D7CFF]/50 hover:bg-[#9D7CFF]/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                       className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/80 transition-colors hover:border-[#A6A297]/50 hover:bg-[#A6A297]/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                        title={`Gerar novamente: ${imageLabel}`}
                                      >
                                        {isRegenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -3875,7 +3875,7 @@ export default function FlowDashboardPage() {
                             <button
                               type="button"
                               onClick={() => handleGenerate3dObject(msg.id)}
-                              className="flex items-center justify-center gap-1.5 rounded-xl bg-[#9D7CFF]/10 border border-[#9D7CFF]/25 px-3 py-2 text-[11px] font-semibold text-[#c7b7ff] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer"
+                              className="flex items-center justify-center gap-1.5 rounded-xl bg-[#A6A297]/10 border border-[#A6A297]/25 px-3 py-2 text-[11px] font-semibold text-[#D6D4CD] hover:bg-[#A6A297]/20 transition-all cursor-pointer"
                             >
                               <Cpu size={12} /> {msg.jobStatus === 'failed' ? 'Recomeçar Geração 3D' : 'Gerar Objeto 3D'}
                             </button>
@@ -3926,8 +3926,8 @@ export default function FlowDashboardPage() {
                     )}
 
                     {msg.goal && (
-                      <div className="mt-1 flex max-w-[760px] items-center gap-2 rounded-xl border border-[#9D7CFF]/25 bg-[#9D7CFF]/5 px-3 py-2 text-[10px] text-white/60">
-                        <span className="font-bold uppercase tracking-wider text-[#9D7CFF]">Goal</span>
+                      <div className="mt-1 flex max-w-[760px] items-center gap-2 rounded-xl border border-[#A6A297]/25 bg-[#A6A297]/5 px-3 py-2 text-[10px] text-white/60">
+                        <span className="font-bold uppercase tracking-wider text-[#A6A297]">Goal</span>
                         <code className="text-white/45">{msg.goal.id.slice(0, 8)}</code>
                         <span className="ml-auto">{msg.jobStatus || msg.goal.status}</span>
                       </div>
@@ -3987,11 +3987,11 @@ export default function FlowDashboardPage() {
 
             {isLoading && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
               <div className="flex gap-3 self-start">
-                <div className="w-7 h-7 rounded-full bg-[#9D7CFF]/20 border border-[#9D7CFF]/30 flex items-center justify-center shrink-0">
-                   <Bot size={12} className="text-[#9D7CFF]" />
+                <div className="w-7 h-7 rounded-full bg-[#A6A297]/20 border border-[#A6A297]/30 flex items-center justify-center shrink-0">
+                   <Bot size={12} className="text-[#A6A297]" />
                 </div>
                 <div className="px-4 py-3 text-[13px] rounded-2xl bg-white/5 border border-white/10 rounded-tl-sm text-white/60 flex items-center gap-2">
-                   <Loader2 size={14} className="animate-spin text-[#9D7CFF]/70" />
+                   <Loader2 size={14} className="animate-spin text-[#A6A297]/70" />
                    Kaoz.1 está pensando...
                 </div>
               </div>
@@ -4119,7 +4119,7 @@ export default function FlowDashboardPage() {
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
             {selectedElementReference && (
-              <div className="mb-2 flex items-center justify-between rounded-xl border border-[#9D7CFF]/30 bg-[#9D7CFF]/10 px-3 py-2 text-[11px] text-white/75">
+              <div className="mb-2 flex items-center justify-between rounded-xl border border-[#A6A297]/30 bg-[#A6A297]/10 px-3 py-2 text-[11px] text-white/75">
                 <span className="truncate">Referencia selecionada: {selectedElementReference.label || selectedElementReference.xpath}</span>
                 <button type="button" onClick={() => setSelectedElementReference(null)} className="ml-3 text-white/50 hover:text-white" aria-label="Remover referencia selecionada">
                   <X size={13} />
@@ -4133,9 +4133,9 @@ export default function FlowDashboardPage() {
                   initial={{ opacity: 0, y: 10, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                  className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#9D7CFF]/20"
+                  className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#261D01]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#A6A297]/20"
                 >
-                  <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#9D7CFF] uppercase tracking-wider">Skills de Automação</p>
+                  <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#A6A297] uppercase tracking-wider">Skills de Automação</p>
                   
                   {skillsLoading ? (
                     <div className="px-3 py-4 text-xs text-white/50 text-center flex items-center justify-center gap-2">
@@ -4176,9 +4176,9 @@ export default function FlowDashboardPage() {
                   initial={{ opacity: 0, y: 10, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                  className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#9D7CFF]/20"
+                  className="absolute bottom-[calc(100%+8px)] left-0 w-80 rounded-xl border border-white/10 bg-[#261D01]/95 backdrop-blur-xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-[#A6A297]/20"
                 >
-                  <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#9D7CFF] uppercase tracking-wider">MCPs disponíveis</p>
+                  <p className="px-2 mb-2 mt-1 text-[10px] font-bold text-[#A6A297] uppercase tracking-wider">MCPs disponíveis</p>
 
                   {mcpMentionsLoading ? (
                     <div className="px-3 py-4 text-xs text-white/50 text-center flex items-center justify-center gap-2">
@@ -4334,9 +4334,9 @@ export default function FlowDashboardPage() {
               handleBranchFromMessage(messageContextMenu.messageId);
               setMessageContextMenu(null);
             }}
-            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-[#c7b7ff] flex items-center gap-2 cursor-pointer transition-colors"
+            className="w-full text-left px-3 py-2 hover:bg-white/[0.04] text-[#D6D4CD] flex items-center gap-2 cursor-pointer transition-colors"
           >
-            <MessageSquarePlus size={12} className="text-[#9D7CFF]/70" />
+            <MessageSquarePlus size={12} className="text-[#A6A297]/70" />
             Ramificar
           </button>
         </div>

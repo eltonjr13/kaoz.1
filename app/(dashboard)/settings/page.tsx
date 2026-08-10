@@ -1899,11 +1899,11 @@ export default function SettingsPage() {
             onClick={() => setActiveTab("skills")}
             className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
               activeTab === "skills"
-                ? "border-[#9D7CFF] text-[#9D7CFF]"
+                ? "border-[#A6A297] text-[#A6A297]"
                 : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
             }`}
           >
-            <Sparkles size={14} className={activeTab === "skills" ? "text-[#9D7CFF]" : "text-zinc-500"} />
+            <Sparkles size={14} className={activeTab === "skills" ? "text-[#A6A297]" : "text-zinc-500"} />
             Skills
           </button>
           <button

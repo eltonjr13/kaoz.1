@@ -19,12 +19,13 @@
   --tracking-display: -0.045em;
   --tracking-heading: -0.03em;
   --tracking-label: 0.12em;
+  --palette-void: #1a1301;
   --palette-ink: #261d01;
   --palette-surface: #403106;
   --palette-stone: #736d5c;
   --palette-muted: #a6a297;
   --palette-paper: #f2f2f2;
-  --bg: var(--palette-ink);
+  --bg: var(--palette-void);
   --bg-soft: var(--palette-surface);
   --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
   --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
@@ -41,7 +42,7 @@
 
 html.dark {
   color-scheme: dark;
-  --bg: var(--palette-ink);
+  --bg: var(--palette-void);
   --bg-soft: var(--palette-surface);
   --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
   --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
@@ -59,7 +60,7 @@ html.dark {
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     color-scheme: dark;
-    --bg: var(--palette-ink);
+    --bg: var(--palette-void);
     --bg-soft: var(--palette-surface);
     --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
     --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
