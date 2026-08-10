@@ -6,7 +6,8 @@ import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
-import { getSpeechService } from "@/services/speech/speech.service";
+import { getSpeechService, speechRuntimeEnvironment } from "@/services/speech/speech.service";
+import type { SpeechRuntimeEnvironment } from "@/services/speech/speech.types";
 import {
   getConfiguredAgentIdentity,
   queryConfiguredCodexCli,
@@ -260,6 +261,7 @@ async function transcribeChunks(
   sourcePath: string,
   directory: string,
   chunks: Array<{ start: number; end: number }>,
+  runtime: SpeechRuntimeEnvironment,
 ) {
   const speech = getSpeechService();
   const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
@@ -294,6 +296,7 @@ async function transcribeChunks(
           const bytes = await readFile(output);
           const result = await speech.transcribe(
             new File([bytes], path.basename(output), { type: "audio/wav" }),
+            runtime,
           );
           const text = result.text.trim();
           if (text) {
@@ -364,12 +367,13 @@ async function transcriptForAnalysis(
   directory: string,
   durationSeconds: number,
   sourceHash: string,
+  runtime: SpeechRuntimeEnvironment,
 ) {
   const reusable = await findReusableTranscript(sourceHash);
   if (reusable) return reusable;
   const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
-  return transcribeChunks(sourcePath, directory, chunks);
+  return transcribeChunks(sourcePath, directory, chunks, runtime);
 }
 
 function extractJsonObject(output: string): SemanticDecision | null {
@@ -873,6 +877,7 @@ export async function analyzeIntelligentEdit(
       : "dynamic") as "minimal" | "dynamic" | "tech",
     useAgent: rawInput.useAgent !== false,
   };
+  const transcriptionRuntime = speechRuntimeEnvironment(rawInput.transcriptionRuntime);
   const sourceHash = await sha256(input.sourcePath);
   const cacheKey = crypto
     .createHash("sha256")
@@ -905,6 +910,7 @@ export async function analyzeIntelligentEdit(
     directory,
     media.durationSeconds,
     sourceHash,
+    transcriptionRuntime,
   );
   const rawCaptions = wordsToCaptions(transcript);
   const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);

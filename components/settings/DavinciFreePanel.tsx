@@ -405,6 +405,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sfxVolumeDb: Number(form.sfxVolumeDb),
       sfxPack: form.sfxPack,
       useAgent: true,
+      transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
     });
     if (result?.id) {
       setAnalysis(result as Analysis);
