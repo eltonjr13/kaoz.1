@@ -1,4 +1,5 @@
 export type SpeechProviderName = "whisper" | "whisper-speed" | "webspeech" | "parakeet";
+export type SpeechRuntimeEnvironment = "web" | "desktop";
 
 export interface SpeechRuntimeConfig {
   provider: SpeechProviderName;

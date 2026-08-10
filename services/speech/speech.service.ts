@@ -1,4 +1,4 @@
-import type { ParakeetRuntimeStatus, PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechTranscriptionResult } from "./speech.types";
+import type { ParakeetRuntimeStatus, PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechRuntimeEnvironment, SpeechTranscriptionResult } from "./speech.types";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
@@ -99,22 +99,23 @@ export class SpeechService {
     }
   }
 
-  async transcribe(audio: File): Promise<SpeechTranscriptionResult> {
+  async transcribe(
+    audio: File,
+    runtime?: SpeechRuntimeEnvironment,
+  ): Promise<SpeechTranscriptionResult> {
     const settings = await readSpeechSettings();
-    const isDesktop = process.env.KAOZ1_DESKTOP === "1" || process.env.MRCHICKEN_DESKTOP === "1";
+    const provider = resolveSpeechProvider(settings.provider, runtime);
 
     // Electron cannot depend on Chrome's hosted Web Speech service. Reuse the
     // single MediaRecorder capture and transcribe with an already configured API.
-    if (settings.provider === "webspeech" && isDesktop) {
+    if (provider === "webspeech") {
       const cloudResult = await transcribeWithConfiguredCloud(audio);
       if (cloudResult) return cloudResult;
       throw new Error("No aplicativo para Windows, a transcricao Web requer uma chave OpenAI ou Gemini configurada em Configuracoes > Credenciais de API.");
     }
 
-    const runtimeProvider = settings.provider === "webspeech" ? "whisper-speed" : settings.provider;
-
     try {
-      await ensurePythonSpeechServer(runtimeProvider);
+      await ensurePythonSpeechServer(provider);
       const formData = new FormData();
       const audioBuffer = await audio.arrayBuffer();
       const audioBlob = new Blob([audioBuffer], {
@@ -137,6 +138,7 @@ export class SpeechService {
         text: typeof payload.text === "string" ? payload.text : "",
       };
     } catch (localError) {
+      if (provider === "parakeet") throw localError;
       const cloudResult = await transcribeWithConfiguredCloud(audio);
       if (cloudResult) return cloudResult;
       const localMessage = localError instanceof Error ? localError.message : String(localError);
@@ -145,6 +147,21 @@ export class SpeechService {
       );
     }
   }
+}
+
+export function speechRuntimeEnvironment(value?: unknown): SpeechRuntimeEnvironment {
+  if (value === "desktop") return "desktop";
+  if (value === "web") return "web";
+  return process.env.KAOZ1_DESKTOP === "1" || process.env.MRCHICKEN_DESKTOP === "1"
+    ? "desktop"
+    : "web";
+}
+
+export function resolveSpeechProvider(
+  preferred: SpeechProviderName,
+  runtime?: SpeechRuntimeEnvironment,
+): SpeechProviderName {
+  return speechRuntimeEnvironment(runtime) === "desktop" ? "parakeet" : preferred;
 }
 
 let speechService: SpeechService | null = null;
