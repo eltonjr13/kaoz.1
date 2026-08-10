@@ -1122,9 +1122,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid items-start gap-4 lg:grid-cols-12 min-h-[calc(100vh-185px)] border border-white/10 bg-zinc-950">
+        <div className="grid items-stretch gap-4 border border-white/10 bg-zinc-950 lg:h-[calc(100vh-185px)] lg:grid-cols-12 lg:overflow-hidden">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="order-2 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 lg:order-1 lg:col-span-3 lg:border-r lg:border-t-0">
+          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                 <Folder size={14} />
@@ -1365,12 +1365,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="order-1 min-w-0 self-stretch flex flex-col bg-zinc-950 overflow-hidden relative lg:order-2 lg:col-span-6">
+          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-zinc-950 lg:order-2 lg:col-span-6 lg:h-full">
             {/* Player Container */}
             <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="w-full aspect-video max-h-[62vh] bg-zinc-900 rounded-md overflow-hidden relative border border-white/10 flex flex-col justify-center items-center group">
+              <div className="relative flex w-full aspect-video max-h-[42vh] flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
