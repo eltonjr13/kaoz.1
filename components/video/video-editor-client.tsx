@@ -51,8 +51,8 @@ export function VideoEditorClient() {
   }, [status]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#09090a] text-zinc-100">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="flex h-full w-full flex-col overflow-y-auto bg-[#09090a] text-zinc-100">
+      <div className="min-h-full w-full flex-none overflow-visible">
         <DavinciFreePanel onStatusMessage={setStatus} />
       </div>
 

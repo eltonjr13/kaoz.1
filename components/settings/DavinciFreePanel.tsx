@@ -996,7 +996,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis, selectedEventId]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col pb-[58px] text-zinc-100">
+    <div className="flex min-h-full w-full flex-col pb-24 text-zinc-100">
       {/* Workstation Header Bar (Stitch TopNavBar) */}
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950 px-4 py-2 shrink-0">
         <div className="flex min-w-0 items-center gap-4">
@@ -1122,7 +1122,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[calc(100dvh-9.5rem)] lg:min-h-0 lg:grid-cols-12 lg:overflow-hidden">
+        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[1100px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
@@ -1370,7 +1370,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="relative flex w-full aspect-video max-h-[26vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
+              <div className="relative flex w-full aspect-video max-h-[38vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -1447,7 +1447,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-56" : "h-48"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
+            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
               {/* Timeline Header Toolbar */}
               <div className="h-9 border-b border-white/10 flex items-center px-3 justify-between bg-zinc-950 text-zinc-400">
                 <div className="flex items-center gap-2 text-xs">
@@ -1691,7 +1691,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
-            <div className="min-h-[200px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
+            <div className="min-h-[280px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
                 onClearLogs={() => setConsoleLogs([])}
@@ -2389,7 +2389,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {status?.pendingPlan && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 backdrop-blur-xl shadow-xl flex items-center justify-between">
+        <div className="mx-4 my-4 flex shrink-0 items-center justify-between rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-xl backdrop-blur-xl">
           <p className="text-xs font-medium text-amber-200">
             Há um plano anterior aguardando aplicação no Resolve.
           </p>
