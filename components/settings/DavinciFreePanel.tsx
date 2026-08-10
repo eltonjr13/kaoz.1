@@ -996,9 +996,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis, selectedEventId]);
 
   return (
-    <div className="space-y-3 pb-20">
+    <div className="flex h-full min-h-0 flex-1 flex-col pb-[58px] text-zinc-100">
       {/* Workstation Header Bar (Stitch TopNavBar) */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950 px-3 py-2.5">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950 px-4 py-2 shrink-0">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/20">
@@ -1075,13 +1075,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </header>
 
       {/* Editor inteligente para DaVinci Resolve Free Banner */}
-      <div className="grid items-center gap-2 border-b border-white/5 px-3 pb-2 text-xs lg:grid-cols-12 lg:gap-4">
+      <div className="grid items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs lg:grid-cols-12 lg:gap-4 shrink-0">
         <h2 className="flex items-center gap-2 font-medium text-zinc-400 lg:col-span-3">
           <Sparkles size={14} className="text-zinc-500" />
           Editor inteligente para DaVinci Resolve Free
         </h2>
         {processingProgress && (
-          <div className="flex w-full items-center gap-3 rounded-md border border-emerald-400/50 bg-emerald-500/5 px-3 py-1.5 shadow-[0_0_18px_rgba(52,211,153,0.08)] lg:col-span-6 lg:col-start-4" aria-live="polite">
+          <div className="flex w-full items-center gap-3 rounded-md border border-emerald-400/50 bg-emerald-500/5 px-3 py-1 shadow-[0_0_18px_rgba(52,211,153,0.08)] lg:col-span-6 lg:col-start-4" aria-live="polite">
             <span className="shrink-0 font-medium text-emerald-300">{processingProgress.label}</span>
             <div className="h-2 flex-1 overflow-hidden rounded-full border border-emerald-300/30 bg-black/50 p-px">
               <div
@@ -1099,7 +1099,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </div>
 
       {!status?.runnerInstalled && (
-        <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className="m-3 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shrink-0">
           <span className="text-xs text-amber-200">
             O runner interno do Resolve ainda não foi instalado no sistema.
           </span>
@@ -1122,7 +1122,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid items-stretch gap-4 border border-white/10 bg-zinc-950 lg:h-[calc(100vh-185px)] lg:min-h-[980px] lg:grid-cols-12 lg:overflow-hidden">
+        <div className="grid flex-1 min-h-0 items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[calc(100vh-140px)] lg:min-h-0 lg:grid-cols-12 lg:overflow-hidden">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">

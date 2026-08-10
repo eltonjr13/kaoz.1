@@ -530,9 +530,9 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /api\/davinci-free\/media/);
   assert.match(panel, /musicWaveform/);
   assert.match(panel, /addedEvents/);
-  assert.match(panel, /grid items-stretch gap-4/);
-  assert.match(panel, /lg:h-\[calc\(100vh-185px\)\]/);
-  assert.match(panel, /lg:min-h-\[980px\]/);
+  assert.match(panel, /grid flex-1 min-h-0 items-stretch gap-0/);
+  assert.match(panel, /lg:h-\[calc\(100vh-140px\)\]/);
+  assert.match(panel, /lg:min-h-0/);
   assert.match(panel, /min-h-\[180px\] flex-1 overflow-hidden border-t/);
   assert.match(panel, /fillAvailableHeight/);
   assert.match(panel, /fixed inset-x-0 bottom-0/);
