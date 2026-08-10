@@ -42,12 +42,13 @@ export function AppShell({
       }}
     >
       {/* Logo */}
-      <div className={`mb-1 flex items-center gap-2 ${sidebarCollapsed ? "md:flex-col" : ""}`}>
+      <div className={`mb-3 flex items-center gap-2 ${sidebarCollapsed ? "md:flex-col" : ""}`}>
         <Link
           href="/flow"
-          className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline transition-all duration-200 hover:bg-white/[0.03] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
+          className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-white/[0.04] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
           onClick={() => setSidebarOpen(false)}
           title={sidebarCollapsed ? "Kaoz.1" : undefined}
+          style={{ textDecoration: "none" }}
         >
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[12px]"
@@ -75,7 +76,7 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setSidebarCollapsed((value) => !value)}
-          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#9CA3AF] transition-colors hover:bg-white/[0.05] hover:text-white md:flex"
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#9CA3AF] transition-colors hover:bg-white/[0.05] hover:text-white outline-none focus:outline-none focus-visible:outline-none md:flex"
           style={{
             border: "1px solid rgba(255,255,255,0.08)",
             background: "rgba(255,255,255,0.03)",
@@ -87,62 +88,26 @@ export function AppShell({
         </button>
       </div>
 
-      {/* Separator */}
-      <div
-        className={sidebarCollapsed ? "mx-2 my-3" : "mx-3 my-3"}
-        style={{ height: "1px", background: "rgba(255,255,255,0.05)" }}
-      />
-
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-0.5" aria-label="Navegação lateral">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
 
           return (
             <Link
               href={item.href}
               key={item.label}
               onClick={() => setSidebarOpen(false)}
-              className={`group relative flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline transition-all duration-200 ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
+              className={`group flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-white/[0.04] hover:text-white ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
               title={sidebarCollapsed ? item.label : undefined}
               style={{
-                background: isActive
-                  ? "rgba(255,255,255,0.035)"
-                  : "transparent",
-                color: isActive ? "#ffffff" : "#B8B8C0",
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.025)";
-                  e.currentTarget.style.color = "#ffffff";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "#B8B8C0";
-                }
+                color: "#B8B8C0",
+                textDecoration: "none",
               }}
             >
-              {/* Active indicator bar */}
-              <span
-                className="absolute left-0 rounded-full transition-opacity duration-200"
-                style={{
-                  top: "10px",
-                  bottom: "10px",
-                  width: "2px",
-                  background: "#9D7CFF",
-                  opacity: isActive ? 1 : 0,
-                }}
-              />
               <Icon
                 size={16}
-                style={{
-                  color: isActive ? "#9D7CFF" : "#7B7B86",
-                  flexShrink: 0,
-                  transition: "color 200ms ease-out",
-                }}
+                className="text-[#7B7B86] shrink-0 transition-colors duration-200 group-hover:text-white"
               />
               <span className={`truncate transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}>
                 {item.label}
@@ -151,7 +116,6 @@ export function AppShell({
           );
         })}
       </nav>
-
     </aside>
   );
 
