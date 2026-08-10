@@ -1207,6 +1207,7 @@ export default function FlowDashboardPage() {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const voiceRecognitionRef = useRef<SpeechProvider | null>(null);
   const voiceMicrophoneReleaseRef = useRef<(() => void) | null>(null);
+  const voiceCommandPendingRef = useRef(false);
   const voiceEnabledRef = useRef(false);
   const voiceAwaitingCommandRef = useRef(false);
   const voiceSpeakingRef = useRef(false);
@@ -2714,12 +2715,20 @@ export default function FlowDashboardPage() {
 
     const provider = createSpeechProvider();
     voiceRecognitionRef.current = provider;
+    voiceCommandPendingRef.current = false;
 
-    provider.onTranscript((transcript) => {
-      if (transcript) {
-        handleVoiceTranscript(transcript);
-        setVoiceTranscript(transcript);
-      }
+    provider.onTranscript((transcript, isFinal) => {
+      if (!transcript) return;
+      setVoiceTranscript(transcript);
+      if (!isFinal || voiceCommandPendingRef.current) return;
+
+      voiceCommandPendingRef.current = true;
+      void provider.stop()
+        .catch(() => undefined)
+        .then(() => handleVoiceTranscript(transcript))
+        .finally(() => {
+          voiceCommandPendingRef.current = false;
+        });
     });
 
     provider.onError((error) => {
@@ -2760,6 +2769,7 @@ export default function FlowDashboardPage() {
 
   const stopVoiceWakeListening = () => {
     voiceEnabledRef.current = false;
+    voiceCommandPendingRef.current = false;
     voiceAwaitingCommandRef.current = false;
     setVoiceEnabled(false);
     setVoiceAwaitingCommand(false);

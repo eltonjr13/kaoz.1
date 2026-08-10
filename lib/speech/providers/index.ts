@@ -54,8 +54,8 @@ class ConfiguredSpeechProvider extends SpeechProviderBase {
   private fallbackStarted = false;
 
   private attach(provider: SpeechProvider, canFallbackFromNetworkError: boolean, timesliceMs?: number): void {
-    provider.onTranscript((text) => {
-      if (this.provider === provider) this.emitTranscript(text);
+    provider.onTranscript((text, isFinal) => {
+      if (this.provider === provider) this.emitTranscript(text, isFinal);
     });
     provider.onError((error) => {
       if (this.provider !== provider) return;

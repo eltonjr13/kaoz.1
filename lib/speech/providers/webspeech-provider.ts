@@ -73,11 +73,13 @@ export class WebSpeechProvider extends SpeechProviderBase {
     recognition.onresult = (event) => {
       let nextFinalText = this.finalTranscript;
       let interimText = "";
+      let hasFinalResult = false;
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0]?.transcript || "";
         if (event.results[i].isFinal) {
           nextFinalText = combineText(nextFinalText, transcript);
+          hasFinalResult = true;
         } else {
           interimText = combineText(interimText, transcript);
         }
@@ -85,6 +87,7 @@ export class WebSpeechProvider extends SpeechProviderBase {
 
       this.finalTranscript = nextFinalText;
       this.emitTranscript(combineText(this.finalTranscript, interimText));
+      if (hasFinalResult) this.emitTranscript(this.finalTranscript, true);
     };
 
     recognition.onerror = (event) => {
@@ -97,7 +100,7 @@ export class WebSpeechProvider extends SpeechProviderBase {
 
     recognition.onend = () => {
       this.recognition = null;
-      this.emitTranscript(this.finalTranscript);
+      this.emitTranscript(this.finalTranscript, true);
       this.emitStatus("idle");
     };
 
@@ -115,7 +118,7 @@ export class WebSpeechProvider extends SpeechProviderBase {
 
     recognition.stop();
     this.recognition = null;
-    this.emitTranscript(this.finalTranscript);
+    this.emitTranscript(this.finalTranscript, true);
     this.emitStatus("idle");
   }
 }

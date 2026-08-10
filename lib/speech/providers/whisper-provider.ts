@@ -174,7 +174,7 @@ export class WhisperProvider extends SpeechProviderBase {
       .map((part) => part.trim())
       .filter(Boolean)
       .join(" ");
-    this.emitTranscript(this.accumulatedTranscript);
+    this.emitTranscript(this.accumulatedTranscript, true);
   }
 
   private getWords(text: string): string[] {
