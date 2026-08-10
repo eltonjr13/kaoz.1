@@ -1122,7 +1122,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden">
+        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[calc(100dvh-9.5rem)] lg:min-h-[640px] lg:grid-cols-12 lg:overflow-hidden">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
