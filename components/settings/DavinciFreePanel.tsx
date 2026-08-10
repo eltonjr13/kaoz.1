@@ -52,6 +52,8 @@ type Status = {
     requestId: string;
     sourcePath: string;
     startedAt: string;
+    progress?: number;
+    stage?: string;
     completedAt?: string;
     planId?: string;
     error?: string;
@@ -335,13 +337,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [onStatusMessage, refresh]);
 
   useEffect(() => {
-    if (status?.analysisStatus?.status !== "running") return;
-    setBusy("analyze");
+    if (busy !== "analyze" && status?.analysisStatus?.status !== "running") return;
+    if (status?.analysisStatus?.status === "running") setBusy("analyze");
     const timer = window.setInterval(() => {
       refresh().catch(() => undefined);
-    }, 2_000);
+    }, 750);
     return () => window.clearInterval(timer);
-  }, [refresh, status?.analysisStatus?.status]);
+  }, [busy, refresh, status?.analysisStatus?.status]);
 
   useEffect(() => {
     if (status?.analysisStatus?.status !== "completed" || analysis) return;
@@ -846,11 +848,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!analysis) return "";
     return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
   }, [activeMediaAsset, analysis]);
-  const renderProgress = busy === "render-preview"
+  const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
       ? status.renderStatus
-      : { progress: 1, stage: "Iniciando renderizaÃ§Ã£o..." }
-    : null;
+      : { progress: 1, stage: "Iniciando renderização...", label: "Renderizando" }
+    : busy === "analyze"
+      ? status?.analysisStatus?.status === "running"
+        ? {
+            progress: status.analysisStatus.progress ?? 1,
+            stage: status.analysisStatus.stage ?? "Analisando e planejando edição...",
+            label: "Analisando",
+          }
+        : { progress: 1, stage: "Iniciando análise e planejamento...", label: "Analisando" }
+      : null;
   const waveformPointCount = Math.min(720, Math.round(360 * timelineScale));
 
   useEffect(() => {
