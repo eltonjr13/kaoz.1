@@ -62,11 +62,11 @@ export default function SupervisionDashboardPage() {
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#9D7CFF]">
+            <div className="type-label mb-3 flex items-center gap-2 text-[#9D7CFF]">
               <ShieldCheck size={15} />
               Control plane
             </div>
-            <h1 className="text-2xl font-semibold tracking-[-0.03em]">
+            <h1 className="type-h1">
               Supervisão multiagente
             </h1>
             <p className="mt-1 text-sm text-[#8E8E99]">
@@ -294,9 +294,9 @@ function Metric({
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
       <div className={`flex items-center gap-2 ${colors[tone]}`}>
         {icon}
-        <span className="text-[11px] uppercase tracking-wide">{label}</span>
+        <span className="type-label">{label}</span>
       </div>
-      <div className="mt-3 text-2xl font-semibold">{value}</div>
+      <div className="type-metric mt-3 text-3xl font-medium">{value}</div>
     </div>
   );
 }
@@ -304,7 +304,7 @@ function Metric({
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-3xl border border-white/[0.07] bg-[#101013] p-4 md:p-5">
-      <h2 className="mb-4 text-sm font-semibold text-[#E4E4E7]">{title}</h2>
+      <h2 className="type-h3 mb-4 text-[#E4E4E7]">{title}</h2>
       {children}
     </section>
   );
@@ -339,10 +339,10 @@ function Empty({ label }: { label: string }) {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-white/[0.025] p-3">
-      <div className="text-[10px] uppercase tracking-wide text-[#6F6F78]">
+      <div className="type-label text-[#6F6F78]">
         {label}
       </div>
-      <div className="mt-2 truncate text-xs text-[#D4D4D8]">{value}</div>
+      <div className="type-metadata mt-2 truncate text-[#D4D4D8]">{value}</div>
     </div>
   );
 }

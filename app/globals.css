@@ -1,8 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-technical);
+}
 
 :root {
   color-scheme: dark;
+  --font-ui: "Söhne", "Sohne", "Soehne", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-technical: var(--font-ibm-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --text-display: clamp(2.5rem, 5vw, 4rem);
+  --text-h1: clamp(2rem, 3.3vw, 2.625rem);
+  --text-h2: clamp(1.375rem, 2vw, 1.625rem);
+  --text-h3: clamp(1.0625rem, 1.5vw, 1.1875rem);
+  --text-body: 0.9375rem;
+  --text-small: 0.8125rem;
+  --text-label: 0.6875rem;
+  --tracking-display: -0.045em;
+  --tracking-heading: -0.03em;
+  --tracking-label: 0.12em;
   --bg: #080808;
   --bg-soft: #101014;
   --panel: rgba(255, 255, 255, 0.04);
@@ -69,10 +85,61 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography carries the interface identity; system data gets a distinct technical face. */
+.type-display {
+  font-size: var(--text-display);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: 0.98;
+}
+
+.type-h1 {
+  font-size: var(--text-h1);
+  font-weight: 500;
+  letter-spacing: var(--tracking-heading);
+  line-height: 1.04;
+}
+
+.type-h2 {
+  font-size: var(--text-h2);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.type-h3 {
+  font-size: var(--text-h3);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.type-label {
+  font-family: var(--font-technical);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.type-metadata {
+  font-family: var(--font-technical);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-metric {
+  font-family: var(--font-technical);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
 }
 
 html[data-kaoz1-desktop="true"] {

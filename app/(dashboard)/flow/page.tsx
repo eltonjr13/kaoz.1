@@ -3520,7 +3520,7 @@ export default function FlowDashboardPage() {
             }}
             className="flex flex-col"
           >
-            <h1 className="text-sm font-semibold tracking-wide text-white/95 whitespace-nowrap">Kaoz.1 Chatbot</h1>
+            <h1 className="type-h3 text-white/95 whitespace-nowrap">Kaoz.1 Chatbot</h1>
             <div 
               style={{
                 transition: "all 600ms cubic-bezier(0.16, 1, 0.3, 1)",

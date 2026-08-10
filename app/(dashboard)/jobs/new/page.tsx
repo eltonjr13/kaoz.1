@@ -56,12 +56,12 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
       <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex max-w-3xl flex-col gap-3">
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9D7CFF]">
+            <div className="type-label flex items-center gap-2 text-[#9D7CFF]">
               <Film size={14} />
               Generation Studio
             </div>
             <div>
-              <h1 className="m-0 text-3xl font-light tracking-tight text-white md:text-4xl">Criar conteudo</h1>
+              <h1 className="type-h1 m-0 text-white">Criar conteudo</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
                 Use esta aba para iniciar geracoes guiadas. O fluxo de react video continua no pipeline local,
                 e imagens, videos Flow e campanhas entram pelo agente com plano antes da execucao.
@@ -90,8 +90,8 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
             <section className="rounded-lg border border-white/10 bg-white/[0.025] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] md:p-5">
               <div className="mb-5 flex flex-col gap-2 border-b border-white/10 pb-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">Pipeline local</span>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-white">React video</h2>
+                  <span className="type-label text-white/38">Pipeline local</span>
+                  <h2 className="type-h2 mt-2 text-white">React video</h2>
                 </div>
                 <span className="w-fit rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
                   roteiro, voz, lip-sync e render
@@ -108,8 +108,8 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
             <aside className="flex flex-col gap-4">
               <section className="rounded-lg border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">Kaoz.1</span>
-                  <h2 className="mt-1 text-lg font-semibold text-white">Outros modos de geracao</h2>
+                  <span className="type-label text-white/38">Kaoz.1</span>
+                  <h2 className="type-h3 mt-2 text-white">Outros modos de geracao</h2>
                   <p className="mt-2 text-sm leading-6 text-white/50">
                     Estes modos usam o `/flow` existente, mantendo memoria Cortex, aprovacao de plano e automacao do Flow no mesmo lugar.
                   </p>
@@ -143,7 +143,7 @@ export default async function NewJobPage({ searchParams }: NewJobPageProps) {
               </section>
 
               <section className="rounded-lg border border-white/10 bg-white/[0.025] p-5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">Arquitetura</span>
+                <span className="type-label text-white/38">Arquitetura</span>
                 <p className="mt-2 text-sm leading-6 text-white/52">
                   A tela nao cria um pipeline novo. Ela organiza os pontos de entrada e reaproveita o backend atual:
                   jobs locais para react video e agente `/flow` para criacao multimodal.
