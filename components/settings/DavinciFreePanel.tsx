@@ -169,7 +169,7 @@ type Props = {
 };
 
 const fieldClass =
-  "w-full rounded-xl border border-white/15 bg-black/60 px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all duration-200";
+  "w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
 
 const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
@@ -884,24 +884,27 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis, selectedEventId]);
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-3 pb-20">
       {/* Workstation Header Bar (Stitch TopNavBar) */}
-      <header className="relative flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-900/80 px-5 py-3.5 backdrop-blur-xl shadow-xl">
-        <div className="flex items-center gap-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/20">
               <Video size={16} />
             </span>
-            <span className="font-extrabold text-base tracking-tight text-white">AIVideoPro</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium tracking-wide text-zinc-500">Kaoz.1 / Estúdio de conteúdo</p>
+              <p className="truncate text-sm font-semibold text-zinc-100">{form.moduleName || "Aula sem título"}</p>
+            </div>
           </div>
 
           {/* Mode Switcher Tabs */}
-          <nav className="flex items-center gap-1 rounded-xl bg-black/40 p-1 border border-white/10">
+          <nav className="flex items-center gap-1 border-l border-white/10 pl-3">
             <button
               onClick={() => setActiveMode("single")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "single"
-                  ? "bg-emerald-500 text-black shadow-md shadow-emerald-500/20"
+                  ? "bg-white/10 text-white"
                   : "text-zinc-400 hover:text-white"
               }`}
             >
@@ -912,7 +915,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               onClick={() => setActiveMode("batch")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "batch"
-                  ? "bg-violet-500 text-white shadow-md shadow-violet-500/20"
+                  ? "bg-white/10 text-white"
                   : "text-zinc-400 hover:text-white"
               }`}
             >
@@ -923,12 +926,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </div>
 
         {/* Status Pills */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium border ${
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium ${
               status?.runnerInstalled
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                ? "text-emerald-300"
+                : "text-amber-300"
             }`}
           >
             <span
@@ -939,14 +942,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             {status?.runnerInstalled ? "Runner: Online" : "Runner ainda não instalado"}
           </span>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-medium text-cyan-300">
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-zinc-300">
             <span className="h-2 w-2 rounded-full bg-cyan-400" />
-            Resolve: Conectado
+            Resolve
           </span>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-[11px] font-semibold text-violet-300">
-            <Sparkles size={13} className="text-violet-400" />
-            AI: Ativo
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-zinc-300">
+            <Sparkles size={13} className="text-zinc-400" />
+            AI ativa
           </span>
 
           <button
@@ -960,9 +963,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </header>
 
       {/* Editor inteligente para DaVinci Resolve Free Banner */}
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 text-xs flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-bold text-zinc-100 text-xs">
-          <Sparkles size={15} className="text-emerald-400" />
+      <div className="flex items-center justify-between border-b border-white/5 px-3 pb-2 text-xs">
+        <h2 className="flex items-center gap-2 font-medium text-zinc-400">
+          <Sparkles size={14} className="text-zinc-500" />
           Editor inteligente para DaVinci Resolve Free
         </h2>
         <span className={status?.runnerInstalled ? "text-emerald-400 text-[11px]" : "text-amber-400 text-[11px]"}>
@@ -994,22 +997,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid items-start gap-4 lg:grid-cols-12">
+        <div className="grid min-h-[calc(100vh-185px)] items-stretch border border-white/10 bg-zinc-950 lg:grid-cols-[minmax(220px,0.82fr)_minmax(0,2.1fr)_minmax(240px,0.9fr)]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="lg:col-span-3 flex flex-col rounded-2xl border border-white/10 bg-zinc-900/70 p-4 backdrop-blur-xl shadow-xl space-y-4">
+          <aside className="order-2 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 lg:order-1 lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                 <Folder size={14} />
-                Project Config
+                Projeto
               </h2>
-              <p className="text-[11px] text-zinc-400 mt-0.5">Configuração da Aula Única</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">Aula, fonte e destino</p>
             </div>
 
             <div className="space-y-3.5 flex-1 overflow-y-auto pr-1 text-xs">
               {/* Video Metadata */}
               <div className="space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1">
-                  Video Metadata
+                  Project / Source
                 </span>
                 <label className="block space-y-1 text-zinc-300 font-semibold">
                   Vídeo da aula
@@ -1082,7 +1085,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               {/* Edit Style */}
               <div className="space-y-2 pt-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1 flex items-center gap-1">
-                  <Palette size={12} /> Edit Style
+                  <Palette size={12} /> Editing
                 </span>
                 <label className="block space-y-1 text-zinc-300 font-semibold">
                   Estilo / Ritmo
@@ -1154,7 +1157,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               {/* Audio & Captions */}
               <div className="space-y-2 pt-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1 flex items-center gap-1">
-                  <Subtitles size={12} /> Audio & Captions
+                  <Subtitles size={12} /> Style / Audio
                 </span>
 
                 <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
@@ -1246,12 +1249,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="lg:col-span-6 min-w-0 self-start flex flex-col rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden shadow-2xl relative">
+          <main className="order-1 min-w-0 self-stretch flex flex-col bg-zinc-950 overflow-hidden relative lg:order-2">
             {/* Player Container */}
-            <div className="p-3 flex items-center justify-center relative bg-black">
+            <div className="flex min-h-[320px] flex-1 items-center justify-center relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden relative shadow-2xl border border-white/10 flex flex-col justify-center items-center group">
+              <div className="w-full aspect-video max-h-[62vh] bg-zinc-900 rounded-md overflow-hidden relative border border-white/10 flex flex-col justify-center items-center group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -1274,10 +1277,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   />
                 ) : (
                   <div className="w-full h-full flex flex-col justify-center items-center bg-zinc-900/90 text-center p-6">
-                    <Video size={48} className="text-zinc-600 mb-3" />
-                    <p className="text-xs font-bold text-zinc-300">Estúdio de Prévia Interativa</p>
+                    <Video size={28} className="text-zinc-600 mb-3" />
+                    <p className="text-xs font-medium text-zinc-300">Nenhum vídeo carregado</p>
                     <p className="text-[11px] text-zinc-500 max-w-md mt-1">
-                      Envie o vídeo da aula ou clique em Analisar para visualizar o enquadramento do apresentador e a linha de edição.
+                      Selecione uma fonte para iniciar a análise.
                     </p>
                   </div>
                 )}
@@ -1328,10 +1331,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/90 border-t border-white/10 flex flex-col shrink-0`}>
+            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
               {/* Timeline Header Toolbar */}
-              <div className="h-9 border-b border-white/10 flex items-center px-4 justify-between bg-zinc-950 text-zinc-400">
+              <div className="h-9 border-b border-white/10 flex items-center px-3 justify-between bg-zinc-950 text-zinc-400">
                 <div className="flex items-center gap-2 text-xs">
+                  <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Timeline</span>
                   <button
                     onClick={addEventAtPlayhead}
                     className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 transition-all text-[10px] font-bold"
@@ -1574,11 +1578,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="lg:col-span-3 flex flex-col rounded-2xl border border-white/10 bg-zinc-900/70 p-4 backdrop-blur-xl shadow-xl space-y-4 font-body-sm">
+          <aside className="order-3 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 font-body-sm lg:border-l lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Sparkles size={18} className="text-emerald-400" />
-                Revisão da análise
+              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 flex items-center gap-2">
+                <Sparkles size={14} className="text-emerald-400" />
+                AI Inspector
               </h2>
               <p className="text-[11px] text-zinc-400 mt-0.5">
                 Decisões: <span className="text-cyan-300 font-medium">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
@@ -1596,15 +1600,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
             )}
 
-            {/* Event Stats Badges */}
-            <div className="flex flex-wrap gap-1.5">
+            {/* Analysis summary */}
+            <div className="grid grid-cols-2 border-y border-white/10 py-2">
               {Object.entries(eventCounts).map(([kind, count]) => (
-                <span
+                <div
                   key={kind}
-                  className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[10px] font-mono text-zinc-300"
+                  className="border-b border-white/5 px-2 py-1.5 text-[10px] text-zinc-400 even:border-l"
                 >
-                  {kindLabel[kind as EditEvent["kind"]]}: <strong className="text-emerald-400">{count}</strong>
-                </span>
+                  <strong className="block text-sm font-semibold text-zinc-200">{count}</strong>
+                  {kindLabel[kind as EditEvent["kind"]]}
+                </div>
               ))}
             </div>
 
@@ -1612,8 +1617,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="space-y-3 flex-1 overflow-y-auto pr-1">
               <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
                 <div>
-                  <h4 className="text-xs font-bold text-white">Timeline editorial</h4>
-                  <p className="text-[10px] text-zinc-400">Edição e ajustes de eventos</p>
+                  <h4 className="text-xs font-bold text-white">Eventos da timeline</h4>
+                  <p className="text-[10px] text-zinc-500">Decisões e ajustes da IA</p>
                 </div>
                 <div className="flex gap-1.5">
                   <button
@@ -1647,12 +1652,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         event.id,
                         eventPlayerTime(event, change.start ?? event.start),
                       )}
-                      className={`rounded-xl border p-2.5 transition-all text-xs cursor-pointer ${
+                      className={`border-b border-white/10 px-1 py-2.5 transition-colors text-xs cursor-pointer ${
                         isSelected
-                          ? "border-emerald-500 bg-emerald-950/20 shadow-lg shadow-emerald-500/10"
+                          ? "border-l-2 border-l-emerald-400 bg-emerald-950/20 pl-2"
                           : enabled
-                            ? "border-white/10 bg-black/40 hover:border-white/20"
-                            : "border-white/5 bg-black/20 opacity-40"
+                            ? "hover:bg-white/[0.03]"
+                            : "opacity-40"
                       }`}
                     >
                       <div className="flex items-center gap-2">

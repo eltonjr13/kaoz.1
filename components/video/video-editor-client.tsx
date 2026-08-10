@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Video, Sparkles, Cpu, CheckCircle2 } from "lucide-react";
+import { Sparkles, CheckCircle2 } from "lucide-react";
 import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
@@ -10,10 +10,10 @@ export function VideoEditorClient() {
   const [status, setStatus] = useState<StatusMessage | null>(null);
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0b0b0c] px-5 py-6 text-zinc-100 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="h-full overflow-y-auto bg-[#09090a] px-3 py-3 text-zinc-100 md:px-4">
+      <div className="mx-auto max-w-[1600px]">
         {/* Header Principal - Studio Dark */}
-        <header className="relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/60 p-6 backdrop-blur-xl shadow-2xl">
+        <header className="hidden">
           <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-violet-600/10 blur-3xl" />
           <div className="absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-emerald-600/10 blur-3xl" />
 
@@ -53,7 +53,7 @@ export function VideoEditorClient() {
         {/* Notificação de Status */}
         {status && (
           <div
-            className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 text-xs font-medium shadow-lg backdrop-blur-md transition-all ${
+            className={`mb-3 flex items-center gap-3 rounded-md border px-3 py-2 text-xs font-medium transition-all ${
               status.type === "error"
                 ? "border-red-500/30 bg-red-500/10 text-red-200"
                 : status.type === "success"
