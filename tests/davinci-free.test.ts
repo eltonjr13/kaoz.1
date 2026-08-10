@@ -446,6 +446,8 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /const speech = getSpeechService\(\)/);
   assert.match(analysis, /speech\.transcribe/);
   assert.match(analysis, /findReusableTranscript/);
+  assert.match(analysis, /reportAnalysisProgress/);
+  assert.match(analysis, /Transcrevendo áudio:/);
   assert.match(analysis, /useExternalTools:\s*false/);
   assert.match(analysis, /deterministic-fallback/);
   assert.match(renderer, /afftdn/);
@@ -494,6 +496,8 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
+  assert.match(panel, /processingProgress/);
+  assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);
   assert.match(courseTheme, /reused:\s*true/);
 });
