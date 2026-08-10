@@ -19,16 +19,21 @@
   --tracking-display: -0.045em;
   --tracking-heading: -0.03em;
   --tracking-label: 0.12em;
-  --bg: #080808;
-  --bg-soft: #101014;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-strong: rgba(255, 255, 255, 0.06);
-  --text: #ffffff;
-  --muted: #b8b8c0;
-  --line: rgba(255, 255, 255, 0.08);
-  --brand: #ffffff;
-  --brand-strong: #b8b8c0;
-  --accent: #9d7cff;
+  --palette-ink: #261d01;
+  --palette-surface: #403106;
+  --palette-stone: #736d5c;
+  --palette-muted: #a6a297;
+  --palette-paper: #f2f2f2;
+  --bg: var(--palette-ink);
+  --bg-soft: var(--palette-surface);
+  --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
+  --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
+  --text: var(--palette-paper);
+  --muted: var(--palette-muted);
+  --line: color-mix(in srgb, var(--palette-stone) 58%, transparent);
+  --brand: var(--palette-paper);
+  --brand-strong: var(--palette-muted);
+  --accent: var(--palette-stone);
   --warning: #ca8a04;
   --success: #16a34a;
   --danger: #dc2626;
@@ -36,16 +41,16 @@
 
 html.dark {
   color-scheme: dark;
-  --bg: #080808;
-  --bg-soft: #101014;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-strong: rgba(255, 255, 255, 0.06);
-  --text: #ffffff;
-  --muted: #b8b8c0;
-  --line: rgba(255, 255, 255, 0.08);
-  --brand: #ffffff;
-  --brand-strong: #b8b8c0;
-  --accent: #9d7cff;
+  --bg: var(--palette-ink);
+  --bg-soft: var(--palette-surface);
+  --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
+  --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
+  --text: var(--palette-paper);
+  --muted: var(--palette-muted);
+  --line: color-mix(in srgb, var(--palette-stone) 58%, transparent);
+  --brand: var(--palette-paper);
+  --brand-strong: var(--palette-muted);
+  --accent: var(--palette-stone);
   --warning: #eab308;
   --success: #22c55e;
   --danger: #ef4444;
@@ -54,16 +59,16 @@ html.dark {
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     color-scheme: dark;
-    --bg: #080808;
-    --bg-soft: #101014;
-    --panel: rgba(255, 255, 255, 0.04);
-    --panel-strong: rgba(255, 255, 255, 0.06);
-    --text: #ffffff;
-    --muted: #b8b8c0;
-    --line: rgba(255, 255, 255, 0.08);
-    --brand: #ffffff;
-    --brand-strong: #b8b8c0;
-    --accent: #9d7cff;
+    --bg: var(--palette-ink);
+    --bg-soft: var(--palette-surface);
+    --panel: color-mix(in srgb, var(--palette-surface) 88%, transparent);
+    --panel-strong: color-mix(in srgb, var(--palette-stone) 42%, var(--palette-surface));
+    --text: var(--palette-paper);
+    --muted: var(--palette-muted);
+    --line: color-mix(in srgb, var(--palette-stone) 58%, transparent);
+    --brand: var(--palette-paper);
+    --brand-strong: var(--palette-muted);
+    --accent: var(--palette-stone);
     --warning: #eab308;
     --success: #22c55e;
     --danger: #ef4444;
@@ -167,11 +172,11 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   display: flex;
   height: var(--kaoz1-titlebar-height);
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
-  background: rgba(9, 9, 12, 0.92);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--palette-ink) 92%, transparent);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
-  color: #a6a6b0;
+  color: var(--muted);
   user-select: none;
 }
 
@@ -181,7 +186,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   gap: 7px;
   width: 108px;
   padding-left: 14px;
-  color: #c9c3df;
+  color: var(--text);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -189,7 +194,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 }
 
 .kaoz1-desktop-titlebar__brand svg {
-  color: #9d7cff;
+  color: var(--palette-stone);
 }
 
 .kaoz1-desktop-titlebar__drag-region {
@@ -213,14 +218,14 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   place-items: center;
   border: 0;
   border-radius: 7px;
-  color: #9b9ba6;
+  color: var(--muted);
   transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
 }
 
 .kaoz1-desktop-titlebar__navigation button:hover:not(:disabled),
 .kaoz1-desktop-titlebar__update:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #fff;
+  background: var(--panel-strong);
+  color: var(--text);
 }
 
 .kaoz1-desktop-titlebar__navigation button:disabled {
@@ -236,7 +241,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   align-items: center;
   padding: 0 12px;
   overflow: hidden;
-  color: #c3c3ca;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 500;
   -webkit-app-region: drag;
@@ -255,10 +260,10 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   align-items: center;
   gap: 7px;
   padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
-  color: #858590;
+  background: var(--panel);
+  color: var(--muted);
   font-size: 10px;
   text-align: left;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
@@ -266,9 +271,9 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 }
 
 .kaoz1-desktop-titlebar__command-trigger:hover {
-  border-color: rgba(157, 124, 255, 0.3);
-  background: rgba(255, 255, 255, 0.06);
-  color: #d8d8de;
+  border-color: var(--palette-stone);
+  background: var(--panel-strong);
+  color: var(--text);
 }
 
 .kaoz1-desktop-titlebar__command-trigger span {
@@ -279,11 +284,11 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 }
 
 .kaoz1-desktop-titlebar kbd {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1px 4px;
   background: rgba(0, 0, 0, 0.22);
-  color: #72727d;
+  color: var(--muted);
   font: inherit;
   font-size: 9px;
 }
@@ -328,8 +333,8 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
-  background: rgba(16, 16, 20, 0.98);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, var(--palette-surface) 98%, transparent);
+  box-shadow: 0 24px 70px rgba(38, 29, 1, 0.55);
   transform: translateX(-50%);
   -webkit-app-region: no-drag;
 }
@@ -340,8 +345,8 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   align-items: center;
   gap: 9px;
   padding: 0 13px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  color: #8f8f9a;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
 }
 
 .kaoz1-desktop-titlebar__command-palette input {
@@ -350,7 +355,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   border: 0;
   outline: 0;
   background: transparent;
-  color: #f3f3f5;
+  color: var(--text);
   font-size: 12px;
 }
 
@@ -369,14 +374,14 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   padding: 9px 10px;
   border: 0;
   border-radius: 9px;
-  color: #e5e5e8;
+  color: var(--text);
   text-align: left;
 }
 
 .kaoz1-desktop-titlebar__command-results button:hover,
 .kaoz1-desktop-titlebar__command-results button:focus-visible {
   outline: 0;
-  background: rgba(157, 124, 255, 0.12);
+  background: color-mix(in srgb, var(--palette-stone) 28%, transparent);
 }
 
 .kaoz1-desktop-titlebar__command-results button span {
@@ -387,7 +392,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 
 .kaoz1-desktop-titlebar__command-results button small,
 .kaoz1-desktop-titlebar__command-results p {
-  color: #858590;
+  color: var(--muted);
   font-size: 10px;
 }
 
@@ -407,13 +412,13 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
   width: 46px;
   place-items: center;
   border: 0;
-  color: #aaaab4;
+  color: var(--muted);
   transition: background 140ms ease, color 140ms ease;
 }
 
 .kaoz1-desktop-titlebar__controls button:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #fff;
+  background: var(--panel-strong);
+  color: var(--text);
 }
 
 .kaoz1-desktop-titlebar__controls .kaoz1-desktop-titlebar__close:hover {
@@ -422,7 +427,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-app-shell {
 }
 
 .kaoz1-desktop-titlebar__controls button:focus-visible {
-  outline: 1px solid #9d7cff;
+  outline: 1px solid var(--palette-paper);
   outline-offset: -3px;
 }
 
@@ -449,8 +454,8 @@ html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
 }
 
 ::selection {
-  background: rgba(157, 124, 255, 0.32);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--palette-stone) 72%, transparent);
+  color: var(--palette-paper);
 }
 
 /* Flow: cinematic art stays atmospheric and never competes with the chat. */
@@ -460,7 +465,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
   z-index: -10;
   overflow: hidden;
   pointer-events: none;
-  background: #09090b;
+  background: var(--palette-ink);
 }
 
 .flow-cinematic-background__art {
@@ -479,8 +484,8 @@ html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 50% 38%, rgba(8, 8, 12, 0.18) 0%, rgba(8, 8, 12, 0.55) 58%, rgba(8, 8, 12, 0.82) 100%),
-    linear-gradient(180deg, rgba(8, 8, 12, 0.52) 0%, rgba(8, 8, 12, 0.72) 62%, rgba(8, 8, 12, 0.92) 100%);
+    radial-gradient(circle at 50% 38%, rgba(38, 29, 1, 0.18) 0%, rgba(38, 29, 1, 0.55) 58%, rgba(38, 29, 1, 0.82) 100%),
+    linear-gradient(180deg, rgba(38, 29, 1, 0.52) 0%, rgba(38, 29, 1, 0.72) 62%, rgba(38, 29, 1, 0.92) 100%);
 }
 
 .flow-cinematic-background__grain {
@@ -512,17 +517,17 @@ html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
 
 .flow-surface-card,
 .flow-user-card {
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 
 .flow-surface-card {
-  background: rgba(23, 23, 28, 0.84);
+  background: color-mix(in srgb, var(--palette-surface) 84%, transparent);
 }
 
 .flow-user-card {
-  background: rgba(39, 33, 58, 0.84);
+  background: color-mix(in srgb, var(--palette-stone) 46%, var(--palette-surface));
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -534,7 +539,7 @@ html[data-kaoz1-desktop="true"] .kaoz1-mobile-menu-overlay {
   .flow-user-card {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    background: rgba(23, 23, 28, 0.96);
+    background: color-mix(in srgb, var(--palette-surface) 96%, transparent);
   }
 }
 
@@ -1402,16 +1407,16 @@ select option {
 
 /* Glass surface — base for cards, panels, sidebar */
 .glass-surface {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--palette-surface) 74%, transparent);
+  border: 1px solid var(--line);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
 
 /* Glass card — interactive card with hover */
 .glass-card {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--palette-surface) 78%, transparent);
+  border: 1px solid var(--line);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: 28px;
@@ -1420,14 +1425,14 @@ select option {
 
 .glass-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.048);
+  border-color: var(--palette-stone);
+  background: color-mix(in srgb, var(--palette-stone) 28%, var(--palette-surface));
 }
 
 /* Liquid input — main input bar */
 .liquid-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--palette-surface) 84%, transparent);
+  border: 1px solid var(--line);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: 28px;
@@ -1435,7 +1440,7 @@ select option {
 }
 
 .liquid-input:focus-within {
-  border-color: rgba(157, 124, 255, 0.28);
+  border-color: var(--palette-paper);
 }
 
 /* Accent dot — status indicator */
@@ -1443,7 +1448,7 @@ select option {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #9D7CFF;
+  background: var(--palette-stone);
   flex-shrink: 0;
 }
 
@@ -1475,12 +1480,12 @@ select option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.09);
+  background: color-mix(in srgb, var(--palette-stone) 44%, transparent);
   border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--palette-muted) 58%, transparent);
 }
 
 /* Fade-in animations */

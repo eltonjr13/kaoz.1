@@ -36,16 +36,16 @@ export function AppShell({
 
   const sidebar = (
     <aside
-      className={`flex h-full w-[248px] shrink-0 flex-col bg-[#080808] px-3 py-5 text-white transition-[width] duration-200 ease-out ${sidebarCollapsed ? "md:w-[76px]" : "md:w-[248px]"}`}
+      className={`flex h-full w-[248px] shrink-0 flex-col bg-[var(--bg)] px-3 py-5 text-[var(--text)] transition-[width] duration-200 ease-out ${sidebarCollapsed ? "md:w-[76px]" : "md:w-[248px]"}`}
       style={{
-        borderRight: "1px solid rgba(255,255,255,0.06)",
+        borderRight: "1px solid var(--line)",
       }}
     >
       {/* Logo */}
       <div className={`mb-3 flex items-center gap-2 ${sidebarCollapsed ? "md:flex-col" : ""}`}>
         <Link
           href="/flow"
-          className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-white/[0.04] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
+          className={`group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-3 py-2.5 no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-[var(--panel-strong)] ${sidebarCollapsed ? "md:flex-none md:justify-center md:px-0" : ""}`}
           onClick={() => setSidebarOpen(false)}
           title={sidebarCollapsed ? "Kaoz.1" : undefined}
           style={{ textDecoration: "none" }}
@@ -53,7 +53,7 @@ export function AppShell({
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[12px]"
             style={{
-              border: "1px solid rgba(255,255,255,0.15)",
+              border: "1px solid var(--line)",
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -63,11 +63,11 @@ export function AppShell({
             className={`min-w-0 overflow-hidden transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}
           >
             <span
-              className="block text-[13px] font-semibold leading-tight text-white tracking-[-0.01em]"
+              className="block text-[13px] font-semibold leading-tight text-[var(--text)] tracking-[-0.01em]"
             >
               Kaoz.1
             </span>
-            <span className="block truncate text-[11px] font-normal text-[#7B7B86] mt-0.5">
+            <span className="block truncate text-[11px] font-normal text-[var(--muted)] mt-0.5">
               {workspaceLabel}
             </span>
           </span>
@@ -76,10 +76,10 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setSidebarCollapsed((value) => !value)}
-          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#9CA3AF] transition-colors hover:bg-white/[0.05] hover:text-white outline-none focus:outline-none focus-visible:outline-none md:flex"
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[var(--muted)] transition-colors hover:bg-[var(--panel-strong)] hover:text-[var(--text)] outline-none focus:outline-none focus-visible:outline-none md:flex"
           style={{
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(255,255,255,0.03)",
+            border: "1px solid var(--line)",
+            background: "var(--panel)",
           }}
           aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Retrair menu lateral"}
           title={sidebarCollapsed ? "Expandir menu" : "Retrair menu"}
@@ -98,16 +98,16 @@ export function AppShell({
               href={item.href}
               key={item.label}
               onClick={() => setSidebarOpen(false)}
-              className={`group flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-white/[0.04] hover:text-white ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
+              className={`group flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-[var(--panel-strong)] hover:text-[var(--text)] ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
               title={sidebarCollapsed ? item.label : undefined}
               style={{
-                color: "#B8B8C0",
+                color: "var(--muted)",
                 textDecoration: "none",
               }}
             >
               <Icon
                 size={16}
-                className="text-[#7B7B86] shrink-0 transition-colors duration-200 group-hover:text-white"
+                className="shrink-0 text-[var(--muted)] transition-colors duration-200 group-hover:text-[var(--text)]"
               />
               <span className={`truncate transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}>
                 {item.label}
@@ -125,13 +125,13 @@ export function AppShell({
       <div
         className="kaoz1-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
         style={{
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-          background: "rgba(8,8,8,0.9)",
+          borderBottom: "1px solid var(--line)",
+          background: "color-mix(in srgb, var(--bg) 90%, transparent)",
           backdropFilter: "blur(16px)",
           WebkitBackdropFilter: "blur(16px)",
         }}
       >
-        <Link href="/flow" className="flex items-center gap-2 text-sm font-semibold text-white no-underline">
+        <Link href="/flow" className="flex items-center gap-2 text-sm font-semibold text-[var(--text)] no-underline">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icon.png" alt="Kaoz.1" className="h-5 w-5 rounded-md object-cover" />
           Kaoz.1
@@ -139,10 +139,10 @@ export function AppShell({
         <button
           type="button"
           onClick={() => setSidebarOpen((value) => !value)}
-          className="flex h-8 w-8 items-center justify-center rounded-xl text-white transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text)] transition-colors"
           style={{
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(255,255,255,0.04)",
+            border: "1px solid var(--line)",
+            background: "var(--panel)",
           }}
           aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"}
         >
