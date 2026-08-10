@@ -41,7 +41,29 @@ import { resolveLocalVideoSource } from "./video-source";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
+const ANALYSIS_STATUS_PATH = path.join(ROOT, "analysis-status.json");
 const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".aac", ".m4a", ".flac"]);
+
+export type IntelligentAnalysisStatus = {
+  status: "running" | "completed" | "failed";
+  requestId: string;
+  sourcePath: string;
+  startedAt: string;
+  completedAt?: string;
+  planId?: string;
+  error?: string;
+};
+
+async function writeAnalysisStatus(status: IntelligentAnalysisStatus) {
+  await mkdir(ROOT, { recursive: true });
+  await writeFile(ANALYSIS_STATUS_PATH, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+}
+
+export async function readIntelligentAnalysisStatus(): Promise<IntelligentAnalysisStatus | null> {
+  return readFile(ANALYSIS_STATUS_PATH, "utf8")
+    .then((raw) => JSON.parse(raw) as IntelligentAnalysisStatus)
+    .catch(() => null);
+}
 
 type MediaInfo = {
   durationSeconds: number;
@@ -878,6 +900,14 @@ export async function analyzeIntelligentEdit(
     useAgent: rawInput.useAgent !== false,
   };
   const transcriptionRuntime = speechRuntimeEnvironment(rawInput.transcriptionRuntime);
+  const startedAt = new Date().toISOString();
+  await writeAnalysisStatus({
+    status: "running",
+    requestId: input.requestId,
+    sourcePath: input.sourcePath,
+    startedAt,
+  });
+  try {
   const sourceHash = await sha256(input.sourcePath);
   const cacheKey = crypto
     .createHash("sha256")
@@ -900,6 +930,14 @@ export async function analyzeIntelligentEdit(
     .catch(() => null);
   if (cached) {
     await writeFile(LATEST_PATH, `${JSON.stringify(cached, null, 2)}\n`, "utf8");
+    await writeAnalysisStatus({
+      status: "completed",
+      requestId: input.requestId,
+      sourcePath: input.sourcePath,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      planId: cached.id,
+    });
     return cached;
   }
   await mkdir(directory, { recursive: true });
@@ -994,7 +1032,26 @@ export async function analyzeIntelligentEdit(
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await mkdir(ROOT, { recursive: true });
   await writeFile(LATEST_PATH, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+  await writeAnalysisStatus({
+    status: "completed",
+    requestId: input.requestId,
+    sourcePath: input.sourcePath,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    planId: plan.id,
+  });
   return plan;
+  } catch (error) {
+    await writeAnalysisStatus({
+      status: "failed",
+      requestId: input.requestId,
+      sourcePath: input.sourcePath,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 function sharedIdentityEvents(
