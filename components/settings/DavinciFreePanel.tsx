@@ -1122,7 +1122,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[calc(100dvh-9.5rem)] lg:min-h-[900px] lg:grid-cols-12 lg:overflow-hidden">
+        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[calc(100dvh-9.5rem)] lg:min-h-0 lg:grid-cols-12 lg:overflow-hidden">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
@@ -1133,7 +1133,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               <p className="text-[11px] text-zinc-500 mt-0.5">Aula, fonte e destino</p>
             </div>
 
-            <div className="space-y-3.5 flex-1 overflow-y-auto pr-1 text-xs">
+            <div className="space-y-3.5 flex-1 overflow-y-auto pr-1 pb-3 text-xs">
               {/* Video Metadata */}
               <div className="space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1">
@@ -1370,7 +1370,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="relative flex w-full aspect-video max-h-[36vh] flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
+              <div className="relative flex w-full aspect-video max-h-[26vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -1447,7 +1447,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
+            <div className={`${musicWaveform.length ? "h-56" : "h-48"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
               {/* Timeline Header Toolbar */}
               <div className="h-9 border-b border-white/10 flex items-center px-3 justify-between bg-zinc-950 text-zinc-400">
                 <div className="flex items-center gap-2 text-xs">
@@ -1691,7 +1691,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
-            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
+            <div className="min-h-[200px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
                 onClearLogs={() => setConsoleLogs([])}
@@ -1714,7 +1714,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </p>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3">
               {/* Course Identity Card */}
               {analysis?.courseTheme && (
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
