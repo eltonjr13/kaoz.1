@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   Archive,
   CheckCircle,
@@ -269,6 +269,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const videoFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState({
     sourcePath: "",
@@ -422,6 +423,48 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       });
     } else {
       addLog("error", "Análise não pôde ser concluída.");
+    }
+  }
+
+  function applySingleVideoPath(sourcePath: string) {
+    setDriveSourceOrigin(null);
+    setForm((current) => ({ ...current, sourcePath }));
+    addLog("info", "Vídeo selecionado:", sourcePath);
+    onStatusMessage({ text: `Vídeo selecionado: ${sourcePath}`, type: "info" });
+  }
+
+  async function chooseSingleVideo() {
+    if (!window.kaoz1Desktop?.chooseVideoFile) {
+      videoFileInputRef.current?.click();
+      return;
+    }
+    const selectedPath = await window.kaoz1Desktop.chooseVideoFile();
+    if (selectedPath) applySingleVideoPath(selectedPath);
+  }
+
+  async function uploadWebVideo(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    setBusy("upload-video");
+    onStatusMessage({ text: `Enviando ${file.name} para o editor local...`, type: "info" });
+    try {
+      const response = await fetch("/api/davinci-free/upload-video", {
+        method: "POST",
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+          "x-kaoz-video-name": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Falha ao enviar o vídeo.");
+      applySingleVideoPath(String(result.sourcePath));
+    } catch (error) {
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
+    } finally {
+      input.value = "";
+      setBusy(null);
     }
   }
 
@@ -1027,31 +1070,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     />
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!window.kaoz1Desktop?.chooseVideoFile) {
-                          onStatusMessage({
-                            text: "O seletor de vídeo está disponível no aplicativo desktop.",
-                            type: "error",
-                          });
-                          return;
-                        }
-                        const selectedPath = (await window.kaoz1Desktop.chooseVideoFile()) || "";
-                        if (selectedPath) {
-                          setDriveSourceOrigin(null);
-                          setForm((current) => ({ ...current, sourcePath: selectedPath }));
-                          addLog("info", "Vídeo selecionado:", selectedPath);
-                          onStatusMessage({
-                            text: `Vídeo selecionado: ${selectedPath}`,
-                            type: "info",
-                          });
-                        }
-                      }}
+                      disabled={busy === "upload-video"}
+                      onClick={() => void chooseSingleVideo()}
                       className="inline-flex items-center gap-1.5 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/80 hover:border-emerald-400 transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-950/40 active:scale-95"
                       title="Clique para escolher o arquivo de vídeo da aula"
                     >
-                      <Video size={14} className="text-emerald-400" />
-                      <span>Selecionar Vídeo</span>
+                      {busy === "upload-video"
+                        ? <Loader2 size={14} className="animate-spin text-emerald-400" />
+                        : <Video size={14} className="text-emerald-400" />}
+                      <span>{busy === "upload-video" ? "Enviando..." : "Selecionar Vídeo"}</span>
                     </button>
+                    <input
+                      ref={videoFileInputRef}
+                      type="file"
+                      accept=".mp4,.mov,.mxf,.avi,.mkv,.webm"
+                      className="hidden"
+                      onChange={(event) => void uploadWebVideo(event)}
+                    />
                   </div>
                 </label>
 

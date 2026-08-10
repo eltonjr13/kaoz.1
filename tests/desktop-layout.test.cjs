@@ -66,6 +66,9 @@ test("aula única seleciona somente arquivos de vídeo e preserva o seletor de p
 
   assert.match(panel, /window\.kaoz1Desktop\.chooseVideoFile\(\)/);
   assert.match(panel, /Selecionar Vídeo/);
+  assert.match(panel, /type="file"/);
+  assert.match(panel, /accept="\.mp4,\.mov,\.mxf,\.avi,\.mkv,\.webm"/);
+  assert.match(panel, /\/api\/davinci-free\/upload-video/);
   assert.match(preload, /chooseVideoFile: \(\) => ipcRenderer\.invoke\("kaoz1-desktop:choose-video-file"\)/);
   assert.match(main, /ipcMain\.handle\("kaoz1-desktop:choose-video-file"/);
   assert.match(main, /extensions: \["mp4", "mov", "mxf", "avi", "mkv", "webm"\]/);
