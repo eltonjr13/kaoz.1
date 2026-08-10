@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAgentId } from "@/services/agents/core/agent-id";
 import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
 import { readIntelligentAnalysisStatus, readIntelligentEditPlan } from "@/services/davinci-free/intelligent-edit.service";
+import { readIntelligentRenderStatus } from "@/services/davinci-free/intelligent-edit.renderer";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
@@ -80,6 +81,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ...status,
       analysisStatus: await readIntelligentAnalysisStatus(),
+      renderStatus: await readIntelligentRenderStatus(),
       ...(includeAnalysis ? { analysis: await readIntelligentEditPlan() } : {}),
     });
   } catch (error) {

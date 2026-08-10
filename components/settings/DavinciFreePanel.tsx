@@ -56,6 +56,15 @@ type Status = {
     planId?: string;
     error?: string;
   } | null;
+  renderStatus?: {
+    status: "running" | "completed" | "failed";
+    planId: string;
+    progress: number;
+    stage: string;
+    startedAt: string;
+    completedAt?: string;
+    error?: string;
+  } | null;
 };
 
 type EditEvent = {
@@ -352,6 +361,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       setBusy((current) => current === "analyze" ? null : current);
     }
   }, [status?.analysisStatus?.status]);
+
+  useEffect(() => {
+    if (busy !== "render-preview") return;
+    const timer = window.setInterval(() => {
+      refresh().catch(() => undefined);
+    }, 750);
+    return () => window.clearInterval(timer);
+  }, [busy, refresh]);
 
   const refreshDriveConnection = useCallback(async () => {
     const response = await fetch("/api/google-drive", { cache: "no-store" });
@@ -829,6 +846,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!analysis) return "";
     return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
   }, [activeMediaAsset, analysis]);
+  const renderProgress = busy === "render-preview"
+    ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
+      ? status.renderStatus
+      : { progress: 1, stage: "Iniciando renderizaÃ§Ã£o..." }
+    : null;
   const waveformPointCount = Math.min(720, Math.round(360 * timelineScale));
 
   useEffect(() => {
@@ -2351,6 +2373,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       <footer className="sticky bottom-0 z-40 flex min-h-[58px] items-center justify-between border-t border-white/10 bg-zinc-950/95 px-4 py-2 backdrop-blur-xl">
         <div className="flex flex-col">
           <span className="flex items-center gap-2 text-[11px] font-medium text-zinc-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
+          {renderProgress && (
+            <div className="mt-1.5 w-72 max-w-[42vw]" aria-live="polite">
+              <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-medium text-emerald-300">
+                <span className="truncate">{renderProgress.stage}</span>
+                <span className="shrink-0 font-mono">{renderProgress.progress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-blue-400 transition-[width] duration-300"
+                  style={{ width: `${renderProgress.progress}%` }}
+                />
+              </div>
+            </div>
+          )}
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}

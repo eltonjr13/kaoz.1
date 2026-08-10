@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
+import { getLocalDataDir } from "@/lib/runtime-paths";
 import { createDavinciFreePlan } from "./davinci-free.service";
 import {
   type IntelligentEditEvent,
@@ -33,15 +34,58 @@ function ffmpegPath() {
   return candidates.find((candidate) => existsSync(candidate)) || "ffmpeg";
 }
 
-function runFfmpeg(args: string[], timeoutMs = 60 * 60_000) {
+const RENDER_STATUS_PATH = path.join(
+  getLocalDataDir(),
+  "davinci-resolve-free",
+  "intelligent",
+  "render-status.json",
+);
+
+export type IntelligentRenderStatus = {
+  status: "running" | "completed" | "failed";
+  planId: string;
+  progress: number;
+  stage: string;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+};
+
+async function writeRenderStatus(status: IntelligentRenderStatus) {
+  await mkdir(path.dirname(RENDER_STATUS_PATH), { recursive: true });
+  await writeFile(RENDER_STATUS_PATH, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+}
+
+export async function readIntelligentRenderStatus(): Promise<IntelligentRenderStatus | null> {
+  return readFile(RENDER_STATUS_PATH, "utf8")
+    .then((raw) => JSON.parse(raw) as IntelligentRenderStatus)
+    .catch(() => null);
+}
+
+function runFfmpeg(
+  args: string[],
+  timeoutMs = 60 * 60_000,
+  onProgress?: (progress: number) => void,
+) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(ffmpegPath(), args, { windowsHide: true });
+    const child = spawn(ffmpegPath(), ["-progress", "pipe:2", "-nostats", ...args], { windowsHide: true });
     const stderr: Buffer[] = [];
+    let progressOutput = "";
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error("Render excedeu o limite de tempo."));
     }, timeoutMs);
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr.push(chunk);
+      if (!onProgress) return;
+      progressOutput = `${progressOutput}${chunk.toString("utf8")}`;
+      const lines = progressOutput.split(/\r?\n/);
+      progressOutput = lines.pop() || "";
+      for (const line of lines) {
+        const match = /^out_time_us=(\d+)$/.exec(line.trim());
+        if (match) onProgress(Number(match[1]) / 1_000_000);
+      }
+    });
     child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);
@@ -524,6 +568,7 @@ async function renderCard(
   assPath: string,
   outputPath: string,
   encoder: VideoEncoder,
+  onProgress?: (progress: number) => void,
 ) {
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
   const { colors } = resolveIntelligentEditDesign(plan);
@@ -562,7 +607,7 @@ async function renderCard(
     "-ar",
     "48000",
     outputPath,
-  ]);
+  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / duration)));
 }
 
 async function renderBody(
@@ -570,6 +615,7 @@ async function renderBody(
   assPath: string,
   outputPath: string,
   encoder: VideoEncoder,
+  onProgress?: (progress: number) => void,
 ) {
   await runFfmpeg([
     "-y",
@@ -593,7 +639,7 @@ async function renderBody(
     "-ar",
     "48000",
     outputPath,
-  ]);
+  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / plan.media.durationSeconds)));
 }
 
 function concatFileEntry(filePath: string) {
@@ -705,11 +751,21 @@ async function renderSegments(
   plan: IntelligentEditPlan,
   paths: { introAss: string; bodyAss: string; outroAss: string; intro: string; body: string; outro: string },
   encoder: VideoEncoder,
+  onProgress?: (progress: number) => void,
 ) {
+  const segmentProgress = { intro: 0, body: 0, outro: 0 };
+  const report = (segment: keyof typeof segmentProgress, value: number) => {
+    segmentProgress[segment] = value;
+    onProgress?.(
+      (segmentProgress.intro * 0.08) +
+      (segmentProgress.body * 0.84) +
+      (segmentProgress.outro * 0.08),
+    );
+  };
   const results = await Promise.allSettled([
-    renderCard(plan, "intro", paths.introAss, paths.intro, encoder),
-    renderBody(plan, paths.bodyAss, paths.body, encoder),
-    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder),
+    renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value)),
+    renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value)),
+    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value)),
   ]);
   const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failure) throw failure.reason;
@@ -721,6 +777,26 @@ export async function renderIntelligentEdit(
   const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
   const plan = await readIntelligentEditPlan(planId || undefined);
   if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const renderStatus: IntelligentRenderStatus = {
+    status: "running",
+    planId: plan.id,
+    progress: 1,
+    stage: "Preparando renderização...",
+    startedAt: new Date().toISOString(),
+  };
+  let lastProgress = 0;
+  let statusWrite = Promise.resolve();
+  const reportProgress = (progress: number, stage = "Renderizando video...") => {
+    const nextProgress = Math.max(lastProgress, Math.min(99, Math.round(progress)));
+    if (nextProgress === lastProgress && renderStatus.stage === stage) return;
+    lastProgress = nextProgress;
+    renderStatus.progress = nextProgress;
+    renderStatus.stage = stage;
+    statusWrite = statusWrite
+      .then(() => writeRenderStatus({ ...renderStatus }))
+      .catch(() => undefined);
+  };
+  await writeRenderStatus(renderStatus);
   const outputResolution = normalizeVideoOutputResolution(rawInput.outputResolution);
   const outputDimensions = resolveVideoOutputDimensions(
     plan.media.width,
@@ -756,24 +832,38 @@ export async function renderIntelligentEdit(
     outro: outroPath,
   };
   try {
-    await renderSegments(renderPlan, segmentPaths, encoder);
+    reportProgress(4, "Gerando cenas e efeitos...");
+    await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
+      reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
+    });
   } catch (error) {
     if (encoder !== "amd-amf") throw error;
     encoder = "libx264";
     encoderFallback = true;
-    await renderSegments(renderPlan, segmentPaths, encoder);
+    reportProgress(4, "Aceleração AMD indisponível; continuando com CPU...");
+    await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
+      reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
+    });
   }
+  reportProgress(88, "Unindo as cenas renderizadas...");
   await concatenateVideoSegments(
     [introPath, bodyPath, outroPath],
     concatPath,
     joinedPath,
   );
+  reportProgress(94, "Finalizando áudio e preparando o arquivo...");
   await mixFinalAudio(renderPlan, joinedPath, previewPath);
   const updated: IntelligentEditPlan = {
     ...plan,
     artifacts: { ...plan.artifacts, previewPath },
   };
   await recordEditorialPreview(plan, previewPath);
+  await statusWrite;
+  renderStatus.status = "completed";
+  renderStatus.progress = 100;
+  renderStatus.stage = "Vídeo renderizado.";
+  renderStatus.completedAt = new Date().toISOString();
+  await writeRenderStatus(renderStatus);
   return {
     planId: plan.id,
     plan: updated,
