@@ -850,7 +850,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [activeMediaAsset, analysis]);
   const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
-      ? status.renderStatus
+      ? { ...status.renderStatus, label: "Renderizando" }
       : { progress: 1, stage: "Iniciando renderização...", label: "Renderizando" }
     : busy === "analyze"
       ? status?.analysisStatus?.status === "running"
@@ -1075,25 +1075,25 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </header>
 
       {/* Editor inteligente para DaVinci Resolve Free Banner */}
-      <div className="flex items-center justify-between border-b border-white/5 px-3 pb-2 text-xs">
-        <h2 className="flex items-center gap-2 font-medium text-zinc-400">
+      <div className="grid items-center gap-2 border-b border-white/5 px-3 pb-2 text-xs lg:grid-cols-12 lg:gap-4">
+        <h2 className="flex items-center gap-2 font-medium text-zinc-400 lg:col-span-3">
           <Sparkles size={14} className="text-zinc-500" />
           Editor inteligente para DaVinci Resolve Free
         </h2>
-        {renderProgress && (
-          <div className="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-md border border-emerald-400/50 bg-emerald-500/5 px-3 py-1.5 shadow-[0_0_18px_rgba(52,211,153,0.08)]" aria-live="polite">
-            <span className="shrink-0 font-medium text-emerald-300">Renderizando</span>
+        {processingProgress && (
+          <div className="flex w-full items-center gap-3 rounded-md border border-emerald-400/50 bg-emerald-500/5 px-3 py-1.5 shadow-[0_0_18px_rgba(52,211,153,0.08)] lg:col-span-6 lg:col-start-4" aria-live="polite">
+            <span className="shrink-0 font-medium text-emerald-300">{processingProgress.label}</span>
             <div className="h-2 flex-1 overflow-hidden rounded-full border border-emerald-300/30 bg-black/50 p-px">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-blue-400 transition-[width] duration-300"
-                style={{ width: `${renderProgress.progress}%` }}
+                style={{ width: `${processingProgress.progress}%` }}
               />
             </div>
-            <span className="shrink-0 font-mono text-emerald-200">{renderProgress.progress}%</span>
-            <span className="max-w-48 truncate text-[10px] text-zinc-400">{renderProgress.stage}</span>
+            <span className="shrink-0 font-mono text-emerald-200">{processingProgress.progress}%</span>
+            <span className="max-w-48 truncate text-[10px] text-zinc-400">{processingProgress.stage}</span>
           </div>
         )}
-        <span className={status?.runnerInstalled ? "text-emerald-400 text-[11px]" : "text-amber-400 text-[11px]"}>
+        <span className={`${status?.runnerInstalled ? "text-emerald-400" : "text-amber-400"} text-[11px] lg:col-span-3 lg:col-start-10 lg:justify-self-end`}>
           {status?.runnerInstalled ? "● Runner instalado" : "● Runner ainda não instalado"}
         </span>
       </div>
