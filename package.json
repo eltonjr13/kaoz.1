@@ -16,7 +16,7 @@
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs && node scripts/smoke-desktop-standalone.mjs",
     "desktop:smoke": "node scripts/smoke-desktop-standalone.mjs",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish never",
-    "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish always",
+    "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish never",
     "desktop:verify-release": "node scripts/verify-update-artifacts.mjs",
     "desktop:dir": "npm run build && npm run desktop:prepare && electron-builder --dir",
     "start": "next start",
