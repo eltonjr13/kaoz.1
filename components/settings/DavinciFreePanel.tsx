@@ -1370,7 +1370,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="relative flex w-full aspect-video max-h-[42vh] flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
+              <div className="relative flex w-full aspect-video max-h-[36vh] flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
