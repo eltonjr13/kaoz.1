@@ -56,28 +56,30 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
 export class SpeechService {
   async getRuntimeConfig(): Promise<SpeechRuntimeConfig> {
     const settings = await readSpeechSettings();
+    const provider = resolveSpeechProvider(settings.provider);
     return {
-      provider: settings.provider,
-      chunkMs: getChunkMs(settings.provider),
+      provider,
+      chunkMs: getChunkMs(provider),
     };
   }
 
   async updateRuntimeConfig(provider: SpeechProviderName): Promise<SpeechRuntimeConfig> {
     const settings = await writeSpeechSettings({ provider });
-    if (settings.provider === "parakeet") {
+    const activeProvider = resolveSpeechProvider(settings.provider);
+    if (activeProvider === "parakeet") {
       // The Python server responds to health checks immediately and downloads the
       // model in the background, so choosing this option never freezes Settings.
       void ensurePythonSpeechServer("parakeet").catch((error) => console.error("[Parakeet] Falha ao iniciar:", error));
     }
     return {
-      provider: settings.provider,
-      chunkMs: getChunkMs(settings.provider),
+      provider: activeProvider,
+      chunkMs: getChunkMs(activeProvider),
     };
   }
 
   async getParakeetStatus(): Promise<ParakeetRuntimeStatus> {
     const settings = await readSpeechSettings();
-    if (settings.provider !== "parakeet") {
+    if (resolveSpeechProvider(settings.provider) !== "parakeet") {
       return { state: "inactive", message: "Selecione Parakeet Local para preparar a transcricao offline." };
     }
     try {
