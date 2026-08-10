@@ -49,6 +49,8 @@ export type IntelligentAnalysisStatus = {
   requestId: string;
   sourcePath: string;
   startedAt: string;
+  progress?: number;
+  stage?: string;
   completedAt?: string;
   planId?: string;
   error?: string;
@@ -284,6 +286,7 @@ async function transcribeChunks(
   directory: string,
   chunks: Array<{ start: number; end: number }>,
   runtime: SpeechRuntimeEnvironment,
+  onProgress?: (completed: number, total: number) => void,
 ) {
   const speech = getSpeechService();
   const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
@@ -334,6 +337,7 @@ async function transcribeChunks(
         }
       }),
     );
+    onProgress?.(Math.min(index + batch.length, chunks.length), chunks.length);
   }
 
   rawResults.sort((a, b) => a.index - b.index);
@@ -390,12 +394,13 @@ async function transcriptForAnalysis(
   durationSeconds: number,
   sourceHash: string,
   runtime: SpeechRuntimeEnvironment,
+  onProgress?: (completed: number, total: number) => void,
 ) {
   const reusable = await findReusableTranscript(sourceHash);
   if (reusable) return reusable;
   const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
-  return transcribeChunks(sourcePath, directory, chunks, runtime);
+  return transcribeChunks(sourcePath, directory, chunks, runtime, onProgress);
 }
 
 function extractJsonObject(output: string): SemanticDecision | null {
@@ -901,14 +906,25 @@ export async function analyzeIntelligentEdit(
   };
   const transcriptionRuntime = speechRuntimeEnvironment(rawInput.transcriptionRuntime);
   const startedAt = new Date().toISOString();
-  await writeAnalysisStatus({
+  const runningStatus = {
     status: "running",
     requestId: input.requestId,
     sourcePath: input.sourcePath,
     startedAt,
-  });
+  } as const;
+  let analysisStatusWrite = Promise.resolve();
+  const reportAnalysisProgress = (progress: number, stage: string) => {
+    analysisStatusWrite = analysisStatusWrite.then(() => writeAnalysisStatus({
+      ...runningStatus,
+      progress: Math.max(1, Math.min(99, Math.round(progress))),
+      stage,
+    }));
+    return analysisStatusWrite;
+  };
+  await reportAnalysisProgress(1, "Preparando vídeo para análise...");
   try {
   const sourceHash = await sha256(input.sourcePath);
+  await reportAnalysisProgress(7, "Identificando o arquivo e verificando análises anteriores...");
   const cacheKey = crypto
     .createHash("sha256")
     .update(JSON.stringify({
@@ -929,30 +945,44 @@ export async function analyzeIntelligentEdit(
     .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
     .catch(() => null);
   if (cached) {
+    await analysisStatusWrite;
     await writeFile(LATEST_PATH, `${JSON.stringify(cached, null, 2)}\n`, "utf8");
     await writeAnalysisStatus({
       status: "completed",
       requestId: input.requestId,
       sourcePath: input.sourcePath,
       startedAt,
+      progress: 100,
+      stage: "Análise e planejamento concluídos.",
       completedAt: new Date().toISOString(),
       planId: cached.id,
     });
     return cached;
   }
   await mkdir(directory, { recursive: true });
+  await reportAnalysisProgress(12, "Inspecionando vídeo e áudio...");
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
+  await reportAnalysisProgress(20, "Detectando falas e transcrevendo o áudio...");
   const transcript = await transcriptForAnalysis(
     input.sourcePath,
     directory,
     media.durationSeconds,
     sourceHash,
     transcriptionRuntime,
+    (completed, total) => {
+      void reportAnalysisProgress(
+        20 + (completed / Math.max(1, total)) * 38,
+        `Transcrevendo áudio: ${completed}/${total} trechos...`,
+      );
+    },
   );
+  await analysisStatusWrite;
+  await reportAnalysisProgress(60, "Planejando cortes, textos e ritmo da edição...");
   const rawCaptions = wordsToCaptions(transcript);
   const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);
   const captions = reviewedCaptions(rawCaptions, semantic.decision, media.durationSeconds);
+  await reportAnalysisProgress(72, "Definindo identidade visual e legendas...");
   const courseTheme = await resolveCourseTheme({
     courseName: input.courseName,
     transcript: transcript.map((segment) => segment.text).join("\n"),
@@ -967,12 +997,14 @@ export async function analyzeIntelligentEdit(
     style: input.style || "subtle",
     semantic: semantic.decision,
   });
+  await reportAnalysisProgress(82, "Analisando enquadramento e pontos de destaque...");
   const visual = await visualEditPlan({
     sourcePath: input.sourcePath,
     directory,
     duration: media.durationSeconds,
     events: baseEvents,
   });
+  await reportAnalysisProgress(95, "Salvando o plano de edição...");
   const transcriptPath = path.join(directory, "transcript.json");
   const captionsPath = path.join(directory, "captions-reviewed.srt");
   const plan: IntelligentEditPlan = {
@@ -1032,11 +1064,14 @@ export async function analyzeIntelligentEdit(
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await mkdir(ROOT, { recursive: true });
   await writeFile(LATEST_PATH, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+  await analysisStatusWrite;
   await writeAnalysisStatus({
     status: "completed",
     requestId: input.requestId,
     sourcePath: input.sourcePath,
     startedAt,
+    progress: 100,
+    stage: "Análise e planejamento concluídos.",
     completedAt: new Date().toISOString(),
     planId: plan.id,
   });
