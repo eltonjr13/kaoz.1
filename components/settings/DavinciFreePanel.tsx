@@ -204,8 +204,8 @@ const kindLabel: Record<EditEvent["kind"], string> = {
 
 const kindColorClass: Record<EditEvent["kind"], string> = {
   intro: "bg-emerald-950/90 border-emerald-500 text-emerald-300",
-  outro: "bg-indigo-950/90 border-indigo-500 text-indigo-300",
-  "lower-third": "bg-violet-950/90 border-violet-500 text-violet-300",
+  outro: "bg-[#403106]/90 border-[#736D5C] text-[#D6D4CD]",
+  "lower-third": "bg-[#261D01]/90 border-[#A6A297] text-[#F2F2F2]",
   "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
   zoom: "bg-amber-950/90 border-amber-500 text-amber-300",
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
@@ -1608,7 +1608,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
                 {/* Track FX (AI Efficacy Event Clips) */}
                 <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/60 pointer-events-auto">
-                  <span className="pl-2 text-[10px] font-mono font-bold text-violet-400">FX</span>
+                  <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">FX</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {analysis?.events.length ? (
                       analysis.events.map((evt) => {
@@ -1633,7 +1633,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               isSelected
                                 ? "bg-emerald-500 text-black border-white shadow-lg shadow-emerald-500/40 z-10"
                                 : enabled
-                                  ? `${kindColorClass[evt.kind] || "bg-violet-950 border-violet-500 text-violet-300"} hover:brightness-125`
+                                  ? `${kindColorClass[evt.kind] || "bg-[#261D01] border-[#A6A297] text-[#F2F2F2]"} hover:brightness-125`
                                   : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                             }`}
                             title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
@@ -1921,15 +1921,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Processamento em Lote (Batch View) */}
       {activeMode === "batch" && (
-        <div className="space-y-5 rounded-2xl border border-violet-500/25 bg-zinc-900/70 p-6 backdrop-blur-xl shadow-2xl">
+        <div className="space-y-5 rounded-2xl border border-[#736D5C]/50 bg-[#261D01]/85 p-6 backdrop-blur-xl shadow-2xl">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#736D5C]/25 border border-[#A6A297]/30 text-[#D6D4CD]">
                 <ListVideo size={18} />
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Editar curso inteiro em lote</h3>
-                <p className="text-xs text-violet-300 font-medium">Pipeline Automatizado de Aulas</p>
+                <p className="text-xs text-[#A6A297] font-medium">Pipeline Automatizado de Aulas</p>
               </div>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-zinc-400">
@@ -1971,7 +1971,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <button
               type="button"
               onClick={() => setBatchSource("local")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "local" ? "bg-violet-500 text-white" : "text-zinc-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "local" ? "bg-[#736D5C] text-white" : "text-zinc-400 hover:bg-white/5"}`}
             >
               Pasta local
             </button>
@@ -2004,7 +2004,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               <button
                 disabled={!!busy || ["queued", "running"].includes(batch?.status || "")}
                 onClick={batchSource === "google-drive" ? discoverDriveBatch : discoverBatch}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:brightness-110 disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
               >
                 {busy === "discover-batch" || busy === "discover-drive-batch" || busy === "drive-picker" || busy === "choose-folder" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -2045,10 +2045,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
           {/* Seleção de Vídeos - Pasta Local */}
           {batchSource === "local" && batchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
-            <div className="space-y-4 rounded-xl border border-violet-500/30 bg-black/40 p-4 shadow-xl">
+            <div className="space-y-4 rounded-xl border border-[#736D5C]/50 bg-[#1A1301]/70 p-4 shadow-xl">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-violet-300">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#D6D4CD]">
                     <Film size={15} />
                     Seleção de Vídeos para Exportar
                   </div>
@@ -2081,7 +2081,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   placeholder="Filtrar vídeos por nome ou módulo..."
                   value={batchSearchQuery}
                   onChange={(e) => setBatchSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-violet-500"
+                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-[#A6A297]"
                 />
               </div>
 
@@ -2100,7 +2100,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         key={video.sourcePath}
                         className={`flex items-center gap-3 rounded-lg border p-2.5 transition-all cursor-pointer ${
                           isSelected
-                            ? "border-violet-500/40 bg-violet-500/10 text-white"
+                            ? "border-[#A6A297]/40 bg-[#736D5C]/25 text-white"
                             : "border-white/5 bg-black/20 text-zinc-400 hover:border-white/15 hover:bg-white/5"
                         }`}
                       >
@@ -2114,9 +2114,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               setSelectedLocalVideos((prev) => prev.filter((p) => p !== video.relativePath));
                             }
                           }}
-                          className="h-4 w-4 rounded border-white/20 bg-black accent-violet-500"
+                          className="h-4 w-4 rounded border-white/20 bg-black accent-[#736D5C]"
                         />
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/20 font-mono text-[10px] font-bold text-violet-300">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#736D5C]/25 font-mono text-[10px] font-bold text-[#D6D4CD]">
                           {video.index}
                         </span>
                         <div className="min-w-0 flex-1">
@@ -2132,7 +2132,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 type="button"
                 disabled={selectedLocalVideos.length === 0 || busy === "start-batch"}
                 onClick={() => startBatch()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-600/25 transition-all hover:brightness-110 disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
               >
                 {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 Iniciar exportação por lote ({selectedLocalVideos.length} vídeos selecionados)
@@ -2302,7 +2302,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 type="button"
                 disabled={selectedDriveLessons.length === 0 || !driveBatchDiscovery.valid || busy === "start-batch"}
                 onClick={() => startDriveBatch(driveBatchDiscovery)}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:brightness-110 disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
               >
                 {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 Iniciar exportação por lote do Drive ({selectedDriveLessons.length} aulas selecionadas)
@@ -2318,7 +2318,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     {batch.courseIdentity?.title || batch.courseName} · {batch.completed}/{batch.total} concluídas
                   </p>
                   <p className="text-[11px] text-zinc-400">
-                    Estado: <span className="font-semibold text-violet-300">{batch.status}</span>
+                    Estado: <span className="font-semibold text-[#D6D4CD]">{batch.status}</span>
                     {batch.failed > 0 ? ` · ${batch.failed} com falha` : ""}
                   </p>
                   {batch.error && <p className="mt-1 text-[10px] text-red-300">{batch.error}</p>}
@@ -2349,7 +2349,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               )}
               <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-emerald-400 transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-[#736D5C] via-[#A6A297] to-emerald-400 transition-all duration-500"
                   style={{
                     width: `${batch.total ? Math.round(((batch.completed + batch.failed) / batch.total) * 100) : 0}%`,
                   }}

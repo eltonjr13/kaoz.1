@@ -39,7 +39,7 @@ const levelBadgeStyles: Record<ConsoleLogLevel, { bg: string; text: string; icon
   success: { bg: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300", text: "SUCCESS", icon: CheckCircle2 },
   warn: { bg: "bg-amber-500/15 border-amber-500/30 text-amber-300", text: "WARN", icon: AlertTriangle },
   error: { bg: "bg-red-500/15 border-red-500/30 text-red-300", text: "ERROR", icon: XCircle },
-  ffmpeg: { bg: "bg-violet-500/15 border-violet-500/30 text-violet-300", text: "FFMPEG", icon: Video },
+  ffmpeg: { bg: "bg-[#736D5C]/25 border-[#A6A297]/30 text-[#D6D4CD]", text: "FFMPEG", icon: Video },
 };
 
 export function VideoEditorConsole({
@@ -99,7 +99,7 @@ export function VideoEditorConsole({
             onClick={() => setIsOpen((prev) => !prev)}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-200 transition hover:text-white"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#736D5C]/25 text-[#D6D4CD]">
               <Terminal size={14} />
             </span>
             Console de Processamento
@@ -180,7 +180,7 @@ export function VideoEditorConsole({
                     onClick={() => setSelectedLevel(level)}
                     className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                       isSelected
-                        ? "bg-violet-600 text-white shadow-md shadow-violet-600/30"
+                        ? "bg-[#736D5C] text-white shadow-md shadow-[#1A1301]/40"
                         : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
                     }`}
                   >
@@ -198,7 +198,7 @@ export function VideoEditorConsole({
                 placeholder="Filtrar mensagens..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/50 py-1 pl-8 pr-3 text-[11px] text-zinc-200 placeholder-zinc-500 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
+                className="w-full rounded-lg border border-white/10 bg-black/50 py-1 pl-8 pr-3 text-[11px] text-zinc-200 placeholder-zinc-500 outline-none focus:border-[#A6A297] focus:ring-1 focus:ring-[#A6A297]/50"
               />
             </div>
           </div>
