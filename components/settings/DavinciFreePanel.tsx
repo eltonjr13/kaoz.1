@@ -1039,9 +1039,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid min-h-[calc(100vh-185px)] items-stretch border border-white/10 bg-zinc-950 lg:grid-cols-[minmax(220px,0.82fr)_minmax(0,2.1fr)_minmax(240px,0.9fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-12 min-h-[calc(100vh-185px)] border border-white/10 bg-zinc-950">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="order-2 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 lg:order-1 lg:border-r lg:border-t-0">
+          <aside className="order-2 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 lg:order-1 lg:col-span-3 lg:border-r lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                 <Folder size={14} />
@@ -1282,7 +1282,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="order-1 min-w-0 self-stretch flex flex-col bg-zinc-950 overflow-hidden relative lg:order-2">
+          <main className="order-1 min-w-0 self-stretch flex flex-col bg-zinc-950 overflow-hidden relative lg:order-2 lg:col-span-6">
             {/* Player Container */}
             <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
@@ -1611,7 +1611,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 font-body-sm lg:border-l lg:border-t-0">
+          <aside className="order-3 flex min-w-0 flex-col border-t border-white/10 bg-zinc-900/35 p-4 space-y-4 font-body-sm lg:col-span-3 lg:border-l lg:border-t-0">
             <div className="border-b border-white/10 pb-3">
               <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 flex items-center gap-2">
                 <Sparkles size={14} className="text-emerald-400" />
@@ -1650,7 +1650,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="space-y-3 flex-1 overflow-y-auto pr-1">
               <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
                 <div>
-                  <h4 className="text-xs font-bold text-white">Eventos da timeline</h4>
+                  <h4 className="text-xs font-bold text-white">Timeline editorial</h4>
                   <p className="text-[10px] text-zinc-500">Decisões e ajustes da IA</p>
                 </div>
                 <div className="flex gap-1.5">
