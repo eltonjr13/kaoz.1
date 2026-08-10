@@ -13,6 +13,7 @@ import {
 } from "../services/skills/skill.registry.ts";
 import { createSkillScriptHandler } from "../services/orchestrator/adapters/skill-script.adapter.ts";
 import { skillRegistry } from "../services/skills/skill.registry.ts";
+import { inferRequiredCapabilities } from "../services/skills/skill.policy.ts";
 import type { KaozSkill } from "../services/skills/skill.types.ts";
 import { skillMetricsStore } from "../services/skills/skill.metrics.ts";
 
@@ -152,4 +153,43 @@ test("sandbox bloqueia script com rede não declarada antes da execução", asyn
   createdMetricIds.add(metric.id);
   assert.equal(metric.success, false);
   assert.match(metric.error || "", /acessar a rede sem declarar/);
+});
+
+test("inferRequiredCapabilities infere web, content e system automaticamente", () => {
+  const inferredWeb = inferRequiredCapabilities([], ["native:web-research"], []);
+  assert.deepEqual(inferredWeb, ["web"]);
+
+  const inferredContent = inferRequiredCapabilities([], ["content:start-video-pipeline"], []);
+  assert.deepEqual(inferredContent, ["content"]);
+
+  const inferredSystem = inferRequiredCapabilities([], ["system:run-code"], []);
+  assert.deepEqual(inferredSystem, ["system"]);
+});
+
+test("skillRegistry.save infere capacidades ausentes e salva skill com sucesso", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "kaoz-skills-infer-"));
+  try {
+    const registry = new SkillRegistry(root);
+    const skill: KaozSkill = {
+      id: "gerador-copy-test",
+      name: "Gerador de Copy para Criativos",
+      description: "Gera copys detalhadas.",
+      version: "1.0.0",
+      instructions: "Instruções da skill de copy.",
+      preferredTools: ["native:web-research"],
+      requiredCapabilities: [],
+      approvalMode: "plan",
+      enabled: true,
+      tools: [],
+      references: [],
+      scripts: [],
+    };
+
+    assert.doesNotThrow(() => registry.save(skill));
+    const saved = registry.get("gerador-copy-test");
+    assert.ok(saved);
+    assert.deepEqual(saved.requiredCapabilities, ["web"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -37,6 +37,26 @@ export function normalizeScriptPolicy(value?: Partial<SkillScriptPolicy>): Skill
   };
 }
 
+// Infers missing capabilities based on preferred tools and tool policies.
+export function inferRequiredCapabilities(
+  declaredCapabilities: string[] = [],
+  preferredTools: string[] = [],
+  tools: SkillToolDefinition[] = []
+): string[] {
+  const caps = new Set(declaredCapabilities.filter((c) => SKILL_CAPABILITIES.has(c)));
+  for (const toolId of preferredTools || []) {
+    if (toolId === "native:web-research") caps.add("web");
+    if (toolId.startsWith("content:")) caps.add("content");
+    if (toolId === "system:run-code") caps.add("system");
+  }
+  for (const tool of tools || []) {
+    const policy = normalizeScriptPolicy(tool.policy);
+    if (policy.network) caps.add("web");
+    if (policy.subprocess) caps.add("system");
+  }
+  return Array.from(caps);
+}
+
 // Keep all least-privilege invariants in the publication gate.
 // eslint-disable-next-line complexity
 export function validateSkillPermissions(skill: KaozSkill): void {

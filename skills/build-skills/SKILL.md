@@ -109,7 +109,7 @@ Para cada script executável, declare uma ferramenta com:
 - caminho `scripts/<arquivo>`;
 - `inputSchema` JSON completo, incluindo campos obrigatórios, tipos e descrições.
 
-Use `preferredTools` apenas para ferramentas existentes que favoreçam o fluxo. Use `requiredCapabilities` somente quando a execução realmente depender de `web`, `content` ou `system`.
+Use `preferredTools` apenas para ferramentas existentes que favoreçam o fluxo. Sempre inclua em `requiredCapabilities` as capacidades exigidas por ferramentas utilizadas (ex: `web` para `native:web-research` ou rede, `content` para ferramentas de mídia, `system` para subprocessos ou `system:run-code`).
 
 Escolha o modo de aprovação:
 

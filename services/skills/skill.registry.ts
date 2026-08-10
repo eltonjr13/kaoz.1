@@ -3,7 +3,7 @@ import path from "path";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "./skill.types";
 import { parseSkillMarkdown } from "./skill.parser.ts";
 import { isBuildSkillsIntent, normalizeSkillIntent } from "./skill.intent.ts";
-import { normalizeSkillTool, validateSkillPermissions, validateToolScriptExists } from "./skill.policy.ts";
+import { inferRequiredCapabilities, normalizeSkillTool, validateSkillPermissions, validateToolScriptExists } from "./skill.policy.ts";
 
 export type SkillRevision = { id: string; skillId: string; version: string; createdAt: string; reason: "publish" | "rollback" };
 
@@ -278,7 +278,8 @@ export class SkillRegistry {
   } 
 
   save(skill: KaozSkill): void {
-      const normalizedSkill = { ...skill, tools: (skill.tools || []).map(normalizeSkillTool) };
+      const requiredCapabilities = inferRequiredCapabilities(skill.requiredCapabilities, skill.preferredTools, skill.tools);
+      const normalizedSkill = { ...skill, requiredCapabilities, tools: (skill.tools || []).map(normalizeSkillTool) };
       validateSkill(normalizedSkill);
       const skillsDir = this.skillsDir();
       if (!fs.existsSync(skillsDir)) {

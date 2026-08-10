@@ -206,7 +206,8 @@ export function DesktopTitlebar() {
   return (
     <header className="kaoz1-desktop-titlebar" aria-label="Barra do aplicativo Kaoz.1">
       <div className="kaoz1-desktop-titlebar__brand" onDoubleClick={toggleMaximize}>
-        <Sparkles size={13} aria-hidden="true" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icon.png" alt="" className="h-4 w-4 rounded-sm object-cover" aria-hidden="true" />
         <span>Kaoz.1</span>
       </div>
 

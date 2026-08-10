@@ -50,13 +50,13 @@ export function AppShell({
           title={sidebarCollapsed ? "Kaoz.1" : undefined}
         >
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[12px]"
             style={{
-              background: "rgba(157,124,255,0.12)",
-              border: "1px solid rgba(157,124,255,0.2)",
+              border: "1px solid rgba(255,255,255,0.15)",
             }}
           >
-            <Sparkles size={15} className="text-[#9D7CFF]" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.png" alt="Kaoz.1" className="h-full w-full object-cover" />
           </span>
           <span
             className={`min-w-0 overflow-hidden transition-all duration-200 ${sidebarCollapsed ? "md:w-0 md:opacity-0" : "w-auto opacity-100"}`}
@@ -168,7 +168,8 @@ export function AppShell({
         }}
       >
         <Link href="/flow" className="flex items-center gap-2 text-sm font-semibold text-white no-underline">
-          <Sparkles size={15} className="text-[#9D7CFF]" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.png" alt="Kaoz.1" className="h-5 w-5 rounded-md object-cover" />
           Kaoz.1
         </Link>
         <button

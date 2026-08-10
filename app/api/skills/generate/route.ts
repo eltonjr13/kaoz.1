@@ -4,7 +4,7 @@ import { skillRegistry } from "@/services/skills/skill.registry";
 import type { KaozSkill, SkillResourceFile, SkillToolDefinition } from "@/services/skills/skill.types";
 import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
 import type { ApprovalMode } from "@/services/orchestrator/orchestrator.types";
-import { normalizeScriptPolicy } from "@/services/skills/skill.policy";
+import { inferRequiredCapabilities, normalizeScriptPolicy } from "@/services/skills/skill.policy";
 import { querySkillGenerationJson } from "@/services/skills/skill.generation";
 
 export const runtime = "nodejs";
@@ -94,14 +94,18 @@ function parseSkill(value: unknown): GeneratedSkill | null {
     ? rawApprovalMode as ApprovalMode
     : "plan";
 
+  const preferredTools = parseStringArray(skill.preferredTools);
+  const declaredCaps = parseStringArray(skill.requiredCapabilities).filter((capability) => allowedCapabilities.has(capability));
+  const requiredCapabilities = inferRequiredCapabilities(declaredCaps, preferredTools, tools);
+
   return {
     id,
     name: (skill.name as string).trim(),
     description: (skill.description as string).trim(),
     version: typeof skill.version === "string" && /^\d+\.\d+\.\d+$/.test(skill.version) ? skill.version : "1.0.0",
     instructions: (skill.instructions as string).trim(),
-    preferredTools: parseStringArray(skill.preferredTools),
-    requiredCapabilities: parseStringArray(skill.requiredCapabilities).filter((capability) => allowedCapabilities.has(capability)),
+    preferredTools,
+    requiredCapabilities,
     approvalMode,
     tools,
     references: parseResourceFiles(skill.references),
@@ -161,6 +165,7 @@ Ferramentas disponíveis: ${availableTools}
 - Todo conteúdo de SKILL.md e arquivos auxiliares deve vir integralmente no JSON, sem abreviações, reticências ou marcadores como "adicione aqui".
 - Gere referências somente quando houver conteúdo especializado que justifique carregamento progressivo.
 - Gere scripts somente quando adicionarem execução determinística real.
+- Sempre declare em requiredCapabilities todas as capacidades exigidas por ferramentas em preferredTools ou tools (ex: "web" para native:web-research ou rede, "content" para ferramentas de mídia, "system" para subprocessos ou system:run-code).
 
 Responda SOMENTE JSON válido em um destes formatos:
 {"message":"pergunta curta ou orientação ao usuário","ready":false,"skill":null}

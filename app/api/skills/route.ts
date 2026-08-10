@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { skillRegistry } from "../../../services/skills/skill.registry";
 import type { ApprovalMode } from "../../../services/orchestrator/orchestrator.types";
 import type { SkillResourceFile, SkillToolDefinition } from "../../../services/skills/skill.types";
-import { normalizeScriptPolicy } from "../../../services/skills/skill.policy";
+import { inferRequiredCapabilities, normalizeScriptPolicy } from "../../../services/skills/skill.policy";
 import { skillMetricsStore } from "../../../services/skills/skill.metrics";
 
 function parseResourceFiles(value: unknown): SkillResourceFile[] {
@@ -61,17 +61,22 @@ export async function POST(req: NextRequest) {
       ? body.approvalMode
       : "plan";
     const existingSkill = skillRegistry.getAll().find((skill) => skill.id === String(body.id).trim());
+    const preferredTools = Array.isArray(body.preferredTools) ? body.preferredTools.filter((item: unknown): item is string => typeof item === "string") : [];
+    const declaredCaps = Array.isArray(body.requiredCapabilities) ? body.requiredCapabilities.filter((item: unknown): item is string => typeof item === "string") : [];
+    const tools = parseTools(body.tools);
+    const requiredCapabilities = inferRequiredCapabilities(declaredCaps, preferredTools, tools);
+
     const skillToSave = {
       id: String(body.id).trim(),
       name: String(body.name).trim(),
       description: String(body.description).trim(),
       version: typeof body.version === "string" ? body.version : "1.0.0",
       instructions: String(body.instructions).trim(),
-      preferredTools: Array.isArray(body.preferredTools) ? body.preferredTools.filter((item: unknown): item is string => typeof item === "string") : [],
-      requiredCapabilities: Array.isArray(body.requiredCapabilities) ? body.requiredCapabilities.filter((item: unknown): item is string => typeof item === "string") : [],
+      preferredTools,
+      requiredCapabilities,
       approvalMode,
       enabled: body.enabled !== false,
-      tools: parseTools(body.tools),
+      tools,
       references: body.references === undefined ? existingSkill?.references || [] : parseResourceFiles(body.references),
       scripts: body.scripts === undefined ? existingSkill?.scripts || [] : parseResourceFiles(body.scripts),
     };
