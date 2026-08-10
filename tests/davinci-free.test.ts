@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   mkdtemp,
+  mkdir,
   readFile,
   rm,
   writeFile,
@@ -36,6 +37,28 @@ import {
   normalizeVideoEncoderPreference,
   videoEncoderArguments,
 } from "../services/davinci-free/video-encoder.ts";
+import { resolveLocalVideoSource } from "../services/davinci-free/video-source.ts";
+
+test("aula única aceita uma pasta que contém exatamente um vídeo compatível", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "kaoz-single-video-"));
+  try {
+    const videoPath = path.join(directory, "Aula 01.MP4");
+    await writeFile(videoPath, "video");
+    await writeFile(path.join(directory, "anotacoes.txt"), "material de apoio");
+
+    assert.equal(await resolveLocalVideoSource(directory), path.win32.normalize(videoPath));
+    assert.equal(await resolveLocalVideoSource(videoPath), path.win32.normalize(videoPath));
+
+    const emptyDirectory = path.join(directory, "vazia");
+    await mkdir(emptyDirectory);
+    await assert.rejects(resolveLocalVideoSource(emptyDirectory), /não contém um vídeo compatível/);
+
+    await writeFile(path.join(directory, "Aula 02.mp4"), "video");
+    await assert.rejects(resolveLocalVideoSource(directory), /contém mais de um vídeo/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("encoder de vídeo prioriza AMD AMF e mantém fallback libx264", () => {
   assert.equal(normalizeVideoEncoderPreference(undefined), "auto");

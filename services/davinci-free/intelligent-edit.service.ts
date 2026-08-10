@@ -36,10 +36,10 @@ import {
   stabilizeSubjectAnchor,
   type VisualAnchor,
 } from "./visual-anchor";
+import { resolveLocalVideoSource } from "./video-source";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mxf", ".avi", ".mkv", ".webm"]);
 const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".aac", ".m4a", ".flac"]);
 
 type MediaInfo = {
@@ -855,7 +855,7 @@ export async function analyzeIntelligentEdit(
 ): Promise<IntelligentEditPlan> {
   const input: IntelligentEditAnalysisInput = {
     requestId: requestId(rawInput.requestId),
-    sourcePath: (await localFile(rawInput.sourcePath, "Vídeo", VIDEO_EXTENSIONS, true))!,
+    sourcePath: await resolveLocalVideoSource(rawInput.sourcePath),
     sourceOrigin: googleDriveSourceOrigin(rawInput.sourceOrigin),
     courseName: safeLabel(cleanText(rawInput.courseName), 100) || undefined,
     moduleName: safeLabel(cleanText(rawInput.moduleName, "Módulo"), 100),
