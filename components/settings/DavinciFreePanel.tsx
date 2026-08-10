@@ -47,6 +47,15 @@ type Status = {
   pendingPlan: null | { requestId: string; timelineName: string; createdAt: string };
   latestResult: null | Record<string, unknown>;
   instructions: string[];
+  analysisStatus?: {
+    status: "running" | "completed" | "failed";
+    requestId: string;
+    sourcePath: string;
+    startedAt: string;
+    completedAt?: string;
+    planId?: string;
+    error?: string;
+  } | null;
 };
 
 type EditEvent = {
@@ -315,6 +324,34 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       onStatusMessage({ text: String(error), type: "error" }),
     );
   }, [onStatusMessage, refresh]);
+
+  useEffect(() => {
+    if (status?.analysisStatus?.status !== "running") return;
+    setBusy("analyze");
+    const timer = window.setInterval(() => {
+      refresh().catch(() => undefined);
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [refresh, status?.analysisStatus?.status]);
+
+  useEffect(() => {
+    if (status?.analysisStatus?.status !== "completed" || analysis) return;
+    fetch("/api/davinci-free?analysis=1", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data.analysis) return;
+        setAnalysis(data.analysis as Analysis);
+        setReview({ events: [], captions: [] });
+        setPreviewStale(false);
+      })
+      .catch(() => undefined);
+  }, [analysis, status?.analysisStatus?.status]);
+
+  useEffect(() => {
+    if (status?.analysisStatus?.status !== "running") {
+      setBusy((current) => current === "analyze" ? null : current);
+    }
+  }, [status?.analysisStatus?.status]);
 
   const refreshDriveConnection = useCallback(async () => {
     const response = await fetch("/api/google-drive", { cache: "no-store" });
