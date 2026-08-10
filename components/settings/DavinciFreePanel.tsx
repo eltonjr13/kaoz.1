@@ -1251,7 +1251,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
           <main className="order-1 min-w-0 self-stretch flex flex-col bg-zinc-950 overflow-hidden relative lg:order-2">
             {/* Player Container */}
-            <div className="flex min-h-[320px] flex-1 items-center justify-center relative bg-black p-3">
+            <div className="relative bg-black p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
               <div className="w-full aspect-video max-h-[62vh] bg-zinc-900 rounded-md overflow-hidden relative border border-white/10 flex flex-col justify-center items-center group">
