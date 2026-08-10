@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, CheckCircle2 } from "lucide-react";
+import { Video, Sparkles, Cpu, CheckCircle2 } from "lucide-react";
 import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };

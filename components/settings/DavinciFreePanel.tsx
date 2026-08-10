@@ -2277,9 +2277,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
-      <footer className="fixed bottom-0 left-0 right-0 h-[64px] bg-zinc-950/95 border-t border-white/10 px-6 backdrop-blur-xl z-50 flex items-center justify-between shadow-2xl">
+      <footer className="sticky bottom-0 z-40 flex min-h-[58px] items-center justify-between border-t border-white/10 bg-zinc-950/95 px-4 py-2 backdrop-blur-xl">
         <div className="flex flex-col">
-          <span className="text-[11px] font-bold text-zinc-300">Kaoz.1 v{applicationVersion}</span>
+          <span className="flex items-center gap-2 text-[11px] font-medium text-zinc-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}
@@ -2289,11 +2289,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             disabled={!!busy || !analysis}
             onClick={renderPreview}
-            className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-xs font-bold text-white hover:bg-white/10 disabled:opacity-40 transition-all"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-white/10 disabled:opacity-40 transition-colors"
           >
             {busy === "render-preview" ? (
               <Loader2 size={14} className="animate-spin" />
@@ -2306,7 +2306,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-5 py-2 text-xs font-bold text-black shadow-lg shadow-emerald-500/20 hover:brightness-110 disabled:opacity-40 transition-all"
+            className="flex items-center gap-2 rounded-md bg-emerald-400 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-300 disabled:opacity-40 transition-colors"
           >
             <CheckCircle size={15} />
             Preparar para o DaVinci (opcional)
