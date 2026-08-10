@@ -12,6 +12,7 @@ const {
 
 test("ativa fechar para a bandeja por padrão", () => {
   assert.deepEqual(normalizeDesktopPreferences(null), {
+    autoDownloadUpdates: false,
     closeToTray: true,
     trayNoticeShown: false
   });
@@ -19,6 +20,7 @@ test("ativa fechar para a bandeja por padrão", () => {
 
 test("ignora valores inválidos sem perder preferências válidas", () => {
   assert.deepEqual(normalizeDesktopPreferences({ closeToTray: false, trayNoticeShown: "sim" }), {
+    autoDownloadUpdates: false,
     closeToTray: false,
     trayNoticeShown: false
   });
@@ -29,9 +31,10 @@ test("persiste e recupera as preferências do desktop", (context) => {
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const filePath = path.join(directory, "desktop-preferences.json");
 
-  writeDesktopPreferences(filePath, { closeToTray: false, trayNoticeShown: true });
+  writeDesktopPreferences(filePath, { autoDownloadUpdates: true, closeToTray: false, trayNoticeShown: true });
 
   assert.deepEqual(readDesktopPreferences(filePath), {
+    autoDownloadUpdates: true,
     closeToTray: false,
     trayNoticeShown: true
   });

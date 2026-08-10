@@ -45,3 +45,16 @@ test("desktop titlebar shows route context, command launcher, and real update st
   assert.match(titlebar, /bridge\.onUpdateStatus\(setUpdateStatus\)/);
   assert.match(titlebar, /router\.push\("\/settings"\)/);
 });
+
+test("settings persist automatic update downloads without automatic installation", () => {
+  const panel = fs.readFileSync(path.join(projectRoot, "components", "settings", "AppUpdatesPanel.tsx"), "utf8");
+  const preload = fs.readFileSync(path.join(projectRoot, "electron", "preload.cjs"), "utf8");
+  const main = fs.readFileSync(path.join(projectRoot, "electron", "main.cjs"), "utf8");
+
+  assert.match(panel, /aria-label="Baixar atualiza\u00e7\u00f5es automaticamente"/);
+  assert.match(panel, /bridge\.setAutoDownloadUpdates\(next\)/);
+  assert.match(preload, /setAutoDownloadUpdates: \(enabled\) => ipcRenderer\.invoke\("kaoz1-desktop:set-auto-download-updates", enabled\)/);
+  assert.match(main, /autoUpdater\.autoDownload = getDesktopPreferences\(\)\.autoDownloadUpdates/);
+  assert.match(main, /getDesktopPreferences\(\)\.autoDownloadUpdates\) \{\s*void requestUpdateCheck\(\)/);
+  assert.match(main, /autoUpdater\.autoInstallOnAppQuit = false/);
+});

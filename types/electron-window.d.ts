@@ -22,8 +22,9 @@ declare global {
       goBack: () => Promise<boolean>;
       goForward: () => Promise<boolean>;
       reload: () => Promise<boolean>;
-      getDesktopPreferences: () => Promise<{ closeToTray: boolean } | null>;
+      getDesktopPreferences: () => Promise<{ autoDownloadUpdates: boolean; closeToTray: boolean } | null>;
       setCloseToTray: (enabled: boolean) => Promise<{ closeToTray: boolean } | null>;
+      setAutoDownloadUpdates: (enabled: boolean) => Promise<{ autoDownloadUpdates: boolean } | null>;
       chooseCourseFolder: () => Promise<string | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       onNavigationStateChanged: (listener: (state: Kaoz1NavigationState) => void) => () => void;

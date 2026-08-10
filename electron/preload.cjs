@@ -12,6 +12,7 @@ if (process.platform === "win32") {
     reload: () => ipcRenderer.invoke("kaoz1-navigation:reload"),
     getDesktopPreferences: () => ipcRenderer.invoke("kaoz1-desktop:get-preferences"),
     setCloseToTray: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-close-to-tray", enabled),
+    setAutoDownloadUpdates: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-auto-download-updates", enabled),
     chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),

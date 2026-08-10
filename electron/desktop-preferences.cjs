@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const DEFAULT_DESKTOP_PREFERENCES = Object.freeze({
+  autoDownloadUpdates: false,
   closeToTray: true,
   trayNoticeShown: false
 });
@@ -9,6 +10,7 @@ const DEFAULT_DESKTOP_PREFERENCES = Object.freeze({
 function normalizeDesktopPreferences(value) {
   const source = value && typeof value === "object" ? value : {};
   return {
+    autoDownloadUpdates: typeof source.autoDownloadUpdates === "boolean" ? source.autoDownloadUpdates : DEFAULT_DESKTOP_PREFERENCES.autoDownloadUpdates,
     closeToTray: typeof source.closeToTray === "boolean" ? source.closeToTray : DEFAULT_DESKTOP_PREFERENCES.closeToTray,
     trayNoticeShown: typeof source.trayNoticeShown === "boolean" ? source.trayNoticeShown : DEFAULT_DESKTOP_PREFERENCES.trayNoticeShown
   };

@@ -23,13 +23,34 @@ function messageFor(status: UpdateStatus) {
 
 export function AppUpdatesPanel() {
   const [status, setStatus] = useState<UpdateStatus>(INITIAL_STATUS);
+  const [autoDownloadUpdates, setAutoDownloadUpdates] = useState(false);
+  const [savingPreference, setSavingPreference] = useState(false);
   const bridge = typeof window === "undefined" ? undefined : window.kaoz1Desktop;
 
   useEffect(() => {
     if (!bridge) return;
     void bridge.getUpdateStatus().then(setStatus);
+    void bridge.getDesktopPreferences().then((preferences) => {
+      if (preferences) setAutoDownloadUpdates(preferences.autoDownloadUpdates);
+    });
     return bridge.onUpdateStatus(setStatus);
   }, [bridge]);
+
+  const toggleAutoDownloadUpdates = async () => {
+    if (!bridge || savingPreference) return;
+    const next = !autoDownloadUpdates;
+    setAutoDownloadUpdates(next);
+    setSavingPreference(true);
+    try {
+      const saved = await bridge.setAutoDownloadUpdates(next);
+      if (saved) setAutoDownloadUpdates(saved.autoDownloadUpdates);
+      else setAutoDownloadUpdates(!next);
+    } catch {
+      setAutoDownloadUpdates(!next);
+    } finally {
+      setSavingPreference(false);
+    }
+  };
 
   const check = async () => {
     if (!bridge) return;
@@ -86,6 +107,28 @@ export function AppUpdatesPanel() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-5 border-t border-white/[0.05] pt-4">
+        <div>
+          <p className="text-[11px] font-semibold text-zinc-300">Baixar atualizações automaticamente</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
+            Verifica ao iniciar e deixa a nova versão pronta. Você escolhe quando reiniciar e atualizar.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoDownloadUpdates}
+          aria-label="Baixar atualizações automaticamente"
+          onClick={() => void toggleAutoDownloadUpdates()}
+          disabled={!bridge || savingPreference}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${autoDownloadUpdates ? "bg-emerald-500" : "bg-zinc-700"}`}
+        >
+          <span className={`absolute top-1 flex size-4 items-center justify-center rounded-full bg-white shadow transition-transform ${autoDownloadUpdates ? "translate-x-6" : "translate-x-1"}`}>
+            {savingPreference && <Loader2 size={10} className="animate-spin text-zinc-700" />}
+          </span>
+        </button>
       </div>
 
       {(status.state === "not-available" || status.state === "downloaded" || hasError) && (

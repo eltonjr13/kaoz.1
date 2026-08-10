@@ -108,7 +108,7 @@ function configureAutoUpdater() {
     warn: (...values) => writeUpdaterLog("warn", ...values),
     error: (...values) => writeUpdaterLog("error", ...values)
   };
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = getDesktopPreferences().autoDownloadUpdates;
   autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", error: undefined, errorCode: undefined, progress: undefined }));
@@ -122,6 +122,18 @@ function configureAutoUpdater() {
   });
 }
 
+function requestUpdateCheck() {
+  if (!updateCheckPromise) {
+    updateCheckPromise = autoUpdater.checkForUpdates().catch((error) => {
+      setUpdateStatus({ state: "error", ...updateErrorDetails(error), progress: undefined });
+      return null;
+    }).finally(() => {
+      updateCheckPromise = undefined;
+    });
+  }
+  return updateCheckPromise;
+}
+
 ipcMain.handle("kaoz1-update:get-status", (event) => {
   if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
   return { ...updateStatus, currentVersion: app.getVersion(), supported: updaterIsSupported() };
@@ -130,15 +142,7 @@ ipcMain.handle("kaoz1-update:get-status", (event) => {
 ipcMain.handle("kaoz1-update:check", async (event) => {
   if (!getMainWindowForEvent(event)) return { state: "error", error: "Janela não autorizada." };
   if (!updaterIsSupported()) return setUpdateStatus({ state: "unsupported", error: "A atualização está disponível apenas no aplicativo Windows instalado." });
-  if (!updateCheckPromise) {
-    updateCheckPromise = autoUpdater.checkForUpdates().catch((error) => {
-      setUpdateStatus({ state: "error", ...updateErrorDetails(error) });
-      return null;
-    }).finally(() => {
-      updateCheckPromise = undefined;
-    });
-  }
-  await updateCheckPromise;
+  await requestUpdateCheck();
   return updateStatus;
 });
 
@@ -245,14 +249,24 @@ ipcMain.handle("kaoz1-navigation:reload", (event) => {
 
 ipcMain.handle("kaoz1-desktop:get-preferences", (event) => {
   if (!getMainWindowForEvent(event)) return null;
-  const { closeToTray } = getDesktopPreferences();
-  return { closeToTray };
+  const { autoDownloadUpdates, closeToTray } = getDesktopPreferences();
+  return { autoDownloadUpdates, closeToTray };
 });
 
 ipcMain.handle("kaoz1-desktop:set-close-to-tray", (event, enabled) => {
   if (!getMainWindowForEvent(event) || typeof enabled !== "boolean") return null;
   const updated = saveDesktopPreferences({ ...getDesktopPreferences(), closeToTray: enabled });
   return { closeToTray: updated.closeToTray };
+});
+
+ipcMain.handle("kaoz1-desktop:set-auto-download-updates", (event, enabled) => {
+  if (!getMainWindowForEvent(event) || typeof enabled !== "boolean") return null;
+  const updated = saveDesktopPreferences({ ...getDesktopPreferences(), autoDownloadUpdates: enabled });
+  if (updaterIsSupported()) {
+    autoUpdater.autoDownload = updated.autoDownloadUpdates;
+    if (updated.autoDownloadUpdates) void requestUpdateCheck();
+  }
+  return { autoDownloadUpdates: updated.autoDownloadUpdates };
 });
 
 ipcMain.handle("kaoz1-desktop:choose-course-folder", async (event) => {
@@ -474,10 +488,13 @@ app.whenReady().then(async () => {
       currentRoot: app.getPath("userData"),
       legacyRoot: path.join(app.getPath("appData"), "MrChicken")
     });
-    configureAutoUpdater();
     getDesktopPreferences();
+    configureAutoUpdater();
     createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
+    if (updaterIsSupported() && getDesktopPreferences().autoDownloadUpdates) {
+      void requestUpdateCheck();
+    }
   } catch (error) {
     dialog.showErrorBox("Falha ao iniciar o Kaoz.1", error instanceof Error ? error.message : String(error));
     app.quit();
