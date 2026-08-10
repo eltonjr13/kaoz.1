@@ -42,7 +42,7 @@ const READ_ACTIONS = new Set<Action>([
 async function execute(action: Action, arguments_: Record<string, unknown>) {
   const toolId = TOOL_BY_ACTION[action];
   const outcome = await toolExecutionService.execute({
-    agentId: createAgentId("settings-ui"),
+    agentId: createAgentId(READ_ACTIONS.has(action) ? "settings-ui-reader" : "settings-ui"),
     toolId,
     arguments: arguments_,
     context: {

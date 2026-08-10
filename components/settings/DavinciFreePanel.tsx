@@ -527,34 +527,39 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function renderPreview() {
     if (!analysis) return;
-    addLog("info", "Salvando revisão e iniciando renderização de vídeo FFmpeg...", `Plano ID: ${analysis.id}`);
-    const saved = await action("save-editorial-review", { planId: analysis.id, review });
-    if (!saved) {
-      addLog("error", "Falha ao salvar a revisão editorial.");
-      return;
-    }
-    addLog("ffmpeg", "Executando codificação H.264 / AAC com legendas dinamicas e cartões de introdução...");
-    const result = await action("render-preview", {
-      planId: analysis.id,
-      outputResolution: form.outputResolution,
-      videoEncoder: form.videoEncoder,
-    });
-    if (result?.plan) {
-      setAnalysis(result.plan as Analysis);
-      setPlayheadTime(0);
-      setPlayerDuration(Number(result.durationSeconds) || 0);
-      setPreviewStale(false);
-      addLog(
-        "success",
-        "Vídeo renderizado e pronto para reprodução!",
-        `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)} | Encoder: ${String(result.videoEncoder?.used)}`,
-      );
-      onStatusMessage({
-        text: `Prévia renderizada em ${String(result.previewPath)}`,
-        type: "success",
+    setBusy("render-preview");
+    try {
+      addLog("info", "Salvando revisão e iniciando renderização de vídeo FFmpeg...", `Plano ID: ${analysis.id}`);
+      const saved = await action("save-editorial-review", { planId: analysis.id, review });
+      if (!saved) {
+        addLog("error", "Falha ao salvar a revisão editorial.");
+        return;
+      }
+      addLog("ffmpeg", "Executando codificação H.264 / AAC com legendas dinamicas e cartões de introdução...");
+      const result = await action("render-preview", {
+        planId: analysis.id,
+        outputResolution: form.outputResolution,
+        videoEncoder: form.videoEncoder,
       });
-    } else {
-      addLog("error", "Erro ao renderizar o vídeo com FFmpeg.");
+      if (result?.plan) {
+        setAnalysis(result.plan as Analysis);
+        setPlayheadTime(0);
+        setPlayerDuration(Number(result.durationSeconds) || 0);
+        setPreviewStale(false);
+        addLog(
+          "success",
+          "Vídeo renderizado e pronto para reprodução!",
+          `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)} | Encoder: ${String(result.videoEncoder?.used)}`,
+        );
+        onStatusMessage({
+          text: `Prévia renderizada em ${String(result.previewPath)}`,
+          type: "success",
+        });
+      } else {
+        addLog("error", "Erro ao renderizar o vídeo com FFmpeg.");
+      }
+    } finally {
+      setBusy(null);
     }
   }
 
