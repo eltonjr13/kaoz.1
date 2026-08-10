@@ -35,6 +35,7 @@ import {
   type ConsoleLogEntry,
   type ConsoleLogLevel,
 } from "@/components/video/video-editor-console";
+import { BUILD_VERSION } from "@/lib/app-version";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -221,6 +222,7 @@ function waveformBarHeight(peak: number, maximumPercent: number) {
 }
 
 export function DavinciFreePanel({ onStatusMessage }: Props) {
+  const [applicationVersion, setApplicationVersion] = useState(BUILD_VERSION);
   const [status, setStatus] = useState<Status | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [review, setReview] = useState<EditorialReview>({ events: [], captions: [] });
@@ -290,6 +292,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Falha ao consultar o Resolve Free.");
     setStatus(data);
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.kaoz1Desktop;
+    if (!bridge) return;
+
+    let mounted = true;
+    void bridge.getUpdateStatus()
+      .then((updateStatus) => {
+        if (mounted && updateStatus.currentVersion) setApplicationVersion(updateStatus.currentVersion);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -2256,7 +2274,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
       <footer className="fixed bottom-0 left-0 right-0 h-[64px] bg-zinc-950/95 border-t border-white/10 px-6 backdrop-blur-xl z-50 flex items-center justify-between shadow-2xl">
         <div className="flex flex-col">
-          <span className="text-[11px] font-bold text-zinc-300">Kaoz.1 v0.2.33</span>
+          <span className="text-[11px] font-bold text-zinc-300">Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}

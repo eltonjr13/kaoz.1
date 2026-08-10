@@ -58,3 +58,16 @@ test("settings persist automatic update downloads without automatic installation
   assert.match(main, /getDesktopPreferences\(\)\.autoDownloadUpdates\) \{\s*void requestUpdateCheck\(\)/);
   assert.match(main, /autoUpdater\.autoInstallOnAppQuit = false/);
 });
+
+test("video editor footer uses the installed application version", () => {
+  const panel = fs.readFileSync(path.join(projectRoot, "components", "settings", "DavinciFreePanel.tsx"), "utf8");
+  const appVersion = fs.readFileSync(path.join(projectRoot, "lib", "app-version.ts"), "utf8");
+
+  assert.match(appVersion, /import packageJson from "@\/package\.json"/);
+  assert.match(appVersion, /export const BUILD_VERSION = packageJson\.version/);
+  assert.match(panel, /const \[applicationVersion, setApplicationVersion\] = useState\(BUILD_VERSION\)/);
+  assert.match(panel, /bridge\.getUpdateStatus\(\)/);
+  assert.match(panel, /setApplicationVersion\(updateStatus\.currentVersion\)/);
+  assert.match(panel, /Kaoz\.1 v\{applicationVersion\}/);
+  assert.doesNotMatch(panel, /Kaoz\.1 v0\.2\.33/);
+});
