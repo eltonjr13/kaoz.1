@@ -532,6 +532,7 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /addedEvents/);
   assert.match(panel, /grid items-stretch gap-4/);
   assert.match(panel, /lg:h-\[calc\(100vh-185px\)\]/);
+  assert.match(panel, /lg:min-h-\[760px\]/);
   assert.match(panel, /min-h-0 flex-1 overflow-y-auto border-t/);
   assert.match(panel, /fixed inset-x-0 bottom-0/);
   assert.match(panel, /activeMode === "batch"/);
