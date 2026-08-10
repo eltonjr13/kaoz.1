@@ -530,9 +530,8 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /api\/davinci-free\/media/);
   assert.match(panel, /musicWaveform/);
   assert.match(panel, /addedEvents/);
-  assert.match(panel, /grid flex-1 min-h-0 items-stretch gap-0/);
-  assert.match(panel, /lg:h-\[calc\(100vh-140px\)\]/);
-  assert.match(panel, /lg:min-h-0/);
+  assert.match(panel, /grid flex-none items-stretch gap-0/);
+  assert.match(panel, /lg:h-\[980px\]/);
   assert.match(panel, /min-h-\[180px\] flex-1 overflow-hidden border-t/);
   assert.match(panel, /fillAvailableHeight/);
   assert.match(panel, /fixed inset-x-0 bottom-0/);
@@ -559,6 +558,7 @@ test("edição de vídeo possui área própria na navegação, fora das configur
   assert.match(shell, /Edição de vídeo/);
   assert.match(page, /VideoEditorClient/);
   assert.match(editor, /DavinciFreePanel/);
+  assert.match(editor, /min-h-0 flex-1 overflow-y-auto/);
   assert.doesNotMatch(settings, /DavinciFreePanel/);
   assert.doesNotMatch(settings, /davinci-free/);
 });
