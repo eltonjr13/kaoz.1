@@ -527,7 +527,35 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  async function manageSpeechModel(modelId: string, modelAction: "download" | "cancel") {
+    setSpeechModelBusy(modelId);
+    try {
+      const response = await fetch("/api/speech/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: modelAction, modelId }),
+      });
+      const data = await response.json() as { model?: VideoSpeechModel; error?: string };
+      if (!response.ok || !data.model) throw new Error(data.error || "Falha ao gerenciar o modelo.");
+      setSpeechModels((current) => current.map((model) => model.id === modelId ? data.model! : model));
+      addLog("info", modelAction === "download" ? "Download do modelo de transcricao iniciado." : "Download cancelado.", data.model.name);
+    } catch (error) {
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
+    } finally {
+      setSpeechModelBusy(null);
+    }
+  }
+
   async function analyze() {
+    const selectedSpeechModel = speechModels.find((model) => model.id === form.transcriptionModelId);
+    if (!selectedSpeechModel || selectedSpeechModel.state !== "ready") {
+      const text = selectedSpeechModel
+        ? `O modelo ${selectedSpeechModel.name} ainda nao foi baixado.`
+        : "Selecione um modelo de transcricao antes de analisar o video.";
+      addLog("warning", text);
+      onStatusMessage({ text, type: "error" });
+      return;
+    }
     addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
@@ -547,6 +575,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sfxPack: form.sfxPack,
       useAgent: true,
       transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
+      transcriptionModelId: form.transcriptionModelId,
+      transcriptionDevice: form.transcriptionDevice,
+      transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
     });
     if (result?.id) {
       setAnalysis(result as Analysis);
@@ -630,6 +661,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         planId: analysis.id,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
+        transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
+        transcriptionModelId: form.transcriptionModelId,
+        transcriptionDevice: form.transcriptionDevice,
+        transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
       });
       if (result?.plan) {
         setAnalysis(result.plan as Analysis);
@@ -831,7 +866,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  function hasReadySpeechModel(): boolean {
+    const selected = speechModels.find((model) => model.id === form.transcriptionModelId);
+    if (selected?.state === "ready") return true;
+    onStatusMessage({ text: selected ? `Baixe ${selected.name} antes de iniciar.` : "Selecione um modelo de transcricao antes de iniciar.", type: "error" });
+    return false;
+  }
+
   async function startDriveBatch(discovery = driveBatchDiscovery, selectedIds = selectedDriveLessons) {
+    if (!hasReadySpeechModel()) return;
     if (!discovery) return;
     if (selectedIds.length === 0) {
       onStatusMessage({ text: "Selecione pelo menos uma aula para exportar.", type: "error" });
@@ -855,6 +898,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         downloadFolder: downloadFolder || undefined,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
+        transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
+        transcriptionModelId: form.transcriptionModelId,
+        transcriptionDevice: form.transcriptionDevice,
+        transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -868,6 +915,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function startBatch(folderPath = batchFolder, courseName = form.courseName, selectedPaths = selectedLocalVideos) {
+    if (!hasReadySpeechModel()) return;
     if (selectedPaths.length === 0) {
       onStatusMessage({ text: "Selecione pelo menos um vídeo para exportar.", type: "error" });
       return;
@@ -1406,6 +1454,71 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <span className="flex items-center gap-1.5 border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
                   <Subtitles size={12} /> Áudio e legendas
                 </span>
+
+                <div className="space-y-2 rounded-xl border border-[#736D5C]/45 bg-[#1A1301]/70 p-3">
+                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                    Modelo de transcricao
+                    <select
+                      className={fieldClass}
+                      value={form.transcriptionModelId}
+                      onChange={(event) => setForm((current) => ({ ...current, transcriptionModelId: event.target.value }))}
+                    >
+                      <option value="">Selecione um modelo local</option>
+                      {speechModels.map((model) => (
+                        <option key={model.id} value={model.id}>{model.name} · {model.state === "ready" ? "instalado" : "nao instalado"}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                    Processamento
+                    <select
+                      className={fieldClass}
+                      value={form.transcriptionDevice}
+                      onChange={(event) => setForm((current) => ({ ...current, transcriptionDevice: event.target.value as "auto" | "vulkan" | "cpu" }))}
+                    >
+                      <option value="auto">Automatico: GPU Vulkan e fallback CPU</option>
+                      <option value="vulkan">GPU Vulkan obrigatoria</option>
+                      <option value="cpu">Somente CPU</option>
+                    </select>
+                  </label>
+                  {(() => {
+                    const model = speechModels.find((item) => item.id === form.transcriptionModelId);
+                    if (!model) return <p className="text-[10px] text-amber-200">Escolha um modelo para habilitar a analise.</p>;
+                    const activeDownload = ["queued", "downloading", "verifying"].includes(model.state);
+                    const progress = Math.min(100, (model.downloadedBytes / Math.max(1, model.sizeBytes)) * 100);
+                    return (
+                      <div className="rounded-lg border border-[#736D5C]/35 bg-[#403106]/30 p-2.5">
+                        <div className="flex items-center justify-between gap-2 text-[10px]">
+                          <span className={model.state === "ready" ? "text-emerald-300" : model.state === "error" ? "text-red-300" : "text-amber-200"}>
+                            {model.state === "ready" ? "Modelo pronto" : model.state === "error" ? model.error || "Falha no modelo" : `${formatBytes(model.sizeBytes)} · download necessario`}
+                          </span>
+                          {model.state !== "ready" && (
+                            <button
+                              type="button"
+                              disabled={speechModelBusy === model.id}
+                              onClick={() => void manageSpeechModel(model.id, activeDownload ? "cancel" : "download")}
+                              className="rounded-md border border-[#A6A297]/40 px-2.5 py-1 font-bold uppercase text-[#D6D4CD] disabled:opacity-50"
+                            >
+                              {activeDownload ? "Cancelar" : "Baixar"}
+                            </button>
+                          )}
+                        </div>
+                        {(activeDownload || model.state === "partial") && (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#A6A297]" style={{ width: `${progress}%` }} /></div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <label className="flex items-center gap-2 text-[10px] text-[#A6A297]">
+                    <input
+                      type="checkbox"
+                      checked={form.transcriptionAllowCloudFallback}
+                      onChange={(event) => setForm((current) => ({ ...current, transcriptionAllowCloudFallback: event.target.checked }))}
+                      className="accent-[#A6A297]"
+                    />
+                    Permitir fallback pela nuvem se o modelo local falhar
+                  </label>
+                </div>
 
                 <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
                   <input

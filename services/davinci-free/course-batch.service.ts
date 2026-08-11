@@ -121,6 +121,10 @@ export interface CourseBatchJob {
   useAgent: boolean;
   outputResolution?: VideoOutputResolution;
   videoEncoder?: VideoEncoderPreference;
+  transcriptionRuntime?: "web" | "desktop";
+  transcriptionModelId?: string;
+  transcriptionDevice?: "auto" | "vulkan" | "cpu";
+  transcriptionAllowCloudFallback?: boolean;
   courseIdentity?: IntelligentCourseIdentity;
   moduleIdentities?: Record<string, IntelligentCourseIdentity>;
   outputFolderUrl?: string;
@@ -278,6 +282,10 @@ async function analyzeItem(job: CourseBatchJob, item: CourseBatchItem) {
     sfxVolumeDb: job.sfxVolumeDb,
     sfxPack: job.sfxPack,
     useAgent: job.useAgent,
+    transcriptionRuntime: job.transcriptionRuntime,
+    transcriptionModelId: job.transcriptionModelId,
+    transcriptionDevice: job.transcriptionDevice,
+    transcriptionAllowCloudFallback: job.transcriptionAllowCloudFallback,
   });
   item.planId = plan.id;
   await saveJob(job);
@@ -644,6 +652,10 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     useAgent: input.useAgent !== false,
     outputResolution: normalizeVideoOutputResolution(input.outputResolution),
     videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),
+    transcriptionRuntime: input.transcriptionRuntime === "desktop" ? "desktop" as const : "web" as const,
+    transcriptionModelId: typeof input.transcriptionModelId === "string" ? input.transcriptionModelId : undefined,
+    transcriptionDevice: (["auto", "vulkan", "cpu"].includes(String(input.transcriptionDevice)) ? input.transcriptionDevice : "auto") as "auto" | "vulkan" | "cpu",
+    transcriptionAllowCloudFallback: input.transcriptionAllowCloudFallback === true,
     createdAt: now,
     updatedAt: now,
     total: 0,
