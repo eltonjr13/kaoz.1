@@ -26,8 +26,8 @@ const statusVariants: Record<
     role: "dialog",
   },
   info: {
-    dialogClass: "border-cyan-500/30 bg-[#0c1d26] text-cyan-100",
-    iconClass: "bg-cyan-500/15 text-cyan-400",
+    dialogClass: "border-[#A6A297]/35 bg-[#261D01] text-[#F2F2F2]",
+    iconClass: "bg-[#736D5C]/25 text-[#D6D4CD]",
     icon: Info,
     label: "Aviso",
     role: "dialog",
@@ -51,14 +51,14 @@ export function VideoEditorClient() {
   }, [status]);
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-y-auto w-full flex-col bg-[#09090a] text-zinc-100">
+    <div className="flex min-h-0 flex-1 overflow-y-auto w-full flex-col bg-[#1A1301] text-[#F2F2F2]">
       <div className="min-h-full w-full flex-none overflow-visible">
         <DavinciFreePanel onStatusMessage={setStatus} />
       </div>
 
       {status && statusVariant && StatusIcon && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1301]/80 p-4 backdrop-blur-sm"
           role={statusVariant.role}
           aria-modal="true"
           aria-labelledby="video-editor-status-title"
@@ -84,7 +84,7 @@ export function VideoEditorClient() {
               <button
                 type="button"
                 onClick={() => setStatus(null)}
-                className="rounded-lg p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-lg p-1 text-[#A6A297] transition-colors hover:bg-[#736D5C]/30 hover:text-[#F2F2F2]"
                 aria-label="Fechar aviso"
               >
                 <X size={18} />
@@ -94,7 +94,7 @@ export function VideoEditorClient() {
               <button
                 type="button"
                 onClick={() => setStatus(null)}
-                className="rounded-lg bg-white/10 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                className="rounded-lg border border-[#736D5C]/50 bg-[#403106] px-4 py-2 text-xs font-bold text-[#F2F2F2] transition-colors hover:bg-[#736D5C]"
               >
                 Entendi
               </button>

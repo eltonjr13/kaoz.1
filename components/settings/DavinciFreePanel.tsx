@@ -188,7 +188,7 @@ type Props = {
 };
 
 const fieldClass =
-  "w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
+  "w-full rounded-lg border border-[#736D5C]/45 bg-[#1A1301]/80 px-2.5 py-2 text-xs text-[#F2F2F2] placeholder-[#736D5C] outline-none transition-colors focus:border-[#A6A297] focus:ring-1 focus:ring-[#A6A297]/30";
 
 const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
@@ -1001,28 +1001,28 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis, selectedEventId]);
 
   return (
-    <div className="flex min-h-full w-full flex-col pb-24 text-zinc-100">
+    <div className="flex min-h-full w-full flex-col bg-[#1A1301] pb-24 text-[#F2F2F2]">
       {/* Workstation Header Bar (Stitch TopNavBar) */}
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-zinc-950 px-4 py-2 shrink-0">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#736D5C]/35 bg-[#261D01]/95 px-4 py-2.5 shadow-lg shadow-[#1A1301]/30">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/20">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#A6A297]/30 bg-[#736D5C]/25 font-bold text-[#D6D4CD]">
               <Video size={16} />
             </span>
             <div className="min-w-0">
-              <p className="text-[10px] font-medium tracking-wide text-zinc-500">Kaoz.1 / Estúdio de conteúdo</p>
-              <p className="truncate text-sm font-semibold text-zinc-100">{form.moduleName || "Aula sem título"}</p>
+              <p className="text-[10px] font-medium tracking-wide text-[#A6A297]">Kaoz.1 / Estúdio de conteúdo</p>
+              <p className="truncate text-sm font-semibold text-[#F2F2F2]">{form.moduleName || "Aula sem título"}</p>
             </div>
           </div>
 
           {/* Mode Switcher Tabs */}
-          <nav className="flex items-center gap-1 border-l border-white/10 pl-3">
+          <nav className="flex items-center gap-1 rounded-xl border border-[#736D5C]/35 bg-[#1A1301]/55 p-1">
             <button
               onClick={() => setActiveMode("single")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "single"
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-400 hover:text-white"
+                  ? "bg-[#736D5C]/45 text-[#F2F2F2]"
+                  : "text-[#A6A297] hover:bg-[#403106] hover:text-[#F2F2F2]"
               }`}
             >
               <Film size={14} />
@@ -1032,8 +1032,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               onClick={() => setActiveMode("batch")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "batch"
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-400 hover:text-white"
+                  ? "bg-[#736D5C]/45 text-[#F2F2F2]"
+                  : "text-[#A6A297] hover:bg-[#403106] hover:text-[#F2F2F2]"
               }`}
             >
               <ListVideo size={14} />
@@ -1059,19 +1059,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             {status?.runnerInstalled ? "Runner: Online" : "Runner ainda não instalado"}
           </span>
 
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-zinc-300">
-            <span className="h-2 w-2 rounded-full bg-cyan-400" />
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D6D4CD]">
+            <span className="h-2 w-2 rounded-full bg-[#A6A297]" />
             Resolve
           </span>
 
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-zinc-300">
-            <Sparkles size={13} className="text-zinc-400" />
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D6D4CD]">
+            <Sparkles size={13} className="text-[#A6A297]" />
             AI ativa
           </span>
 
           <button
             onClick={() => refresh()}
-            className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white transition-all"
+            className="flex items-center justify-center rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/55 p-1.5 text-[#A6A297] transition-all hover:bg-[#403106] hover:text-[#F2F2F2]"
             title="Atualizar"
           >
             <RefreshCw size={14} className={busy === "refresh" ? "animate-spin text-emerald-400" : ""} />
@@ -1080,21 +1080,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </header>
 
       {/* Editor inteligente para DaVinci Resolve Free Banner */}
-      <div className="grid items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs lg:grid-cols-12 lg:gap-4 shrink-0">
-        <h2 className="flex items-center gap-2 font-medium text-zinc-400 lg:col-span-3">
-          <Sparkles size={14} className="text-zinc-500" />
+      <div className="grid shrink-0 items-center gap-2 border-b border-[#736D5C]/25 bg-[#261D01]/45 px-4 py-2 text-xs lg:grid-cols-12 lg:gap-4">
+        <h2 className="flex items-center gap-2 font-medium text-[#A6A297] lg:col-span-3">
+          <Sparkles size={14} className="text-[#736D5C]" />
           Editor inteligente para DaVinci Resolve Free
         </h2>
         {processingProgress && (
-          <div className="flex w-full items-center gap-3 rounded-md border border-emerald-400/50 bg-emerald-500/5 px-3 py-1 shadow-[0_0_18px_rgba(52,211,153,0.08)] lg:col-span-6 lg:col-start-4" aria-live="polite">
-            <span className="shrink-0 font-medium text-emerald-300">{processingProgress.label}</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full border border-emerald-300/30 bg-black/50 p-px">
+          <div className="flex w-full items-center gap-3 rounded-lg border border-[#A6A297]/40 bg-[#403106]/35 px-3 py-1.5 lg:col-span-6 lg:col-start-4" aria-live="polite">
+            <span className="shrink-0 font-medium text-[#D6D4CD]">{processingProgress.label}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full border border-[#736D5C]/40 bg-[#1A1301] p-px">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-blue-400 transition-[width] duration-300"
+                className="h-full rounded-full bg-gradient-to-r from-[#736D5C] via-[#A6A297] to-[#F2F2F2] transition-[width] duration-300"
                 style={{ width: `${processingProgress.progress}%` }}
               />
             </div>
-            <span className="shrink-0 font-mono text-emerald-200">{processingProgress.progress}%</span>
+            <span className="shrink-0 font-mono text-[#F2F2F2]">{processingProgress.progress}%</span>
             <span className="max-w-48 truncate text-[10px] text-zinc-400">{processingProgress.stage}</span>
           </div>
         )}
@@ -1127,7 +1127,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
+        <div className="grid flex-none items-stretch gap-0 border-t border-[#736D5C]/35 bg-[#1A1301] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
           <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-5 overflow-hidden border-t border-[#736D5C]/35 bg-[#1A1301]/95 p-5 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
             <div className="rounded-2xl border border-[#736D5C]/45 bg-[#261D01]/80 px-4 py-3">
@@ -1373,12 +1373,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-zinc-950 lg:order-2 lg:col-span-6 lg:h-full">
+          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-[#1A1301] lg:order-2 lg:col-span-6 lg:h-full">
             {/* Player Container */}
-            <div className="relative bg-black p-3">
+            <div className="relative border-b border-[#736D5C]/25 bg-[#1A1301] p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="relative flex w-full aspect-video max-h-[38vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border border-white/10 bg-zinc-900 group">
+              <div className="group relative flex w-full aspect-video max-h-[38vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border border-[#736D5C]/45 bg-[#261D01] shadow-2xl shadow-black/35">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -1400,10 +1400,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     className="w-full h-full object-contain bg-black"
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col justify-center items-center bg-zinc-900/90 text-center p-6">
-                    <Video size={28} className="text-zinc-600 mb-3" />
-                    <p className="text-xs font-medium text-zinc-300">Nenhum vídeo carregado</p>
-                    <p className="text-[11px] text-zinc-500 max-w-md mt-1">
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-[#261D01]/90 p-6 text-center">
+                    <Video size={28} className="mb-3 text-[#736D5C]" />
+                    <p className="text-xs font-medium text-[#D6D4CD]">Nenhum vídeo carregado</p>
+                    <p className="mt-1 max-w-md text-[11px] text-[#A6A297]">
                       Selecione uma fonte para iniciar a análise.
                     </p>
                   </div>
@@ -1455,14 +1455,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} bg-zinc-900/70 border-t border-white/10 flex flex-col shrink-0`}>
+            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} flex shrink-0 flex-col border-t border-[#736D5C]/35 bg-[#261D01]/70`}>
               {/* Timeline Header Toolbar */}
-              <div className="h-9 border-b border-white/10 flex items-center px-3 justify-between bg-zinc-950 text-zinc-400">
+              <div className="flex h-9 items-center justify-between border-b border-[#736D5C]/35 bg-[#1A1301]/90 px-3 text-[#A6A297]">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Timeline</span>
                   <button
                     onClick={addEventAtPlayhead}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 transition-all text-[10px] font-bold"
+                    className="flex items-center gap-1 rounded border border-[#A6A297]/35 bg-[#736D5C]/25 px-2 py-0.5 text-[10px] font-bold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/45"
                     title="Inserir evento no corte"
                   >
                     <Plus size={13} />
@@ -1575,12 +1575,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <div className="relative z-10 flex h-full flex-col gap-2 pointer-events-none">
 
                 {/* Track V1 (Video Clips) */}
-                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
+                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">V1</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {activeMediaAsset === "preview" && (
                       <div
-                        className="absolute h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate"
+                        className="absolute flex h-7 items-center truncate rounded border border-[#736D5C]/45 bg-[#403106]/65 px-2 font-mono text-[10px] text-[#D6D4CD]"
                         style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
                       >
                         Intro
@@ -1597,7 +1597,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     </div>
                     {activeMediaAsset === "preview" && (
                       <div
-                        className="absolute h-7 bg-zinc-800 border border-white/20 rounded px-2 flex items-center text-[10px] text-zinc-300 font-mono truncate"
+                        className="absolute flex h-7 items-center truncate rounded border border-[#736D5C]/45 bg-[#403106]/65 px-2 font-mono text-[10px] text-[#D6D4CD]"
                         style={{
                           left: `${(((analysis?.media.durationSeconds || 0) + 4) / timelineDuration) * 100}%`,
                           width: `${(4 / timelineDuration) * 100}%`,
@@ -1610,7 +1610,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track FX (AI Efficacy Event Clips) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/60 pointer-events-auto">
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/65 pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">FX</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {analysis?.events.length ? (
@@ -1655,7 +1655,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track A1 (Audio Waveform) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">A1</span>
                   <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                     {waveformBusy && !waveform.length ? (
@@ -1680,18 +1680,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 </div>
                 {musicWaveform.length > 0 && (
-                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-lg border border-white/10 bg-zinc-950/80 pointer-events-auto">
-                    <span className="pl-2 text-[10px] font-mono font-bold text-cyan-500">A2</span>
+                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
+                    <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">A2</span>
                     <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                       {musicWaveform.map((peak, index) => (
                         <div
                           key={index}
-                          className="min-w-px flex-1 rounded-full bg-cyan-700"
+                          className="min-w-px flex-1 rounded-full bg-[#736D5C]"
                           style={{ height: waveformBarHeight(peak, 82) }}
                         />
                       ))}
                     </div>
-                    <span className="ml-2 text-[8px] text-cyan-400">{analysis?.media.musicDb} dB</span>
+                    <span className="ml-2 text-[8px] text-[#A6A297]">{analysis?.media.musicDb} dB</span>
                   </div>
                 )}
                 </div>
@@ -1699,7 +1699,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
-            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-white/10 bg-zinc-950 p-3">
+            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-[#736D5C]/35 bg-[#261D01]/55 p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
                 onClearLogs={() => setConsoleLogs([])}
@@ -1710,14 +1710,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
-            <div className="border-b border-white/10 pb-3">
-              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 flex items-center gap-2">
-                <Sparkles size={14} className="text-emerald-400" />
+          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-[#736D5C]/35 bg-[#261D01]/70 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
+            <div className="rounded-2xl border border-[#736D5C]/40 bg-[#1A1301]/60 p-3">
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#D6D4CD]">
+                <Sparkles size={14} className="text-[#A6A297]" />
                 AI Inspector
               </h2>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                Decisões: <span className="text-cyan-300 font-medium">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
+              <p className="mt-1 text-[11px] text-[#A6A297]">
+                Decisões: <span className="font-medium text-[#D6D4CD]">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
                 {analysis?.semantic.model ? ` · ${analysis.semantic.model}` : ""}
               </p>
             </div>
@@ -1725,7 +1725,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3">
               {/* Course Identity Card */}
               {analysis?.courseTheme && (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+              <div className="rounded-xl border border-[#A6A297]/35 bg-[#403106]/45 p-3 text-xs text-[#D6D4CD]">
                 <p className="font-bold text-white">
                   Identidade {analysis.courseTheme.reused ? "reutilizada" : "criada"}: {analysis.courseTheme.label}
                 </p>
@@ -1764,7 +1764,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     disabled={!!busy || !analysis?.courseName}
                     onClick={saveCourseStandard}
-                    className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 transition-all"
+                    className="rounded-lg border border-[#A6A297]/40 bg-[#736D5C]/20 px-2 py-1 text-[10px] font-semibold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/35 disabled:opacity-40"
                   >
                     Salvar padrão do curso
                   </button>
@@ -1900,7 +1900,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   const change = captionReview(index);
                   const enabled = change.enabled !== false;
                   return (
-                    <div key={`caption-${index}`} className="grid gap-1.5 rounded-lg border border-white/10 bg-black/40 p-2 text-[10px]">
+                    <div key={`caption-${index}`} className="grid gap-1.5 rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/65 p-2 text-[10px]">
                       <input
                         className={fieldClass}
                         value={change.text ?? caption.text}
@@ -1970,7 +1970,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </select>
           </label>
 
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/30 p-1.5">
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/55 p-1.5">
             <button
               type="button"
               onClick={() => setBatchSource("local")}
@@ -1981,13 +1981,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <button
               type="button"
               onClick={() => setBatchSource("google-drive")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "google-drive" ? "bg-blue-500 text-white" : "text-zinc-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "google-drive" ? "bg-[#736D5C] text-white" : "text-zinc-400 hover:bg-white/5"}`}
             >
               Google Drive
             </button>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-4">
+          <div className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/65 p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Pasta selecionada</p>
             <div className="flex items-center justify-between gap-3">
               <p className="truncate font-mono text-xs text-zinc-200">
@@ -2020,10 +2020,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </div>
 
           {batchSource === "google-drive" && (
-            <div className="space-y-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-3.5">
+            <div className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#403106]/25 p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-300">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#D6D4CD]">
                     Pasta de Download e Processamento Local (Disco)
                   </p>
                   <p className="mt-0.5 truncate font-mono text-xs text-zinc-200">
@@ -2034,7 +2034,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   type="button"
                   disabled={!!busy}
                   onClick={chooseDownloadFolder}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-500/20 disabled:opacity-40 transition-all"
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#A6A297]/35 bg-[#736D5C]/20 px-3 py-1.5 text-xs font-semibold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/35 disabled:opacity-40"
                 >
                   <Folder size={14} />
                   Alterar pasta / disco
@@ -2147,12 +2147,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           {batchSource === "google-drive" && driveBatchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
             <div
               className={`space-y-4 rounded-xl border p-4 shadow-xl ${
-                driveBatchDiscovery.valid ? "border-blue-500/30 bg-black/40" : "border-red-500/25 bg-red-500/[0.04]"
+                driveBatchDiscovery.valid ? "border-[#736D5C]/45 bg-[#1A1301]/65" : "border-red-500/25 bg-red-500/[0.04]"
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#D6D4CD]">
                     <Film size={15} />
                     Seleção de Aulas do Google Drive
                   </div>
@@ -2161,7 +2161,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       {selectedDriveLessons.length} de {driveBatchDiscovery.lessons.length} aulas selecionadas
                     </span>
                     <span>·</span>
-                    <span className="font-semibold text-blue-200">
+                    <span className="font-semibold text-[#D6D4CD]">
                       Tamanho total:{" "}
                       {formatBytes(
                         driveBatchDiscovery.lessons
@@ -2208,7 +2208,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   placeholder="Filtrar por aula ou módulo no Drive..."
                   value={batchSearchQuery}
                   onChange={(e) => setBatchSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-blue-500"
+                  className="w-full rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/75 pl-8 pr-3 py-1.5 text-xs text-[#D6D4CD] placeholder-[#736D5C] outline-none focus:border-[#A6A297]"
                 />
               </div>
 
@@ -2230,7 +2230,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   if (filteredLessons.length === 0 && batchSearchQuery.trim()) return null;
 
                   return (
-                    <div key={module.id} className="rounded-xl border border-white/10 bg-black/50 p-3 space-y-2">
+                    <div key={module.id} className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/70 p-3">
                       <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -2246,9 +2246,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                 setSelectedDriveLessons((prev) => prev.filter((id) => !moduleLessonIds.includes(id)));
                               }
                             }}
-                            className="h-4 w-4 rounded border-white/20 bg-black accent-blue-500"
+                            className="h-4 w-4 rounded border-white/20 bg-black accent-[#736D5C]"
                           />
-                          <span className="text-xs font-bold text-blue-200">
+                          <span className="text-xs font-bold text-[#D6D4CD]">
                             {module.index}. {module.name}
                           </span>
                         </label>
@@ -2265,7 +2265,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               key={lesson.id}
                               className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs transition-all cursor-pointer ${
                                 isSelected
-                                  ? "border-blue-500/40 bg-blue-500/10 text-zinc-100"
+                                  ? "border-[#A6A297]/40 bg-[#736D5C]/20 text-zinc-100"
                                   : "border-white/5 bg-black/30 text-zinc-400 hover:border-white/15 hover:bg-white/5"
                               }`}
                             >
@@ -2280,7 +2280,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                       setSelectedDriveLessons((prev) => prev.filter((id) => id !== lesson.id));
                                     }
                                   }}
-                                  className="h-3.5 w-3.5 rounded border-white/20 bg-black accent-blue-500"
+                                  className="h-3.5 w-3.5 rounded border-white/20 bg-black accent-[#736D5C]"
                                 />
                                 <div className="min-w-0">
                                   <p className="font-semibold text-zinc-200 truncate">
@@ -2314,7 +2314,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           )}
 
           {batch && (
-            <div className="space-y-4 rounded-xl border border-white/10 bg-black/40 p-4">
+            <div className="space-y-4 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/65 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold text-zinc-100">
@@ -2331,7 +2331,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <button disabled={!!busy} onClick={() => changeBatchState("cancel-batch")} className="rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-200 disabled:opacity-40">Cancelar lote</button>
                   )}
                   {batch.status === "cancelled" && (
-                    <button disabled={!!busy} onClick={() => changeBatchState("resume-batch")} className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-1.5 text-xs font-semibold text-blue-200 disabled:opacity-40">Retomar lote</button>
+                    <button disabled={!!busy} onClick={() => changeBatchState("resume-batch")} className="rounded-xl border border-[#A6A297]/35 bg-[#736D5C]/20 px-3 py-1.5 text-xs font-semibold text-[#D6D4CD] disabled:opacity-40">Retomar lote</button>
                   )}
                   {batch.failed > 0 && !["queued", "running"].includes(batch.status) && (
                     <button
@@ -2413,9 +2413,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
-      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-white/10 bg-zinc-950/95 px-4 py-2 backdrop-blur-xl">
+      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-[#736D5C]/40 bg-[#261D01]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(26,19,1,0.38)] backdrop-blur-xl">
         <div className="flex flex-col">
-          <span className="flex items-center gap-2 text-[11px] font-medium text-zinc-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
+          <span className="flex items-center gap-2 text-[11px] font-medium text-[#D6D4CD]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}
@@ -2429,7 +2429,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis}
             onClick={renderPreview}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-white/10 disabled:opacity-40 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/45 px-3 py-2 text-xs font-medium text-[#D6D4CD] transition-colors hover:bg-[#403106] disabled:opacity-40"
           >
             {busy === "render-preview" ? (
               <Loader2 size={14} className="animate-spin" />
@@ -2442,7 +2442,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
-            className="flex items-center gap-2 rounded-md bg-emerald-400 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-300 disabled:opacity-40 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#F2F2F2] px-4 py-2 text-xs font-semibold text-[#1A1301] transition-colors hover:bg-[#D6D4CD] disabled:opacity-40"
           >
             <CheckCircle size={15} />
             Preparar para o DaVinci (opcional)
