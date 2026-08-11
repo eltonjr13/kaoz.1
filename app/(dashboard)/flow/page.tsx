@@ -4116,7 +4116,7 @@ export default function FlowDashboardPage() {
       </AnimatePresence>
 
       {/* ── Input Bar or Floating Settings Gear ── */}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#080808] via-[#080808]/90 to-transparent pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40 pt-10 pb-6 px-4 md:px-10 lg:px-32 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[900px] relative" ref={popoverRef} onWheel={handleInputOverlayWheel}>
             {selectedElementReference && (
               <div className="mb-2 flex items-center justify-between rounded-xl border border-[#A6A297]/30 bg-[#A6A297]/10 px-3 py-2 text-[11px] text-white/75">
