@@ -178,7 +178,7 @@ export class SpeechService {
       };
     } catch (localError) {
       if (provider === "parakeet") throw localError;
-      if (settings.allowCloudFallback || engine === "cloud") {
+      if (settings.allowCloudFallback) {
         const cloudResult = await transcribeWithConfiguredCloud(audio);
         if (cloudResult) return cloudResult;
       }
