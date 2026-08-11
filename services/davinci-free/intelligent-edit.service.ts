@@ -533,52 +533,86 @@ function deterministicSemanticDecision(
   const transcript = segments.map((segment) => segment.text).join(" ");
   const highlights = narrativeHighlights(segments, duration);
   const pedagogicalItems = pedagogy.items.filter((item) => item.status !== "rejected");
-  const promise = pedagogicalItems.find((item) => item.kind === "promise")
-    || pedagogicalItems.find((item) => item.kind === "objective");
-  const nextAction = pedagogicalItems.find((item) => item.kind === "exercise")
-    || pedagogicalItems.find((item) => item.kind === "action");
-  const nextLesson = pedagogicalItems.find((item) => item.kind === "next-link");
-  const summary = [...pedagogicalItems].reverse().find((item) => item.kind === "summary");
-  const pedagogicalHighlights = pedagogicalItems
-    .filter((item) => ["concept", "definition", "process-step", "warning", "common-error"].includes(item.kind))
-    .slice(0, 7);
+  const promise = firstPedagogicalItem(pedagogicalItems, ["promise", "objective"]);
+  const nextAction = firstPedagogicalItem(pedagogicalItems, ["exercise", "action", "summary"]);
+  const nextLesson = firstPedagogicalItem(pedagogicalItems, ["next-link"]);
   return {
     moduleTitle: title,
     introTitle: title,
-    introSubtitle: promise?.title || lessonSubtitle(title, transcript),
-    outroTitle: nextAction?.title || summary?.title || "Aplique antes de avançar",
-    outroSubtitle: nextLesson?.title || "Leve esta etapa para a próxima aula",
-    lowerThirds: pedagogicalItems
-      .filter((item) => item.kind === "chapter")
-      .slice(0, 6)
-      .map((item) => ({ time: item.start, title: item.title, reason: item.editorialSuggestion })),
-    emphasis: pedagogicalHighlights.length
-      ? pedagogicalHighlights.map((item) => ({
-          time: item.start,
-          label: item.title,
-          reason: item.editorialSuggestion,
-        }))
-      : highlights.map((highlight) => ({
-          time: highlight.time,
-          label: highlight.text,
-          reason: "Momento relevante identificado na transcrição.",
-        })),
-    onScreenText: pedagogicalHighlights.length
-      ? pedagogicalHighlights.map((item) => ({
-          time: item.start,
-          text: item.title,
-          variant: item.kind === "warning" || item.kind === "common-error"
-            ? "action" as const
-            : "concept" as const,
-          reason: item.editorialSuggestion,
-        }))
-      : highlights.map((highlight) => ({
-          time: highlight.time,
-          text: highlight.text,
-          variant: highlight.variant,
-          reason: "Síntese semântica extraída da fala.",
-        })),
+    introSubtitle: pedagogicalTitle(promise, lessonSubtitle(title, transcript)),
+    outroTitle: pedagogicalTitle(nextAction, "Aplique antes de avançar"),
+    outroSubtitle: pedagogicalTitle(nextLesson, "Leve esta etapa para a próxima aula"),
+    lowerThirds: pedagogicalLowerThirds(pedagogicalItems),
+    emphasis: pedagogicalEmphasis(pedagogicalItems, highlights),
+    onScreenText: pedagogicalOnScreenText(pedagogicalItems, highlights),
   };
+}
+
+type PedagogicalItem = IntelligentPedagogicalAnalysis["items"][number];
+type NarrativeHighlight = ReturnType<typeof narrativeHighlights>[number];
+
+function firstPedagogicalItem(
+  items: PedagogicalItem[],
+  kinds: PedagogicalItem["kind"][],
+) {
+  return items.find((item) => kinds.includes(item.kind));
+}
+
+function pedagogicalTitle(item: PedagogicalItem | undefined, fallback: string) {
+  return item?.title || fallback;
+}
+
+function pedagogicalLowerThirds(items: PedagogicalItem[]) {
+  return items
+    .filter((item) => item.kind === "chapter")
+    .slice(0, 6)
+    .map((item) => ({ time: item.start, title: item.title, reason: item.editorialSuggestion }));
+}
+
+function semanticHighlightItems(items: PedagogicalItem[]) {
+  return items
+    .filter((item) => ["concept", "definition", "process-step", "warning", "common-error"].includes(item.kind))
+    .slice(0, 7);
+}
+
+function pedagogicalEmphasis(items: PedagogicalItem[], fallback: NarrativeHighlight[]) {
+  const selected = semanticHighlightItems(items);
+  if (!selected.length) {
+    return fallback.map((highlight) => ({
+      time: highlight.time,
+      label: highlight.text,
+      reason: "Momento relevante identificado na transcrição.",
+    }));
+  }
+  return selected.map((item) => ({
+    time: item.start,
+    label: item.title,
+    reason: item.editorialSuggestion,
+  }));
+}
+
+function pedagogicalTextVariant(item: PedagogicalItem) {
+  return item.kind === "warning" || item.kind === "common-error"
+    ? "action" as const
+    : "concept" as const;
+}
+
+function pedagogicalOnScreenText(items: PedagogicalItem[], fallback: NarrativeHighlight[]) {
+  const selected = semanticHighlightItems(items);
+  if (!selected.length) {
+    return fallback.map((highlight) => ({
+      time: highlight.time,
+      text: highlight.text,
+      variant: highlight.variant,
+      reason: "Síntese semântica extraída da fala.",
+    }));
+  }
+  return selected.map((item) => ({
+    time: item.start,
+    text: item.title,
+    variant: pedagogicalTextVariant(item),
+    reason: item.editorialSuggestion,
+  }));
 }
 
 export function buildEditEvents(input: {

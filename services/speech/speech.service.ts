@@ -2,8 +2,11 @@ import type { ParakeetRuntimeStatus, PythonSpeechResponse, SpeechProviderName, S
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
+import { resolveServerSpeechProvider, resolveSpeechProvider, speechRuntimeEnvironment } from "./speech-provider-resolution";
 import { ensurePythonSpeechServer, getParakeetStatusUrl, getPythonTranscribeUrl } from "./speech.python-runtime";
 import { readSpeechSettings, writeSpeechSettings } from "./speech.settings";
+
+export { resolveSpeechProvider, speechRuntimeEnvironment } from "./speech-provider-resolution";
 
 const WHISPER_CHUNK_MS = 2600;
 const WHISPER_SPEED_CHUNK_MS = 1200;
@@ -106,15 +109,7 @@ export class SpeechService {
     runtime?: SpeechRuntimeEnvironment,
   ): Promise<SpeechTranscriptionResult> {
     const settings = await readSpeechSettings();
-    const provider = resolveSpeechProvider(settings.provider, runtime);
-
-    // Electron cannot depend on Chrome's hosted Web Speech service. Reuse the
-    // single MediaRecorder capture and transcribe with an already configured API.
-    if (provider === "webspeech") {
-      const cloudResult = await transcribeWithConfiguredCloud(audio);
-      if (cloudResult) return cloudResult;
-      throw new Error("No aplicativo para Windows, a transcricao Web requer uma chave OpenAI ou Gemini configurada em Configuracoes > Credenciais de API.");
-    }
+    const provider = resolveServerSpeechProvider(settings.provider, runtime);
 
     try {
       await ensurePythonSpeechServer(provider);
@@ -149,21 +144,6 @@ export class SpeechService {
       );
     }
   }
-}
-
-export function speechRuntimeEnvironment(value?: unknown): SpeechRuntimeEnvironment {
-  if (value === "desktop") return "desktop";
-  if (value === "web") return "web";
-  return process.env.KAOZ1_DESKTOP === "1" || process.env.MRCHICKEN_DESKTOP === "1"
-    ? "desktop"
-    : "web";
-}
-
-export function resolveSpeechProvider(
-  preferred: SpeechProviderName,
-  runtime?: SpeechRuntimeEnvironment,
-): SpeechProviderName {
-  return speechRuntimeEnvironment(runtime) === "desktop" ? "parakeet" : preferred;
 }
 
 let speechService: SpeechService | null = null;

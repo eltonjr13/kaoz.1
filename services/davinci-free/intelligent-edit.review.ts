@@ -173,60 +173,80 @@ function pedagogicalOverrideEntry(
   const item = value as Record<string, unknown>;
   const id = String(item.id || "");
   if (!allowedItems.has(id)) return [];
-  const status = String(item.status || "") as IntelligentPedagogicalItemStatus;
-  const start = Number(item.start);
-  const end = Number(item.end);
-  const nextStart = Number.isFinite(start)
-    ? clamp(start, 0, plan.media.durationSeconds)
-    : undefined;
-  const nextEnd = Number.isFinite(end)
-    ? clamp(end, nextStart ?? 0, plan.media.durationSeconds)
-    : undefined;
   return [{
     id,
-    ...(["suggested", "approved", "edited", "rejected"].includes(status) ? { status } : {}),
-    ...(text(item.title, 120) ? { title: text(item.title, 120) } : {}),
-    ...(text(item.detail, 360) ? { detail: text(item.detail, 360) } : {}),
-    ...(nextStart !== undefined ? { start: nextStart } : {}),
-    ...(nextEnd !== undefined ? { end: nextEnd } : {}),
-    ...(text(item.editorialSuggestion, 280)
-      ? { editorialSuggestion: text(item.editorialSuggestion, 280) }
-      : {}),
+    ...pedagogicalStatusField(item.status),
+    ...pedagogicalTextFields(item),
+    ...pedagogicalTimingFields(plan, item),
   }];
+}
+
+function pedagogicalStatusField(value: unknown) {
+  const status = String(value || "") as IntelligentPedagogicalItemStatus;
+  return ["suggested", "approved", "edited", "rejected"].includes(status) ? { status } : {};
+}
+
+function pedagogicalTextFields(item: Record<string, unknown>) {
+  const fields: Pick<
+    IntelligentPedagogicalReviewOverride,
+    "title" | "detail" | "editorialSuggestion"
+  > = {};
+  const title = text(item.title, 120);
+  const detail = text(item.detail, 360);
+  const editorialSuggestion = text(item.editorialSuggestion, 280);
+  if (title) fields.title = title;
+  if (detail) fields.detail = detail;
+  if (editorialSuggestion) fields.editorialSuggestion = editorialSuggestion;
+  return fields;
+}
+
+function pedagogicalTimingFields(
+  plan: IntelligentEditPlan,
+  item: Record<string, unknown>,
+) {
+  const fields: Pick<IntelligentPedagogicalReviewOverride, "start" | "end"> = {};
+  const start = Number(item.start);
+  const end = Number(item.end);
+  if (Number.isFinite(start)) fields.start = clamp(start, 0, plan.media.durationSeconds);
+  if (Number.isFinite(end)) fields.end = clamp(end, fields.start ?? 0, plan.media.durationSeconds);
+  return fields;
+}
+
+function arrayEntries<T>(
+  value: unknown,
+  entry: (item: unknown) => T[],
+) {
+  return Array.isArray(value) ? value.flatMap(entry) : [];
 }
 
 function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditorialReview {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const now = new Date().toISOString();
   const allowedEvents = new Map(plan.events.map((event) => [event.id, event]));
-  const events = Array.isArray(raw.events)
-    ? raw.events.flatMap((item) => eventOverrideEntry(plan, allowedEvents, item))
-    : [];
-  const addedEvents = Array.isArray(raw.addedEvents)
-    ? raw.addedEvents.flatMap((item) => customEventEntry(plan, item))
-    : [];
-  const captions = Array.isArray(raw.captions)
-    ? raw.captions.flatMap((item) => captionOverrideEntry(plan, item))
-    : [];
+  const events = arrayEntries(raw.events, (item) => eventOverrideEntry(plan, allowedEvents, item));
+  const addedEvents = arrayEntries(raw.addedEvents, (item) => customEventEntry(plan, item));
+  const captions = arrayEntries(raw.captions, (item) => captionOverrideEntry(plan, item));
   const allowedPedagogy = new Set((plan.pedagogy?.items || []).map((item) => item.id));
-  const pedagogy = Array.isArray(raw.pedagogy)
-    ? raw.pedagogy.flatMap((item) => pedagogicalOverrideEntry(plan, allowedPedagogy, item))
-    : [];
+  const pedagogy = arrayEntries(
+    raw.pedagogy,
+    (item) => pedagogicalOverrideEntry(plan, allowedPedagogy, item),
+  );
   const previewPath = sanitizeEditorialPreviewPath(
     plan.artifacts.directory,
     raw.previewPath,
   );
-  return {
+  const review: IntelligentEditorialReview = {
     version: 1,
     planId: plan.id,
     updatedAt: sanitizeEditorialReviewTimestamp(raw.updatedAt, now),
-    ...(typeof raw.captionsEnabled === "boolean" ? { captionsEnabled: raw.captionsEnabled } : {}),
     events,
     addedEvents,
     captions,
     pedagogy,
-    ...(previewPath ? { previewPath } : {}),
   };
+  if (typeof raw.captionsEnabled === "boolean") review.captionsEnabled = raw.captionsEnabled;
+  if (previewPath) review.previewPath = previewPath;
+  return review;
 }
 
 export async function readEditorialReview(plan: IntelligentEditPlan) {

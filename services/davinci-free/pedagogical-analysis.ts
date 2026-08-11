@@ -119,6 +119,33 @@ function evidenceFor(chunk: PedagogicalTranscriptChunk, start: number, end: numb
   );
 }
 
+function boundedTime(value: unknown, fallback: number, minimum: number, maximum: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? clamp(numeric, minimum, maximum) : fallback;
+}
+
+function agentEvidence(
+  value: unknown,
+  chunk: PedagogicalTranscriptChunk,
+  start: number,
+  end: number,
+) {
+  const requested = cleanText(value, 280);
+  if (requested && normalized(chunkText(chunk)).includes(normalized(requested))) return requested;
+  return evidenceFor(chunk, start, end);
+}
+
+function agentImportance(value: unknown): IntelligentPedagogicalItem["importance"] {
+  return ["low", "medium", "high"].includes(String(value))
+    ? value as IntelligentPedagogicalItem["importance"]
+    : "medium";
+}
+
+function agentConfidence(value: unknown) {
+  const confidence = Number(value);
+  return Number.isFinite(confidence) ? clamp(confidence, 0, 1) : 0.7;
+}
+
 function itemId(kind: IntelligentPedagogicalItemKind, start: number, index: number) {
   return `ped-${kind}-${Math.round(start * 1_000)}-${index + 1}`;
 }
@@ -128,45 +155,42 @@ function normalizeAgentItems(
   chunk: PedagogicalTranscriptChunk,
 ): IntelligentPedagogicalItem[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate, index): IntelligentPedagogicalItem[] => {
-    if (!candidate || typeof candidate !== "object") return [];
-    const raw = candidate as Record<string, unknown>;
-    const kind = String(raw.kind || "") as IntelligentPedagogicalItemKind;
-    const title = cleanText(raw.title, 120);
-    if (!PEDAGOGICAL_ITEM_KINDS.has(kind) || !title) return [];
-    const requestedStart = Number(raw.start);
-    const requestedEnd = Number(raw.end);
-    const start = Number.isFinite(requestedStart)
-      ? clamp(requestedStart, chunk.start, chunk.end)
-      : chunk.start;
-    const end = Number.isFinite(requestedEnd)
-      ? clamp(requestedEnd, start, chunk.end)
-      : Math.max(start, chunk.segments.find((segment) => segment.end >= start)?.end || start);
-    const requestedEvidence = cleanText(raw.evidence, 280);
-    const evidence = requestedEvidence
-      && normalized(chunkText(chunk)).includes(normalized(requestedEvidence))
-      ? requestedEvidence
-      : evidenceFor(chunk, start, end);
-    const confidence = Number(raw.confidence);
-    const importance = ["low", "medium", "high"].includes(String(raw.importance))
-      ? raw.importance as IntelligentPedagogicalItem["importance"]
-      : "medium";
-    return [{
-      id: itemId(kind, start, index),
-      kind,
-      title,
-      ...(cleanText(raw.detail, 360) ? { detail: cleanText(raw.detail, 360) } : {}),
-      start,
-      end,
-      evidence,
-      importance,
-      confidence: Number.isFinite(confidence) ? clamp(confidence, 0, 1) : 0.7,
-      editorialSuggestion: cleanText(raw.editorialSuggestion, 280)
-        || "Revisar este ponto antes de transformar em recurso visual.",
-      status: "suggested",
-      source: "chunk-agent",
-    }];
-  });
+  return value.flatMap((candidate, index) => normalizeAgentItem(candidate, index, chunk));
+}
+
+function normalizeAgentItem(
+  candidate: unknown,
+  index: number,
+  chunk: PedagogicalTranscriptChunk,
+): IntelligentPedagogicalItem[] {
+  if (!candidate || typeof candidate !== "object") return [];
+  const raw = candidate as Record<string, unknown>;
+  const kind = String(raw.kind || "") as IntelligentPedagogicalItemKind;
+  const title = cleanText(raw.title, 120);
+  if (!PEDAGOGICAL_ITEM_KINDS.has(kind) || !title) return [];
+  const start = boundedTime(raw.start, chunk.start, chunk.start, chunk.end);
+  const fallbackEnd = Math.max(
+    start,
+    chunk.segments.find((segment) => segment.end >= start)?.end || start,
+  );
+  const end = boundedTime(raw.end, fallbackEnd, start, chunk.end);
+  const item: IntelligentPedagogicalItem = {
+    id: itemId(kind, start, index),
+    kind,
+    title,
+    start,
+    end,
+    evidence: agentEvidence(raw.evidence, chunk, start, end),
+    importance: agentImportance(raw.importance),
+    confidence: agentConfidence(raw.confidence),
+    editorialSuggestion: cleanText(raw.editorialSuggestion, 280)
+      || "Revisar este ponto antes de transformar em recurso visual.",
+    status: "suggested",
+    source: "chunk-agent",
+  };
+  const detail = cleanText(raw.detail, 360);
+  if (detail) item.detail = detail;
+  return [item];
 }
 
 function fallbackItem(
@@ -211,52 +235,16 @@ function deterministicChunkItems(
   }
   for (const segment of chunk.segments) {
     const text = normalized(segment.text);
-    const add = (
-      kind: IntelligentPedagogicalItemKind,
-      suggestion: string,
-      importance: IntelligentPedagogicalItem["importance"] = "medium",
-    ) => items.push(fallbackItem(kind, segment, items.length, segment.text, suggestion, importance));
-    if (/\b(primeiro|segundo|terceiro|passo|etapa)\b/.test(text)) {
-      add("process-step", "Apresentar como etapa numerada do processo.", "high");
-    } else if (/\b(agora|a seguir|vamos para|proximo ponto)\b/.test(text)) {
-      add("chapter", "Usar como marco de capítulo ou mudança de assunto.");
-    }
-    if (/\b(pre-requisito|antes de comecar|voce precisa|e necessario)\b/.test(text)) {
-      add("prerequisite", "Registrar como pré-requisito verificável da aula.", "high");
-    }
-    if (/\b(ao final|voce vai conseguir|resultado desta aula|o que voce vai aprender)\b/.test(text)) {
-      add("promise", "Usar como promessa específica da aula.", "high");
-    }
-    if (/\b(significa|definimos|definicao|e quando|chamamos de)\b/.test(text)) {
-      add("definition", "Destacar como definição sem repetir a legenda.", "high");
-    } else if (/\b(conceito|fundamento|principio)\b/.test(text)) {
-      add("concept", "Registrar como conceito-chave da aula.");
-    }
-    if (/\b(por exemplo|exemplo|imagine que)\b/.test(text)) {
-      add("example", "Identificar visualmente o início do exemplo.");
-    }
-    if (/\b(vou mostrar|veja na tela|demonstracao|na pratica)\b/.test(text)) {
-      add("demonstration", "Preservar a continuidade da demonstração prática.", "high");
-    }
-    if (/\b(cuidado|atencao|evite|nunca|nao faca)\b/.test(text)) {
-      add("warning", "Exibir como alerta curto e discreto.", "high");
-    }
-    if (/\b(erro comum|muita gente erra|equivoco)\b/.test(text)) {
-      add("common-error", "Destacar o erro e a correção correspondente.", "high");
-    }
-    if (/\b(exercicio|pratique|tente fazer|atividade)\b/.test(text)) {
-      add("exercise", "Converter em exercício revisável ao final da aula.", "high");
-    } else if (/\b(aplique|faca agora|sua tarefa)\b/.test(text)) {
-      add("action", "Transformar em próxima ação objetiva.", "high");
-    }
-    if (/\b(aula anterior|anteriormente|como vimos)\b/.test(text)) {
-      add("previous-link", "Relacionar explicitamente com o conteúdo anterior.");
-    }
-    if (/\b(proxima aula|a seguir veremos|depois vamos)\b/.test(text)) {
-      add("next-link", "Usar como continuidade real para a próxima aula.");
-    }
-    if (/\b(resumindo|em resumo|recapitulando|para concluir)\b/.test(text)) {
-      add("summary", "Usar como síntese pedagógica da aula.", "high");
+    for (const rule of DETERMINISTIC_RULES) {
+      if (!rule.pattern.test(text)) continue;
+      items.push(fallbackItem(
+        rule.kind,
+        segment,
+        items.length,
+        segment.text,
+        rule.suggestion,
+        rule.importance,
+      ));
     }
   }
   if (chunk.index === totalChunks - 1 && !items.some((item) => item.kind === "summary")) {
@@ -271,6 +259,29 @@ function deterministicChunkItems(
   }
   return items;
 }
+
+const DETERMINISTIC_RULES: Array<{
+  pattern: RegExp;
+  kind: IntelligentPedagogicalItemKind;
+  suggestion: string;
+  importance?: IntelligentPedagogicalItem["importance"];
+}> = [
+  { pattern: /\b(primeiro|segundo|terceiro|passo|etapa)\b/, kind: "process-step", suggestion: "Apresentar como etapa numerada do processo.", importance: "high" },
+  { pattern: /\b(agora|a seguir|vamos para|proximo ponto)\b/, kind: "chapter", suggestion: "Usar como marco de capítulo ou mudança de assunto." },
+  { pattern: /\b(pre-requisito|antes de comecar|voce precisa|e necessario)\b/, kind: "prerequisite", suggestion: "Registrar como pré-requisito verificável da aula.", importance: "high" },
+  { pattern: /\b(ao final|voce vai conseguir|resultado desta aula|o que voce vai aprender)\b/, kind: "promise", suggestion: "Usar como promessa específica da aula.", importance: "high" },
+  { pattern: /\b(significa|definimos|definicao|e quando|chamamos de)\b/, kind: "definition", suggestion: "Destacar como definição sem repetir a legenda.", importance: "high" },
+  { pattern: /\b(conceito|fundamento|principio)\b/, kind: "concept", suggestion: "Registrar como conceito-chave da aula." },
+  { pattern: /\b(por exemplo|exemplo|imagine que)\b/, kind: "example", suggestion: "Identificar visualmente o início do exemplo." },
+  { pattern: /\b(vou mostrar|veja na tela|demonstracao|na pratica)\b/, kind: "demonstration", suggestion: "Preservar a continuidade da demonstração prática.", importance: "high" },
+  { pattern: /\b(cuidado|atencao|evite|nunca|nao faca)\b/, kind: "warning", suggestion: "Exibir como alerta curto e discreto.", importance: "high" },
+  { pattern: /\b(erro comum|muita gente erra|equivoco)\b/, kind: "common-error", suggestion: "Destacar o erro e a correção correspondente.", importance: "high" },
+  { pattern: /\b(exercicio|pratique|tente fazer|atividade)\b/, kind: "exercise", suggestion: "Converter em exercício revisável ao final da aula.", importance: "high" },
+  { pattern: /\b(aplique|faca agora|sua tarefa)\b/, kind: "action", suggestion: "Transformar em próxima ação objetiva.", importance: "high" },
+  { pattern: /\b(aula anterior|anteriormente|como vimos)\b/, kind: "previous-link", suggestion: "Relacionar explicitamente com o conteúdo anterior." },
+  { pattern: /\b(proxima aula|a seguir veremos|depois vamos)\b/, kind: "next-link", suggestion: "Usar como continuidade real para a próxima aula." },
+  { pattern: /\b(resumindo|em resumo|recapitulando|para concluir)\b/, kind: "summary", suggestion: "Usar como síntese pedagógica da aula.", importance: "high" },
+];
 
 function pedagogicalPrompt(
   chunk: PedagogicalTranscriptChunk,
@@ -309,6 +320,21 @@ export function consolidatePedagogicalItems(items: IntelligentPedagogicalItem[])
   return consolidated.map((item, index) => ({ ...item, id: itemId(item.kind, item.start, index) }));
 }
 
+async function agentItemsForChunk(
+  input: AnalyzePedagogicalTranscriptInput,
+  chunk: PedagogicalTranscriptChunk,
+  totalChunks: number,
+) {
+  if (!input.useAgent || !input.queryAgent) return [];
+  try {
+    const response = await input.queryAgent(pedagogicalPrompt(chunk, totalChunks, input));
+    const parsed = response ? extractJsonObject(response) : null;
+    return normalizeAgentItems(parsed?.items, chunk);
+  } catch {
+    return [];
+  }
+}
+
 export async function analyzePedagogicalTranscript(
   input: AnalyzePedagogicalTranscriptInput,
 ): Promise<IntelligentPedagogicalAnalysis> {
@@ -316,16 +342,7 @@ export async function analyzePedagogicalTranscript(
   const items: IntelligentPedagogicalItem[] = [];
   let agentChunks = 0;
   for (const chunk of chunks) {
-    let chunkItems: IntelligentPedagogicalItem[] = [];
-    if (input.useAgent && input.queryAgent) {
-      try {
-        const response = await input.queryAgent(pedagogicalPrompt(chunk, chunks.length, input));
-        const parsed = response ? extractJsonObject(response) : null;
-        chunkItems = normalizeAgentItems(parsed?.items, chunk);
-      } catch {
-        chunkItems = [];
-      }
-    }
+    const chunkItems = await agentItemsForChunk(input, chunk, chunks.length);
     if (chunkItems.length) {
       agentChunks += 1;
       items.push(...chunkItems);
