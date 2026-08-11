@@ -563,9 +563,13 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /event\.y/);
   assert.match(renderer, /function transitionExpression/);
   assert.match(renderer, /function focalExpression/);
+  assert.match(renderer, /const zoomEvents = events\.filter\(\(event\) => event\.kind === "zoom"\)/);
+  assert.match(renderer, /for \(const event of \[\.\.\.zoomEvents\]\.reverse\(\)\)/);
+  assert.match(renderer, /\$\{defaultValue\},\$\{expression\}/);
   assert.match(renderer, /ImpactIcon/);
   assert.match(renderer, /ImpactMeta/);
   assert.match(renderer, /CardNumber/);
+  assert.match(renderer, /\.\.\.\(kind === "intro"/);
   assert.match(renderer, /cardProgressFilters/);
   assert.match(renderer, /cardFrameworkFilters/);
   assert.match(renderer, /cardEditorialFilters/);

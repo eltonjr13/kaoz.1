@@ -365,11 +365,7 @@ function titleAss(
       ? "ENCERRAMENTO"
       : "NESTA AULA";
   const number = identity
-    ? String(
-        kind === "intro"
-          ? identity.lessonIndex
-          : Math.min(identity.lessonIndex + 1, identity.lessonTotal),
-      ).padStart(2, "0")
+    ? String(identity.lessonIndex).padStart(2, "0")
     : "01";
   return [
     assHeader(plan),
@@ -377,7 +373,9 @@ function titleAss(
     `Dialogue: 0,${assTime(0.38)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.43)})\\fad(120,180)\\fscx90\\fscy90\\t(0,320,\\fscx100\\fscy100)}${assText(wrapCardTitle(title))}`,
     `Dialogue: 0,${assTime(0.78)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.63)})\\fad(140,180)}${assText(subtitle)}`,
     `Dialogue: 0,${assTime(0.95)},${assTime(duration - 0.3)},CardIndex,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.78)})\\fad(150,180)}${assText(index)}`,
-    `Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`,
+    ...(kind === "intro"
+      ? [`Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`]
+      : []),
     "",
   ].join("\n");
 }
@@ -408,19 +406,21 @@ function scaleExpression(events: IntelligentEditEvent[]) {
 }
 
 function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
-  const candidates = [
-    ...events.filter((event) => event.kind === "zoom"),
-    ...events.filter((event) => event.kind === "cut"),
-  ].filter((event) => event[axis] !== undefined);
+  const zoomEvents = events.filter((event) => event.kind === "zoom");
+  const candidates = events.filter(
+    (event) => event.kind === "cut" && event[axis] !== undefined,
+  );
   const defaultValue = axis === "x" ? "(in_w-out_w)/2" : "(in_h-out_h)/2";
   const inputSize = axis === "x" ? "in_w" : "in_h";
   const outputSize = axis === "x" ? "out_w" : "out_h";
   let expression = defaultValue;
   for (const event of [...candidates].reverse()) {
-    const isZoom = event.kind === "zoom";
-    const coordinate = isZoom ? "0.5000" : Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
+    const coordinate = Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
     const focused = `${coordinate}*${inputSize}-${outputSize}/2`;
     expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${focused},${expression})`;
+  }
+  for (const event of [...zoomEvents].reverse()) {
+    expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${defaultValue},${expression})`;
   }
   return `max(0,min(${inputSize}-${outputSize},${expression}))`;
 }
