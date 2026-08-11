@@ -38,6 +38,33 @@ function buildRuntime(name, definitions) {
   copyRelease(buildRoot, destination);
 }
 
+function vulkanBuildDefinitions() {
+  const sdkRoot = process.env.VULKAN_SDK?.trim();
+  if (!sdkRoot) return null;
+  const include = path.join(sdkRoot, "Include");
+  const library = path.join(sdkRoot, "Lib", "vulkan-1.lib");
+  const glslc = path.join(sdkRoot, "Bin", "glslc.exe");
+  if (![path.join(include, "vulkan", "vulkan.h"), library, glslc].every(fs.existsSync)) return null;
+  return [
+    "-DGGML_VULKAN=ON",
+    `-DVulkan_INCLUDE_DIR=${include}`,
+    `-DVulkan_LIBRARY=${library}`,
+    `-DVulkan_GLSLC_EXECUTABLE=${glslc}`,
+  ];
+}
+
+function buildVulkanRuntime() {
+  const definitions = vulkanBuildDefinitions();
+  if (definitions) {
+    buildRuntime("vulkan", definitions);
+    return true;
+  }
+  const message = "Vulkan SDK incompleto ou ausente. Configure VULKAN_SDK com Include, Lib/vulkan-1.lib e Bin/glslc.exe.";
+  if (process.env.REQUIRE_WHISPER_VULKAN === "1") throw new Error(message);
+  console.warn(`${message} O pacote local sera preparado apenas com o fallback CPU.`);
+  return false;
+}
+
 if (process.platform !== "win32") {
   console.log("Runtime whisper.cpp desktop e preparado apenas para Windows.");
   process.exit(0);
@@ -56,6 +83,6 @@ if (!fs.existsSync(sourceRoot)) {
 }
 
 buildRuntime("cpu", ["-DGGML_VULKAN=OFF"]);
-buildRuntime("vulkan", ["-DGGML_VULKAN=ON"]);
+const vulkanReady = buildVulkanRuntime();
 
-console.log(`Runtime whisper.cpp CPU/Vulkan preparado em ${runtimeRoot}`);
+console.log(`Runtime whisper.cpp ${vulkanReady ? "CPU/Vulkan" : "CPU"} preparado em ${runtimeRoot}`);
