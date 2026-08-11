@@ -616,6 +616,29 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(courseTheme, /reused:\s*true/);
 });
 
+test("progresso de análise e renderização ignora a fila serial de ferramentas", async () => {
+  const route = await readFile(
+    path.join(process.cwd(), "app", "api", "davinci-free", "route.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  const progressBranch = route.indexOf('searchParams.get("progress") === "1"');
+  const queuedStatusRead = route.indexOf('await execute("status", {})');
+
+  assert.notEqual(progressBranch, -1);
+  assert.notEqual(queuedStatusRead, -1);
+  assert.ok(
+    progressBranch < queuedStatusRead,
+    "a resposta de progresso deve acontecer antes da leitura que entra na mailbox serial",
+  );
+  assert.match(route, /Promise\.all\(\[\s*readIntelligentAnalysisStatus\(\),\s*readIntelligentRenderStatus\(\)/);
+  assert.match(panel, /fetch\("\/api\/davinci-free\?progress=1"/);
+  assert.match(panel, /refreshProgress\(\)\.catch\(\(\) => undefined\)/);
+});
+
 test("SFX imersivos usam os nove áudios reais e decisões semânticas da IA", async () => {
   const analysis = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.service.ts"),

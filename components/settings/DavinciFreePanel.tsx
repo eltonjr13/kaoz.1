@@ -69,6 +69,20 @@ type Status = {
   } | null;
 };
 
+type ProgressStatus = Pick<Status, "analysisStatus" | "renderStatus">;
+
+const EMPTY_STATUS: Status = {
+  runnerInstalled: false,
+  runnerDirectory: "",
+  pendingPlan: null,
+  latestResult: null,
+  instructions: [],
+};
+
+function mergeProgressStatus(current: Status | null, progress: ProgressStatus): Status {
+  return { ...(current ?? EMPTY_STATUS), ...progress };
+}
+
 type EditEvent = {
   id: string;
   kind:
@@ -317,6 +331,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setStatus(data);
   }, []);
 
+  const refreshProgress = useCallback(async () => {
+    const response = await fetch("/api/davinci-free?progress=1", { cache: "no-store" });
+    const data = await response.json() as ProgressStatus & { error?: string };
+    if (!response.ok) throw new Error(data.error || "Falha ao consultar o progresso do processamento.");
+    setStatus((current) => mergeProgressStatus(current, data));
+  }, []);
+
   useEffect(() => {
     const bridge = window.kaoz1Desktop;
     if (!bridge) return;
@@ -334,19 +355,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, []);
 
   useEffect(() => {
+    refreshProgress().catch(() => undefined);
     refresh().catch((error) =>
       onStatusMessage({ text: String(error), type: "error" }),
     );
-  }, [onStatusMessage, refresh]);
+  }, [onStatusMessage, refresh, refreshProgress]);
 
   useEffect(() => {
     if (busy !== "analyze" && status?.analysisStatus?.status !== "running") return;
     if (status?.analysisStatus?.status === "running") setBusy("analyze");
     const timer = window.setInterval(() => {
-      refresh().catch(() => undefined);
+      refreshProgress().catch(() => undefined);
     }, 750);
     return () => window.clearInterval(timer);
-  }, [busy, refresh, status?.analysisStatus?.status]);
+  }, [busy, refreshProgress, status?.analysisStatus?.status]);
 
   useEffect(() => {
     if (status?.analysisStatus?.status !== "completed" || analysis) return;
@@ -368,12 +390,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [status?.analysisStatus?.status]);
 
   useEffect(() => {
-    if (busy !== "render-preview") return;
+    if (busy !== "render-preview" && status?.renderStatus?.status !== "running") return;
+    if (status?.renderStatus?.status === "running") setBusy("render-preview");
     const timer = window.setInterval(() => {
-      refresh().catch(() => undefined);
+      refreshProgress().catch(() => undefined);
     }, 750);
     return () => window.clearInterval(timer);
-  }, [busy, refresh]);
+  }, [busy, refreshProgress, status?.renderStatus?.status]);
+
+  useEffect(() => {
+    if (status?.renderStatus?.status !== "running") {
+      setBusy((current) => current === "render-preview" ? null : current);
+    }
+  }, [status?.renderStatus?.status]);
 
   const refreshDriveConnection = useCallback(async () => {
     const response = await fetch("/api/google-drive", { cache: "no-store" });

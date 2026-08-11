@@ -76,12 +76,25 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
 
 export async function GET(request: Request) {
   try {
+    const searchParams = new URL(request.url).searchParams;
+    if (searchParams.get("progress") === "1") {
+      const [analysisStatus, renderStatus] = await Promise.all([
+        readIntelligentAnalysisStatus(),
+        readIntelligentRenderStatus(),
+      ]);
+      return NextResponse.json({ analysisStatus, renderStatus });
+    }
+
     const status = await execute("status", {});
-    const includeAnalysis = new URL(request.url).searchParams.get("analysis") === "1";
+    const [analysisStatus, renderStatus] = await Promise.all([
+      readIntelligentAnalysisStatus(),
+      readIntelligentRenderStatus(),
+    ]);
+    const includeAnalysis = searchParams.get("analysis") === "1";
     return NextResponse.json({
       ...status,
-      analysisStatus: await readIntelligentAnalysisStatus(),
-      renderStatus: await readIntelligentRenderStatus(),
+      analysisStatus,
+      renderStatus,
       ...(includeAnalysis ? { analysis: await readIntelligentEditPlan() } : {}),
     });
   } catch (error) {
