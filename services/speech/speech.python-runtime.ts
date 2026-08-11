@@ -68,9 +68,7 @@ async function checkHealth(): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
   try {
     const response = await fetch(`${getPythonBaseUrl()}/health`, { cache: "no-store", signal: controller.signal });
-    if (!response.ok) return false;
-    const data = (await response.json().catch(() => ({}))) as { state?: string };
-    return data.state === "ready";
+    return response.ok;
   } catch {
     return false;
   } finally {

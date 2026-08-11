@@ -1,10 +1,21 @@
-import type { ParakeetRuntimeStatus, PythonSpeechResponse, SpeechProviderName, SpeechRuntimeConfig, SpeechRuntimeEnvironment, SpeechTranscriptionResult } from "./speech.types";
+import type {
+  ParakeetRuntimeStatus,
+  PythonSpeechResponse,
+  SpeechEngine,
+  SpeechProviderName,
+  SpeechRuntimeConfig,
+  SpeechRuntimeEnvironment,
+  SpeechSettings,
+  SpeechTranscriptionResult,
+} from "./speech.types";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { getApiProviderConfig } from "@/services/api-providers/api-provider.settings";
 import { resolveServerSpeechProvider, resolveSpeechProvider, speechRuntimeEnvironment } from "./speech-provider-resolution";
 import { ensurePythonSpeechServer, getParakeetStatusUrl, getPythonTranscribeUrl } from "./speech.python-runtime";
 import { readSpeechSettings, writeSpeechSettings } from "./speech.settings";
+import { getSpeechModelDefinition, PARAKEET_MODEL_ID } from "./speech-model.catalog";
+import { transcribeWithWhisperCpp } from "./speech-whisper-cpp-runtime";
 
 export { resolveSpeechProvider, speechRuntimeEnvironment } from "./speech-provider-resolution";
 
@@ -21,6 +32,13 @@ function getChunkMs(provider: SpeechProviderName): number {
   return 0;
 }
 
+function engineFor(settings: SpeechSettings, runtime?: SpeechRuntimeEnvironment): SpeechEngine {
+  if (speechRuntimeEnvironment(runtime) === "web" && settings.provider === "webspeech") return "webspeech";
+  const model = getSpeechModelDefinition(settings.modelId);
+  if (model) return model.engine;
+  return settings.provider === "webspeech" ? "cloud" : settings.provider === "parakeet" ? "parakeet" : "cloud";
+}
+
 async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscriptionResult | null> {
   const openaiConfig = await getApiProviderConfig("openai");
   if (openaiConfig.apiKey) {
@@ -33,7 +51,7 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
       model: "whisper-1",
       language: "pt",
     });
-    return { text: result.text || "" };
+    return { text: result.text || "", engine: "cloud", backend: "cloud" };
   }
 
   const geminiConfig = await getApiProviderConfig("gemini");
@@ -50,7 +68,7 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
         ],
       }],
     });
-    return { text: result.text?.trim() || "" };
+    return { text: result.text?.trim() || "", engine: "cloud", backend: "cloud" };
   }
 
   return null;
@@ -63,26 +81,30 @@ export class SpeechService {
     return {
       provider,
       chunkMs: getChunkMs(provider),
+      engine: engineFor(settings),
+      modelId: settings.modelId,
+      device: settings.device,
+      allowCloudFallback: settings.allowCloudFallback,
     };
   }
 
-  async updateRuntimeConfig(provider: SpeechProviderName): Promise<SpeechRuntimeConfig> {
-    const settings = await writeSpeechSettings({ provider });
-    const activeProvider = resolveSpeechProvider(settings.provider);
-    if (activeProvider === "parakeet") {
-      // The Python server responds to health checks immediately and downloads the
-      // model in the background, so choosing this option never freezes Settings.
-      void ensurePythonSpeechServer("parakeet").catch((error) => console.error("[Parakeet] Falha ao iniciar:", error));
-    }
+  async updateRuntimeConfig(update: Partial<SpeechSettings> & { provider?: SpeechProviderName }): Promise<SpeechRuntimeConfig> {
+    const current = await readSpeechSettings();
+    const settings = await writeSpeechSettings({ ...current, ...update, provider: update.provider || current.provider });
+    const provider = resolveSpeechProvider(settings.provider);
     return {
-      provider: activeProvider,
-      chunkMs: getChunkMs(activeProvider),
+      provider,
+      chunkMs: getChunkMs(provider),
+      engine: engineFor(settings),
+      modelId: settings.modelId,
+      device: settings.device,
+      allowCloudFallback: settings.allowCloudFallback,
     };
   }
 
   async getParakeetStatus(): Promise<ParakeetRuntimeStatus> {
     const settings = await readSpeechSettings();
-    if (resolveSpeechProvider(settings.provider) !== "parakeet") {
+    if (settings.modelId !== PARAKEET_MODEL_ID) {
       return { state: "inactive", message: "Selecione Parakeet Local para preparar a transcricao offline." };
     }
     try {
@@ -104,44 +126,48 @@ export class SpeechService {
     }
   }
 
-  async transcribe(
-    audio: File,
-    runtime?: SpeechRuntimeEnvironment,
-  ): Promise<SpeechTranscriptionResult> {
+  async transcribe(audio: File, runtime?: SpeechRuntimeEnvironment): Promise<SpeechTranscriptionResult> {
     const settings = await readSpeechSettings();
     const provider = resolveServerSpeechProvider(settings.provider, runtime);
+    const engine = engineFor(settings, runtime);
+
+    if (engine === "whisper-cpp" && settings.modelId) {
+      try {
+        return await transcribeWithWhisperCpp(audio, settings.modelId, settings.device);
+      } catch (localError) {
+        if (settings.allowCloudFallback) {
+          const cloudResult = await transcribeWithConfiguredCloud(audio);
+          if (cloudResult) return cloudResult;
+        }
+        throw localError;
+      }
+    }
 
     try {
       await ensurePythonSpeechServer(provider);
       const formData = new FormData();
       const audioBuffer = await audio.arrayBuffer();
-      const audioBlob = new Blob([audioBuffer], {
-        type: audio.type || "application/octet-stream",
-      });
+      const audioBlob = new Blob([audioBuffer], { type: audio.type || "application/octet-stream" });
       formData.set("audio", audioBlob, getFileName(audio));
-
-      const response = await fetch(getPythonTranscribeUrl(), {
-        method: "POST",
-        body: formData,
-      });
-
+      const response = await fetch(getPythonTranscribeUrl(), { method: "POST", body: formData });
       const payload = (await response.json().catch(() => ({}))) as PythonSpeechResponse;
       if (!response.ok) {
-        const message = typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.";
-        throw new Error(message);
+        throw new Error(typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.");
       }
-
       return {
         text: typeof payload.text === "string" ? payload.text : "",
+        engine: provider === "parakeet" ? "parakeet" : "cloud",
+        modelId: provider === "parakeet" ? PARAKEET_MODEL_ID : undefined,
+        backend: provider === "parakeet" ? "parakeet" : "cpu",
       };
     } catch (localError) {
       if (provider === "parakeet") throw localError;
-      const cloudResult = await transcribeWithConfiguredCloud(audio);
-      if (cloudResult) return cloudResult;
+      if (settings.allowCloudFallback || engine === "cloud") {
+        const cloudResult = await transcribeWithConfiguredCloud(audio);
+        if (cloudResult) return cloudResult;
+      }
       const localMessage = localError instanceof Error ? localError.message : String(localError);
-      throw new Error(
-        `Transcricao indisponivel (${localMessage}). Configure uma chave OpenAI ou Gemini para usar o fallback no Windows.`,
-      );
+      throw new Error(`Transcricao indisponivel (${localMessage}). Baixe um modelo local ou habilite explicitamente o fallback pela nuvem.`);
     }
   }
 }
@@ -149,8 +175,6 @@ export class SpeechService {
 let speechService: SpeechService | null = null;
 
 export function getSpeechService(): SpeechService {
-  if (!speechService) {
-    speechService = new SpeechService();
-  }
+  if (!speechService) speechService = new SpeechService();
   return speechService;
 }
