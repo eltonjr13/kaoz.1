@@ -1129,22 +1129,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {activeMode === "single" && (
         <div className="grid flex-none items-stretch gap-0 border-t border-white/10 bg-zinc-950 lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/10 bg-zinc-900/35 p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
-            <div className="border-b border-white/10 pb-3">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-5 overflow-hidden border-t border-[#736D5C]/35 bg-[#1A1301]/95 p-5 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
+            <div className="rounded-2xl border border-[#736D5C]/45 bg-[#261D01]/80 px-4 py-3">
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#D6D4CD]">
                 <Folder size={14} />
-                Projeto
+                Configuração da edição
               </h2>
-              <p className="text-[11px] text-zinc-500 mt-0.5">Aula, fonte e destino</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[#A6A297]">Defina a identidade, ritmo e tratamento de áudio desta aula.</p>
             </div>
 
-            <div className="space-y-3.5 flex-1 overflow-y-auto pr-1 pb-3 text-xs">
+            <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-3 text-xs">
               {/* Video Metadata */}
               <div className="space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1">
-                  Project / Source
+                <span className="block border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+                  Contexto da aula
                 </span>
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
                   Vídeo da aula
                   <div className="flex items-center gap-2">
                     <input
@@ -1192,23 +1192,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   onStatusMessage={onStatusMessage}
                 />
 
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3 font-semibold text-[#D6D4CD]">
                   Nome do curso (identidade compartilhada)
                   <input className={fieldClass} value={form.courseName} onChange={update("courseName")} />
                 </label>
 
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3 font-semibold text-[#D6D4CD]">
                   Nome do módulo
                   <input className={fieldClass} value={form.moduleName} onChange={update("moduleName")} />
                 </label>
               </div>
 
               {/* Edit Style */}
-              <div className="space-y-2 pt-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1 flex items-center gap-1">
-                  <Palette size={12} /> Editing
+              <div className="space-y-3 rounded-2xl border border-[#736D5C]/35 bg-[#261D01]/55 p-3.5">
+                <span className="flex items-center gap-1.5 border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+                  <Palette size={12} /> Edição
                 </span>
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
                   Estilo / Ritmo
                   <select className={fieldClass} value={form.style} onChange={update("style")}>
                     <option value="subtle">Discreto (Subtle)</option>
@@ -1218,7 +1218,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </select>
                 </label>
 
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
                   Resolução de saída
                   <select
                     className={fieldClass}
@@ -1236,7 +1236,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </span>
                 </label>
 
-                <label className="block space-y-1 text-zinc-300 font-semibold">
+                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
                   Codificação de vídeo
                   <select
                     className={fieldClass}
@@ -1254,7 +1254,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </span>
                 </label>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
+                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
                   <input
                     type="checkbox"
                     checked={form.reuseCourseTheme}
@@ -1264,7 +1264,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         reuseCourseTheme: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-emerald-500"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Manter identidade do curso</strong>
@@ -1276,12 +1276,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
 
               {/* Audio & Captions */}
-              <div className="space-y-2 pt-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block border-b border-white/5 pb-1 flex items-center gap-1">
-                  <Subtitles size={12} /> Style / Audio
+              <div className="space-y-3 rounded-2xl border border-[#736D5C]/35 bg-[#261D01]/55 p-3.5">
+                <span className="flex items-center gap-1.5 border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+                  <Subtitles size={12} /> Áudio e legendas
                 </span>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
+                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
                   <input
                     type="checkbox"
                     checked={form.captionsEnabled}
@@ -1291,7 +1291,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         captionsEnabled: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-emerald-500"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Incluir legendas no vídeo</strong>
@@ -1302,17 +1302,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </label>
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
-                  <label className="space-y-1 text-zinc-400 font-medium">
+                  <label className="space-y-1.5 font-medium text-[#A6A297]">
                     Música opcional
                     <input className={fieldClass} value={form.musicPath} onChange={update("musicPath")} />
                   </label>
-                  <label className="space-y-1 text-zinc-400 font-medium">
+                  <label className="space-y-1.5 font-medium text-[#A6A297]">
                     Volume Música (dB)
                     <input className={fieldClass} value={form.musicDb} onChange={update("musicDb")} />
                   </label>
                 </div>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-300 cursor-pointer hover:border-white/20 transition-all">
+                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
                   <input
                     type="checkbox"
                     checked={form.sfxEnabled}
@@ -1322,7 +1322,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         sfxEnabled: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-emerald-500"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
@@ -1334,7 +1334,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
                 {form.sfxEnabled && (
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    <label className="space-y-1 text-zinc-400 font-medium">
+                    <label className="space-y-1.5 font-medium text-[#A6A297]">
                       Estilo de SFX
                       <select
                         className={fieldClass}
@@ -1346,7 +1346,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         <option value="tech">Tech (Moderno)</option>
                       </select>
                     </label>
-                    <label className="space-y-1 text-zinc-400 font-medium">
+                    <label className="space-y-1.5 font-medium text-[#A6A297]">
                       Volume SFX (dB)
                       <input className={fieldClass} value={form.sfxVolumeDb} onChange={update("sfxVolumeDb")} />
                     </label>
@@ -1355,10 +1355,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
             </div>
 
+            <div className="border-t border-[#736D5C]/35 pt-4">
             <button
               disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName}
               onClick={analyze}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-emerald-500/20 transition-all hover:brightness-110 disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F2] px-4 py-3 text-xs font-bold text-[#1A1301] shadow-lg shadow-[#1A1301]/40 transition-all hover:bg-[#D6D4CD] active:scale-[0.98] disabled:pointer-events-none disabled:border disabled:border-white/10 disabled:bg-white/5 disabled:text-zinc-500"
             >
               {busy === "analyze" ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -1367,6 +1368,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               )}
               Analisar áudio e planejar edição
             </button>
+            <p className="mt-2 text-center text-[10px] text-[#A6A297]">Analisa áudio, roteiro e identidade visual antes de gerar a prévia.</p>
+            </div>
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
