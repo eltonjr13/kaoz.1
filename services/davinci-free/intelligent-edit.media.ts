@@ -6,8 +6,9 @@ import ffmpegStaticPath from "ffmpeg-static";
 
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { createAudioWaveformPeaks } from "./audio-waveform";
+import { lessonDownloadFileName } from "./lesson-download";
 
-export type IntelligentMediaAsset = "source" | "preview" | "music";
+export type IntelligentMediaAsset = "source" | "preview" | "music" | "transcript";
 
 export type IntelligentMediaDescriptor = {
   asset: IntelligentMediaAsset;
@@ -67,13 +68,14 @@ function mediaPath(
   if (!plan) return undefined;
   if (asset === "source") return plan.sourcePath;
   if (asset === "preview") return plan.artifacts.previewPath;
+  if (asset === "transcript") return plan.artifacts.transcriptTextPath;
   return plan.media.musicPath;
 }
 
 function missingAssetMessage(asset: IntelligentMediaAsset) {
-  return asset === "preview"
-    ? "A prévia ainda não foi renderizada."
-    : "A faixa de música não foi configurada.";
+  if (asset === "preview") return "A prévia ainda não foi renderizada.";
+  if (asset === "transcript") return "A transcrição em texto ainda não foi gerada.";
+  return "A faixa de música não foi configurada.";
 }
 
 export async function resolveIntelligentMedia(
@@ -94,7 +96,11 @@ export async function resolveIntelligentMedia(
   return {
     asset,
     filePath,
-    fileName: path.basename(filePath),
+    fileName: asset === "transcript"
+      ? lessonDownloadFileName(plan, "transcript")
+      : asset === "source" || asset === "preview"
+        ? lessonDownloadFileName(plan, "video", path.extname(filePath))
+        : path.basename(filePath),
     contentType: contentType(filePath),
     size: info.size,
     modifiedAt: info.mtimeMs,
@@ -102,7 +108,7 @@ export async function resolveIntelligentMedia(
       asset === "preview"
         ? plan.media.durationSeconds + 8
         : plan.media.durationSeconds,
-    hasAudio: asset === "music" || plan.media.hasAudio,
+    hasAudio: asset !== "transcript" && (asset === "music" || plan.media.hasAudio),
     cacheDirectory: plan.artifacts.directory,
   };
 }

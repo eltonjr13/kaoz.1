@@ -118,6 +118,8 @@ type Analysis = {
   sourcePath: string;
   courseName?: string;
   moduleName: string;
+  lessonNumber?: string;
+  lessonName?: string;
   media: {
     durationSeconds: number;
     width: number;
@@ -146,7 +148,7 @@ type Analysis = {
     tone: string;
     reused: boolean;
   };
-  artifacts: { previewPath?: string; captionsPath: string; planPath: string };
+  artifacts: { previewPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
 };
 
 type BatchDiscovery = {
@@ -311,7 +313,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [form, setForm] = useState({
     sourcePath: "",
     courseName: "",
-    moduleName: "Módulo 1 — Boas-vindas",
+    moduleName: "Módulo 1",
+    lessonNumber: "1",
+    lessonName: "Boas-vindas",
     style: "balanced",
     captionsEnabled: true,
     reuseCourseTheme: true,
@@ -484,6 +488,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sourceOrigin: driveSourceOrigin ? { ...driveSourceOrigin, provider: "google-drive" } : undefined,
       courseName: form.courseName,
       moduleName: form.moduleName,
+      lessonNumber: form.lessonNumber,
+      lessonName: form.lessonName,
       style: form.style,
       captionsEnabled: form.captionsEnabled,
       reuseCourseTheme: form.reuseCourseTheme,
@@ -517,7 +523,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   function applySingleVideoPath(sourcePath: string) {
     setDriveSourceOrigin(null);
-    setForm((current) => ({ ...current, sourcePath }));
+    const inferredLessonName = sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "";
+    setForm((current) => ({
+      ...current,
+      sourcePath,
+      lessonName: current.lessonName || inferredLessonName,
+    }));
     addLog("info", "Vídeo selecionado:", sourcePath);
     onStatusMessage({ text: `Vídeo selecionado: ${sourcePath}`, type: "info" });
   }
@@ -1028,6 +1039,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     videoRef.current?.requestFullscreen().catch(() => undefined);
   }
 
+  function downloadLessonFiles() {
+    if (!videoMediaSrc || !analysis) return;
+    const urls = [
+      `${videoMediaSrc}&download=true`,
+      `/api/davinci-free/media?planId=${analysis.id}&asset=transcript&download=true`,
+    ];
+    for (const url of urls) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    onStatusMessage({ text: "Download do vídeo e da transcrição TXT iniciado.", type: "success" });
+  }
+
   const update =
     (key: keyof typeof form) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -1049,7 +1077,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </span>
             <div className="min-w-0">
               <p className="text-[10px] font-medium tracking-wide text-[#A6A297]">Kaoz.1 / Estúdio de conteúdo</p>
-              <p className="truncate text-sm font-semibold text-[#F2F2F2]">{form.moduleName || "Aula sem título"}</p>
+              <p className="truncate text-sm font-semibold text-[#F2F2F2]">
+                {form.lessonNumber ? `${form.lessonNumber} · ` : ""}{form.lessonName || form.moduleName || "Aula sem título"}
+              </p>
             </div>
           </div>
 
@@ -1224,7 +1254,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     setForm((current) => ({
                       ...current,
                       sourcePath: localPath,
-                      moduleName: current.moduleName || selection.name.replace(/\.[^.]+$/, ""),
+                      lessonName: current.lessonName || selection.name.replace(/\.[^.]+$/, ""),
                     }));
                   }}
                   onStatusMessage={onStatusMessage}
@@ -1235,9 +1265,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <input className={fieldClass} value={form.courseName} onChange={update("courseName")} />
                 </label>
 
+                <div className="grid grid-cols-[minmax(0,1fr)_84px] gap-2 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3">
+                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                    Nome do módulo
+                    <input className={fieldClass} value={form.moduleName} onChange={update("moduleName")} />
+                  </label>
+                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                    Nº da aula
+                    <input className={fieldClass} value={form.lessonNumber} onChange={update("lessonNumber")} inputMode="numeric" maxLength={12} />
+                  </label>
+                </div>
+
                 <label className="block space-y-1.5 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3 font-semibold text-[#D6D4CD]">
-                  Nome do módulo
-                  <input className={fieldClass} value={form.moduleName} onChange={update("moduleName")} />
+                  Nome da aula <span className="font-normal text-[#A6A297]">(tema base e nome do arquivo)</span>
+                  <input className={fieldClass} value={form.lessonName} onChange={update("lessonName")} />
                 </label>
               </div>
 
@@ -1395,7 +1436,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
             <div className="border-t border-[#736D5C]/35 pt-4">
             <button
-              disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName}
+              disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
               onClick={analyze}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F2] px-4 py-3 text-xs font-bold text-[#1A1301] shadow-lg shadow-[#1A1301]/40 transition-all hover:bg-[#D6D4CD] active:scale-[0.98] disabled:pointer-events-none disabled:border disabled:border-white/10 disabled:bg-white/5 disabled:text-zinc-500"
             >
@@ -1545,13 +1586,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                   </button>
                   {videoMediaSrc && (
-                    <a
-                      href={`${videoMediaSrc}&download=true`}
-                      title="Baixar mídia exibida"
+                    <button
+                      type="button"
+                      onClick={downloadLessonFiles}
+                      title="Baixar vídeo e transcrição TXT"
                       className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       <Download size={14} />
-                    </a>
+                    </button>
                   )}
                   <button
                     onClick={toggleFullscreen}
@@ -1631,7 +1673,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
                       }}
                     >
-                      A-Roll ({form.moduleName || "Ativo"})
+                      A-Roll ({form.lessonName || form.moduleName || "Ativo"})
                     </div>
                     {activeMediaAsset === "preview" && (
                       <div

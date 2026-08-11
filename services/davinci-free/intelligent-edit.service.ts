@@ -475,6 +475,7 @@ async function semanticPlan(
     "Use a análise pedagógica consolidada como referência principal para promessa, capítulos e próxima ação.",
     `Curso: ${input.courseName || "não informado"}`,
     `Módulo: ${input.moduleName}`,
+    `Aula ${input.lessonNumber || "sem número"}: ${input.lessonName || input.moduleName}`,
     `Estilo: ${input.style || "subtle"}`,
     `Duração: ${duration.toFixed(1)} segundos`,
     "Análise pedagógica consolidada:",
@@ -539,7 +540,7 @@ function deterministicSemanticDecision(
   duration: number,
   pedagogy: IntelligentPedagogicalAnalysis,
 ): SemanticDecision {
-  const title = cleanLessonTitle(input.moduleName);
+  const title = cleanLessonTitle(input.lessonName || input.moduleName);
   const transcript = segments.map((segment) => segment.text).join(" ");
   const highlights = narrativeHighlights(segments, duration);
   const pedagogicalItems = pedagogy.items.filter((item) => item.status !== "rejected");
@@ -1073,6 +1074,13 @@ function toSrt(captions: IntelligentCaption[]) {
     .join("\n");
 }
 
+function toPlainTranscript(segments: TimedTranscriptSegment[]) {
+  return segments
+    .map((segment) => `[${formatSrtTime(segment.start).slice(0, 8)}] ${segment.text.trim()}`)
+    .filter((line) => line.length > 11)
+    .join("\n");
+}
+
 export async function analyzeIntelligentEdit(
   rawInput: Record<string, unknown>,
 ): Promise<IntelligentEditPlan> {
@@ -1082,6 +1090,8 @@ export async function analyzeIntelligentEdit(
     sourceOrigin: googleDriveSourceOrigin(rawInput.sourceOrigin),
     courseName: safeLabel(cleanText(rawInput.courseName), 100) || undefined,
     moduleName: safeLabel(cleanText(rawInput.moduleName, "Módulo"), 100),
+    lessonNumber: safeLabel(cleanText(rawInput.lessonNumber, "1"), 12),
+    lessonName: safeLabel(cleanText(rawInput.lessonName, "Aula"), 120),
     style: (["subtle", "balanced", "dynamic", "meme"].includes(String(rawInput.style))
       ? rawInput.style
       : "subtle") as IntelligentEditStyle,
@@ -1121,9 +1131,11 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 9,
+      analysisVersion: 10,
       courseName: input.courseName,
       moduleName: input.moduleName,
+      lessonNumber: input.lessonNumber,
+      lessonName: input.lessonName,
       style: input.style,
       captionsEnabled: input.captionsEnabled,
       reuseCourseTheme: input.reuseCourseTheme,
@@ -1178,7 +1190,7 @@ export async function analyzeIntelligentEdit(
   const pedagogy = await analyzePedagogicalTranscript({
     segments: transcript,
     courseName: input.courseName,
-    moduleName: input.moduleName,
+    moduleName: input.lessonName || input.moduleName,
     useAgent: input.useAgent !== false,
     queryAgent: (prompt) => queryConfiguredAgentCli(prompt, { useExternalTools: false }),
   });
@@ -1201,7 +1213,7 @@ export async function analyzeIntelligentEdit(
     reuse: input.reuseCourseTheme !== false,
   });
   const baseEvents = buildEditEvents({
-    moduleName: input.moduleName,
+    moduleName: input.lessonName || input.moduleName,
     duration: media.durationSeconds,
     style: input.style || "subtle",
     semantic: semantic.decision,
@@ -1217,6 +1229,7 @@ export async function analyzeIntelligentEdit(
   });
   await reportAnalysisProgress(95, "Salvando o plano de edição...");
   const transcriptPath = path.join(directory, "transcript.json");
+  const transcriptTextPath = path.join(directory, "transcript.txt");
   const pedagogyPath = path.join(directory, "pedagogical-analysis.json");
   const captionsPath = path.join(directory, "captions-reviewed.srt");
   const plan: IntelligentEditPlan = {
@@ -1234,7 +1247,9 @@ export async function analyzeIntelligentEdit(
     ),
     courseTheme: { ...courseTheme.profile, reused: courseTheme.reused },
     courseName: input.courseName,
-    moduleName: semantic.decision?.moduleTitle || input.moduleName,
+    moduleName: input.moduleName,
+    lessonNumber: input.lessonNumber,
+    lessonName: input.lessonName,
     media: {
       ...media,
       musicPath: input.musicPath,
@@ -1270,9 +1285,10 @@ export async function analyzeIntelligentEdit(
           : "asr-only",
     },
     visual: visual.visual,
-    artifacts: { directory, transcriptPath, pedagogyPath, captionsPath, planPath },
+    artifacts: { directory, transcriptPath, transcriptTextPath, pedagogyPath, captionsPath, planPath },
   };
   await writeFile(transcriptPath, `${JSON.stringify(transcript, null, 2)}\n`, "utf8");
+  await writeFile(transcriptTextPath, `${toPlainTranscript(transcript)}\n`, "utf8");
   await writeFile(pedagogyPath, `${JSON.stringify(pedagogy, null, 2)}\n`, "utf8");
   await writeFile(captionsPath, toSrt(captions), "utf8");
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
@@ -1384,6 +1400,8 @@ export async function applyCourseIdentity(
     ...plan,
     courseName: identity.title,
     moduleName: lesson.title,
+    lessonNumber: String(lessonIndex),
+    lessonName: lesson.title,
     courseIdentity: {
       ...identity,
       lessonIndex,

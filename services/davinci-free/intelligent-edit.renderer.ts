@@ -24,6 +24,7 @@ import {
   videoEncoderArguments,
   type VideoEncoder,
 } from "./video-encoder";
+import { formattedLessonNumber } from "./lesson-download";
 
 function ffmpegPath() {
   const candidates = [
@@ -359,23 +360,20 @@ function titleAss(
       ? `${identity.eyebrow}  /  ${identity.title}`
       : plan.courseName || "NESTA AULA"
     : identity?.title || "PRÓXIMO PASSO";
+  const number = formattedLessonNumber(plan.lessonNumber)
+    || (identity ? String(identity.lessonIndex).padStart(2, "0") : "01");
   const index = kind === "intro" && identity
-    ? `AULA ${String(identity.lessonIndex).padStart(2, "0")}  /  ${String(identity.lessonTotal).padStart(2, "0")}`
+    ? `AULA ${number}  /  ${String(identity.lessonTotal).padStart(2, "0")}`
     : kind === "outro"
       ? "ENCERRAMENTO"
-      : "NESTA AULA";
-  const number = identity
-    ? String(identity.lessonIndex).padStart(2, "0")
-    : "01";
+      : `AULA ${number}`;
   return [
     assHeader(plan),
     `Dialogue: 0,${assTime(0.2)},${assTime(duration - 0.3)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.22)})\\fad(100,180)}${assText(kicker.toUpperCase())}`,
     `Dialogue: 0,${assTime(0.38)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.43)})\\fad(120,180)\\fscx90\\fscy90\\t(0,320,\\fscx100\\fscy100)}${assText(wrapCardTitle(title))}`,
     `Dialogue: 0,${assTime(0.78)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.63)})\\fad(140,180)}${assText(subtitle)}`,
     `Dialogue: 0,${assTime(0.95)},${assTime(duration - 0.3)},CardIndex,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.78)})\\fad(150,180)}${assText(index)}`,
-    ...(kind === "intro"
-      ? [`Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`]
-      : []),
+    `Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`,
     "",
   ].join("\n");
 }

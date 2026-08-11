@@ -243,6 +243,8 @@ export interface IntelligentEditPlan {
   };
   courseName?: string;
   moduleName: string;
+  lessonNumber?: string;
+  lessonName?: string;
   media: {
     durationSeconds: number;
     width: number;
@@ -295,6 +297,7 @@ export interface IntelligentEditPlan {
   artifacts: {
     directory: string;
     transcriptPath: string;
+    transcriptTextPath?: string;
     pedagogyPath: string;
     captionsPath: string;
     planPath: string;
@@ -308,6 +311,8 @@ export interface IntelligentEditAnalysisInput {
   sourceOrigin?: IntelligentEditPlan["sourceOrigin"];
   courseName?: string;
   moduleName: string;
+  lessonNumber?: string;
+  lessonName?: string;
   style?: IntelligentEditStyle;
   palette?: IntelligentEditPalette;
   captionsEnabled?: boolean;

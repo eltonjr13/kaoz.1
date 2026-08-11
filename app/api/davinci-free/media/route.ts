@@ -11,7 +11,7 @@ import { parseMediaByteRange } from "@/services/davinci-free/media-range";
 
 export const dynamic = "force-dynamic";
 
-const ASSETS = new Set<IntelligentMediaAsset>(["source", "preview", "music"]);
+const ASSETS = new Set<IntelligentMediaAsset>(["source", "preview", "music", "transcript"]);
 
 function errorResponse(error: unknown, status = 400) {
   const message = error instanceof Error ? error.message : String(error);
