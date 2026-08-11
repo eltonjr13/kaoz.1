@@ -365,7 +365,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           transcriptionAllowCloudFallback: data.allowCloudFallback === true,
         }));
       }),
-    ]).catch((error) => addLog("warning", "Nao foi possivel carregar os modelos de transcricao.", caughtMessage(error)));
+    ]).catch((error) => addLog("warn", "Nao foi possivel carregar os modelos de transcricao.", caughtMessage(error)));
     return () => { active = false; };
   }, [addLog, refreshSpeechModels]);
 
@@ -552,7 +552,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       const text = selectedSpeechModel
         ? `O modelo ${selectedSpeechModel.name} ainda nao foi baixado.`
         : "Selecione um modelo de transcricao antes de analisar o video.";
-      addLog("warning", text);
+      addLog("warn", text);
       onStatusMessage({ text, type: "error" });
       return;
     }

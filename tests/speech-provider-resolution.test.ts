@@ -18,7 +18,8 @@ test("keeps the configured local provider for server-side Web files", () => {
   assert.equal(resolveServerSpeechProvider("parakeet", "web"), "parakeet");
 });
 
-test("uses Parakeet for server-side files in the desktop runtime", () => {
-  assert.equal(resolveServerSpeechProvider("webspeech", "desktop"), "parakeet");
-  assert.equal(resolveServerSpeechProvider("whisper", "desktop"), "parakeet");
+test("keeps the configured provider in the desktop runtime", () => {
+  assert.equal(resolveServerSpeechProvider("webspeech", "desktop"), "whisper-speed");
+  assert.equal(resolveServerSpeechProvider("whisper", "desktop"), "whisper");
+  assert.equal(resolveServerSpeechProvider("parakeet", "desktop"), "parakeet");
 });

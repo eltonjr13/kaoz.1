@@ -153,6 +153,12 @@ export class SpeechService {
       }
     }
 
+    if (engine === "cloud" || engine === "webspeech") {
+      const cloudResult = await transcribeWithConfiguredCloud(audio);
+      if (cloudResult) return cloudResult;
+      throw new Error("Nenhuma API OpenAI ou Gemini esta configurada para transcricao.");
+    }
+
     try {
       await ensurePythonSpeechServer(provider);
       const formData = new FormData();
