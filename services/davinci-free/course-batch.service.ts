@@ -115,6 +115,9 @@ export interface CourseBatchJob {
   reuseCourseTheme: true;
   musicPath?: string;
   musicDb: number;
+  sfxEnabled?: boolean;
+  sfxVolumeDb?: number;
+  sfxPack?: "minimal" | "dynamic" | "tech";
   useAgent: boolean;
   outputResolution?: VideoOutputResolution;
   videoEncoder?: VideoEncoderPreference;
@@ -271,6 +274,9 @@ async function analyzeItem(job: CourseBatchJob, item: CourseBatchItem) {
     reuseCourseTheme: false,
     musicPath: job.musicPath,
     musicDb: job.musicDb,
+    sfxEnabled: job.sfxEnabled,
+    sfxVolumeDb: job.sfxVolumeDb,
+    sfxPack: job.sfxPack,
     useAgent: job.useAgent,
   });
   item.planId = plan.id;
@@ -448,6 +454,9 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
     captionsEnabled: job.captionsEnabled,
     musicPath: job.musicPath,
     musicDb: job.musicDb,
+    sfxEnabled: job.sfxEnabled,
+    sfxVolumeDb: job.sfxVolumeDb,
+    sfxPack: job.sfxPack,
     outputResolution: job.outputResolution,
     videoEncoder: job.videoEncoder,
     identity,
@@ -627,6 +636,11 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     reuseCourseTheme: true as const,
     musicPath: cleanText(input.musicPath) || undefined,
     musicDb: Math.min(-35, Math.max(-40, Number(input.musicDb) || -38)),
+    sfxEnabled: input.sfxEnabled !== false,
+    sfxVolumeDb: Math.min(-6, Math.max(-30, Number(input.sfxVolumeDb) || -12)),
+    sfxPack: (["minimal", "dynamic", "tech"].includes(String(input.sfxPack))
+      ? input.sfxPack
+      : "dynamic") as "minimal" | "dynamic" | "tech",
     useAgent: input.useAgent !== false,
     outputResolution: normalizeVideoOutputResolution(input.outputResolution),
     videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),

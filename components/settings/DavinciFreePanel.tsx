@@ -80,6 +80,7 @@ type EditEvent = {
     | "cut"
     | "cursor"
     | "transition"
+    | "sound-effect"
     | "meme-sfx";
   start: number;
   duration: number;
@@ -199,6 +200,7 @@ const kindLabel: Record<EditEvent["kind"], string> = {
   cut: "Corte de plano",
   cursor: "Cursor",
   transition: "Transição",
+  "sound-effect": "SFX inteligente",
   "meme-sfx": "Efeito Meme 🤡",
 };
 
@@ -211,6 +213,7 @@ const kindColorClass: Record<EditEvent["kind"], string> = {
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
   cursor: "bg-blue-950/90 border-blue-500 text-blue-300",
   transition: "bg-pink-950/90 border-pink-500 text-pink-300",
+  "sound-effect": "bg-violet-950/90 border-violet-500 text-violet-300",
   "meme-sfx": "bg-yellow-950/90 border-yellow-400 text-yellow-300",
 };
 
@@ -757,6 +760,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
+        sfxEnabled: form.sfxEnabled,
+        sfxVolumeDb: Number(form.sfxVolumeDb),
+        sfxPack: form.sfxPack,
         useAgent: true,
         selectedItemIds: selectedIds,
         downloadFolder: downloadFolder || undefined,
@@ -789,6 +795,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
+        sfxEnabled: form.sfxEnabled,
+        sfxVolumeDb: Number(form.sfxVolumeDb),
+        sfxPack: form.sfxPack,
         useAgent: true,
         selectedRelativePaths: selectedPaths,
         outputResolution: form.outputResolution,
@@ -1327,7 +1336,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
                     <span className="text-[10px] text-zinc-400 leading-tight block">
-                      Dispara sons de whoosh, pop e chime em transições e cartões.
+                      A IA escolhe entre 9 sons reais conforme fala, ações, capítulos, erros e conclusões.
                     </span>
                   </span>
                 </label>

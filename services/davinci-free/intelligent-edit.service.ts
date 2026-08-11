@@ -23,6 +23,7 @@ import {
   type IntelligentPedagogicalAnalysis,
   type IntelligentEditStyle,
   type IntelligentEditTextVariant,
+  type IntelligentSoundEffect,
   type TimedTranscriptSegment,
 } from "./intelligent-edit.types";
 import { courseThemeDesign } from "./intelligent-edit.design";
@@ -94,6 +95,12 @@ type SemanticDecision = {
   lowerThirds?: Array<{ time: number; title: string; reason?: string }>;
   emphasis?: Array<{ time: number; label?: string; reason?: string }>;
   transitions?: Array<{ time: number; label?: string; reason?: string }>;
+  soundEffects?: Array<{
+    time: number;
+    type: IntelligentSoundEffect;
+    reason?: string;
+    intensity?: "low" | "medium" | "high";
+  }>;
   onScreenText?: Array<{
     time: number;
     text: string;
@@ -456,11 +463,14 @@ async function semanticPlan(
     "Analise apenas a transcrição temporal abaixo e retorne SOMENTE JSON válido.",
     "Crie ritmo moderno e impactante, mas profissional. Use efeitos somente quando semanticamente justificados.",
     "Formato obrigatório:",
-    '{"moduleTitle":"...","courseTheme":{"key":"ancestral|performance|wellness|business|technology|creative","rationale":"...","tone":"..."},"introTitle":"...","introSubtitle":"...","outroTitle":"...","outroSubtitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"onScreenText":[{"time":12.5,"text":"2 a 6 palavras","variant":"concept|stat|action|quote","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
+    '{"moduleTitle":"...","courseTheme":{"key":"ancestral|performance|wellness|business|technology|creative","rationale":"...","tone":"..."},"introTitle":"...","introSubtitle":"...","outroTitle":"...","outroSubtitle":"...","lowerThirds":[{"time":0,"title":"...","reason":"..."}],"emphasis":[{"time":12.5,"label":"...","reason":"..."}],"transitions":[{"time":30,"label":"...","reason":"..."}],"soundEffects":[{"time":12.5,"type":"soft-whoosh|interface-click|page-flip|keyboard-typing|light-impact|subtle-pop|positive-confirmation|soft-error|rising-swoosh","intensity":"low|medium|high","reason":"..."}],"onScreenText":[{"time":12.5,"text":"2 a 6 palavras","variant":"concept|stat|action|quote","reason":"..."}],"reviewedCaptions":[{"start":0,"end":2,"text":"..."}]}',
     "Escolha courseTheme pelo assunto central, público, promessa e linguagem recorrente do curso — não pelo gosto visual desta aula isolada.",
     "A abertura e o encerramento devem refletir a promessa e a próxima ação específicas desta aula; evite frases genéricas.",
     "Escolha de 4 a 7 textos de impacto com 2 a 6 palavras, diferentes da legenda corrida.",
     "Classifique cada texto como concept, stat, action ou quote conforme sua função narrativa.",
+    "Escolha efeitos sonoros somente quando reforçarem uma ação, mudança de capítulo, revelação, confirmação, erro, digitação ou conceito importante.",
+    "Use poucos efeitos, deixe pelo menos 8 segundos entre eles e nunca use som ambiente. Evite cobrir frases densas; prefira pausas ou o início exato do evento.",
+    "Use interface-click para ações na tela, page-flip para capítulos, keyboard-typing para digitação, light-impact para pontos fortes, subtle-pop para elementos breves, positive-confirmation para conclusões corretas, soft-error para erros, rising-swoosh para revelações e soft-whoosh para transições suaves.",
     "Não altere timestamps das legendas. Corrija somente ortografia e pontuação.",
     "Use a análise pedagógica consolidada como referência principal para promessa, capítulos e próxima ação.",
     `Curso: ${input.courseName || "não informado"}`,
@@ -545,11 +555,98 @@ function deterministicSemanticDecision(
     lowerThirds: pedagogicalLowerThirds(pedagogicalItems),
     emphasis: pedagogicalEmphasis(pedagogicalItems, highlights),
     onScreenText: pedagogicalOnScreenText(pedagogicalItems, highlights),
+    soundEffects: pedagogicalSoundEffects(pedagogicalItems),
   };
 }
 
 type PedagogicalItem = IntelligentPedagogicalAnalysis["items"][number];
 type NarrativeHighlight = ReturnType<typeof narrativeHighlights>[number];
+
+function pedagogicalSoundEffects(items: PedagogicalItem[]): NonNullable<SemanticDecision["soundEffects"]> {
+  const typeForKind: Partial<Record<PedagogicalItem["kind"], IntelligentSoundEffect>> = {
+    chapter: "page-flip",
+    demonstration: "interface-click",
+    "process-step": "subtle-pop",
+    warning: "light-impact",
+    "common-error": "soft-error",
+    exercise: "keyboard-typing",
+    action: "positive-confirmation",
+    summary: "rising-swoosh",
+    "next-link": "soft-whoosh",
+  };
+  return items
+    .filter((item) => item.status !== "rejected" && Boolean(typeForKind[item.kind]))
+    .map((item) => ({
+      time: item.start,
+      type: typeForKind[item.kind]!,
+      intensity: item.importance === "high" ? "medium" as const : "low" as const,
+      reason: item.editorialSuggestion,
+    }));
+}
+
+const SOUND_EFFECTS = new Set<IntelligentSoundEffect>([
+  "soft-whoosh",
+  "interface-click",
+  "page-flip",
+  "keyboard-typing",
+  "light-impact",
+  "subtle-pop",
+  "positive-confirmation",
+  "soft-error",
+  "rising-swoosh",
+]);
+
+const SOUND_EFFECT_LABELS: Record<IntelligentSoundEffect, string> = {
+  "soft-whoosh": "Whoosh suave",
+  "interface-click": "Clique de interface",
+  "page-flip": "Virada de página",
+  "keyboard-typing": "Digitação",
+  "light-impact": "Impacto leve",
+  "subtle-pop": "Pop discreto",
+  "positive-confirmation": "Confirmação positiva",
+  "soft-error": "Erro suave",
+  "rising-swoosh": "Swoosh ascendente",
+};
+
+const SOUND_EFFECT_DURATIONS: Record<IntelligentSoundEffect, number> = {
+  "soft-whoosh": 2.12,
+  "interface-click": 1.06,
+  "page-flip": 1.22,
+  "keyboard-typing": 2.8,
+  "light-impact": 3.79,
+  "subtle-pop": 0.72,
+  "positive-confirmation": 2.04,
+  "soft-error": 1.88,
+  "rising-swoosh": 3.19,
+};
+
+function soundEffectGainDb(intensity: unknown) {
+  if (intensity === "high") return 1.5;
+  if (intensity === "low") return -3;
+  return 0;
+}
+
+function selectedSoundEffects(input: {
+  duration: number;
+  pack: "minimal" | "dynamic" | "tech";
+  semantic: SemanticDecision | null;
+}) {
+  const limits = {
+    minimal: { minimumGap: 24, maximum: 6 },
+    dynamic: { minimumGap: 14, maximum: 10 },
+    tech: { minimumGap: 10, maximum: 14 },
+  }[input.pack];
+  const candidates = input.semantic?.soundEffects || [];
+  const selected: typeof candidates = [];
+  for (const candidate of candidates) {
+    if (!SOUND_EFFECTS.has(candidate.type)) continue;
+    const time = clampTime(candidate.time, input.duration);
+    if (selected.some((item) => Math.abs(clampTime(item.time, input.duration) - time) < limits.minimumGap)) continue;
+    selected.push({ ...candidate, time });
+    if (selected.length >= limits.maximum) break;
+  }
+  return selected;
+}
 
 function firstPedagogicalItem(
   items: PedagogicalItem[],
@@ -620,6 +717,8 @@ export function buildEditEvents(input: {
   duration: number;
   style: IntelligentEditStyle;
   semantic: SemanticDecision | null;
+  sfxEnabled?: boolean;
+  sfxPack?: "minimal" | "dynamic" | "tech";
 }) {
   const events: IntelligentEditEvent[] = [
     {
@@ -705,6 +804,25 @@ export function buildEditEvents(input: {
       label: safeLabel(item.label || "Mudança de seção"),
       reason: cleanText(item.reason, "Mudança de assunto."),
     });
+  }
+  if (input.sfxEnabled !== false) {
+    const soundEffects = selectedSoundEffects({
+      duration: input.duration,
+      pack: input.sfxPack || "dynamic",
+      semantic: input.semantic,
+    });
+    for (const [index, item] of soundEffects.entries()) {
+      events.push({
+        id: `sound-effect-${index + 1}`,
+        kind: "sound-effect",
+        start: item.time,
+        duration: SOUND_EFFECT_DURATIONS[item.type],
+        label: SOUND_EFFECT_LABELS[item.type],
+        reason: cleanText(item.reason, "Ponto sonoro escolhido pela análise semântica."),
+        soundEffect: item.type,
+        soundEffectGainDb: soundEffectGainDb(item.intensity),
+      });
+    }
   }
   events.push({
     id: "outro",
@@ -1003,7 +1121,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 8,
+      analysisVersion: 9,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
@@ -1011,6 +1129,9 @@ export async function analyzeIntelligentEdit(
       reuseCourseTheme: input.reuseCourseTheme,
       musicPath: input.musicPath,
       musicDb: input.musicDb,
+      sfxEnabled: input.sfxEnabled,
+      sfxVolumeDb: input.sfxVolumeDb,
+      sfxPack: input.sfxPack,
     }))
     .digest("hex");
   const directory = path.join(ROOT, cacheKey.slice(0, 16));
@@ -1084,6 +1205,8 @@ export async function analyzeIntelligentEdit(
     duration: media.durationSeconds,
     style: input.style || "subtle",
     semantic: semantic.decision,
+    sfxEnabled: input.sfxEnabled,
+    sfxPack: input.sfxPack,
   });
   await reportAnalysisProgress(84, "Analisando enquadramento e pontos de destaque...");
   const visual = await visualEditPlan({

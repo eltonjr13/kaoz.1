@@ -1,9 +1,9 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { getLocalDataDir } from "@/lib/runtime-paths";
+import type { IntelligentSoundEffect } from "./intelligent-edit.types";
 
-export type SFXType =
+export type SFXType = IntelligentSoundEffect
   | "whoosh"
   | "pop"
   | "chime"
@@ -264,6 +264,15 @@ export async function ensureSfxLibrary(): Promise<Record<SFXType, string>> {
   }
 
   const paths: Record<SFXType, string> = {
+    "soft-whoosh": path.join(SFX_DIR, "soft-whoosh.mp3"),
+    "interface-click": path.join(SFX_DIR, "interface-click.mp3"),
+    "page-flip": path.join(SFX_DIR, "page-flip.mp3"),
+    "keyboard-typing": path.join(SFX_DIR, "keyboard-typing.mp3"),
+    "light-impact": path.join(SFX_DIR, "light-impact.mp3"),
+    "subtle-pop": path.join(SFX_DIR, "subtle-pop.mp3"),
+    "positive-confirmation": path.join(SFX_DIR, "positive-confirmation.mp3"),
+    "soft-error": path.join(SFX_DIR, "soft-error.mp3"),
+    "rising-swoosh": path.join(SFX_DIR, "rising-swoosh.mp3"),
     whoosh: path.join(SFX_DIR, "whoosh.wav"),
     pop: path.join(SFX_DIR, "pop.wav"),
     chime: path.join(SFX_DIR, "chime.wav"),
@@ -283,6 +292,22 @@ export async function ensureSfxLibrary(): Promise<Record<SFXType, string>> {
   };
 
   if (sfxInitialized) return paths;
+
+  const immersiveAssets: IntelligentSoundEffect[] = [
+    "soft-whoosh",
+    "interface-click",
+    "page-flip",
+    "keyboard-typing",
+    "light-impact",
+    "subtle-pop",
+    "positive-confirmation",
+    "soft-error",
+    "rising-swoosh",
+  ];
+  const missingAssets = immersiveAssets.filter((type) => !existsSync(paths[type]));
+  if (missingAssets.length) {
+    throw new Error(`Pacote de SFX imersivos incompleto: ${missingAssets.join(", ")}.`);
+  }
 
   const tasks: Array<Promise<void>> = [];
 

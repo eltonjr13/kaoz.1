@@ -3,6 +3,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -594,7 +595,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*8/);
+  assert.match(analysis, /analysisVersion:\s*9/);
   assert.match(analysis, /analyzePedagogicalTranscript/);
   assert.match(analysis, /pedagogical-analysis\.json/);
   assert.match(analysis, /pedagogyPath/);
@@ -613,6 +614,61 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);
   assert.match(courseTheme, /reused:\s*true/);
+});
+
+test("SFX imersivos usam os nove áudios reais e decisões semânticas da IA", async () => {
+  const analysis = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.service.ts"),
+    "utf8",
+  );
+  const renderer = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.renderer.ts"),
+    "utf8",
+  );
+  const library = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "sfx.service.ts"),
+    "utf8",
+  );
+  const batch = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+  const expectedAssets = [
+    "interface-click.mp3",
+    "keyboard-typing.mp3",
+    "light-impact.mp3",
+    "page-flip.mp3",
+    "positive-confirmation.mp3",
+    "rising-swoosh.mp3",
+    "soft-error.mp3",
+    "soft-whoosh.mp3",
+    "subtle-pop.mp3",
+  ];
+  const actualAssets = (await readdir(path.join(process.cwd(), "public", "sfx")))
+    .filter((name) => name.endsWith(".mp3"))
+    .sort();
+  assert.deepEqual(actualAssets, expectedAssets);
+  for (const asset of expectedAssets) {
+    const audio = await readFile(path.join(process.cwd(), "public", "sfx", asset));
+    assert.ok(audio.length > 20_000, `${asset} deve conter o áudio real, não um placeholder`);
+  }
+  assert.match(analysis, /"soundEffects"/);
+  assert.match(analysis, /nunca use som ambiente/);
+  assert.match(analysis, /kind: "sound-effect"/);
+  assert.match(analysis, /analysisVersion: 9/);
+  assert.match(analysis, /sfxEnabled: input\.sfxEnabled/);
+  assert.match(analysis, /sfxPack: input\.sfxPack/);
+  assert.match(renderer, /event\.soundEffect/);
+  assert.match(renderer, /event\.soundEffectGainDb/);
+  assert.match(renderer, /hasSemanticSfx/);
+  assert.match(library, /Pacote de SFX imersivos incompleto/);
+  assert.match(batch, /sfxEnabled: job\.sfxEnabled/);
+  assert.match(batch, /sfxPack: job\.sfxPack/);
+  assert.match(panel, /A IA escolhe entre 9 sons reais/);
 });
 
 test("revisão editorial preserva o plano automático e reaplica apenas regras seguras ao curso", async () => {

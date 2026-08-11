@@ -669,26 +669,40 @@ function sfxFileForEvent(
   event: IntelligentEditEvent,
   paths: Awaited<ReturnType<typeof ensureSfxLibrary>>,
 ) {
+  if (event.kind === "sound-effect" && event.soundEffect) {
+    return paths[event.soundEffect];
+  }
   if (event.kind === "meme-sfx" || event.memeTag) {
     const tag = (event.memeTag || "vine-boom") as keyof typeof paths;
     return paths[tag] || paths["vine-boom"];
   }
-  if (event.kind === "transition" || event.kind === "cut") return paths.whoosh;
-  if (event.kind === "impact-text" || event.kind === "lower-third") return paths.pop;
-  if (event.kind === "zoom") return paths.swoosh;
-  return null;
+  const automaticType: Partial<Record<IntelligentEditEvent["kind"], keyof typeof paths>> = {
+    transition: "soft-whoosh",
+    cut: "soft-whoosh",
+    "impact-text": "subtle-pop",
+    "lower-third": "subtle-pop",
+    zoom: "rising-swoosh",
+  };
+  const type = automaticType[event.kind];
+  return type ? paths[type] : null;
 }
 
 async function collectSfxEvents(plan: IntelligentEditPlan) {
   if (plan.media.sfxEnabled === false) return [];
   const sfxPaths = await ensureSfxLibrary();
-  const events = [
-    { time: 0.1, file: sfxPaths.whoosh },
-    { time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths.whoosh },
+  const events: Array<{ time: number; file: string; gainDb: number }> = [
+    { time: 0.1, file: sfxPaths["soft-whoosh"], gainDb: -3 },
+    { time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths["rising-swoosh"], gainDb: -3 },
   ];
+  const hasSemanticSfx = plan.events.some((event) => event.kind === "sound-effect" && event.soundEffect);
   for (const event of plan.events) {
+    if (hasSemanticSfx && event.kind !== "sound-effect" && event.kind !== "meme-sfx") continue;
     const file = sfxFileForEvent(event, sfxPaths);
-    if (file) events.push({ time: event.start + 4, file });
+    if (file) events.push({
+      time: event.start + 4,
+      file,
+      gainDb: Math.max(-9, Math.min(3, event.soundEffectGainDb ?? 0)),
+    });
   }
   return events.slice(0, 14);
 }
@@ -723,12 +737,12 @@ async function mixFinalAudio(
     nextInputIndex += 1;
   }
 
-  const sfxVolume = (plan.media.sfxVolumeDb ?? -12).toFixed(1);
+  const sfxVolume = plan.media.sfxVolumeDb ?? -12;
   sfxEvents.forEach((event, index) => {
     args.push("-i", event.file);
     const label = `[sfx${index}]`;
     filterParts.push(
-      `[${nextInputIndex}:a]adelay=${Math.round(event.time * 1000)}|${Math.round(event.time * 1000)},volume=${sfxVolume}dB${label}`,
+      `[${nextInputIndex}:a]adelay=${Math.round(event.time * 1000)}|${Math.round(event.time * 1000)},volume=${(sfxVolume + event.gainDb).toFixed(1)}dB${label}`,
     );
     mixLabels.push(label);
     nextInputIndex += 1;

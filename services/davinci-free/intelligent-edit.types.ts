@@ -10,6 +10,16 @@ export type IntelligentEditPalette =
   | "course-theme"
   | "meme";
 export type IntelligentEditTextVariant = "concept" | "stat" | "action" | "quote";
+export type IntelligentSoundEffect =
+  | "soft-whoosh"
+  | "interface-click"
+  | "page-flip"
+  | "keyboard-typing"
+  | "light-impact"
+  | "subtle-pop"
+  | "positive-confirmation"
+  | "soft-error"
+  | "rising-swoosh";
 export type IntelligentCourseLayout = "roadmap" | "framework" | "editorial";
 export type IntelligentCourseThemeKey =
   | "ancestral"
@@ -129,6 +139,7 @@ export interface IntelligentEditEvent {
     | "cut"
     | "cursor"
     | "transition"
+    | "sound-effect"
     | "meme-sfx";
   start: number;
   duration: number;
@@ -136,6 +147,8 @@ export interface IntelligentEditEvent {
   subtitle?: string;
   reason: string;
   variant?: IntelligentEditTextVariant;
+  soundEffect?: IntelligentSoundEffect;
+  soundEffectGainDb?: number;
   memeTag?:
     | "vine-boom"
     | "anime-wow"
