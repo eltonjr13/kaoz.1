@@ -7,7 +7,7 @@ import ffmpegStaticPath from "ffmpeg-static";
 
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { getSpeechService, speechRuntimeEnvironment } from "@/services/speech/speech.service";
-import type { SpeechRuntimeEnvironment } from "@/services/speech/speech.types";
+import type { SpeechRuntimeEnvironment, SpeechTranscriptionOptions, SpeechTranscriptionResult } from "@/services/speech/speech.types";
 import {
   getConfiguredAgentIdentity,
   queryConfiguredCodexCli,
@@ -298,11 +298,13 @@ async function transcribeChunks(
   directory: string,
   chunks: Array<{ start: number; end: number }>,
   runtime: SpeechRuntimeEnvironment,
+  options: SpeechTranscriptionOptions,
   onProgress?: (completed: number, total: number) => void,
 ) {
   const speech = getSpeechService();
   const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
-  const CONCURRENCY = 6;
+  let metadata: SpeechTranscriptionResult | undefined;
+  const CONCURRENCY = 1;
 
   for (let index = 0; index < chunks.length; index += CONCURRENCY) {
     const batch = chunks.slice(index, index + CONCURRENCY);
@@ -334,7 +336,9 @@ async function transcribeChunks(
           const result = await speech.transcribe(
             new File([bytes], path.basename(output), { type: "audio/wav" }),
             runtime,
+            options,
           );
+          metadata ||= result;
           const text = result.text.trim();
           if (text) {
             rawResults.push({
@@ -363,7 +367,16 @@ async function transcribeChunks(
   if (segments.length === 0) {
     throw new Error("A transcrição não retornou texto utilizável.");
   }
-  return segments;
+  return {
+    segments,
+    transcription: {
+      engine: metadata?.engine || "cloud",
+      modelId: metadata?.modelId,
+      backend: metadata?.backend,
+      deviceName: metadata?.deviceName,
+      language: "pt" as const,
+    },
+  };
 }
 
 function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption[] {
@@ -394,7 +407,7 @@ async function findReusableTranscript(sourceHash: string) {
       .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
       .catch(() => null);
     if (candidate?.sourceHash === sourceHash && candidate.transcript.length > 0) {
-      return candidate.transcript;
+      return { segments: candidate.transcript, transcription: candidate.transcription };
     }
   }
   return null;
@@ -406,13 +419,14 @@ async function transcriptForAnalysis(
   durationSeconds: number,
   sourceHash: string,
   runtime: SpeechRuntimeEnvironment,
+  options: SpeechTranscriptionOptions,
   onProgress?: (completed: number, total: number) => void,
 ) {
   const reusable = await findReusableTranscript(sourceHash);
   if (reusable) return reusable;
   const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
-  return transcribeChunks(sourcePath, directory, chunks, runtime, onProgress);
+  return transcribeChunks(sourcePath, directory, chunks, runtime, options, onProgress);
 }
 
 function extractJsonObject(output: string): SemanticDecision | null {
@@ -1105,8 +1119,14 @@ export async function analyzeIntelligentEdit(
       ? rawInput.sfxPack
       : "dynamic") as "minimal" | "dynamic" | "tech",
     useAgent: rawInput.useAgent !== false,
+    transcriptionRuntime: speechRuntimeEnvironment(rawInput.transcriptionRuntime),
+    transcriptionModelId: typeof rawInput.transcriptionModelId === "string" ? rawInput.transcriptionModelId : undefined,
+    transcriptionDevice: (["auto", "vulkan", "cpu"].includes(String(rawInput.transcriptionDevice))
+      ? rawInput.transcriptionDevice
+      : "auto") as "auto" | "vulkan" | "cpu",
+    transcriptionAllowCloudFallback: rawInput.transcriptionAllowCloudFallback === true,
   };
-  const transcriptionRuntime = speechRuntimeEnvironment(rawInput.transcriptionRuntime);
+  const transcriptionRuntime = input.transcriptionRuntime || speechRuntimeEnvironment(rawInput.transcriptionRuntime);
   const startedAt = new Date().toISOString();
   const runningStatus = {
     status: "running",
@@ -1144,6 +1164,9 @@ export async function analyzeIntelligentEdit(
       sfxEnabled: input.sfxEnabled,
       sfxVolumeDb: input.sfxVolumeDb,
       sfxPack: input.sfxPack,
+      transcriptionModelId: input.transcriptionModelId,
+      transcriptionDevice: input.transcriptionDevice,
+      transcriptionAllowCloudFallback: input.transcriptionAllowCloudFallback,
     }))
     .digest("hex");
   const directory = path.join(ROOT, cacheKey.slice(0, 16));
@@ -1171,12 +1194,17 @@ export async function analyzeIntelligentEdit(
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
   await reportAnalysisProgress(20, "Detectando falas e transcrevendo o áudio...");
-  const transcript = await transcriptForAnalysis(
+  const transcriptionResult = await transcriptForAnalysis(
     input.sourcePath,
     directory,
     media.durationSeconds,
     sourceHash,
     transcriptionRuntime,
+    {
+      modelId: input.transcriptionModelId,
+      device: input.transcriptionDevice,
+      allowCloudFallback: input.transcriptionAllowCloudFallback,
+    },
     (completed, total) => {
       void reportAnalysisProgress(
         20 + (completed / Math.max(1, total)) * 38,
@@ -1184,6 +1212,7 @@ export async function analyzeIntelligentEdit(
       );
     },
   );
+  const transcript = transcriptionResult.segments;
   await analysisStatusWrite;
   await reportAnalysisProgress(60, "Mapeando objetivos, conceitos e estrutura pedagógica...");
   const rawCaptions = wordsToCaptions(transcript);
@@ -1197,6 +1226,7 @@ export async function analyzeIntelligentEdit(
   await reportAnalysisProgress(68, "Consolidando a estrutura pedagógica da aula...");
   const semantic = await semanticPlan(
     transcript,
+    transcription: transcriptionResult.transcription,
     rawCaptions,
     input,
     media.durationSeconds,

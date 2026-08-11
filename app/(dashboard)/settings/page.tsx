@@ -987,149 +987,181 @@ function AgentLLMSettingsPanel({ onStatusMessage }: { onStatusMessage: (message:
   );
 }
 
+function formatSpeechBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+}
+
 function STTPanel({ onStatusMessage }: { onStatusMessage: (message: StatusMessage) => void }) {
   const [speechConfig, setSpeechConfig] = useState<SpeechConfig | null>(null);
-  const [savingSpeechProvider, setSavingSpeechProvider] = useState<SpeechProviderName | null>(null);
-  const [parakeetStatus, setParakeetStatus] = useState<ParakeetStatus | null>(null);
+  const [models, setModels] = useState<SpeechModelStatus[]>([]);
+  const [hardware, setHardware] = useState<SpeechHardwareStatus | null>(null);
+  const [busyModel, setBusyModel] = useState<string | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadSpeechConfig() {
-      try {
-        const res = await fetch("/api/speech/config", { cache: "no-store" });
-        const data = await res.json() as Record<string, unknown>;
-        if (isMounted && res.ok) {
-          setSpeechConfig(parseSpeechConfig(data));
-        }
-      } catch (err) {
-        console.error("Erro ao carregar configuracao de transcricao:", err);
-      }
-    }
-
-    void loadSpeechConfig();
-    return () => {
-      isMounted = false;
-    };
+  const loadModels = useCallback(async () => {
+    const response = await fetch("/api/speech/models", { cache: "no-store" });
+    const data = await response.json() as { models?: SpeechModelStatus[]; hardware?: SpeechHardwareStatus; error?: string };
+    if (!response.ok) throw new Error(data.error || "Nao foi possivel consultar os modelos.");
+    setModels(data.models || []);
+    setHardware(data.hardware || null);
   }, []);
 
   useEffect(() => {
-    if (speechConfig?.provider !== "parakeet") {
-      setParakeetStatus(null);
-      return;
-    }
     let active = true;
-    const loadStatus = async () => {
-      try {
-        const response = await fetch("/api/speech/parakeet", { cache: "no-store" });
-        const data = await response.json() as Partial<ParakeetStatus>;
-        if (active && (data.state === "downloading" || data.state === "ready" || data.state === "error")) {
-          setParakeetStatus({
-            state: data.state,
-            message: typeof data.message === "string" ? data.message : "Atualizando Parakeet...",
-            downloadedBytes: typeof data.downloadedBytes === "number" ? data.downloadedBytes : undefined,
-            totalBytes: typeof data.totalBytes === "number" ? data.totalBytes : undefined,
-          });
-        }
-      } catch {
-        if (active) setParakeetStatus({ state: "error", message: "Nao foi possivel consultar o runtime Parakeet." });
-      }
-    };
-    void loadStatus();
-    const timer = window.setInterval(loadStatus, 2000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [speechConfig?.provider]);
+    Promise.all([
+      fetch("/api/speech/config", { cache: "no-store" }).then(async (response) => {
+        const data = await response.json() as Record<string, unknown>;
+        if (active && response.ok) setSpeechConfig(parseSpeechConfig(data));
+      }),
+      loadModels(),
+    ]).catch((error) => console.error("Erro ao carregar transcricao:", error));
+    return () => { active = false; };
+  }, [loadModels]);
 
-  const updateSpeechProvider = async (provider: SpeechProviderName) => {
-    setSavingSpeechProvider(provider);
+  useEffect(() => {
+    if (!models.some((model) => ["queued", "downloading", "verifying"].includes(model.state))) return;
+    const timer = window.setInterval(() => void loadModels(), 1500);
+    return () => window.clearInterval(timer);
+  }, [loadModels, models]);
+
+  const saveConfig = async (update: Partial<SpeechConfig>, successText: string) => {
+    if (!speechConfig) return;
+    setSavingConfig(true);
     try {
-      const res = await fetch("/api/speech/config", {
+      const response = await fetch("/api/speech/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ ...speechConfig, ...update }),
       });
-      const data = await res.json() as Record<string, unknown>;
-      if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel salvar a transcricao.");
-      }
-      const config = parseSpeechConfig(data);
-      setSpeechConfig(config);
-      onStatusMessage({
-        text: `Transcricao alterada para ${getSpeechOptionName(config.provider)}.`,
-        type: "success"
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      onStatusMessage({
-        text: `Erro ao salvar transcricao: ${errMsg}`,
-        type: "error"
-      });
+      const data = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Nao foi possivel salvar a transcricao.");
+      setSpeechConfig(parseSpeechConfig(data));
+      onStatusMessage({ text: successText, type: "success" });
+    } catch (error) {
+      onStatusMessage({ text: `Erro ao salvar transcricao: ${error instanceof Error ? error.message : String(error)}`, type: "error" });
     } finally {
-      setSavingSpeechProvider(null);
+      setSavingConfig(false);
+    }
+  };
+
+  const selectModel = (model: SpeechModelStatus) => saveConfig({
+    provider: model.engine === "parakeet" ? "parakeet" : model.quality === "basic" || model.id.includes("base") ? "whisper-speed" : "whisper",
+    engine: model.engine,
+    modelId: model.id,
+  }, `${model.name} selecionado para transcricao.`);
+
+  const modelAction = async (model: SpeechModelStatus, action: "download" | "cancel" | "remove" | "verify") => {
+    setBusyModel(model.id);
+    try {
+      const response = await fetch("/api/speech/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: model.id, action }),
+      });
+      const data = await response.json() as { model?: SpeechModelStatus; error?: string };
+      if (!response.ok || !data.model) throw new Error(data.error || "Nao foi possivel gerenciar o modelo.");
+      setModels((current) => current.map((item) => item.id === model.id ? data.model! : item));
+      onStatusMessage({ text: action === "download" ? `Download de ${model.name} iniciado.` : action === "remove" ? `${model.name} removido.` : `Acao aplicada em ${model.name}.`, type: "info" });
+    } catch (error) {
+      onStatusMessage({ text: error instanceof Error ? error.message : String(error), type: "error" });
+    } finally {
+      setBusyModel(null);
     }
   };
 
   return (
     <div className="space-y-3">
-      <h2 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+      <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-zinc-300">
         <Mic size={14} className="text-zinc-400" />
         <span>Transcricao de voz</span>
       </h2>
-      <div className="border border-white/5 rounded-[12px] bg-[#111114] p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {SPEECH_OPTIONS.map((option) => {
-            const selected = speechConfig?.provider === option.id;
-            const saving = savingSpeechProvider === option.id;
+      <div className="space-y-4 rounded-[12px] border border-white/5 bg-[#111114] p-4">
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-300">Aceleracao local</p>
+              <p className="mt-1 text-[10px] text-zinc-500">{hardware?.message || "Verificando runtime local..."}</p>
+            </div>
+            <select
+              value={speechConfig?.device || "auto"}
+              disabled={!speechConfig || savingConfig}
+              onChange={(event) => void saveConfig({ device: event.target.value as SpeechConfig["device"] }, "Dispositivo de transcricao atualizado.")}
+              className="rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-[11px] text-zinc-200"
+            >
+              <option value="auto">Automatico: Vulkan e fallback CPU</option>
+              <option value="vulkan">GPU Vulkan obrigatoria</option>
+              <option value="cpu">Somente CPU</option>
+            </select>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-[10px] text-zinc-400">
+            <input
+              type="checkbox"
+              checked={speechConfig?.allowCloudFallback === true}
+              disabled={!speechConfig || savingConfig}
+              onChange={(event) => void saveConfig({ allowCloudFallback: event.target.checked }, event.target.checked ? "Fallback pela nuvem habilitado." : "Fallback pela nuvem desabilitado.")}
+              className="accent-emerald-500"
+            />
+            Permitir fallback pela nuvem quando o processamento local falhar
+          </label>
+        </div>
 
+        <button
+          type="button"
+          disabled={!speechConfig || savingConfig}
+          onClick={() => void saveConfig({ provider: "webspeech", engine: "webspeech", modelId: null }, "Transcricao Web/API selecionada.")}
+          className={`w-full rounded-lg border p-3 text-left transition-colors ${speechConfig?.modelId === null ? "border-emerald-500/30 bg-emerald-500/10" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"}`}
+        >
+          <div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-200">Web / API configurada</span>{speechConfig?.modelId === null && <CheckCircle size={13} className="text-emerald-400" />}</div>
+          <p className="mt-1 text-[10px] text-zinc-500">Nao requer download. No navegador usa Web Speech e pode usar as APIs configuradas.</p>
+        </button>
+
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {models.map((model) => {
+            const selected = speechConfig?.modelId === model.id;
+            const active = ["queued", "downloading", "verifying"].includes(model.state);
+            const progress = Math.min(100, (model.downloadedBytes / Math.max(1, model.sizeBytes)) * 100);
             return (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => updateSpeechProvider(option.id)}
-                disabled={!!savingSpeechProvider}
-                className={`text-left rounded-[10px] border p-4 transition-all disabled:opacity-60 ${
-                  selected
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-                    : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20 hover:bg-white/[0.06]"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[12px] font-bold uppercase tracking-widest">{option.name}</span>
-                  {saving ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : selected ? (
-                    <CheckCircle size={12} className="text-emerald-400" />
-                  ) : null}
+              <div key={model.id} className={`rounded-xl border p-4 ${selected ? "border-emerald-500/30 bg-emerald-500/[0.07]" : "border-white/10 bg-white/[0.025]"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-bold text-zinc-100">{model.name}</span>
+                      {model.recommended && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[8px] font-bold uppercase text-emerald-300">Recomendado</span>}
+                      {model.quantized && <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[8px] uppercase text-violet-300">Quantizado</span>}
+                    </div>
+                    <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{model.description}</p>
+                    <p className="mt-2 text-[9px] uppercase tracking-wider text-zinc-600">{formatSpeechBytes(model.sizeBytes)} · {model.multilingual ? "Multilingue" : "Ingles"} · {model.engine === "whisper-cpp" ? "Vulkan/CPU" : "Parakeet"}</p>
+                  </div>
+                  {selected && <CheckCircle size={14} className="shrink-0 text-emerald-400" />}
                 </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-                  {option.description}
-                </p>
-              </button>
+                {(active || model.state === "partial") && (
+                  <div className="mt-3">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-amber-300 transition-all" style={{ width: `${progress}%` }} /></div>
+                    <p className="mt-1 text-[9px] text-zinc-500">{formatSpeechBytes(model.downloadedBytes)} de aproximadamente {formatSpeechBytes(model.sizeBytes)} · {model.state}</p>
+                  </div>
+                )}
+                {model.error && <p className="mt-2 text-[10px] text-red-300">{model.error}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {model.state === "ready" ? (
+                    <>
+                      <button type="button" disabled={savingConfig} onClick={() => void selectModel(model)} className="rounded-md bg-emerald-500/15 px-3 py-1.5 text-[9px] font-bold uppercase text-emerald-300">{selected ? "Em uso" : "Usar"}</button>
+                      <button type="button" disabled={busyModel === model.id} onClick={() => void modelAction(model, "verify")} className="rounded-md border border-white/10 px-3 py-1.5 text-[9px] uppercase text-zinc-400">Verificar</button>
+                      <button type="button" disabled={busyModel === model.id || selected} onClick={() => void modelAction(model, "remove")} className="rounded-md border border-red-500/20 px-3 py-1.5 text-[9px] uppercase text-red-300 disabled:opacity-40">Remover</button>
+                    </>
+                  ) : active ? (
+                    <button type="button" onClick={() => void modelAction(model, "cancel")} className="rounded-md border border-amber-500/20 px-3 py-1.5 text-[9px] font-bold uppercase text-amber-200">Cancelar</button>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => void modelAction(model, "download")} className="flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-3 py-1.5 text-[9px] font-bold uppercase text-emerald-300"><Download size={11} /> Baixar</button>
+                      <button type="button" disabled={savingConfig} onClick={() => void selectModel(model)} className="rounded-md border border-white/10 px-3 py-1.5 text-[9px] uppercase text-zinc-400">Selecionar</button>
+                    </>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
-        {speechConfig?.provider === "parakeet" && parakeetStatus && (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-[11px] ${
-            parakeetStatus.state === "ready" ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300" :
-            parakeetStatus.state === "error" ? "border-red-500/20 bg-red-500/5 text-red-300" : "border-amber-500/20 bg-amber-500/5 text-amber-200"
-          }`}>
-            <div className="flex items-center gap-2">
-              {parakeetStatus.state === "downloading" ? <Loader2 size={13} className="animate-spin" /> : parakeetStatus.state === "ready" ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
-              <span>{parakeetStatus.message}</span>
-            </div>
-            {parakeetStatus.state === "downloading" && parakeetStatus.totalBytes && (
-              <div className="mt-2">
-                <div className="h-1.5 overflow-hidden rounded-full bg-black/20">
-                  <div className="h-full rounded-full bg-amber-300 transition-all" style={{ width: `${Math.min(100, ((parakeetStatus.downloadedBytes || 0) / parakeetStatus.totalBytes) * 100)}%` }} />
-                </div>
-                <p className="mt-1 text-[10px] opacity-80">{Math.round((parakeetStatus.downloadedBytes || 0) / 1024 / 1024)} MB de aproximadamente {Math.round(parakeetStatus.totalBytes / 1024 / 1024)} MB</p>
-              </div>
-            )}
-          </div>
-        )}
-        <p className="mt-3 text-[10px] text-zinc-600">
-          O runtime local e iniciado automaticamente. O Parakeet funciona offline depois do primeiro download do modelo.
-        </p>
       </div>
     </div>
   );

@@ -60,6 +60,12 @@ export interface SpeechTranscriptionResult {
   deviceName?: string;
 }
 
+export interface SpeechTranscriptionOptions {
+  modelId?: string | null;
+  device?: SpeechDevicePreference;
+  allowCloudFallback?: boolean;
+}
+
 export interface PythonSpeechResponse {
   text?: unknown;
   error?: unknown;

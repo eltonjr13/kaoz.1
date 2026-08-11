@@ -258,6 +258,13 @@ export interface IntelligentEditPlan {
     sfxPack?: "minimal" | "dynamic" | "tech";
   };
   transcript: TimedTranscriptSegment[];
+  transcription?: {
+    engine: "webspeech" | "cloud" | "whisper-cpp" | "parakeet";
+    modelId?: string;
+    backend?: "web" | "cloud" | "vulkan" | "cpu" | "parakeet";
+    deviceName?: string;
+    language: "pt";
+  };
   pedagogy: IntelligentPedagogicalAnalysis;
   captions: IntelligentCaption[];
   events: IntelligentEditEvent[];
@@ -323,4 +330,8 @@ export interface IntelligentEditAnalysisInput {
   sfxVolumeDb?: number;
   sfxPack?: "minimal" | "dynamic" | "tech";
   useAgent?: boolean;
+  transcriptionRuntime?: "web" | "desktop";
+  transcriptionModelId?: string | null;
+  transcriptionDevice?: "auto" | "vulkan" | "cpu";
+  transcriptionAllowCloudFallback?: boolean;
 }

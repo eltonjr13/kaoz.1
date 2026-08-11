@@ -6,6 +6,7 @@ import type {
   SpeechRuntimeConfig,
   SpeechRuntimeEnvironment,
   SpeechSettings,
+  SpeechTranscriptionOptions,
   SpeechTranscriptionResult,
 } from "./speech.types";
 import { GoogleGenAI } from "@google/genai";
@@ -126,8 +127,17 @@ export class SpeechService {
     }
   }
 
-  async transcribe(audio: File, runtime?: SpeechRuntimeEnvironment): Promise<SpeechTranscriptionResult> {
-    const settings = await readSpeechSettings();
+  async transcribe(audio: File, runtime?: SpeechRuntimeEnvironment, options?: SpeechTranscriptionOptions): Promise<SpeechTranscriptionResult> {
+    const storedSettings = await readSpeechSettings();
+    if (options?.modelId && !getSpeechModelDefinition(options.modelId)) {
+      throw new Error(`Modelo de transcricao desconhecido: ${options.modelId}.`);
+    }
+    const settings: SpeechSettings = {
+      ...storedSettings,
+      ...(options && "modelId" in options ? { modelId: options.modelId ?? null } : {}),
+      ...(options?.device ? { device: options.device } : {}),
+      ...(typeof options?.allowCloudFallback === "boolean" ? { allowCloudFallback: options.allowCloudFallback } : {}),
+    };
     const provider = resolveServerSpeechProvider(settings.provider, runtime);
     const engine = engineFor(settings, runtime);
 
