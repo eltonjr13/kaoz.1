@@ -9,7 +9,12 @@ import {
   SPEECH_MODEL_CATALOG,
 } from "./speech-model.catalog";
 import { ensurePythonSpeechServer, getParakeetStatusUrl } from "./speech.python-runtime";
-import type { ParakeetRuntimeStatus, SpeechModelInstallState, SpeechModelStatus } from "./speech.types";
+import type {
+  ParakeetRuntimeStatus,
+  SpeechModelDefinition,
+  SpeechModelInstallState,
+  SpeechModelStatus,
+} from "./speech.types";
 
 interface ActiveDownload {
   controller: AbortController;
@@ -165,6 +170,14 @@ async function digest(filePath: string, algorithm: "sha1" | "sha256"): Promise<s
   });
 }
 
+async function verifyDownloadedModel(model: SpeechModelDefinition, partial: string): Promise<void> {
+  if (!model.checksum) return;
+  const actual = await digest(partial, model.checksum.algorithm);
+  if (actual.toLowerCase() === model.checksum.value.toLowerCase()) return;
+  await rm(partial, { force: true });
+  throw new Error("O arquivo baixado falhou na verificacao de integridade.");
+}
+
 async function downloadWhisperModel(modelId: string, active: ActiveDownload): Promise<void> {
   const model = getSpeechModelDefinition(modelId)!;
   if (!model.downloadUrl) throw new Error("Este modelo nao possui download direto configurado.");
@@ -183,13 +196,7 @@ async function downloadWhisperModel(modelId: string, active: ActiveDownload): Pr
   active.state = "downloading";
   await appendResponseBody(response, partial, append, active);
   active.state = "verifying";
-  if (model.checksum) {
-    const actual = await digest(partial, model.checksum.algorithm);
-    if (actual.toLowerCase() !== model.checksum.value.toLowerCase()) {
-      await rm(partial, { force: true });
-      throw new Error("O arquivo baixado falhou na verificacao de integridade.");
-    }
-  }
+  await verifyDownloadedModel(model, partial);
   await rm(destination, { force: true });
   await rename(partial, destination);
   lastErrors.delete(model.id);

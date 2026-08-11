@@ -125,6 +125,38 @@ async function pythonTranscription(audio: File, provider: SpeechProviderName): P
   };
 }
 
+function validateTranscriptionOptions(options?: SpeechTranscriptionOptions): void {
+  if (!options?.modelId || getSpeechModelDefinition(options.modelId)) return;
+  throw new Error(`Modelo de transcricao desconhecido: ${options.modelId}.`);
+}
+
+async function pythonTranscriptionWithFallback(
+  audio: File,
+  provider: SpeechProviderName,
+  allowCloudFallback: boolean,
+): Promise<SpeechTranscriptionResult> {
+  try {
+    return await pythonTranscription(audio, provider);
+  } catch (localError) {
+    if (provider === "parakeet" || !allowCloudFallback) {
+      const localMessage = localError instanceof Error ? localError.message : String(localError);
+      throw new Error(`Transcricao indisponivel (${localMessage}). Baixe um modelo local ou habilite explicitamente o fallback pela nuvem.`);
+    }
+    return cloudTranscriptionOrThrow(audio);
+  }
+}
+
+async function transcribeWithEngine(
+  audio: File,
+  settings: SpeechSettings,
+  provider: SpeechProviderName,
+  engine: SpeechEngine,
+): Promise<SpeechTranscriptionResult> {
+  if (engine === "whisper-cpp" && settings.modelId) return whisperCppTranscription(audio, settings);
+  if (engine === "cloud" || engine === "webspeech") return cloudTranscriptionOrThrow(audio);
+  return pythonTranscriptionWithFallback(audio, provider, settings.allowCloudFallback);
+}
+
 export class SpeechService {
   async getRuntimeConfig(): Promise<SpeechRuntimeConfig> {
     const settings = await readSpeechSettings();
@@ -171,27 +203,11 @@ export class SpeechService {
 
   async transcribe(audio: File, runtime?: SpeechRuntimeEnvironment, options?: SpeechTranscriptionOptions): Promise<SpeechTranscriptionResult> {
     const storedSettings = await readSpeechSettings();
-    if (options?.modelId && !getSpeechModelDefinition(options.modelId)) {
-      throw new Error(`Modelo de transcricao desconhecido: ${options.modelId}.`);
-    }
+    validateTranscriptionOptions(options);
     const settings = transcriptionSettings(storedSettings, options);
     const provider = resolveServerSpeechProvider(settings.provider, runtime);
     const engine = engineFor(settings, runtime);
-
-    if (engine === "whisper-cpp" && settings.modelId) return whisperCppTranscription(audio, settings);
-    if (engine === "cloud" || engine === "webspeech") return cloudTranscriptionOrThrow(audio);
-
-    try {
-      return await pythonTranscription(audio, provider);
-    } catch (localError) {
-      if (provider === "parakeet") throw localError;
-      if (settings.allowCloudFallback) {
-        const cloudResult = await transcribeWithConfiguredCloud(audio);
-        if (cloudResult) return cloudResult;
-      }
-      const localMessage = localError instanceof Error ? localError.message : String(localError);
-      throw new Error(`Transcricao indisponivel (${localMessage}). Baixe um modelo local ou habilite explicitamente o fallback pela nuvem.`);
-    }
+    return transcribeWithEngine(audio, settings, provider, engine);
   }
 }
 
