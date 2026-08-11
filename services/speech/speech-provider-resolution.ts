@@ -10,9 +10,9 @@ export function speechRuntimeEnvironment(value?: unknown): SpeechRuntimeEnvironm
 
 export function resolveSpeechProvider(
   preferred: SpeechProviderName,
-  runtime?: SpeechRuntimeEnvironment,
+  _runtime?: SpeechRuntimeEnvironment,
 ): SpeechProviderName {
-  return speechRuntimeEnvironment(runtime) === "desktop" ? "parakeet" : preferred;
+  return preferred;
 }
 
 export function resolveServerSpeechProvider(
