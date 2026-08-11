@@ -38,6 +38,111 @@ import {
   videoEncoderArguments,
 } from "../services/davinci-free/video-encoder.ts";
 import { resolveLocalVideoSource } from "../services/davinci-free/video-source.ts";
+import {
+  analyzePedagogicalTranscript,
+  buildPedagogicalTranscriptChunks,
+  consolidatePedagogicalItems,
+} from "../services/davinci-free/pedagogical-analysis.ts";
+import type {
+  IntelligentPedagogicalItem,
+  TimedTranscriptSegment,
+} from "../services/davinci-free/intelligent-edit.types.ts";
+
+test("análise pedagógica divide aulas longas sem perder o final da transcrição", async () => {
+  const segments: TimedTranscriptSegment[] = Array.from({ length: 36 }, (_, index) => ({
+    start: index * 5,
+    end: index * 5 + 4.5,
+    text: `${index === 35 ? "MARCADOR_FINAL " : ""}${`conteúdo pedagógico ${index} `.repeat(16)}`,
+    source: "local-asr" as const,
+  }));
+  const chunks = buildPedagogicalTranscriptChunks(segments, 1_200);
+  const prompts: string[] = [];
+  const analysis = await analyzePedagogicalTranscript({
+    segments,
+    courseName: "Curso completo",
+    moduleName: "Aula longa",
+    useAgent: true,
+    maxChunkCharacters: 1_200,
+    queryAgent: async (prompt) => {
+      prompts.push(prompt);
+      const index = prompts.length;
+      return JSON.stringify({
+        items: [{
+          kind: "chapter",
+          title: `Bloco ${index}`,
+          start: 0,
+          end: 999_999,
+          evidence: `Evidência ${index}`,
+          importance: "medium",
+          confidence: 0.9,
+          editorialSuggestion: "Criar marcador de capítulo.",
+        }],
+      });
+    },
+  });
+
+  assert.ok(chunks.length > 1);
+  assert.equal(analysis.version, 2);
+  assert.equal(analysis.chunkCount, chunks.length);
+  assert.equal(analysis.segmentsAnalyzed, segments.length);
+  assert.equal(
+    analysis.analyzedCharacters,
+    segments.reduce((sum, segment) => sum + segment.text.length, 0),
+  );
+  assert.equal(prompts.length, chunks.length);
+  assert.match(prompts.at(-1) || "", /MARCADOR_FINAL/);
+  assert.equal(analysis.source, "agent");
+  assert.ok(analysis.items.every((item) => item.status === "suggested"));
+  assert.ok(analysis.items.every((item) => item.start >= 0 && item.end <= segments.at(-1)!.end));
+});
+
+test("fallback pedagógico conserva evidência temporal e identifica estrutura de curso", async () => {
+  const segments: TimedTranscriptSegment[] = [
+    { start: 0, end: 4, text: "Nesta aula vamos configurar seu primeiro projeto.", source: "local-asr" },
+    { start: 5, end: 9, text: "Primeiro passo: abra as configurações.", source: "local-asr" },
+    { start: 10, end: 14, text: "Por exemplo, use o projeto de demonstração.", source: "local-asr" },
+    { start: 15, end: 19, text: "Cuidado: não apague a configuração original.", source: "local-asr" },
+    { start: 20, end: 24, text: "Como exercício, pratique com uma cópia.", source: "local-asr" },
+    { start: 25, end: 29, text: "Em resumo, o projeto está pronto para a próxima aula.", source: "local-asr" },
+  ];
+  const analysis = await analyzePedagogicalTranscript({
+    segments,
+    moduleName: "Configuração inicial",
+    useAgent: false,
+  });
+  const kinds = new Set(analysis.items.map((item) => item.kind));
+
+  assert.equal(analysis.source, "deterministic-fallback");
+  for (const kind of ["objective", "process-step", "example", "warning", "exercise", "summary", "next-link"]) {
+    assert.ok(kinds.has(kind as IntelligentPedagogicalItem["kind"]), `item ausente: ${kind}`);
+  }
+  assert.ok(analysis.items.every((item) => item.evidence.length > 0));
+  assert.ok(analysis.items.every((item) => item.start <= item.end));
+});
+
+test("consolidação pedagógica remove duplicatas mantendo a sugestão mais confiante", () => {
+  const base: IntelligentPedagogicalItem = {
+    id: "original",
+    kind: "concept",
+    title: "Funil de vendas",
+    start: 12,
+    end: 16,
+    evidence: "Um funil de vendas organiza as etapas.",
+    importance: "medium",
+    confidence: 0.6,
+    editorialSuggestion: "Registrar o conceito.",
+    status: "suggested",
+    source: "chunk-fallback",
+  };
+  const consolidated = consolidatePedagogicalItems([
+    base,
+    { ...base, id: "duplicate", start: 13, confidence: 0.95, source: "chunk-agent" },
+  ]);
+
+  assert.equal(consolidated.length, 1);
+  assert.equal(consolidated[0].confidence, 0.95);
+  assert.equal(consolidated[0].source, "chunk-agent");
+});
 
 test("aula única aceita uma pasta que contém exatamente um vídeo compatível", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "kaoz-single-video-"));
@@ -484,7 +589,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*7/);
+  assert.match(analysis, /analysisVersion:\s*8/);
   assert.match(analysis, /captionsEnabled/);
   assert.match(analysis, /courseThemeDesign/);
   assert.match(analysis, /resolveCourseTheme/);

@@ -15,6 +15,8 @@ import type {
   IntelligentEditorialReview,
   IntelligentEditEvent,
   IntelligentEditPlan,
+  IntelligentPedagogicalItemStatus,
+  IntelligentPedagogicalReviewOverride,
 } from "./intelligent-edit.types";
 
 const STANDARD_ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "course-editorial-standards");
@@ -162,6 +164,37 @@ function captionOverrideEntry(
   }];
 }
 
+function pedagogicalOverrideEntry(
+  plan: IntelligentEditPlan,
+  allowedItems: Set<string>,
+  value: unknown,
+): IntelligentPedagogicalReviewOverride[] {
+  if (!value || typeof value !== "object") return [];
+  const item = value as Record<string, unknown>;
+  const id = String(item.id || "");
+  if (!allowedItems.has(id)) return [];
+  const status = String(item.status || "") as IntelligentPedagogicalItemStatus;
+  const start = Number(item.start);
+  const end = Number(item.end);
+  const nextStart = Number.isFinite(start)
+    ? clamp(start, 0, plan.media.durationSeconds)
+    : undefined;
+  const nextEnd = Number.isFinite(end)
+    ? clamp(end, nextStart ?? 0, plan.media.durationSeconds)
+    : undefined;
+  return [{
+    id,
+    ...(["suggested", "approved", "edited", "rejected"].includes(status) ? { status } : {}),
+    ...(text(item.title, 120) ? { title: text(item.title, 120) } : {}),
+    ...(text(item.detail, 360) ? { detail: text(item.detail, 360) } : {}),
+    ...(nextStart !== undefined ? { start: nextStart } : {}),
+    ...(nextEnd !== undefined ? { end: nextEnd } : {}),
+    ...(text(item.editorialSuggestion, 280)
+      ? { editorialSuggestion: text(item.editorialSuggestion, 280) }
+      : {}),
+  }];
+}
+
 function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditorialReview {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const now = new Date().toISOString();
@@ -175,6 +208,10 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
   const captions = Array.isArray(raw.captions)
     ? raw.captions.flatMap((item) => captionOverrideEntry(plan, item))
     : [];
+  const allowedPedagogy = new Set((plan.pedagogy?.items || []).map((item) => item.id));
+  const pedagogy = Array.isArray(raw.pedagogy)
+    ? raw.pedagogy.flatMap((item) => pedagogicalOverrideEntry(plan, allowedPedagogy, item))
+    : [];
   const previewPath = sanitizeEditorialPreviewPath(
     plan.artifacts.directory,
     raw.previewPath,
@@ -187,6 +224,7 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
     events,
     addedEvents,
     captions,
+    pedagogy,
     ...(previewPath ? { previewPath } : {}),
   };
 }
@@ -210,11 +248,33 @@ export function applyEditorialReview(plan: IntelligentEditPlan, review: Intellig
     if (change?.enabled === false) return [];
     return [{ ...caption, ...change }];
   });
+  const pedagogy = new Map((review.pedagogy || []).map((item) => [item.id, item]));
+  const reviewedPedagogy = plan.pedagogy
+    ? {
+        ...plan.pedagogy,
+        items: plan.pedagogy.items.map((item) => {
+          const change = pedagogy.get(item.id);
+          if (!change) return item;
+          const edited = change.title !== undefined
+            || change.detail !== undefined
+            || change.start !== undefined
+            || change.end !== undefined
+            || change.editorialSuggestion !== undefined;
+          return {
+            ...item,
+            ...change,
+            id: item.id,
+            status: change.status || (edited ? "edited" as const : item.status),
+          };
+        }),
+      }
+    : undefined;
   const captionsEnabled = review.captionsEnabled ?? (plan.design?.captionsEnabled !== false);
   return {
     ...plan,
     events: reviewedEvents,
     captions: reviewedCaptions,
+    ...(reviewedPedagogy ? { pedagogy: reviewedPedagogy } : {}),
     design: plan.design ? { ...plan.design, captionsEnabled } : plan.design,
     artifacts: review.previewPath ? { ...plan.artifacts, previewPath: review.previewPath } : plan.artifacts,
     editorial: {

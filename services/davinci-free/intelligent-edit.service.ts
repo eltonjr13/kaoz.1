@@ -20,6 +20,7 @@ import {
   type IntelligentEditAnalysisInput,
   type IntelligentEditEvent,
   type IntelligentEditPlan,
+  type IntelligentPedagogicalAnalysis,
   type IntelligentEditStyle,
   type IntelligentEditTextVariant,
   type TimedTranscriptSegment,
@@ -38,6 +39,10 @@ import {
   type VisualAnchor,
 } from "./visual-anchor";
 import { resolveLocalVideoSource } from "./video-source";
+import {
+  analyzePedagogicalTranscript,
+  pedagogicalAnalysisDigest,
+} from "./pedagogical-analysis";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
@@ -440,6 +445,7 @@ async function semanticPlan(
   captions: IntelligentCaption[],
   input: IntelligentEditAnalysisInput,
   duration: number,
+  pedagogy: IntelligentPedagogicalAnalysis,
 ) {
   const transcript = segments
     .map((segment) => `[${segment.start.toFixed(1)}-${segment.end.toFixed(1)}] ${segment.text}`)
@@ -456,13 +462,17 @@ async function semanticPlan(
     "Escolha de 4 a 7 textos de impacto com 2 a 6 palavras, diferentes da legenda corrida.",
     "Classifique cada texto como concept, stat, action ou quote conforme sua função narrativa.",
     "Não altere timestamps das legendas. Corrija somente ortografia e pontuação.",
+    "Use a análise pedagógica consolidada como referência principal para promessa, capítulos e próxima ação.",
     `Curso: ${input.courseName || "não informado"}`,
     `Módulo: ${input.moduleName}`,
     `Estilo: ${input.style || "subtle"}`,
     `Duração: ${duration.toFixed(1)} segundos`,
+    "Análise pedagógica consolidada:",
+    pedagogicalAnalysisDigest(pedagogy) || "Nenhum item pedagógico confiável identificado.",
+    "Transcrição temporal inicial para contexto de linguagem:",
     transcript,
   ].join("\n");
-  const fallbackDecision = deterministicSemanticDecision(segments, input, duration);
+  const fallbackDecision = deterministicSemanticDecision(segments, input, duration, pedagogy);
   if (input.useAgent === false) {
     return {
       decision: fallbackDecision,
@@ -517,27 +527,57 @@ function deterministicSemanticDecision(
   segments: TimedTranscriptSegment[],
   input: IntelligentEditAnalysisInput,
   duration: number,
+  pedagogy: IntelligentPedagogicalAnalysis,
 ): SemanticDecision {
   const title = cleanLessonTitle(input.moduleName);
   const transcript = segments.map((segment) => segment.text).join(" ");
   const highlights = narrativeHighlights(segments, duration);
+  const pedagogicalItems = pedagogy.items.filter((item) => item.status !== "rejected");
+  const promise = pedagogicalItems.find((item) => item.kind === "promise")
+    || pedagogicalItems.find((item) => item.kind === "objective");
+  const nextAction = pedagogicalItems.find((item) => item.kind === "exercise")
+    || pedagogicalItems.find((item) => item.kind === "action");
+  const nextLesson = pedagogicalItems.find((item) => item.kind === "next-link");
+  const summary = [...pedagogicalItems].reverse().find((item) => item.kind === "summary");
+  const pedagogicalHighlights = pedagogicalItems
+    .filter((item) => ["concept", "definition", "process-step", "warning", "common-error"].includes(item.kind))
+    .slice(0, 7);
   return {
     moduleTitle: title,
     introTitle: title,
-    introSubtitle: lessonSubtitle(title, transcript),
-    outroTitle: "Aplique antes de avançar",
-    outroSubtitle: "Leve esta etapa para a próxima aula",
-    emphasis: highlights.map((highlight) => ({
-      time: highlight.time,
-      label: highlight.text,
-      reason: "Momento relevante identificado na transcrição.",
-    })),
-    onScreenText: highlights.map((highlight) => ({
-      time: highlight.time,
-      text: highlight.text,
-      variant: highlight.variant,
-      reason: "Síntese semântica extraída da fala.",
-    })),
+    introSubtitle: promise?.title || lessonSubtitle(title, transcript),
+    outroTitle: nextAction?.title || summary?.title || "Aplique antes de avançar",
+    outroSubtitle: nextLesson?.title || "Leve esta etapa para a próxima aula",
+    lowerThirds: pedagogicalItems
+      .filter((item) => item.kind === "chapter")
+      .slice(0, 6)
+      .map((item) => ({ time: item.start, title: item.title, reason: item.editorialSuggestion })),
+    emphasis: pedagogicalHighlights.length
+      ? pedagogicalHighlights.map((item) => ({
+          time: item.start,
+          label: item.title,
+          reason: item.editorialSuggestion,
+        }))
+      : highlights.map((highlight) => ({
+          time: highlight.time,
+          label: highlight.text,
+          reason: "Momento relevante identificado na transcrição.",
+        })),
+    onScreenText: pedagogicalHighlights.length
+      ? pedagogicalHighlights.map((item) => ({
+          time: item.start,
+          text: item.title,
+          variant: item.kind === "warning" || item.kind === "common-error"
+            ? "action" as const
+            : "concept" as const,
+          reason: item.editorialSuggestion,
+        }))
+      : highlights.map((highlight) => ({
+          time: highlight.time,
+          text: highlight.text,
+          variant: highlight.variant,
+          reason: "Síntese semântica extraída da fala.",
+        })),
   };
 }
 
@@ -929,7 +969,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 7,
+      analysisVersion: 8,
       courseName: input.courseName,
       moduleName: input.moduleName,
       style: input.style,
@@ -978,11 +1018,25 @@ export async function analyzeIntelligentEdit(
     },
   );
   await analysisStatusWrite;
-  await reportAnalysisProgress(60, "Planejando cortes, textos e ritmo da edição...");
+  await reportAnalysisProgress(60, "Mapeando objetivos, conceitos e estrutura pedagógica...");
   const rawCaptions = wordsToCaptions(transcript);
-  const semantic = await semanticPlan(transcript, rawCaptions, input, media.durationSeconds);
+  const pedagogy = await analyzePedagogicalTranscript({
+    segments: transcript,
+    courseName: input.courseName,
+    moduleName: input.moduleName,
+    useAgent: input.useAgent !== false,
+    queryAgent: (prompt) => queryConfiguredAgentCli(prompt, { useExternalTools: false }),
+  });
+  await reportAnalysisProgress(68, "Consolidando a estrutura pedagógica da aula...");
+  const semantic = await semanticPlan(
+    transcript,
+    rawCaptions,
+    input,
+    media.durationSeconds,
+    pedagogy,
+  );
   const captions = reviewedCaptions(rawCaptions, semantic.decision, media.durationSeconds);
-  await reportAnalysisProgress(72, "Definindo identidade visual e legendas...");
+  await reportAnalysisProgress(76, "Definindo identidade visual e legendas...");
   const courseTheme = await resolveCourseTheme({
     courseName: input.courseName,
     transcript: transcript.map((segment) => segment.text).join("\n"),
@@ -997,7 +1051,7 @@ export async function analyzeIntelligentEdit(
     style: input.style || "subtle",
     semantic: semantic.decision,
   });
-  await reportAnalysisProgress(82, "Analisando enquadramento e pontos de destaque...");
+  await reportAnalysisProgress(84, "Analisando enquadramento e pontos de destaque...");
   const visual = await visualEditPlan({
     sourcePath: input.sourcePath,
     directory,
@@ -1006,6 +1060,7 @@ export async function analyzeIntelligentEdit(
   });
   await reportAnalysisProgress(95, "Salvando o plano de edição...");
   const transcriptPath = path.join(directory, "transcript.json");
+  const pedagogyPath = path.join(directory, "pedagogical-analysis.json");
   const captionsPath = path.join(directory, "captions-reviewed.srt");
   const plan: IntelligentEditPlan = {
     version: INTELLIGENT_EDIT_PLAN_VERSION,
@@ -1032,6 +1087,7 @@ export async function analyzeIntelligentEdit(
       sfxPack: input.sfxPack || "dynamic",
     },
     transcript,
+    pedagogy,
     captions,
     events: visual.events,
     audio: {
@@ -1057,9 +1113,10 @@ export async function analyzeIntelligentEdit(
           : "asr-only",
     },
     visual: visual.visual,
-    artifacts: { directory, transcriptPath, captionsPath, planPath },
+    artifacts: { directory, transcriptPath, pedagogyPath, captionsPath, planPath },
   };
   await writeFile(transcriptPath, `${JSON.stringify(transcript, null, 2)}\n`, "utf8");
+  await writeFile(pedagogyPath, `${JSON.stringify(pedagogy, null, 2)}\n`, "utf8");
   await writeFile(captionsPath, toSrt(captions), "utf8");
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await mkdir(ROOT, { recursive: true });

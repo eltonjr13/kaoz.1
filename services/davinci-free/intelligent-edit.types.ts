@@ -1,4 +1,5 @@
-export const INTELLIGENT_EDIT_PLAN_VERSION = 1 as const;
+export const INTELLIGENT_EDIT_PLAN_VERSION = 2 as const;
+export const INTELLIGENT_PEDAGOGICAL_ANALYSIS_VERSION = 2 as const;
 
 export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic" | "meme";
 export type IntelligentEditPalette =
@@ -63,6 +64,54 @@ export interface TimedTranscriptSegment {
   source: "local-asr";
 }
 
+export type IntelligentPedagogicalItemKind =
+  | "objective"
+  | "prerequisite"
+  | "promise"
+  | "chapter"
+  | "concept"
+  | "definition"
+  | "process-step"
+  | "example"
+  | "demonstration"
+  | "warning"
+  | "common-error"
+  | "exercise"
+  | "action"
+  | "summary"
+  | "previous-link"
+  | "next-link";
+
+export type IntelligentPedagogicalItemStatus =
+  | "suggested"
+  | "approved"
+  | "edited"
+  | "rejected";
+
+export interface IntelligentPedagogicalItem {
+  id: string;
+  kind: IntelligentPedagogicalItemKind;
+  title: string;
+  detail?: string;
+  start: number;
+  end: number;
+  evidence: string;
+  importance: "low" | "medium" | "high";
+  confidence: number;
+  editorialSuggestion: string;
+  status: IntelligentPedagogicalItemStatus;
+  source: "chunk-agent" | "chunk-fallback";
+}
+
+export interface IntelligentPedagogicalAnalysis {
+  version: typeof INTELLIGENT_PEDAGOGICAL_ANALYSIS_VERSION;
+  source: "agent" | "hybrid" | "deterministic-fallback";
+  chunkCount: number;
+  segmentsAnalyzed: number;
+  analyzedCharacters: number;
+  items: IntelligentPedagogicalItem[];
+}
+
 export interface IntelligentCaption {
   start: number;
   end: number;
@@ -125,6 +174,16 @@ export interface IntelligentEditorialCaptionOverride {
   text?: string;
 }
 
+export interface IntelligentPedagogicalReviewOverride {
+  id: string;
+  status?: IntelligentPedagogicalItemStatus;
+  title?: string;
+  detail?: string;
+  start?: number;
+  end?: number;
+  editorialSuggestion?: string;
+}
+
 export interface IntelligentEditorialReview {
   version: 1;
   planId: string;
@@ -133,6 +192,7 @@ export interface IntelligentEditorialReview {
   events: IntelligentEditorialEventOverride[];
   addedEvents?: IntelligentEditEvent[];
   captions: IntelligentEditorialCaptionOverride[];
+  pedagogy?: IntelligentPedagogicalReviewOverride[];
   previewPath?: string;
 }
 
@@ -183,6 +243,7 @@ export interface IntelligentEditPlan {
     sfxPack?: "minimal" | "dynamic" | "tech";
   };
   transcript: TimedTranscriptSegment[];
+  pedagogy: IntelligentPedagogicalAnalysis;
   captions: IntelligentCaption[];
   events: IntelligentEditEvent[];
   audio: {
@@ -221,6 +282,7 @@ export interface IntelligentEditPlan {
   artifacts: {
     directory: string;
     transcriptPath: string;
+    pedagogyPath: string;
     captionsPath: string;
     planPath: string;
     previewPath?: string;
