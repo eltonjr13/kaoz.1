@@ -48,26 +48,33 @@ async function pathExists(filePath: string): Promise<boolean> {
   return access(filePath).then(() => true).catch(() => false);
 }
 
-async function parakeetStatus(): Promise<SpeechModelStatus> {
+function parakeetInstallState(state: ParakeetRuntimeStatus["state"] | undefined, fallbackBytes: number): SpeechModelInstallState {
+  if (state === "ready") return "ready";
+  if (state === "downloading") return "downloading";
+  if (state === "error") return "error";
+  return fallbackBytes > 0 ? "partial" : "not-installed";
+}
+
+function parakeetModelStatus(payload: Partial<ParakeetRuntimeStatus>, fallbackBytes: number): SpeechModelStatus {
   const model = getSpeechModelDefinition(PARAKEET_MODEL_ID)!;
-  const fallbackBytes = await directorySize(getSpeechModelPath(model.id));
+  const state = parakeetInstallState(payload.state, fallbackBytes);
+  return {
+    ...model,
+    state,
+    downloadedBytes: payload.downloadedBytes ?? fallbackBytes,
+    ...(payload.message && state === "error" ? { error: payload.message } : {}),
+    ...(state === "ready" ? { installedPath: getSpeechModelPath(model.id) } : {}),
+  };
+}
+
+async function parakeetStatus(): Promise<SpeechModelStatus> {
+  const fallbackBytes = await directorySize(getSpeechModelPath(PARAKEET_MODEL_ID));
   try {
     const response = await fetch(getParakeetStatusUrl(), { cache: "no-store", signal: AbortSignal.timeout(800) });
     const payload = await response.json().catch(() => ({})) as Partial<ParakeetRuntimeStatus>;
-    const state = payload.state === "ready" ? "ready" : payload.state === "downloading" ? "downloading" : payload.state === "error" ? "error" : fallbackBytes > 0 ? "partial" : "not-installed";
-    return {
-      ...model,
-      state,
-      downloadedBytes: payload.downloadedBytes ?? fallbackBytes,
-      ...(payload.message && state === "error" ? { error: payload.message } : {}),
-      ...(state === "ready" ? { installedPath: getSpeechModelPath(model.id) } : {}),
-    };
+    return parakeetModelStatus(payload, fallbackBytes);
   } catch {
-    return {
-      ...model,
-      state: fallbackBytes > 0 ? "partial" : "not-installed",
-      downloadedBytes: fallbackBytes,
-    };
+    return parakeetModelStatus({}, fallbackBytes);
   }
 }
 
@@ -164,14 +171,14 @@ async function downloadWhisperModel(modelId: string, active: ActiveDownload): Pr
   const destination = getSpeechModelPath(model.id);
   const partial = partialPath(model.id);
   await mkdir(path.dirname(destination), { recursive: true });
-  const existingBytes = await fileSize(partial);
+  const partialBytes = await fileSize(partial);
   const response = await fetch(model.downloadUrl, {
-    headers: existingBytes > 0 ? { Range: `bytes=${existingBytes}-` } : undefined,
+    headers: partialBytes > 0 ? { Range: `bytes=${partialBytes}-` } : undefined,
     signal: active.controller.signal,
   });
   if (!response.ok && response.status !== 206) throw new Error(`Download falhou com HTTP ${response.status}.`);
-  const append = existingBytes > 0 && response.status === 206;
-  active.downloadedBytes = append ? existingBytes : 0;
+  const append = partialBytes > 0 && response.status === 206;
+  active.downloadedBytes = append ? partialBytes : 0;
   active.totalBytes = Number(response.headers.get("content-length") || 0) + active.downloadedBytes || model.sizeBytes;
   active.state = "downloading";
   await appendResponseBody(response, partial, append, active);

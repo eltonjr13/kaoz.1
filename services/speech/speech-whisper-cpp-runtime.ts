@@ -133,25 +133,33 @@ async function startServer(modelId: string, backend: "vulkan" | "cpu"): Promise<
   await waitForServer(child, port);
 }
 
+function requestedBackend(device: SpeechDevicePreference, forceCpu: boolean): "vulkan" | "cpu" {
+  return forceCpu || device === "cpu" ? "cpu" : "vulkan";
+}
+
+async function startWithAutomaticCpuFallback(modelId: string, backend: "vulkan" | "cpu", device: SpeechDevicePreference): Promise<void> {
+  try {
+    state.ready = startServer(modelId, backend);
+    await state.ready;
+  } catch (error) {
+    stopServer();
+    if (backend !== "vulkan" || device !== "auto") throw error;
+    state.ready = startServer(modelId, "cpu");
+    await state.ready;
+  }
+}
+
 async function ensureServer(modelId: string, device: SpeechDevicePreference, forceCpu = false): Promise<void> {
   if (!await isSpeechModelInstalled(modelId)) {
     throw new Error(`[MODEL_NOT_INSTALLED] O modelo ${modelId} ainda nao foi baixado.`);
   }
-  const preferredBackend = forceCpu || device === "cpu" ? "cpu" : "vulkan";
-  if (state.process && state.modelId === modelId && state.backend === preferredBackend && state.port) return;
-  stopServer();
-  state.ready = startServer(modelId, preferredBackend);
-  try {
+  const preferredBackend = requestedBackend(device, forceCpu);
+  if (state.process && state.modelId === modelId && state.backend === preferredBackend && state.port) {
     await state.ready;
-  } catch (error) {
-    stopServer();
-    if (preferredBackend === "vulkan" && device === "auto") {
-      state.ready = startServer(modelId, "cpu");
-      await state.ready;
-      return;
-    }
-    throw error;
+    return;
   }
+  stopServer();
+  await startWithAutomaticCpuFallback(modelId, preferredBackend, device);
 }
 
 async function runProcess(executable: string, args: string[]): Promise<void> {

@@ -53,18 +53,22 @@ export async function getSpeechModels() {
   return NextResponse.json({ models: await listSpeechModels(), hardware: await getWhisperCppHardwareStatus() });
 }
 
+const MODEL_ACTIONS = {
+  download: startSpeechModelDownload,
+  cancel: cancelSpeechModelDownload,
+  remove: removeSpeechModel,
+  verify: verifySpeechModel,
+} as const;
+
 export async function updateSpeechModel(request: Request) {
   try {
     const body = await request.json().catch(() => null) as { action?: unknown; modelId?: unknown } | null;
     const action = typeof body?.action === "string" ? body.action : "";
     const modelId = typeof body?.modelId === "string" ? body.modelId : "";
     if (!modelId) return jsonError("Modelo obrigatorio.");
-    const model = action === "download" ? await startSpeechModelDownload(modelId)
-      : action === "cancel" ? await cancelSpeechModelDownload(modelId)
-      : action === "remove" ? await removeSpeechModel(modelId)
-      : action === "verify" ? await verifySpeechModel(modelId)
-      : null;
-    return model ? NextResponse.json({ model }) : jsonError("Acao de modelo invalida.");
+    const handler = MODEL_ACTIONS[action as keyof typeof MODEL_ACTIONS];
+    if (!handler) return jsonError("Acao de modelo invalida.");
+    return NextResponse.json({ model: await handler(modelId) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido ao gerenciar modelo.";
     return jsonError(message, 500);

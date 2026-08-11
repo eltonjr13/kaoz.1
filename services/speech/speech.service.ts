@@ -75,6 +75,56 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
   return null;
 }
 
+function normalizeParakeetPayload(payload: Partial<ParakeetRuntimeStatus>): ParakeetRuntimeStatus {
+  const validState = payload.state === "ready" || payload.state === "downloading" || payload.state === "error";
+  return {
+    state: validState ? payload.state! : "downloading",
+    message: typeof payload.message === "string" ? payload.message : "Atualizando o Parakeet...",
+    downloadedBytes: typeof payload.downloadedBytes === "number" ? payload.downloadedBytes : undefined,
+    totalBytes: typeof payload.totalBytes === "number" ? payload.totalBytes : undefined,
+  };
+}
+
+function transcriptionSettings(stored: SpeechSettings, options?: SpeechTranscriptionOptions): SpeechSettings {
+  return {
+    ...stored,
+    ...(options && "modelId" in options ? { modelId: options.modelId ?? null } : {}),
+    ...(options?.device ? { device: options.device } : {}),
+    ...(typeof options?.allowCloudFallback === "boolean" ? { allowCloudFallback: options.allowCloudFallback } : {}),
+  };
+}
+
+async function cloudTranscriptionOrThrow(audio: File): Promise<SpeechTranscriptionResult> {
+  const result = await transcribeWithConfiguredCloud(audio);
+  if (result) return result;
+  throw new Error("Nenhuma API OpenAI ou Gemini esta configurada para transcricao.");
+}
+
+async function whisperCppTranscription(audio: File, settings: SpeechSettings): Promise<SpeechTranscriptionResult> {
+  try {
+    return await transcribeWithWhisperCpp(audio, settings.modelId!, settings.device);
+  } catch (error) {
+    if (settings.allowCloudFallback) return cloudTranscriptionOrThrow(audio);
+    throw error;
+  }
+}
+
+async function pythonTranscription(audio: File, provider: SpeechProviderName): Promise<SpeechTranscriptionResult> {
+  await ensurePythonSpeechServer(provider);
+  const formData = new FormData();
+  const audioBlob = new Blob([await audio.arrayBuffer()], { type: audio.type || "application/octet-stream" });
+  formData.set("audio", audioBlob, getFileName(audio));
+  const response = await fetch(getPythonTranscribeUrl(), { method: "POST", body: formData });
+  const payload = (await response.json().catch(() => ({}))) as PythonSpeechResponse;
+  if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.");
+  return {
+    text: typeof payload.text === "string" ? payload.text : "",
+    engine: provider === "parakeet" ? "parakeet" : "cloud",
+    modelId: provider === "parakeet" ? PARAKEET_MODEL_ID : undefined,
+    backend: provider === "parakeet" ? "parakeet" : "cpu",
+  };
+}
+
 export class SpeechService {
   async getRuntimeConfig(): Promise<SpeechRuntimeConfig> {
     const settings = await readSpeechSettings();
@@ -113,15 +163,7 @@ export class SpeechService {
       const response = await fetch(getParakeetStatusUrl(), { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as Partial<ParakeetRuntimeStatus>;
       if (!response.ok) throw new Error("O runtime Parakeet nao respondeu.");
-      if (payload.state === "ready" || payload.state === "downloading" || payload.state === "error") {
-        return {
-          state: payload.state,
-          message: typeof payload.message === "string" ? payload.message : "Atualizando o Parakeet...",
-          downloadedBytes: typeof payload.downloadedBytes === "number" ? payload.downloadedBytes : undefined,
-          totalBytes: typeof payload.totalBytes === "number" ? payload.totalBytes : undefined,
-        };
-      }
-      return { state: "downloading", message: "Preparando o Parakeet local..." };
+      return normalizeParakeetPayload(payload);
     } catch (error) {
       return { state: "error", message: error instanceof Error ? error.message : String(error) };
     }
@@ -132,50 +174,15 @@ export class SpeechService {
     if (options?.modelId && !getSpeechModelDefinition(options.modelId)) {
       throw new Error(`Modelo de transcricao desconhecido: ${options.modelId}.`);
     }
-    const settings: SpeechSettings = {
-      ...storedSettings,
-      ...(options && "modelId" in options ? { modelId: options.modelId ?? null } : {}),
-      ...(options?.device ? { device: options.device } : {}),
-      ...(typeof options?.allowCloudFallback === "boolean" ? { allowCloudFallback: options.allowCloudFallback } : {}),
-    };
+    const settings = transcriptionSettings(storedSettings, options);
     const provider = resolveServerSpeechProvider(settings.provider, runtime);
     const engine = engineFor(settings, runtime);
 
-    if (engine === "whisper-cpp" && settings.modelId) {
-      try {
-        return await transcribeWithWhisperCpp(audio, settings.modelId, settings.device);
-      } catch (localError) {
-        if (settings.allowCloudFallback) {
-          const cloudResult = await transcribeWithConfiguredCloud(audio);
-          if (cloudResult) return cloudResult;
-        }
-        throw localError;
-      }
-    }
-
-    if (engine === "cloud" || engine === "webspeech") {
-      const cloudResult = await transcribeWithConfiguredCloud(audio);
-      if (cloudResult) return cloudResult;
-      throw new Error("Nenhuma API OpenAI ou Gemini esta configurada para transcricao.");
-    }
+    if (engine === "whisper-cpp" && settings.modelId) return whisperCppTranscription(audio, settings);
+    if (engine === "cloud" || engine === "webspeech") return cloudTranscriptionOrThrow(audio);
 
     try {
-      await ensurePythonSpeechServer(provider);
-      const formData = new FormData();
-      const audioBuffer = await audio.arrayBuffer();
-      const audioBlob = new Blob([audioBuffer], { type: audio.type || "application/octet-stream" });
-      formData.set("audio", audioBlob, getFileName(audio));
-      const response = await fetch(getPythonTranscribeUrl(), { method: "POST", body: formData });
-      const payload = (await response.json().catch(() => ({}))) as PythonSpeechResponse;
-      if (!response.ok) {
-        throw new Error(typeof payload.error === "string" ? payload.error : "Falha ao transcrever audio.");
-      }
-      return {
-        text: typeof payload.text === "string" ? payload.text : "",
-        engine: provider === "parakeet" ? "parakeet" : "cloud",
-        modelId: provider === "parakeet" ? PARAKEET_MODEL_ID : undefined,
-        backend: provider === "parakeet" ? "parakeet" : "cpu",
-      };
+      return await pythonTranscription(audio, provider);
     } catch (localError) {
       if (provider === "parakeet") throw localError;
       if (settings.allowCloudFallback) {

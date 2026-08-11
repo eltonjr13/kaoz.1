@@ -396,6 +396,11 @@ function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption
   });
 }
 
+function isReusableTranscript(candidate: IntelligentEditPlan | null, sourceHash: string, options: SpeechTranscriptionOptions): candidate is IntelligentEditPlan {
+  if (!candidate || candidate.sourceHash !== sourceHash || candidate.transcript.length === 0) return false;
+  return (candidate.transcription?.modelId || null) === (options.modelId || null);
+}
+
 async function findReusableTranscript(sourceHash: string, options: SpeechTranscriptionOptions) {
   const entries = await readdir(ROOT, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
@@ -406,8 +411,7 @@ async function findReusableTranscript(sourceHash: string, options: SpeechTranscr
     )
       .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
       .catch(() => null);
-    const sameModel = (candidate?.transcription?.modelId || null) === (options.modelId || null);
-    if (candidate?.sourceHash === sourceHash && sameModel && candidate.transcript.length > 0) {
+    if (isReusableTranscript(candidate, sourceHash, options)) {
       return { segments: candidate.transcript, transcription: candidate.transcription };
     }
   }
