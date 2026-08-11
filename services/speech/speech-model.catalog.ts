@@ -30,7 +30,7 @@ export const SPEECH_MODEL_CATALOG: readonly SpeechModelDefinition[] = [
   whisperModel({ id: "whisper-large-v3-turbo", name: "Whisper Large v3 Turbo", description: "Alta qualidade com inferencia mais rapida.", fileName: "ggml-large-v3-turbo.bin", checksum: { algorithm: "sha1", value: "4af2b29d7ec73d781377bfd1758ca957a807e941" }, sizeBytes: 1.5 * GIB, memoryBytes: 2.1 * GIB, multilingual: true, quantized: false, quality: "highest" }),
   whisperModel({ id: "whisper-large-v3-turbo-q5", name: "Whisper Large v3 Turbo Q5", description: "Recomendado: rapido, multilíngue e compacto.", fileName: "ggml-large-v3-turbo-q5_0.bin", checksum: { algorithm: "sha1", value: "e050f7970618a659205450ad97eb95a18d69c9ee" }, sizeBytes: 547 * MIB, memoryBytes: 1.2 * GIB, multilingual: true, quantized: true, recommended: true, quality: "highest" }),
   {
-    id: "parakeet-tdt-0.6b-v3",
+    id: "parakeet-tdt-06b-v3",
     engine: "parakeet",
     name: "Parakeet TDT 0.6B v3",
     description: "Transcricao local rapida pelo runtime Parakeet existente.",
@@ -46,7 +46,7 @@ export const SPEECH_MODEL_CATALOG: readonly SpeechModelDefinition[] = [
 export const DEFAULT_WHISPER_CPP_MODEL_ID = "whisper-large-v3-turbo-q5";
 export const LEGACY_FAST_WHISPER_MODEL_ID = "whisper-base";
 export const LEGACY_BALANCED_WHISPER_MODEL_ID = "whisper-small";
-export const PARAKEET_MODEL_ID = "parakeet-tdt-0.6b-v3";
+export const PARAKEET_MODEL_ID = "parakeet-tdt-06b-v3";
 
 export function getSpeechModelDefinition(modelId: string | null | undefined): SpeechModelDefinition | null {
   return SPEECH_MODEL_CATALOG.find((model) => model.id === modelId) || null;
