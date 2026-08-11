@@ -93,6 +93,7 @@ test("análise pedagógica divide aulas longas sem perder o final da transcriç�
   assert.match(prompts.at(-1) || "", /MARCADOR_FINAL/);
   assert.equal(analysis.source, "agent");
   assert.ok(analysis.items.every((item) => item.status === "suggested"));
+  assert.ok(analysis.items.every((item) => !item.evidence.startsWith("Evidência")));
   assert.ok(analysis.items.every((item) => item.start >= 0 && item.end <= segments.at(-1)!.end));
 });
 
@@ -590,6 +591,9 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
   assert.match(analysis, /analysisVersion:\s*8/);
+  assert.match(analysis, /analyzePedagogicalTranscript/);
+  assert.match(analysis, /pedagogical-analysis\.json/);
+  assert.match(analysis, /pedagogyPath/);
   assert.match(analysis, /captionsEnabled/);
   assert.match(analysis, /courseThemeDesign/);
   assert.match(analysis, /resolveCourseTheme/);
@@ -626,6 +630,8 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(review, /zoomScale/);
   assert.match(review, /recordEditorialPreview/);
   assert.match(review, /addedEvents/);
+  assert.match(review, /pedagogicalOverrideEntry/);
+  assert.match(review, /status:\s*change\.status/);
   assert.match(review, /custom-evt-/);
   assert.match(renderer, /recordEditorialPreview/);
   assert.match(panel, /Timeline editorial/);
