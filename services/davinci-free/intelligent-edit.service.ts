@@ -396,7 +396,7 @@ function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption
   });
 }
 
-async function findReusableTranscript(sourceHash: string) {
+async function findReusableTranscript(sourceHash: string, options: SpeechTranscriptionOptions) {
   const entries = await readdir(ROOT, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     if (!entry.isDirectory() || !/^[a-f0-9]{16}$/.test(entry.name)) continue;
@@ -406,7 +406,8 @@ async function findReusableTranscript(sourceHash: string) {
     )
       .then((raw) => JSON.parse(raw) as IntelligentEditPlan)
       .catch(() => null);
-    if (candidate?.sourceHash === sourceHash && candidate.transcript.length > 0) {
+    const sameModel = (candidate?.transcription?.modelId || null) === (options.modelId || null);
+    if (candidate?.sourceHash === sourceHash && sameModel && candidate.transcript.length > 0) {
       return { segments: candidate.transcript, transcription: candidate.transcription };
     }
   }
@@ -422,7 +423,7 @@ async function transcriptForAnalysis(
   options: SpeechTranscriptionOptions,
   onProgress?: (completed: number, total: number) => void,
 ) {
-  const reusable = await findReusableTranscript(sourceHash);
+  const reusable = await findReusableTranscript(sourceHash, options);
   if (reusable) return reusable;
   const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
@@ -1226,7 +1227,6 @@ export async function analyzeIntelligentEdit(
   await reportAnalysisProgress(68, "Consolidando a estrutura pedagógica da aula...");
   const semantic = await semanticPlan(
     transcript,
-    transcription: transcriptionResult.transcription,
     rawCaptions,
     input,
     media.durationSeconds,
@@ -1289,6 +1289,7 @@ export async function analyzeIntelligentEdit(
       sfxPack: input.sfxPack || "dynamic",
     },
     transcript,
+    transcription: transcriptionResult.transcription,
     pedagogy,
     captions,
     events: visual.events,

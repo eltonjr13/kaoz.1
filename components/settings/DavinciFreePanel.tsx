@@ -71,6 +71,16 @@ type Status = {
 
 type ProgressStatus = Pick<Status, "analysisStatus" | "renderStatus">;
 
+type VideoSpeechModel = {
+  id: string;
+  name: string;
+  engine: "whisper-cpp" | "parakeet";
+  sizeBytes: number;
+  state: "not-installed" | "partial" | "queued" | "downloading" | "verifying" | "ready" | "error";
+  downloadedBytes: number;
+  error?: string;
+};
+
 const EMPTY_STATUS: Status = {
   runnerInstalled: false,
   runnerDirectory: "",
@@ -130,6 +140,7 @@ type Analysis = {
     musicDb: number;
   };
   transcript: Array<{ start: number; end: number; text: string }>;
+  transcription?: { engine: string; modelId?: string; backend?: string; deviceName?: string; language: string };
   captions: Array<{ start: number; end: number; text: string }>;
   events: EditEvent[];
   cursorAnalysis: { status: string; message: string };
@@ -297,6 +308,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       details: "Transcrição offline Parakeet/Whisper ativada. Suporte estendido a vídeos de longa duração.",
     },
   ]);
+  const [speechModels, setSpeechModels] = useState<VideoSpeechModel[]>([]);
+  const [speechModelBusy, setSpeechModelBusy] = useState<string | null>(null);
 
   const addLog = useCallback((level: ConsoleLogLevel, message: string, details?: string) => {
     const timestamp = new Date().toLocaleTimeString("pt-BR");
@@ -326,7 +339,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
     outputResolution: "full-hd" as "full-hd" | "source",
     videoEncoder: "auto" as "auto" | "cpu",
+    transcriptionModelId: "",
+    transcriptionDevice: "auto" as "auto" | "vulkan" | "cpu",
+    transcriptionAllowCloudFallback: false,
   });
+
+  const refreshSpeechModels = useCallback(async () => {
+    const response = await fetch("/api/speech/models", { cache: "no-store" });
+    const data = await response.json() as { models?: VideoSpeechModel[]; error?: string };
+    if (!response.ok) throw new Error(data.error || "Falha ao consultar os modelos de transcricao.");
+    setSpeechModels(data.models || []);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      refreshSpeechModels(),
+      fetch("/api/speech/config", { cache: "no-store" }).then(async (response) => {
+        const data = await response.json() as { modelId?: unknown; device?: unknown; allowCloudFallback?: unknown };
+        if (!active || !response.ok) return;
+        setForm((current) => ({
+          ...current,
+          transcriptionModelId: typeof data.modelId === "string" ? data.modelId : "",
+          transcriptionDevice: data.device === "vulkan" || data.device === "cpu" ? data.device : "auto",
+          transcriptionAllowCloudFallback: data.allowCloudFallback === true,
+        }));
+      }),
+    ]).catch((error) => addLog("warning", "Nao foi possivel carregar os modelos de transcricao.", caughtMessage(error)));
+    return () => { active = false; };
+  }, [addLog, refreshSpeechModels]);
+
+  useEffect(() => {
+    if (!speechModels.some((model) => ["queued", "downloading", "verifying"].includes(model.state))) return;
+    const timer = window.setInterval(() => void refreshSpeechModels(), 1500);
+    return () => window.clearInterval(timer);
+  }, [refreshSpeechModels, speechModels]);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/davinci-free", { cache: "no-store" });
