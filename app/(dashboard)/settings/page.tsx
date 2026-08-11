@@ -62,13 +62,33 @@ type SpeechProviderName = "webspeech" | "whisper" | "whisper-speed" | "parakeet"
 interface SpeechConfig {
   provider: SpeechProviderName;
   chunkMs: number;
+  engine: "webspeech" | "cloud" | "whisper-cpp" | "parakeet";
+  modelId: string | null;
+  device: "auto" | "vulkan" | "cpu";
+  allowCloudFallback: boolean;
 }
 
-interface ParakeetStatus {
-  state: "inactive" | "downloading" | "ready" | "error";
+interface SpeechModelStatus {
+  id: string;
+  engine: "whisper-cpp" | "parakeet";
+  name: string;
+  description: string;
+  sizeBytes: number;
+  memoryBytes?: number;
+  multilingual: boolean;
+  quantized: boolean;
+  recommended?: boolean;
+  quality: "basic" | "balanced" | "high" | "highest";
+  state: "not-installed" | "partial" | "queued" | "downloading" | "verifying" | "ready" | "error";
+  downloadedBytes: number;
+  error?: string;
+}
+
+interface SpeechHardwareStatus {
+  vulkanAvailable: boolean;
+  deviceName?: string;
+  backend: "vulkan" | "cpu";
   message: string;
-  downloadedBytes?: number;
-  totalBytes?: number;
 }
 
 type AgentLLMProvider = "browser" | "codex-cli" | "grok-cli" | "antigravity-cli" | "cerebras" | "zenmux-grok" | "iamhc";
@@ -327,6 +347,10 @@ function parseSpeechConfig(data: Record<string, unknown>): SpeechConfig {
       ? data.provider
       : "whisper-speed",
     chunkMs: typeof data.chunkMs === "number" ? data.chunkMs : 0,
+    engine: data.engine === "webspeech" || data.engine === "cloud" || data.engine === "whisper-cpp" || data.engine === "parakeet" ? data.engine : "cloud",
+    modelId: typeof data.modelId === "string" ? data.modelId : null,
+    device: data.device === "vulkan" || data.device === "cpu" ? data.device : "auto",
+    allowCloudFallback: data.allowCloudFallback === true,
   };
 }
 

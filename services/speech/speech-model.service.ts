@@ -200,7 +200,7 @@ export async function startSpeechModelDownload(modelId: string): Promise<SpeechM
     });
     return modelStatus(model.id);
   }
-  const active = {
+  const active: ActiveDownload = {
     controller: new AbortController(),
     state: "queued" as SpeechModelInstallState,
     downloadedBytes: await fileSize(partialPath(model.id)),

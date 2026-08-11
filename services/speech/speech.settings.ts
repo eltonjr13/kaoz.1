@@ -40,6 +40,7 @@ export function legacyModelForProvider(provider: SpeechProviderName): string | n
 }
 
 export function normalizeSpeechModelId(value: unknown, provider: SpeechProviderName): string | null {
+  if (value === null) return null;
   if (typeof value === "string" && getSpeechModelDefinition(value)) return value;
   return legacyModelForProvider(provider);
 }
