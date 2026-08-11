@@ -40,6 +40,10 @@ import {
 } from "../services/davinci-free/video-encoder.ts";
 import { resolveLocalVideoSource } from "../services/davinci-free/video-source.ts";
 import {
+  formattedLessonNumber,
+  lessonDownloadFileName,
+} from "../services/davinci-free/lesson-download.ts";
+import {
   analyzePedagogicalTranscript,
   buildPedagogicalTranscriptChunks,
   consolidatePedagogicalItems,
@@ -144,6 +148,23 @@ test("consolidação pedagógica remove duplicatas mantendo a sugestão mais con
   assert.equal(consolidated.length, 1);
   assert.equal(consolidated[0].confidence, 0.95);
   assert.equal(consolidated[0].source, "chunk-agent");
+});
+
+test("download da aula usa número, nome temático e arquivo TXT da transcrição", () => {
+  const identity = {
+    moduleName: "Módulo 2",
+    lessonNumber: "7",
+    lessonName: "Construindo uma oferta irresistível",
+  };
+  assert.equal(formattedLessonNumber(identity.lessonNumber), "07");
+  assert.equal(
+    lessonDownloadFileName(identity, "video"),
+    "07 - Construindo uma oferta irresistível.mp4",
+  );
+  assert.equal(
+    lessonDownloadFileName(identity, "transcript"),
+    "07 - Construindo uma oferta irresistível - transcrição.txt",
+  );
 });
 
 test("aula única aceita uma pasta que contém exatamente um vídeo compatível", async () => {
@@ -570,7 +591,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /ImpactIcon/);
   assert.match(renderer, /ImpactMeta/);
   assert.match(renderer, /CardNumber/);
-  assert.match(renderer, /\.\.\.\(kind === "intro"/);
+  assert.match(renderer, /formattedLessonNumber\(plan\.lessonNumber\)/);
   assert.match(renderer, /cardProgressFilters/);
   assert.match(renderer, /cardFrameworkFilters/);
   assert.match(renderer, /cardEditorialFilters/);
@@ -595,9 +616,11 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*9/);
+  assert.match(analysis, /analysisVersion:\s*10/);
   assert.match(analysis, /analyzePedagogicalTranscript/);
   assert.match(analysis, /pedagogical-analysis\.json/);
+  assert.match(analysis, /transcript\.txt/);
+  assert.match(analysis, /toPlainTranscript/);
   assert.match(analysis, /pedagogyPath/);
   assert.match(analysis, /captionsEnabled/);
   assert.match(analysis, /courseThemeDesign/);
@@ -607,6 +630,10 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
     assert.match(design, new RegExp(`${palette}:`));
   }
   assert.match(panel, /Manter identidade do curso/);
+  assert.match(panel, /Nº da aula/);
+  assert.match(panel, /Nome da aula/);
+  assert.match(panel, /asset=transcript&download=true/);
+  assert.match(panel, /Download do vídeo e da transcrição TXT iniciado/);
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
@@ -682,7 +709,7 @@ test("SFX imersivos usam os nove áudios reais e decisões semânticas da IA", a
   assert.match(analysis, /"soundEffects"/);
   assert.match(analysis, /nunca use som ambiente/);
   assert.match(analysis, /kind: "sound-effect"/);
-  assert.match(analysis, /analysisVersion: 9/);
+  assert.match(analysis, /analysisVersion: 10/);
   assert.match(analysis, /sfxEnabled: input\.sfxEnabled/);
   assert.match(analysis, /sfxPack: input\.sfxPack/);
   assert.match(renderer, /event\.soundEffect/);
@@ -769,7 +796,10 @@ test("backend de mídia expõe streaming parcial e waveform real para o editor",
   assert.match(mediaRoute, /Accept-Ranges/);
   assert.match(mediaRoute, /Content-Range/);
   assert.match(mediaRoute, /readIntelligentAudioWaveform/);
+  assert.match(mediaRoute, /"transcript"/);
   assert.match(mediaService, /waveform-/);
+  assert.match(mediaService, /lessonDownloadFileName/);
+  assert.match(mediaService, /transcriptTextPath/);
   assert.match(mediaService, /"-ar",\s*"200"/);
   assert.match(mediaService, /waveform-.*-v2\.json/);
 });

@@ -78,6 +78,25 @@ function missingAssetMessage(asset: IntelligentMediaAsset) {
   return "A faixa de música não foi configurada.";
 }
 
+function mediaDownloadFileName(
+  plan: NonNullable<Awaited<ReturnType<typeof readIntelligentEditPlan>>>,
+  asset: IntelligentMediaAsset,
+  filePath: string,
+) {
+  if (asset === "transcript") return lessonDownloadFileName(plan, "transcript");
+  if (asset === "source" || asset === "preview") {
+    return lessonDownloadFileName(plan, "video", path.extname(filePath));
+  }
+  return path.basename(filePath);
+}
+
+function mediaDurationSeconds(
+  plan: NonNullable<Awaited<ReturnType<typeof readIntelligentEditPlan>>>,
+  asset: IntelligentMediaAsset,
+) {
+  return asset === "preview" ? plan.media.durationSeconds + 8 : plan.media.durationSeconds;
+}
+
 export async function resolveIntelligentMedia(
   planId: string,
   asset: IntelligentMediaAsset,
@@ -96,18 +115,11 @@ export async function resolveIntelligentMedia(
   return {
     asset,
     filePath,
-    fileName: asset === "transcript"
-      ? lessonDownloadFileName(plan, "transcript")
-      : asset === "source" || asset === "preview"
-        ? lessonDownloadFileName(plan, "video", path.extname(filePath))
-        : path.basename(filePath),
+    fileName: mediaDownloadFileName(plan, asset, filePath),
     contentType: contentType(filePath),
     size: info.size,
     modifiedAt: info.mtimeMs,
-    durationSeconds:
-      asset === "preview"
-        ? plan.media.durationSeconds + 8
-        : plan.media.durationSeconds,
+    durationSeconds: mediaDurationSeconds(plan, asset),
     hasAudio: asset !== "transcript" && (asset === "music" || plan.media.hasAudio),
     cacheDirectory: plan.artifacts.directory,
   };
