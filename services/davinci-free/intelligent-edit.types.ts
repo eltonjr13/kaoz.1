@@ -137,6 +137,7 @@ export interface IntelligentEditEvent {
     | "impact-text"
     | "zoom"
     | "cut"
+    | "remove"
     | "cursor"
     | "transition"
     | "sound-effect"

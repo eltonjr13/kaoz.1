@@ -1,4 +1,5 @@
 import path from "node:path";
+import crypto from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -7,6 +8,8 @@ import ffmpegStaticPath from "ffmpeg-static";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { createAudioWaveformPeaks } from "./audio-waveform";
 import { lessonDownloadFileName } from "./lesson-download";
+import { getLocalDataDir } from "@/lib/runtime-paths";
+import { resolveLocalVideoSource } from "./video-source";
 
 export type IntelligentMediaAsset = "source" | "preview" | "music" | "transcript";
 
@@ -122,6 +125,24 @@ export async function resolveIntelligentMedia(
     durationSeconds: mediaDurationSeconds(plan, asset),
     hasAudio: asset !== "transcript" && (asset === "music" || plan.media.hasAudio),
     cacheDirectory: plan.artifacts.directory,
+  };
+}
+
+export async function resolveSourceMedia(sourcePath: string): Promise<IntelligentMediaDescriptor> {
+  const filePath = await resolveLocalVideoSource(sourcePath);
+  const info = await stat(filePath).catch(() => null);
+  if (!info?.isFile()) throw new Error("Arquivo de mídia não encontrado.");
+  const sourceId = crypto.createHash("sha256").update(filePath).digest("hex").slice(0, 16);
+  return {
+    asset: "source",
+    filePath,
+    fileName: path.basename(filePath),
+    contentType: contentType(filePath),
+    size: info.size,
+    modifiedAt: info.mtimeMs,
+    durationSeconds: 0,
+    hasAudio: true,
+    cacheDirectory: path.join(getLocalDataDir(), "davinci-resolve-free", "source-waveforms", sourceId),
   };
 }
 

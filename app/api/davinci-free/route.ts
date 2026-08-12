@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAgentId } from "@/services/agents/core/agent-id";
 import { toolExecutionService } from "@/services/tools/tool-execution.runtime";
-import { readIntelligentAnalysisStatus, readIntelligentEditPlan } from "@/services/davinci-free/intelligent-edit.service";
+import {
+  loadIntelligentEditPlan,
+  readIntelligentAnalysisStatus,
+  readIntelligentEditPlan,
+} from "@/services/davinci-free/intelligent-edit.service";
 import { readIntelligentRenderStatus } from "@/services/davinci-free/intelligent-edit.renderer";
+import { readEditorialReview } from "@/services/davinci-free/intelligent-edit.review";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
@@ -91,11 +96,15 @@ export async function GET(request: Request) {
       readIntelligentRenderStatus(),
     ]);
     const includeAnalysis = searchParams.get("analysis") === "1";
+    const storedPlan = includeAnalysis ? await loadIntelligentEditPlan() : null;
     return NextResponse.json({
       ...status,
       analysisStatus,
       renderStatus,
-      ...(includeAnalysis ? { analysis: await readIntelligentEditPlan() } : {}),
+      ...(includeAnalysis ? {
+        analysis: await readIntelligentEditPlan(),
+        editorialReview: storedPlan ? await readEditorialReview(storedPlan) : null,
+      } : {}),
     });
   } catch (error) {
     return NextResponse.json({ error: message(error) }, { status: 500 });

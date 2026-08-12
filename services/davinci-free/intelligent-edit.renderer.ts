@@ -25,6 +25,12 @@ import {
   type VideoEncoder,
 } from "./video-encoder";
 import { formattedLessonNumber } from "./lesson-download";
+import {
+  editedVideoDuration,
+  editedVideoTime,
+  videoCutRanges,
+  videoCutSelectExpression,
+} from "./video-cuts";
 
 function ffmpegPath() {
   const candidates = [
@@ -615,6 +621,15 @@ async function renderBody(
   encoder: VideoEncoder,
   onProgress?: (progress: number) => void,
 ) {
+  const select = videoCutSelectExpression(plan.events, plan.media.durationSeconds);
+  const videoFilter = [
+    bodyVideoFilter(plan, assPath),
+    ...(select ? [`select='${select}'`, "setpts=N/FRAME_RATE/TB"] : []),
+  ].join(",");
+  const audioFilters = [
+    audioFilter(),
+    ...(select ? [`aselect='${select}'`, "asetpts=N/SR/TB"] : []),
+  ].join(",");
   await runFfmpeg([
     "-y",
     "-threads",
@@ -626,9 +641,9 @@ async function renderBody(
     "-map",
     "0:a:0",
     "-vf",
-    bodyVideoFilter(plan, assPath),
+    videoFilter,
     "-af",
-    audioFilter(),
+    audioFilters,
     "-r",
     plan.media.fps.toFixed(3),
     ...videoEncoderArguments(encoder),
@@ -690,14 +705,17 @@ async function collectSfxEvents(plan: IntelligentEditPlan) {
   const sfxPaths = await ensureSfxLibrary();
   const events: Array<{ time: number; file: string; gainDb: number }> = [
     { time: 0.1, file: sfxPaths["soft-whoosh"], gainDb: -3 },
-    { time: Math.max(0.1, plan.media.durationSeconds + 4.1), file: sfxPaths["rising-swoosh"], gainDb: -3 },
+    { time: Math.max(0.1, editedVideoDuration(plan.events, plan.media.durationSeconds) + 4.1), file: sfxPaths["rising-swoosh"], gainDb: -3 },
   ];
   const hasSemanticSfx = plan.events.some((event) => event.kind === "sound-effect" && event.soundEffect);
   for (const event of plan.events) {
+    if (event.kind === "remove" || videoCutRanges(plan.events, plan.media.durationSeconds).some(
+      (range) => event.start >= range.start && event.start < range.end,
+    )) continue;
     if (hasSemanticSfx && event.kind !== "sound-effect" && event.kind !== "meme-sfx") continue;
     const file = sfxFileForEvent(event, sfxPaths);
     if (file) events.push({
-      time: event.start + 4,
+      time: editedVideoTime(plan.events, plan.media.durationSeconds, event.start) + 4,
       file,
       gainDb: Math.max(-9, Math.min(3, event.soundEffectGainDb ?? 0)),
     });
@@ -721,7 +739,7 @@ async function mixFinalAudio(
   }
 
   const args = ["-y", "-i", joinedPath];
-  const totalDuration = plan.media.durationSeconds + 8;
+  const totalDuration = editedVideoDuration(plan.events, plan.media.durationSeconds) + 8;
   const filterParts: string[] = [];
   const mixLabels = ["[0:a]"];
   let nextInputIndex = 1;
@@ -889,14 +907,14 @@ export async function renderIntelligentEdit(
       used: encoder,
       fallback: encoderFallback,
     },
-    durationSeconds: plan.media.durationSeconds + 8,
+    durationSeconds: editedVideoDuration(plan.events, plan.media.durationSeconds) + 8,
     effectsApplied: {
       intro: true,
       outro: true,
       lowerThirds: plan.events.filter((item) => item.kind === "lower-third").length,
       impactTexts: plan.events.filter((item) => item.kind === "impact-text").length,
       zooms: plan.events.filter((item) => item.kind === "zoom").length,
-      cuts: plan.events.filter((item) => item.kind === "cut").length,
+      cuts: plan.events.filter((item) => item.kind === "cut" || item.kind === "remove").length,
       cursorHighlights: plan.events.filter((item) => item.kind === "cursor").length,
       transitions: plan.events.filter((item) => item.kind === "transition").length + 2,
       captions: resolveIntelligentEditDesign(plan).captionsEnabled ? plan.captions.length : 0,

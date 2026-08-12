@@ -25,6 +25,7 @@ const ADDED_EVENT_KINDS = new Set<IntelligentEditEvent["kind"]>([
   "impact-text",
   "zoom",
   "cut",
+  "remove",
   "cursor",
   "transition",
 ]);
@@ -67,6 +68,10 @@ function customEventReason(value: unknown) {
   return text(value, 220) || "Evento adicionado manualmente na timeline.";
 }
 
+function customEventMaximumDuration(plan: IntelligentEditPlan, kind: IntelligentEditEvent["kind"]) {
+  return kind === "remove" ? plan.media.durationSeconds : 12;
+}
+
 function customEventEntry(
   plan: IntelligentEditPlan,
   value: unknown,
@@ -85,7 +90,7 @@ function customEventEntry(
     id,
     kind,
     start: clamp(start, 0, plan.media.durationSeconds),
-    duration: clamp(duration, 0.1, 12),
+    duration: clamp(duration, 0.1, customEventMaximumDuration(plan, kind)),
     label,
     subtitle: text(item.subtitle, 160),
     reason: customEventReason(item.reason),

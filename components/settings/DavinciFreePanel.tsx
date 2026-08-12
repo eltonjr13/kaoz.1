@@ -102,6 +102,7 @@ type EditEvent = {
     | "impact-text"
     | "zoom"
     | "cut"
+    | "remove"
     | "cursor"
     | "transition"
     | "sound-effect"
@@ -225,6 +226,7 @@ const kindLabel: Record<EditEvent["kind"], string> = {
   "impact-text": "Texto de impacto",
   zoom: "Zoom",
   cut: "Corte de plano",
+  remove: "Trecho removido",
   cursor: "Cursor",
   transition: "Transição",
   "sound-effect": "SFX inteligente",
@@ -238,6 +240,7 @@ const kindColorClass: Record<EditEvent["kind"], string> = {
   "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
   zoom: "bg-amber-950/90 border-amber-500 text-amber-300",
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
+  remove: "bg-red-950/90 border-red-500 text-red-200",
   cursor: "bg-blue-950/90 border-blue-500 text-blue-300",
   transition: "bg-pink-950/90 border-pink-500 text-pink-300",
   "sound-effect": "bg-violet-950/90 border-violet-500 text-violet-300",
@@ -298,6 +301,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [musicWaveform, setMusicWaveform] = useState<number[]>([]);
   const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
   const [previewStale, setPreviewStale] = useState<boolean>(false);
+  const [pendingSourceCuts, setPendingSourceCuts] = useState<EditEvent[]>([]);
+  const [cutStartTime, setCutStartTime] = useState<number | null>(null);
   const [driveSourceOrigin, setDriveSourceOrigin] = useState<GoogleDriveSelection | null>(null);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
     {
@@ -428,7 +433,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       .then((data) => {
         if (!data.analysis) return;
         setAnalysis(data.analysis as Analysis);
-        setReview({ events: [], captions: [] });
+        setReview((data.editorialReview as EditorialReview | null) || { events: [], captions: [] });
         setPreviewStale(false);
       })
       .catch(() => undefined);
@@ -580,8 +585,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
     });
     if (result?.id) {
-      setAnalysis(result as Analysis);
-      setReview({ events: [], captions: [] });
+      const prepared = await prepareAnalyzedVideo(result as Analysis);
+      setAnalysis(prepared.analysis);
+      setReview(prepared.review);
+      setPendingSourceCuts([]);
       setPlayheadTime(0);
       setPlayerDuration(0);
       setPreviewStale(false);
@@ -599,6 +606,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
+  async function prepareAnalyzedVideo(result: Analysis) {
+    const draftReview: EditorialReview = {
+      events: [],
+      captions: [],
+      ...(pendingSourceCuts.length ? { addedEvents: pendingSourceCuts } : {}),
+    };
+    if (!pendingSourceCuts.length) return { analysis: result, review: draftReview };
+    const saved = await action("save-editorial-review", { planId: result.id, review: draftReview });
+    return { analysis: (saved || result) as Analysis, review: draftReview };
+  }
+
   function applySingleVideoPath(sourcePath: string) {
     setDriveSourceOrigin(null);
     const inferredLessonName = sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "";
@@ -607,6 +625,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sourcePath,
       lessonName: current.lessonName || inferredLessonName,
     }));
+    setAnalysis(null);
+    setReview({ events: [], captions: [] });
+    setPendingSourceCuts([]);
+    setCutStartTime(null);
+    setPlayerDuration(0);
+    setPlayheadTime(0);
+    setPreviewStale(false);
     addLog("info", "Vídeo selecionado:", sourcePath);
     onStatusMessage({ text: `Vídeo selecionado: ${sourcePath}`, type: "info" });
   }
@@ -994,9 +1019,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [timelineDuration, timelineScale]);
 
   const videoMediaSrc = useMemo(() => {
-    if (!analysis) return "";
-    return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
-  }, [activeMediaAsset, analysis]);
+    if (analysis) return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
+    if (!form.sourcePath) return "";
+    return `/api/davinci-free/media?sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
+  }, [activeMediaAsset, analysis, form.sourcePath]);
+  const sourceCutEvents = useMemo(
+    () => analysis?.events.filter((event) => event.kind === "remove") || pendingSourceCuts,
+    [analysis, pendingSourceCuts],
+  );
+  const timelineEvents = analysis?.events || pendingSourceCuts;
   const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
       ? { ...status.renderStatus, label: "Renderizando" }
@@ -1019,7 +1050,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [videoMediaSrc]);
 
   useEffect(() => {
-    if (!analysis) {
+    if (!analysis && !form.sourcePath) {
       setWaveform([]);
       setMusicWaveform([]);
       return;
@@ -1027,8 +1058,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const controller = new AbortController();
     setWaveformBusy(true);
     const load = async (asset: "source" | "preview" | "music") => {
+      const query = analysis
+        ? `planId=${analysis.id}&asset=${asset}`
+        : `sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
       const response = await fetch(
-        `/api/davinci-free/media?planId=${analysis.id}&asset=${asset}&waveform=true&points=${waveformPointCount}`,
+        `/api/davinci-free/media?${query}&waveform=true&points=${waveformPointCount}`,
         { cache: "no-store", signal: controller.signal },
       );
       const data = await response.json();
@@ -1037,7 +1071,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     };
     Promise.all([
       load(activeMediaAsset).then(setWaveform),
-      analysis.media.musicPath
+      analysis?.media.musicPath
         ? load("music").then(setMusicWaveform)
         : Promise.resolve(setMusicWaveform([])),
     ])
@@ -1054,7 +1088,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         if (!controller.signal.aborted) setWaveformBusy(false);
       });
     return () => controller.abort();
-  }, [activeMediaAsset, analysis, onStatusMessage, waveformPointCount]);
+  }, [activeMediaAsset, analysis, form.sourcePath, onStatusMessage, waveformPointCount]);
 
   function eventPlayerTime(event: EditEvent, sourceTime: number) {
     if (activeMediaAsset !== "preview") return sourceTime;
@@ -1112,6 +1146,66 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setPreviewStale(true);
     setSelectedEventId(newId);
     onStatusMessage({ text: `Novo evento inserido em ${clock(sourceTime)}`, type: "success" });
+  }
+
+  function addRemovalCut(start: number, end: number, label = "Corte manual") {
+    const safeStart = Math.max(0, Math.min(start, end));
+    const safeEnd = Math.min(timelineDuration, Math.max(start, end));
+    if (safeEnd - safeStart < 0.1) {
+      onStatusMessage({ text: "O trecho do corte precisa ter pelo menos 0,1 segundo.", type: "error" });
+      return;
+    }
+    const cut: EditEvent = {
+      id: `custom-evt-${crypto.randomUUID().slice(0, 8)}`,
+      kind: "remove",
+      start: Math.round(safeStart * 10) / 10,
+      duration: Math.round((safeEnd - safeStart) * 10) / 10,
+      label,
+      reason: "Trecho marcado manualmente para remoção.",
+    };
+    if (analysis) {
+      setAnalysis((current) => current ? { ...current, events: [...current.events, cut] } : null);
+      setReview((current) => ({ ...current, addedEvents: [...(current.addedEvents || []), cut] }));
+      setPreviewStale(true);
+    } else {
+      setPendingSourceCuts((current) => [...current, cut]);
+    }
+    setCutStartTime(null);
+    onStatusMessage({ text: `Corte marcado de ${clock(cut.start)} até ${clock(cut.start + cut.duration)}.`, type: "success" });
+  }
+
+  function toggleCutAtPlayhead() {
+    if (cutStartTime === null) {
+      setCutStartTime(playheadTime);
+      onStatusMessage({ text: `Início do corte marcado em ${clock(playheadTime)}.`, type: "info" });
+      return;
+    }
+    addRemovalCut(cutStartTime, playheadTime, "Silêncio ou trecho removido");
+  }
+
+  function undoLastRemovalCut() {
+    if (analysis) {
+      const last = [...sourceCutEvents].at(-1);
+      if (!last) return;
+      updateEvent(last, { enabled: false });
+      return;
+    }
+    setPendingSourceCuts((current) => current.slice(0, -1));
+  }
+
+  function handleVideoTimeUpdate(event: React.SyntheticEvent<HTMLVideoElement>) {
+    const player = event.currentTarget;
+    if (activeMediaAsset === "source") {
+      const cut = sourceCutEvents.find((item) => (
+        player.currentTime >= item.start && player.currentTime < item.start + item.duration
+      ));
+      if (cut) {
+        player.currentTime = Math.min(player.duration, cut.start + cut.duration);
+        setPlayheadTime(player.currentTime);
+        return;
+      }
+    }
+    setPlayheadTime(player.currentTime);
   }
 
   function togglePlayPause() {
@@ -1624,7 +1718,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     src={videoMediaSrc}
                     preload="metadata"
                     playsInline
-                    onTimeUpdate={(e) => setPlayheadTime(e.currentTarget.currentTime)}
+                    onTimeUpdate={handleVideoTimeUpdate}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     onLoadedMetadata={(event) => {
@@ -1665,10 +1759,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
-                {analysis && (
+                {videoMediaSrc && (
                   <div className="absolute left-3 top-3 flex items-center gap-2">
                     <span className="rounded-md border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-200">
-                      {activeMediaAsset === "preview" ? "Prévia renderizada" : "Vídeo original"}
+                      {activeMediaAsset === "preview" ? "Prévia renderizada" : "Vídeo carregado"}
                     </span>
                     {previewStale && activeMediaAsset === "preview" && (
                       <span className="rounded-md border border-amber-500/40 bg-amber-950/80 px-2 py-1 text-[9px] font-bold text-amber-200">
@@ -1692,6 +1786,46 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
               </div>
             </div>
+
+            {videoMediaSrc && activeMediaAsset === "source" && (
+              <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-[#736D5C]/35 bg-[#201802] px-3 py-2">
+                <span className="mr-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400">
+                  <Scissors size={13} /> Cortes
+                </span>
+                <button
+                  type="button"
+                  onClick={() => addRemovalCut(0, playheadTime, "Remover início")}
+                  disabled={playheadTime < 0.1}
+                  className="rounded border border-red-500/40 bg-red-950/40 px-2.5 py-1 text-[10px] font-semibold text-red-200 hover:bg-red-900/60 disabled:opacity-35"
+                >
+                  Cortar início até aqui
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCutAtPlayhead}
+                  className={`rounded border px-2.5 py-1 text-[10px] font-semibold ${
+                    cutStartTime === null
+                      ? "border-[#A6A297]/40 bg-[#736D5C]/20 text-[#D6D4CD] hover:bg-[#736D5C]/40"
+                      : "border-amber-400/60 bg-amber-950/60 text-amber-200"
+                  }`}
+                >
+                  {cutStartTime === null ? "Marcar início do corte" : `Finalizar corte desde ${clock(cutStartTime)}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={undoLastRemovalCut}
+                  disabled={!sourceCutEvents.length}
+                  className="rounded border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-30"
+                >
+                  Desfazer último
+                </button>
+                <span className="ml-auto text-[10px] text-zinc-500">
+                  {sourceCutEvents.length
+                    ? `${sourceCutEvents.length} trecho(s) serão removidos na renderização`
+                    : "Use o playhead para remover silêncios ou partes indesejadas"}
+                </span>
+              </div>
+            )}
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
             <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} flex shrink-0 flex-col border-t border-[#736D5C]/35 bg-[#261D01]/70`}>
@@ -1853,8 +1987,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/65 pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">FX</span>
                   <div className="flex-1 relative h-full flex items-center">
-                    {analysis?.events.length ? (
-                      analysis.events.map((evt) => {
+                    {timelineEvents.length ? (
+                      timelineEvents.map((evt) => {
                         const change = eventReview(evt);
                         const enabled = change.enabled !== false;
                         const evtStart = change.start ?? evt.start;
@@ -1888,7 +2022,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       })
                     ) : (
                       <div className="text-[10px] text-zinc-500 italic pl-2">
-                        Execute a análise para visualizar os eventos de corte na timeline
+                        Carregue o vídeo e marque os cortes; a análise adicionará os demais ajustes
                       </div>
                     )}
                   </div>

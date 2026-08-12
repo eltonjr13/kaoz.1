@@ -27,6 +27,12 @@ import {
 import { parseMediaByteRange } from "../services/davinci-free/media-range.ts";
 import { createAudioWaveformPeaks } from "../services/davinci-free/audio-waveform.ts";
 import {
+  editedVideoDuration,
+  editedVideoTime,
+  videoCutRanges,
+  videoCutSelectExpression,
+} from "../services/davinci-free/video-cuts.ts";
+import {
   sanitizeEditorialPreviewPath,
   sanitizeEditorialReviewTimestamp,
 } from "../services/davinci-free/editorial-review-metadata.ts";
@@ -276,6 +282,18 @@ test("metadados da revisão preservam apenas prévia local segura e timestamp v�
     "2026-07-30T19:25:22.756Z",
   );
   assert.equal(sanitizeEditorialReviewTimestamp("invalid", "fallback"), "fallback");
+});
+
+test("cortes manuais unem intervalos e recalculam duração e tempo editado", () => {
+  const events = [
+    { id: "a", kind: "remove", start: 0, duration: 3, label: "início", reason: "manual" },
+    { id: "b", kind: "remove", start: 2.5, duration: 2, label: "silêncio", reason: "manual" },
+    { id: "c", kind: "zoom", start: 8, duration: 1, label: "zoom", reason: "automático" },
+  ] as const;
+  assert.deepEqual(videoCutRanges([...events], 10), [{ start: 0, end: 4.5 }]);
+  assert.equal(editedVideoDuration([...events], 10), 5.5);
+  assert.equal(editedVideoTime([...events], 10, 8), 3.5);
+  assert.equal(videoCutSelectExpression([...events], 10), "not(between(t,0.000,4.500))");
 });
 
 test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
