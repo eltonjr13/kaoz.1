@@ -39,6 +39,7 @@ import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
 import { DesktopBehaviorPanel } from "@/components/settings/DesktopBehaviorPanel";
+import { SystemHealthPanel } from "@/components/settings/SystemHealthPanel";
 
 interface PortalConfig {
   id: "google" | "gemini" | "chatgpt" | "claude" | "deepseek" | "hunyuan3d";
@@ -1687,7 +1688,7 @@ function OmniVoiceSettingsPanel({ onStatusMessage }: { onStatusMessage: (message
   );
 }
 
-type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors" | "updates";
+type TabId = "geral" | "agente" | "voz" | "omnivoice" | "mcp" | "skills" | "connectors" | "updates" | "saude";
 
 // eslint-disable-next-line complexity
 export default function SettingsPage() {
@@ -1973,6 +1974,17 @@ export default function SettingsPage() {
             <Download size={14} className={activeTab === "updates" ? "text-emerald-400" : "text-zinc-500"} />
             Aplicativo
           </button>
+          <button
+            onClick={() => setActiveTab("saude")}
+            className={`px-4 py-3 text-[11px] font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === "saude"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-500 hover:text-zinc-300 hover:border-white/20"
+            }`}
+          >
+            <Activity size={14} className={activeTab === "saude" ? "text-emerald-400" : "text-zinc-500"} />
+            Saúde
+          </button>
         </div>
       </div>
 
@@ -2023,6 +2035,12 @@ export default function SettingsPage() {
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
             <DesktopBehaviorPanel />
             <AppUpdatesPanel />
+          </div>
+        )}
+
+        {activeTab === "saude" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <SystemHealthPanel />
           </div>
         )}
 
