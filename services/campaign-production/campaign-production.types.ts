@@ -50,7 +50,7 @@ export interface CampaignProductionOptions {
   createDavinciPlan?: boolean;
   aspectRatio?: CampaignAspectRatio;
   imageModel?: string;
-  voiceProvider?: 'fish-audio' | 'cartesia' | 'local' | 'mock';
+  voiceProvider?: 'fish-audio' | 'cartesia' | 'omnivoice' | 'local';
   voiceModel?: string;
   voiceReferenceId?: string;
 }

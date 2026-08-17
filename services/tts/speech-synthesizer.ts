@@ -6,38 +6,35 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, statSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { generateFishAudioSpeech } from "../../lib/fish-audio.ts";
-
-async function readLocalTTSConfig(): Promise<{ fishAudioApiKey?: string; fishAudioModel?: string; fishAudioReferenceId?: string }> {
-  try {
-    const dataDir = process.env.LOCALAPPDATA
-      ? path.join(process.env.LOCALAPPDATA, "Kaoz", "Data")
-      : path.join(process.cwd(), ".generated", "data");
-    const settingsPath = path.join(dataDir, "tts-settings.json");
-    if (existsSync(settingsPath)) {
-      const data = JSON.parse(await import("node:fs/promises").then((m) => m.readFile(settingsPath, "utf8")));
-      return data || {};
-    }
-  } catch {
-    // fallback
-  }
-  return {
-    fishAudioApiKey: process.env.FISH_API_KEY,
-    fishAudioModel: process.env.FISH_AUDIO_MODEL,
-    fishAudioReferenceId: process.env.FISH_AUDIO_REFERENCE_ID,
-  };
-}
 
 const execAsync = promisify(exec);
 
 export interface SpeechSynthesisOptions {
+  provider?: "fish-audio" | "cartesia" | "omnivoice" | "local";
   voiceModel?: string;
   voiceReferenceId?: string;
   durationSeconds?: number;
   lang?: string;
+}
+
+async function materializeGeneratedAudio(source: string, outputPath: string): Promise<number> {
+  if (/^https?:\/\//i.test(source)) {
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(`Falha ao baixar a locução gerada: ${response.status} ${response.statusText}`);
+    const audio = Buffer.from(await response.arrayBuffer());
+    await writeFile(outputPath, audio);
+    return audio.length;
+  }
+
+  const sourcePath = source.startsWith("/uploads/")
+    ? path.join(process.cwd(), "public", source.replace(/^\//, ""))
+    : path.resolve(source);
+  if (!existsSync(sourcePath)) throw new Error(`O provedor informou um áudio inexistente: ${source}`);
+  if (path.resolve(sourcePath) !== path.resolve(outputPath)) await copyFile(sourcePath, outputPath);
+  return statSync(outputPath).size;
 }
 
 /**
@@ -70,13 +67,13 @@ function createSyntheticPcmWavBuffer(durationSeconds: number): Buffer {
 }
 
 /**
- * Sintetiza voz real usando o motor disponível (Fish Audio API ou Windows SAPI nativo)
+ * Sintetiza voz usando exatamente o provedor selecionado nas configurações.
  */
 export async function synthesizeRealSpeechToFile(
   text: string,
   outputPath: string,
   options?: SpeechSynthesisOptions
-): Promise<{ success: boolean; path: string; engine: "fish-audio" | "windows-sapi" | "pcm-fallback"; bytes: number }> {
+): Promise<{ success: boolean; path: string; engine: "fish-audio" | "cartesia" | "omnivoice" | "windows-sapi" | "pcm-fallback"; bytes: number }> {
   await mkdir(path.dirname(outputPath), { recursive: true });
 
   const cleanText = text.trim();
@@ -86,33 +83,19 @@ export async function synthesizeRealSpeechToFile(
     return { success: true, path: outputPath, engine: "pcm-fallback", bytes: buf.length };
   }
 
-  // 1. Tentar Fish Audio se configurado
-  try {
-    const ttsConfig = await readLocalTTSConfig();
-    if (ttsConfig?.fishAudioApiKey) {
-      const fishResult = await generateFishAudioSpeech({
-        text: cleanText,
-        apiKey: ttsConfig.fishAudioApiKey,
-        referenceId: options?.voiceReferenceId || ttsConfig.fishAudioReferenceId || "",
-        model: options?.voiceModel || ttsConfig.fishAudioModel || "s2.1-pro-free",
-        jobId: `tts-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      });
-
-      if (fishResult?.audioPath) {
-        // Copiar para outputPath se necessário
-        return {
-          success: true,
-          path: fishResult.audioPath,
-          engine: "fish-audio",
-          bytes: 1000,
-        };
-      }
-    }
-  } catch (fishErr) {
-    console.warn("[SpeechSynthesizer] Falha no Fish Audio, tentando fallback de sistema:", fishErr);
+  if (options?.provider !== "local") {
+    const { generateJobVoice } = await import("../../lib/ai/voice.ts");
+    const generated = await generateJobVoice({
+      script: cleanText,
+      jobId: `campaign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      refAudioPath: options?.voiceReferenceId || null,
+      settings: options?.provider ? { provider: options.provider } : undefined,
+    });
+    const bytes = await materializeGeneratedAudio(generated.audioPath, outputPath);
+    return { success: true, path: outputPath, engine: generated.provider, bytes };
   }
 
-  // 2. Tentar síntese nativa do Windows (PowerShell System.Speech.Synthesis)
+  // Provedor local explícito: usar síntese nativa do Windows.
   if (os.platform() === "win32") {
     try {
       const safeText = cleanText.replace(/["'\\]/g, " ").slice(0, 500);
@@ -144,8 +127,8 @@ $s.Dispose();
     }
   }
 
-  // 3. Fallback limpo
+  // O arquivo silencioso é marcado como fallback, nunca como voz real.
   const buf = createSyntheticPcmWavBuffer(options?.durationSeconds || 3);
   await writeFile(outputPath, buf);
-  return { success: true, path: outputPath, engine: "pcm-fallback", bytes: buf.length };
+  return { success: false, path: outputPath, engine: "pcm-fallback", bytes: buf.length };
 }

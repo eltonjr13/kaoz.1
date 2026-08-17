@@ -4,7 +4,7 @@
  */
 
 import crypto from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArtifactsToCampaign } from "./campaign-parser.ts";
 import { generateDavinciEdl, generateDavinciFcpxml } from "./davinci-export.ts";
@@ -27,6 +27,28 @@ const CAMPAIGNS_ROOT = path.join(process.cwd(), ".generated", "campaigns");
 
 async function ensureDir(dir: string) {
   await mkdir(dir, { recursive: true });
+}
+
+async function copyLocalGeneratedAsset(sourcePath: string, destinationBase: string, fallbackExtension: string) {
+  const resolvedSource = path.resolve(sourcePath);
+  const sourceStat = await stat(resolvedSource).catch(() => null);
+  if (!sourceStat?.isFile()) return null;
+  const extension = path.extname(resolvedSource).toLowerCase() || fallbackExtension;
+  const destinationPath = `${destinationBase}${extension}`;
+  if (resolvedSource !== path.resolve(destinationPath)) await copyFile(resolvedSource, destinationPath);
+  return destinationPath;
+}
+
+async function generateImageWithConfiguredFlow(prompt: string, options?: { aspectRatio?: string }) {
+  const { flowProvider } = await import("../../src/providers/flow/FlowProvider.ts");
+  const result = await flowProvider.generateImage(prompt, {
+    aspectRatio: options?.aspectRatio as CampaignProductionOptions["aspectRatio"],
+    quantity: 1,
+  });
+  if (!result.success || !result.path) {
+    throw new Error(result.error || "O Google Flow não retornou uma imagem válida.");
+  }
+  return { imagePath: result.path };
 }
 
 function safeId(id: string): string {
@@ -233,8 +255,8 @@ export class CampaignProductionService {
         await this.saveJobManifest(job);
 
         try {
-          const imageFileName = `scene_${scene.sceneNumber}_image.png`;
-          const imageFilePath = path.join(assetsDir, imageFileName);
+          const imageBaseName = `scene_${scene.sceneNumber}_image`;
+          const imageFilePath = path.join(assetsDir, `${imageBaseName}.png`);
 
           let generatedImageResult: { imageUrl?: string; imagePath?: string } | null = null;
           if (this.imageGenerator) {
@@ -244,8 +266,13 @@ export class CampaignProductionService {
           }
 
           if (generatedImageResult && (generatedImageResult.imageUrl || generatedImageResult.imagePath)) {
-            asset.imageUrl = generatedImageResult.imageUrl || `/api/campaigns/${job.id}/assets/${imageFileName}`;
-            asset.imagePath = generatedImageResult.imagePath || imageFilePath;
+            const localImagePath = generatedImageResult.imagePath
+              ? await copyLocalGeneratedAsset(generatedImageResult.imagePath, path.join(assetsDir, imageBaseName), ".png")
+              : null;
+            asset.imagePath = localImagePath || generatedImageResult.imagePath || imageFilePath;
+            asset.imageUrl = localImagePath
+              ? `/api/campaigns/${job.id}/assets/${path.basename(localImagePath)}`
+              : generatedImageResult.imageUrl;
             asset.imageStatus = "completed";
           } else {
             // Write high-quality synthetic fallback placeholder
@@ -271,7 +298,7 @@ export class CampaignProductionService {
         await this.saveJobManifest(job);
 
         try {
-          const audioFileName = `scene_${scene.sceneNumber}_audio.wav`;
+          const audioFileName = `scene_${scene.sceneNumber}_audio.${job.options.voiceProvider === "local" ? "wav" : "mp3"}`;
           const audioFilePath = path.join(assetsDir, audioFileName);
 
           let generatedAudioResult: { audioUrl?: string; audioPath?: string } | null = null;
@@ -294,6 +321,7 @@ export class CampaignProductionService {
               {
                 voiceModel: job.options.voiceModel,
                 voiceReferenceId: job.options.voiceReferenceId,
+                provider: job.options.voiceProvider,
                 durationSeconds: scene.durationSeconds,
               }
             );
@@ -454,4 +482,4 @@ export class CampaignProductionService {
   }
 }
 
-export const campaignProductionService = new CampaignProductionService();
+export const campaignProductionService = new CampaignProductionService(generateImageWithConfiguredFlow);

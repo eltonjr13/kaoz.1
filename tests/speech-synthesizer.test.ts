@@ -11,7 +11,7 @@ test("sintetiza arquivo de voz real em arquivo de áudio WAV", async () => {
   const result = await synthesizeRealSpeechToFile(
     "Teste de locução em português para validação do pipeline multimídia Kaoz.",
     testOut,
-    { durationSeconds: 3 }
+    { durationSeconds: 3, provider: "local" }
   );
 
   assert.equal(result.success, true);
