@@ -92,13 +92,16 @@ export function AppShell({
       <nav className="flex flex-1 flex-col gap-0.5" aria-label="Navegação lateral">
         {navItems.map((item) => {
           const Icon = item.icon;
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
               href={item.href}
               key={item.label}
               onClick={() => setSidebarOpen(false)}
-              className={`group flex h-10 items-center gap-3 rounded-[16px] px-3 text-[13px] font-medium no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-[var(--panel-strong)] hover:text-[var(--text)] ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
+              aria-current={isActive ? "page" : undefined}
+              data-active={isActive}
+              className={`kaoz-signal-nav-item group flex h-10 items-center gap-3 px-3 text-[13px] font-medium no-underline hover:no-underline focus:no-underline active:no-underline outline-none focus:outline-none focus-visible:outline-none transition-all duration-200 hover:bg-[var(--panel-strong)] hover:text-[var(--text)] ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
               title={sidebarCollapsed ? item.label : undefined}
               style={{
                 color: "var(--muted)",
