@@ -1260,12 +1260,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {/* Workstation Header Bar (Stitch TopNavBar) */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] bg-[#101217] px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="flex items-center gap-2">
+          <div className="kaoz-signal-project flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-[6px] bg-[#1D2028] font-bold text-[#A99FFF]">
               <Video size={16} />
             </span>
             <div className="min-w-0">
-              <p className="text-[10px] font-medium tracking-wide text-[#8B92A1]">Kaoz.1 / Estúdio de conteúdo</p>
+              <p className="font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#8B92A1]">01 / Projeto · Kaoz.1 Studio</p>
               <p className="truncate text-sm font-semibold text-[#F4F5F7]">
                 {form.lessonNumber ? `${form.lessonNumber} · ` : ""}{form.lessonName || form.moduleName || "Aula sem título"}
               </p>
@@ -1690,7 +1690,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <button
               disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
               onClick={analyze}
-              className="flex w-full items-center justify-center gap-2 rounded-[6px] bg-[#7C6CF2] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:pointer-events-none disabled:bg-white/5 disabled:text-zinc-500"
+              className="kaoz-signal-action flex w-full items-center justify-center gap-2 bg-[#7C6CF2] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:pointer-events-none disabled:bg-white/5 disabled:text-zinc-500"
             >
               {busy === "analyze" ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -1830,7 +1830,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               {/* Timeline Header Toolbar */}
               <div className="flex h-9 items-center justify-between border-b border-white/[0.06] bg-[#101217] px-3 text-[#8B92A1]">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Timeline</span>
+                  <span className="mr-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#8B92A1]">04 / Timeline</span>
                   <button
                     onClick={addEventAtPlayhead}
                     className="flex items-center gap-1 rounded border border-[#8B92A1]/35 bg-[#383D49]/25 px-2 py-0.5 text-[10px] font-bold text-[#D5D8E0] transition-all hover:bg-[#383D49]/45"
@@ -1937,10 +1937,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       className="absolute bottom-3 left-[52px] right-3 top-2 bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%]"
                     >
                       <div
-                        className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.9)] transition-all duration-75"
+                        className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#7C6CF2] shadow-[0_0_10px_rgba(124,108,242,0.9)] transition-all duration-75"
                         style={{ left: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
                       >
-                        <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-red-500 rounded-xs" />
+                        <div className="absolute -top-1 h-2.5 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)]" />
                       </div>
                     </div>
 
@@ -1959,7 +1959,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       </div>
                     )}
                     <div
-                      className="absolute h-7 bg-emerald-950/60 border border-emerald-500 rounded px-2 flex items-center text-[10px] text-emerald-300 font-mono truncate font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)_inset]"
+                      className="kaoz-signal-clip absolute flex h-7 items-center truncate px-2 font-mono text-[10px] font-bold"
                       style={{
                         left: `${activeMediaAsset === "preview" ? (4 / timelineDuration) * 100 : 0}%`,
                         width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
@@ -2006,7 +2006,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             className={`absolute h-6 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
                               isSelected
-                                ? "bg-emerald-500 text-black border-white shadow-lg shadow-emerald-500/40 z-10"
+                                ? "kaoz-signal-clip z-10"
                                 : enabled
                                   ? `${kindColorClass[evt.kind] || "bg-[#101217] border-[#8B92A1] text-[#F4F5F7]"} hover:brightness-125`
                                   : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
@@ -2083,9 +2083,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
           <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#13161C] p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
-            <div className="border-b border-white/[0.07] pb-3">
+            <div className="kaoz-signal-inspector border-b border-white/[0.07] pb-3">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
                 <Sparkles size={14} className="text-[#A99FFF]" />
+                <span className="font-mono text-[9px] font-medium tracking-[0.14em] text-[#8B92A1]" aria-hidden="true">05 /</span>
                 AI Inspector
               </h2>
               <p className="mt-1 text-[11px] text-[#8B92A1]">
@@ -2816,7 +2817,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
-            className="flex items-center gap-2 rounded-[6px] bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:opacity-40"
+            className="kaoz-signal-action flex items-center gap-2 bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:opacity-40"
           >
             <CheckCircle size={15} />
             Preparar para o DaVinci (opcional)
