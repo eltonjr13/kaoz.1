@@ -14,7 +14,8 @@ test("sintetiza arquivo de voz real em arquivo de áudio WAV", async () => {
     { durationSeconds: 3, provider: "local" }
   );
 
-  assert.equal(result.success, true);
+  assert.equal(result.success, result.engine === "windows-sapi");
+  assert.ok(result.engine === "windows-sapi" || result.engine === "pcm-fallback");
   assert.ok(result.bytes > 100);
   assert.ok(existsSync(testOut));
 

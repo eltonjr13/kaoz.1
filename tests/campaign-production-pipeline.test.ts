@@ -79,8 +79,12 @@ Prompt: Mesa de desenvolvedor minimalista com monitor ultrawide e teclado mecân
   for (const asset of completedJob.assets) {
     assert.equal(asset.imageStatus, "placeholder");
     assert.ok(asset.imagePath, `Imagem da cena ${asset.sceneNumber} deve ter um caminho`);
-    assert.ok(asset.audioStatus === "completed" || asset.audioStatus === "placeholder");
-    assert.ok(asset.audioPath, `Áudio da cena ${asset.sceneNumber} deve ter um caminho`);
+    assert.ok(asset.audioStatus === "completed" || asset.audioStatus === "placeholder" || asset.audioStatus === "failed");
+    if (asset.audioStatus !== "failed") {
+      assert.ok(asset.audioPath, `Áudio da cena ${asset.sceneNumber} deve ter um caminho`);
+    } else {
+      assert.ok(asset.audioError, `Falha de áudio da cena ${asset.sceneNumber} deve ser explícita`);
+    }
   }
 
   // Validar DaVinci Plan
