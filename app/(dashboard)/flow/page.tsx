@@ -4502,6 +4502,17 @@ export default function FlowDashboardPage() {
             }))
           );
         }}
+        onCampaignProduced={(job) => {
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: `assistant_camp_${Date.now()}`,
+              role: "assistant",
+              content: `🎬 **Produção de Campanha Concluída com Sucesso!**\n\n- **Campanha:** ${job.parsedData?.campaignName || "Campanha UGC"}\n- **Cenas Produzidas:** ${job.assets?.length || 0}\n- **Duração Estimada:** ${job.parsedData?.totalEstimatedDuration || 0}s\n- **Timeline DaVinci:** ${job.davinciPlan ? "Gerada com marcadores sincronizados" : "Não solicitada"}\n\nTodos os ativos (imagens e áudios de cada cena) estão disponíveis para visualização e reprodução no **Live Artifact Canvas**.`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }}
       />
     </div>
   );
