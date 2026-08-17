@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { getRuntimeUploadDir, getRuntimeUploadPublicPath } from "./runtime-uploads.ts";
 
 export type CartesiaGenerateInput = {
