@@ -35,6 +35,7 @@ export async function GET(
       headers: {
         "Cache-Control": "no-store",
         "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

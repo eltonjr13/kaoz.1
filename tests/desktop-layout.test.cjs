@@ -48,8 +48,14 @@ test("desktop titlebar shows route context, command launcher, and real update st
 
 test("desktop stores generated uploads outside the installed server", () => {
   const main = fs.readFileSync(path.join(projectRoot, "electron", "main.cjs"), "utf8");
+  const audioRoute = fs.readFileSync(
+    path.join(projectRoot, "app", "uploads", "audio", "[filename]", "route.ts"),
+    "utf8",
+  );
 
   assert.match(main, /KAOZ1_UPLOADS_DIR: path\.join\(dataRoot, "uploads"\)/);
+  assert.match(audioRoute, /getRuntimeUploadDir\("audio"\)/);
+  assert.match(audioRoute, /"X-Content-Type-Options": "nosniff"/);
 });
 
 test("settings persist automatic update downloads without automatic installation", () => {
