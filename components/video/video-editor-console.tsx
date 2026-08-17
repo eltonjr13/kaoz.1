@@ -90,16 +90,16 @@ export function VideoEditorConsole({
   };
 
   return (
-    <div className={`overflow-hidden rounded-2xl border border-[#383D49]/40 bg-[#090A0D]/90 shadow-2xl backdrop-blur-xl transition-all duration-300 ${fillAvailableHeight ? "flex h-full min-h-0 flex-col" : ""}`}>
+    <div className={`overflow-hidden rounded-[8px] bg-[#090A0D] ring-1 ring-white/[0.06] transition-all duration-300 ${fillAvailableHeight ? "flex h-full min-h-0 flex-col" : ""}`}>
       {/* Header do Console */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#383D49]/35 bg-[#101217]/85 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] bg-[#13161C] px-3 py-2">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setIsOpen((prev) => !prev)}
-            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-200 transition hover:text-white"
+            className="flex items-center gap-2 text-xs font-semibold text-zinc-200 transition hover:text-white"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#383D49]/25 text-[#D5D8E0]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#242832] text-[#A99FFF]">
               <Terminal size={14} />
             </span>
             Console de Processamento
@@ -111,7 +111,7 @@ export function VideoEditorConsole({
             )}
           </button>
 
-          <span className="rounded-full border border-[#383D49]/30 bg-[#171A21]/45 px-2.5 py-0.5 text-[10px] font-semibold text-[#8B92A1]">
+          <span className="text-[10px] font-medium text-[#8B92A1]">
             {logs.length} {logs.length === 1 ? "registro" : "registros"}
           </span>
         </div>
@@ -122,10 +122,10 @@ export function VideoEditorConsole({
             type="button"
             onClick={() => setAutoScroll((prev) => !prev)}
             title={autoScroll ? "Auto-scroll ativado" : "Auto-scroll desativado"}
-            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+            className={`flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition ${
               autoScroll
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                : "border-[#383D49]/40 bg-[#171A21]/35 text-[#8B92A1] hover:text-[#F4F5F7]"
+                ? "bg-[#242832] text-emerald-300"
+                : "text-[#8B92A1] hover:bg-white/[0.06] hover:text-[#F4F5F7]"
             }`}
           >
             <ArrowDownCircle size={12} />
@@ -137,7 +137,7 @@ export function VideoEditorConsole({
             onClick={handleCopy}
             disabled={logs.length === 0}
             title="Copiar logs"
-            className="flex items-center gap-1 rounded-lg border border-[#383D49]/40 bg-[#171A21]/35 px-2.5 py-1 text-[11px] font-medium text-[#D5D8E0] transition hover:bg-[#383D49]/45 hover:text-white disabled:opacity-40"
+            className="flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-[11px] font-medium text-[#D5D8E0] transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
           >
             {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
             <span className="hidden sm:inline">{copied ? "Copiado!" : "Copiar"}</span>
@@ -148,7 +148,7 @@ export function VideoEditorConsole({
             onClick={onClearLogs}
             disabled={logs.length === 0}
             title="Limpar logs"
-            className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/20 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
           >
             <Trash2 size={12} />
             <span className="hidden sm:inline">Limpar</span>
@@ -157,7 +157,7 @@ export function VideoEditorConsole({
           <button
             type="button"
             onClick={() => setIsOpen((prev) => !prev)}
-            className="rounded-lg border border-[#383D49]/40 bg-[#171A21]/35 p-1 text-[#8B92A1] transition hover:bg-[#383D49]/45 hover:text-[#F4F5F7]"
+            className="rounded-[6px] p-1 text-[#8B92A1] transition hover:bg-white/[0.06] hover:text-[#F4F5F7]"
             title={isOpen ? "Recolher console" : "Expandir console"}
           >
             {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -180,8 +180,8 @@ export function VideoEditorConsole({
                     onClick={() => setSelectedLevel(level)}
                     className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                       isSelected
-                        ? "bg-[#383D49] text-white shadow-md shadow-[#090A0D]/40"
-                        : "bg-[#171A21]/35 text-[#8B92A1] hover:bg-[#383D49]/35 hover:text-[#F4F5F7]"
+                        ? "bg-[#242832] text-white"
+                        : "text-[#8B92A1] hover:bg-white/[0.05] hover:text-[#F4F5F7]"
                     }`}
                   >
                     {level === "all" ? "Todos" : level.toUpperCase()}{" "}
@@ -198,7 +198,7 @@ export function VideoEditorConsole({
                 placeholder="Filtrar mensagens..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-[#383D49]/40 bg-[#101217]/70 py-1 pl-8 pr-3 text-[11px] text-[#D5D8E0] placeholder-[#383D49] outline-none focus:border-[#8B92A1] focus:ring-1 focus:ring-[#8B92A1]/50"
+                className="w-full rounded-[6px] border border-white/10 bg-[#0D0F14] py-1 pl-8 pr-3 text-[11px] text-[#D5D8E0] placeholder-[#5D6472] outline-none focus:border-[#7C6CF2]/70 focus:ring-1 focus:ring-[#7C6CF2]/20"
               />
             </div>
           </div>
@@ -206,7 +206,7 @@ export function VideoEditorConsole({
           {/* Área de Logs Terminal */}
           <div
             ref={logContainerRef}
-            className={`${fillAvailableHeight ? "min-h-32 flex-1" : "h-64"} overflow-y-auto rounded-xl border border-[#383D49]/30 bg-[#090A0D]/95 p-3 font-mono text-xs text-[#D5D8E0] shadow-inner scrollbar-thin scrollbar-thumb-[#383D49]`}
+            className={`${fillAvailableHeight ? "min-h-32 flex-1" : "h-64"} overflow-y-auto rounded-[6px] bg-[#0B0D12] p-3 font-mono text-xs text-[#D5D8E0] scrollbar-thin scrollbar-thumb-[#383D49]`}
           >
             {filteredLogs.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-zinc-500">
@@ -237,7 +237,7 @@ export function VideoEditorConsole({
                         <span className="break-all font-medium text-zinc-200">{log.message}</span>
                       </div>
                       {log.details && (
-                        <div className="ml-14 whitespace-pre-wrap rounded border border-[#383D49]/25 bg-[#101217]/60 p-1.5 text-[11px] text-[#8B92A1]">
+                        <div className="ml-14 whitespace-pre-wrap rounded-[4px] bg-[#13161C] p-1.5 text-[11px] text-[#8B92A1]">
                           {log.details}
                         </div>
                       )}

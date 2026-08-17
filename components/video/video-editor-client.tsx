@@ -24,8 +24,8 @@ const statusVariants: Record<
     label: "Concluído",
   },
   info: {
-    dialogClass: "border-[#8B92A1]/35 bg-[#101217] text-[#F4F5F7]",
-    iconClass: "bg-[#383D49]/25 text-[#D5D8E0]",
+    dialogClass: "border-white/10 bg-[#1D2028] text-[#F4F5F7]",
+    iconClass: "bg-[#7C6CF2]/15 text-[#A99FFF]",
     icon: Info,
     label: "Aviso",
   },
@@ -41,7 +41,7 @@ type StatusOverlayProps = {
 function UrgentStatusModal({ status, variant, Icon, onClose }: StatusOverlayProps) {
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#090A0D]/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="video-editor-status-title"
@@ -49,21 +49,21 @@ function UrgentStatusModal({ status, variant, Icon, onClose }: StatusOverlayProp
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${variant.dialogClass}`}>
+      <div className={`w-full max-w-md rounded-[8px] border p-5 shadow-2xl ${variant.dialogClass}`}>
         <div className="flex items-start gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${variant.iconClass}`}>
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] ${variant.iconClass}`}>
             <Icon size={20} />
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="video-editor-status-title" className="text-sm font-bold">{variant.label}</h2>
             <p className="mt-1 text-sm leading-relaxed text-white/80">{status.text}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-[#8B92A1] transition-colors hover:bg-[#383D49]/30 hover:text-[#F4F5F7]" aria-label="Fechar aviso">
+          <button type="button" onClick={onClose} className="rounded-[6px] p-1 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]" aria-label="Fechar aviso">
             <X size={18} />
           </button>
         </div>
         <div className="mt-5 flex justify-end">
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#383D49]/50 bg-[#171A21] px-4 py-2 text-xs font-bold text-[#F4F5F7] transition-colors hover:bg-[#383D49]">
+          <button type="button" onClick={onClose} className="rounded-[6px] bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6]">
             Entendi
           </button>
         </div>
@@ -75,16 +75,16 @@ function UrgentStatusModal({ status, variant, Icon, onClose }: StatusOverlayProp
 function SideStatusNotification({ status, variant, Icon, onClose }: StatusOverlayProps) {
   return (
     <div className="fixed right-4 top-4 z-[100] w-[calc(100%-2rem)] max-w-sm" role="status" aria-live="polite">
-      <div className={`rounded-2xl border p-4 shadow-2xl ${variant.dialogClass}`}>
+      <div className={`rounded-[8px] border p-3 shadow-2xl ${variant.dialogClass}`}>
         <div className="flex items-start gap-3">
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${variant.iconClass}`}>
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] ${variant.iconClass}`}>
             <Icon size={18} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold">{variant.label}</p>
             <p className="mt-1 text-sm leading-relaxed text-white/80">{status.text}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-[#8B92A1] transition-colors hover:bg-[#383D49]/30 hover:text-[#F4F5F7]" aria-label="Fechar notifica\u00e7\u00e3o">
+          <button type="button" onClick={onClose} className="rounded-[6px] p-1 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]" aria-label="Fechar notifica\u00e7\u00e3o">
             <X size={18} />
           </button>
         </div>
@@ -118,7 +118,7 @@ export function VideoEditorClient() {
   }, [isUrgentStatus]);
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-y-auto w-full flex-col bg-[#090A0D] text-[#F4F5F7]">
+    <div className="flex min-h-0 flex-1 w-full flex-col overflow-y-auto bg-[var(--surface-app)] text-[#F4F5F7]">
       <div className="min-h-full w-full flex-none overflow-visible">
         <DavinciFreePanel onStatusMessage={setStatus} />
       </div>

@@ -2082,10 +2082,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-[#383D49]/35 bg-[#101217]/70 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
-            <div className="rounded-2xl border border-[#383D49]/40 bg-[#090A0D]/60 p-3">
-              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#D5D8E0]">
-                <Sparkles size={14} className="text-[#8B92A1]" />
+          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#13161C] p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
+            <div className="border-b border-white/[0.07] pb-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
+                <Sparkles size={14} className="text-[#A99FFF]" />
                 AI Inspector
               </h2>
               <p className="mt-1 text-[11px] text-[#8B92A1]">
@@ -2097,7 +2097,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3">
               {/* Course Identity Card */}
               {analysis?.courseTheme && (
-              <div className="rounded-xl border border-[#8B92A1]/35 bg-[#171A21]/45 p-3 text-xs text-[#D5D8E0]">
+              <div className="rounded-[6px] border-l-2 border-l-[#7C6CF2] bg-[#171A21] px-3 py-2.5 text-xs text-[#D5D8E0]">
                 <p className="font-bold text-white">
                   Identidade {analysis.courseTheme.reused ? "reutilizada" : "criada"}: {analysis.courseTheme.label}
                 </p>
@@ -2106,11 +2106,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               )}
 
             {/* Analysis summary */}
-            <div className="grid grid-cols-2 border-y border-white/10 py-2">
+            <div className="grid grid-cols-2 border-y border-white/[0.07] py-2">
               {Object.entries(eventCounts).map(([kind, count]) => (
                 <div
                   key={kind}
-                  className="border-b border-white/5 px-2 py-1.5 text-[10px] text-zinc-400 even:border-l"
+                  className="px-2 py-1.5 text-[10px] text-zinc-400 even:border-l even:border-white/[0.06]"
                 >
                   <strong className="block text-sm font-semibold text-zinc-200">{count}</strong>
                   {kindLabel[kind as EditEvent["kind"]]}
@@ -2129,14 +2129,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     disabled={!!busy}
                     onClick={restoreAutomatic}
-                    className="rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:bg-white/10 disabled:opacity-40 transition-all"
+                    className="rounded-[6px] px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"
                   >
                     Restaurar automático
                   </button>
                   <button
                     disabled={!!busy || !analysis?.courseName}
                     onClick={saveCourseStandard}
-                    className="rounded-lg border border-[#8B92A1]/40 bg-[#383D49]/20 px-2 py-1 text-[10px] font-semibold text-[#D5D8E0] transition-all hover:bg-[#383D49]/35 disabled:opacity-40"
+                    className="rounded-[6px] bg-[#242832] px-2 py-1 text-[10px] font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
                   >
                     Salvar padrão do curso
                   </button>
@@ -2159,7 +2159,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       )}
                       className={`border-b border-white/10 px-1 py-2.5 transition-colors text-xs cursor-pointer ${
                         isSelected
-                          ? "border-l-2 border-l-emerald-400 bg-emerald-950/20 pl-2"
+                          ? "border-l-2 border-l-[#7C6CF2] bg-[#7C6CF2]/[0.08] pl-2"
                           : enabled
                             ? "hover:bg-white/[0.03]"
                             : "opacity-40"
@@ -2170,7 +2170,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                           type="checkbox"
                           checked={enabled}
                           onChange={(input) => updateEvent(event, { enabled: input.target.checked })}
-                          className="accent-emerald-500 rounded h-3.5 w-3.5"
+                          className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
                         />
                         <span className="font-bold text-emerald-300 text-[11px]">{kindLabel[event.kind]}</span>
                         <span className="text-[10px] text-zinc-400 truncate">— {event.reason}</span>
@@ -2264,7 +2264,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       setPreviewStale(true);
                       setReview((current) => ({ ...current, captionsEnabled: input.target.checked }));
                     }}
-                    className="accent-emerald-500 rounded h-3.5 w-3.5"
+                    className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
                   />
                   Exibir legendas
                 </label>
@@ -2272,7 +2272,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   const change = captionReview(index);
                   const enabled = change.enabled !== false;
                   return (
-                    <div key={`caption-${index}`} className="grid gap-1.5 rounded-lg border border-[#383D49]/35 bg-[#090A0D]/65 p-2 text-[10px]">
+                    <div key={`caption-${index}`} className="grid gap-1.5 border-b border-white/[0.06] py-2 text-[10px]">
                       <input
                         className={fieldClass}
                         value={change.text ?? caption.text}
@@ -2785,7 +2785,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
-      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-[#383D49]/40 bg-[#101217]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(26,19,1,0.38)] backdrop-blur-xl">
+      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-white/[0.08] bg-[#101217]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(0,0,0,0.32)] backdrop-blur-xl">
         <div className="flex flex-col">
           <span className="flex items-center gap-2 text-[11px] font-medium text-[#D5D8E0]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
@@ -2801,7 +2801,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis}
             onClick={renderPreview}
-            className="flex items-center gap-2 rounded-lg border border-[#383D49]/40 bg-[#090A0D]/45 px-3 py-2 text-xs font-medium text-[#D5D8E0] transition-colors hover:bg-[#171A21] disabled:opacity-40"
+            className="flex items-center gap-2 rounded-[6px] bg-[#242832] px-3 py-2 text-xs font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
           >
             {busy === "render-preview" ? (
               <Loader2 size={14} className="animate-spin" />
@@ -2814,7 +2814,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
-            className="flex items-center gap-2 rounded-lg bg-[#F4F5F7] px-4 py-2 text-xs font-semibold text-[#090A0D] transition-colors hover:bg-[#D5D8E0] disabled:opacity-40"
+            className="flex items-center gap-2 rounded-[6px] bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:opacity-40"
           >
             <CheckCircle size={15} />
             Preparar para o DaVinci (opcional)
