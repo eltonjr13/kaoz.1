@@ -7,6 +7,8 @@ import crypto from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArtifactsToCampaign } from "./campaign-parser.ts";
+import { generateDavinciEdl, generateDavinciFcpxml } from "./davinci-export.ts";
+import { synthesizeRealSpeechToFile } from "../tts/speech-synthesizer.ts";
 import type {
   CampaignAssetResult,
   CampaignParsedData,
