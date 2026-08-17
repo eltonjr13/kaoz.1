@@ -40,6 +40,22 @@ function finiteNumber(value: unknown, field: string, min: number, max: number): 
   return result;
 }
 
+function stringList(value: unknown, field: string, maxLength: number): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error(`${field} inválido.`);
+  return value.map((item, index) => text(item, `${field}[${index}]`, maxLength));
+}
+
+function reviewStatus(value: unknown): "approved" | "needs_revision" {
+  if (value === "approved" || value === "needs_revision") return value;
+  throw new Error("campaignProductionSpec.review.status inválido.");
+}
+
+function schemaVersion(value: unknown): "1.0" {
+  if (value === "1.0") return value;
+  throw new Error("schemaVersion inválida.");
+}
+
 export function parseCampaignScene(value: unknown, index = 0): CampaignScene {
   const input = record(value, `scenes[${index}]`);
   const styleKeywords = input.styleKeywords === undefined
@@ -117,16 +133,17 @@ export function parseProduceCampaignRequest(value: unknown): ProduceCampaignRequ
 export function parseCampaignProductionSpec(value: unknown): CampaignProductionSpec {
   const input = record(value, "campaignProductionSpec");
   const review = record(input.review, "campaignProductionSpec.review");
-  const status = review.status === "approved" ? "approved" : review.status === "needs_revision" ? "needs_revision" : null;
-  if (!status) throw new Error("campaignProductionSpec.review.status inválido.");
-  const blockingIssues = Array.isArray(review.blockingIssues)
-    ? review.blockingIssues.map((issue, index) => text(issue, `review.blockingIssues[${index}]`, 1_000))
-    : [];
-  const sourceArtifactIds = Array.isArray(input.sourceArtifactIds)
-    ? input.sourceArtifactIds.map((id, index) => text(id, `sourceArtifactIds[${index}]`, 100))
-    : [];
+  const declaredStatus = reviewStatus(review.status);
+  const blockingIssues = stringList(review.blockingIssues, "review.blockingIssues", 1_000);
+  const sourceArtifactIds = stringList(input.sourceArtifactIds, "sourceArtifactIds", 100);
+  const score = finiteNumber(review.score, "review.score", 0, 100);
+  const minimumScore = finiteNumber(review.minimumScore, "review.minimumScore", 0, 100);
+  const status = declaredStatus === "approved" && score >= minimumScore && blockingIssues.length === 0
+    ? "approved"
+    : "needs_revision";
+  const warnings = stringList(input.warnings, "warnings", 1_000);
   return {
-    schemaVersion: input.schemaVersion === "1.0" ? "1.0" : (() => { throw new Error("schemaVersion inválida."); })(),
+    schemaVersion: schemaVersion(input.schemaVersion),
     id: text(input.id, "campaignProductionSpec.id", 100),
     warRoomSessionId: text(input.warRoomSessionId, "campaignProductionSpec.warRoomSessionId", 200),
     campaignName: text(input.campaignName, "campaignProductionSpec.campaignName", 500),
@@ -136,11 +153,12 @@ export function parseCampaignProductionSpec(value: unknown): CampaignProductionS
     scenes: parseScenes(input.scenes),
     review: {
       status,
-      score: finiteNumber(review.score, "review.score", 0, 100),
-      minimumScore: finiteNumber(review.minimumScore, "review.minimumScore", 0, 100),
+      score,
+      minimumScore,
       blockingIssues,
     },
     sourceArtifactIds,
+    warnings,
     generatedAt: text(input.generatedAt, "campaignProductionSpec.generatedAt", 100),
   };
 }

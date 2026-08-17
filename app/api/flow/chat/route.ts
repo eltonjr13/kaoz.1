@@ -556,6 +556,7 @@ export async function POST(request: Request) {
             objective: currentSession.brief.objective,
             artifacts: sourceArtifacts,
             review: currentSession.review,
+            warnings: currentSession.warnings,
           });
           const registeredSpec = await registerContentArtifact({
             id: productionSpec.id,

@@ -56,6 +56,7 @@ test("Fase 1: Warrooom gera, persiste e produz pelo contrato canônico aprovado"
     objective: session.brief.objective,
     artifacts: sourceArtifacts,
     review: session.review!,
+    warnings: session.warnings,
   });
   const specArtifact = await registerContentArtifact({
     id: spec.id,
@@ -80,7 +81,7 @@ test("Fase 1: Warrooom gera, persiste e produz pelo contrato canônico aprovado"
   });
   assert.equal(job.productionSpecId, spec.id);
   const completed = await production.executeCampaignProduction(job.id);
-  assert.equal(completed.status, "completed");
+  assert.equal(completed.status, "completed_with_warnings");
   assert.equal(completed.parsedData.sourceMode, "canonical_spec");
 });
 
@@ -101,8 +102,9 @@ test("Fase 1: rubrica reprovada bloqueia a produção", async () => {
       durationSeconds: 3,
       aspectRatio: "9:16",
     }],
-    review: { status: "needs_revision", score: 60, minimumScore: 80, blockingIssues: ["Copy incompleta"] },
+    review: { status: "approved", score: 60, minimumScore: 80, blockingIssues: ["Copy incompleta"] },
     sourceArtifactIds: [],
+    warnings: [],
     generatedAt: new Date().toISOString(),
   };
   const production = new CampaignProductionService();

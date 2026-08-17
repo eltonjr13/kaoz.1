@@ -475,7 +475,9 @@ Responda ESTRITAMENTE em formato JSON:
           const updatedSession: WarRoomSession = Object.freeze({
             ...session,
             status: isComplete
-              ? review?.status === "approved" ? "completed" : "needs_revision"
+              ? review?.status === "approved"
+                ? session.warnings.length > 0 ? "completed_with_warnings" : "completed"
+                : "needs_revision"
               : "in_progress",
             currentStageIndex: stageNum,
             messages: Object.freeze([...session.messages, message]),

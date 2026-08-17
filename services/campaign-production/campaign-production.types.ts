@@ -75,6 +75,7 @@ export interface CampaignProductionSpec {
   scenes: CampaignScene[];
   review: CampaignProductionReview;
   sourceArtifactIds: string[];
+  warnings: string[];
   generatedAt: string;
 }
 

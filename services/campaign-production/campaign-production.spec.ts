@@ -14,6 +14,7 @@ interface WarRoomSpecInput {
     minimumScore: number;
     blockingIssues: readonly string[];
   };
+  warnings?: readonly string[];
 }
 
 export function createCampaignProductionSpec(input: WarRoomSpecInput): CampaignProductionSpec {
@@ -38,6 +39,7 @@ export function createCampaignProductionSpec(input: WarRoomSpecInput): CampaignP
       blockingIssues: [...input.review.blockingIssues],
     },
     sourceArtifactIds: input.artifacts.map((artifact) => artifact.id),
+    warnings: [...(input.warnings || [])],
     generatedAt: new Date().toISOString(),
   });
 }

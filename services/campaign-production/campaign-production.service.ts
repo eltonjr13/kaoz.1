@@ -185,9 +185,12 @@ export class CampaignProductionService {
         ...request.options,
       },
       outputDirectory,
-      warnings: parsedData.sourceMode === "fallback"
-        ? ["Os artefatos não continham cenas estruturadas; foi utilizado um roteiro genérico de fallback."]
-        : [],
+      warnings: [
+        ...(productionSpec?.warnings || []),
+        ...(parsedData.sourceMode === "fallback"
+          ? ["Os artefatos não continham cenas estruturadas; foi utilizado um roteiro genérico de fallback."]
+          : []),
+      ],
       productionSpecId: productionSpec?.id,
     };
 
@@ -246,10 +249,12 @@ export class CampaignProductionService {
             asset.imageStatus = "completed";
           } else {
             // Write high-quality synthetic fallback placeholder
+            const placeholderFileName = `scene_${scene.sceneNumber}_placeholder.svg`;
+            const placeholderFilePath = path.join(assetsDir, placeholderFileName);
             const svgBuffer = createSyntheticImageSvg(scene.title, scene.sceneNumber, scene.visualPrompt);
-            await writeFile(imageFilePath, svgBuffer);
-            asset.imagePath = imageFilePath;
-            asset.imageUrl = `/api/campaigns/${job.id}/assets/${imageFileName}`;
+            await writeFile(placeholderFilePath, svgBuffer);
+            asset.imagePath = placeholderFilePath;
+            asset.imageUrl = `/api/campaigns/${job.id}/assets/${placeholderFileName}`;
             asset.imageStatus = "placeholder";
             job.warnings = [...(job.warnings || []), `Cena ${scene.sceneNumber}: gerador de imagem indisponível; placeholder SVG criado.`];
           }
