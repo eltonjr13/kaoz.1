@@ -70,6 +70,7 @@ export function LiveArtifactCanvas({
   activeArtifactId,
   onSelectArtifact,
   onArtifactUpdated,
+  onCampaignProduced,
 }: LiveArtifactCanvasProps) {
   const normalizedArtifacts: LiveCanvasArtifactItem[] = useMemo(() => {
     return artifacts.map((art) => ({
