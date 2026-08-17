@@ -60,7 +60,7 @@
     "test:live-canvas": "node --experimental-strip-types --no-warnings --test tests/live-artifact-canvas.test.ts",
     "test:campaign-parser": "node --experimental-strip-types --no-warnings --test tests/campaign-parser.test.ts",
     "test:campaign-production": "node --experimental-strip-types --no-warnings --test tests/campaign-production-pipeline.test.ts",
-    "test:speech-synthesizer": "node --experimental-strip-types --no-warnings --test tests/speech-synthesizer.test.ts",
+    "test:speech-synthesizer": "node --experimental-strip-types --no-warnings --test tests/speech-synthesizer.test.ts tests/runtime-uploads.test.ts",
     "test:agent-messaging": "node --experimental-strip-types --no-warnings --test tests/agent-message-bus.test.ts",
     "test:agent-shared-context": "node --experimental-strip-types --no-warnings --test tests/agent-shared-context.test.ts",
     "test:agent-memory-service": "node --experimental-strip-types --no-warnings --test tests/agent-memory-service.test.ts",

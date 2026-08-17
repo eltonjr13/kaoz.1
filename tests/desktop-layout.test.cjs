@@ -46,6 +46,12 @@ test("desktop titlebar shows route context, command launcher, and real update st
   assert.match(titlebar, /router\.push\("\/settings"\)/);
 });
 
+test("desktop stores generated uploads outside the installed server", () => {
+  const main = fs.readFileSync(path.join(projectRoot, "electron", "main.cjs"), "utf8");
+
+  assert.match(main, /KAOZ1_UPLOADS_DIR: path\.join\(dataRoot, "uploads"\)/);
+});
+
 test("settings persist automatic update downloads without automatic installation", () => {
   const panel = fs.readFileSync(path.join(projectRoot, "components", "settings", "AppUpdatesPanel.tsx"), "utf8");
   const preload = fs.readFileSync(path.join(projectRoot, "electron", "preload.cjs"), "utf8");
