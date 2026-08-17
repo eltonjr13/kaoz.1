@@ -118,7 +118,7 @@ export function VideoEditorClient() {
   }, [isUrgentStatus]);
 
   return (
-    <div className="flex min-h-0 flex-1 w-full flex-col overflow-y-auto bg-[var(--surface-app)] text-[#F4F5F7]">
+    <div className="flex min-h-0 flex-1 overflow-y-auto w-full flex-col bg-[var(--surface-app)] text-[#F4F5F7]">
       <div className="min-h-full w-full flex-none overflow-visible">
         <DavinciFreePanel onStatusMessage={setStatus} />
       </div>
