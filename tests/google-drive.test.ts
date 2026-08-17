@@ -149,6 +149,8 @@ test("OAuth valida state, guarda refresh token e revoga ao desconectar", async (
     clientSecretConfigured: true,
     apiKey: "AIza-test",
     appId: "123456789",
+    isEnvConfigured: false,
+    hasCustomConfig: true,
   });
   const reloadedService = new GoogleDriveService(store, mocked.fetcher);
   await reloadedService.testConnection();
