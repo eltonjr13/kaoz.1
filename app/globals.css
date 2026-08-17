@@ -226,6 +226,20 @@ body {
   translate: 440% 0;
 }
 
+.kaoz-signal-action:focus-visible {
+  outline: 0;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--signal-bright) 58%, transparent));
+}
+
+.kaoz-signal-action:disabled {
+  box-shadow: none;
+  filter: none;
+}
+
+.kaoz-signal-action:disabled::after {
+  opacity: 0;
+}
+
 .kaoz-signal-action:has(.animate-spin)::after {
   animation: kaoz-signal-sweep 1.4s linear infinite;
 }
