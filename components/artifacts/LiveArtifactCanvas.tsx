@@ -45,6 +45,7 @@ interface LiveArtifactCanvasProps {
   activeArtifactId?: string;
   onSelectArtifact?: (id: string) => void;
   onArtifactUpdated?: (artifact: ExecutionArtifact) => void;
+  onCampaignProduced?: (job: any) => void;
 }
 
 function getArtifactIcon(type: string, name: string) {

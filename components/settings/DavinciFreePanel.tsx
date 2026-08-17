@@ -2120,23 +2120,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
             {/* Timeline Editorial & List */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+              <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] pb-2">
                 <div>
                   <h4 className="text-xs font-bold text-white">Timeline editorial</h4>
                   <p className="text-[10px] text-zinc-500">Decisões e ajustes da IA</p>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex shrink-0 flex-col items-end gap-1">
                   <button
                     disabled={!!busy}
                     onClick={restoreAutomatic}
-                    className="rounded-[6px] px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"
+                    className="whitespace-nowrap rounded-[6px] px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"
                   >
                     Restaurar automático
                   </button>
                   <button
                     disabled={!!busy || !analysis?.courseName}
                     onClick={saveCourseStandard}
-                    className="rounded-[6px] bg-[#242832] px-2 py-1 text-[10px] font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
+                    className="whitespace-nowrap rounded-[6px] bg-[#242832] px-2 py-1 text-[10px] font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
                   >
                     Salvar padrão do curso
                   </button>

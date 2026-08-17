@@ -157,10 +157,10 @@ function DriveControlButtons(props: {
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" disabled={!!busy || !connection?.connected} onClick={() => openPicker("video")} className="flex items-center justify-center gap-1.5 rounded-lg border border-blue-400/25 bg-blue-400/10 px-2 py-2 text-[10px] font-bold text-blue-200 hover:bg-blue-400/20 disabled:opacity-40"><CloudDownload size={13} /> Importar vídeo</button>
-        <button type="button" disabled={!!busy || !connection?.connected} onClick={() => openPicker("folder")} className="flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-[10px] font-bold text-zinc-300 hover:bg-white/10 disabled:opacity-40"><FolderOpen size={13} /> Escolher destino</button>
+        <button type="button" disabled={!!busy || !connection?.connected} onClick={() => openPicker("video")} className="flex items-center justify-center gap-1.5 rounded-[6px] bg-[#242832] px-2 py-2 text-[10px] font-semibold text-[#D5D8E0] hover:bg-[#303541] disabled:opacity-40"><CloudDownload size={13} /> Importar vídeo</button>
+        <button type="button" disabled={!!busy || !connection?.connected} onClick={() => openPicker("folder")} className="flex items-center justify-center gap-1.5 rounded-[6px] px-2 py-2 text-[10px] font-semibold text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"><FolderOpen size={13} /> Escolher destino</button>
       </div>
-      <button type="button" disabled={!!busy || !connection?.connected || !connection.defaultFolder || !renderReady || !planId} onClick={upload} className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-500 px-2 py-2 text-[10px] font-bold text-white hover:bg-blue-400 disabled:opacity-40"><CloudUpload size={13} /> Enviar render ao Drive</button>
+      <button type="button" disabled={!!busy || !connection?.connected || !connection.defaultFolder || !renderReady || !planId} onClick={upload} className="flex w-full items-center justify-center gap-1.5 rounded-[6px] bg-[#7C6CF2] px-2 py-2 text-[10px] font-semibold text-white hover:bg-[#8B7CF6] disabled:opacity-40"><CloudUpload size={13} /> Enviar render ao Drive</button>
     </>
   );
 }
@@ -337,9 +337,9 @@ export function GoogleDriveVideoControls({ planId, renderReady, onImported, onSt
   }
 
   return (
-    <div className="space-y-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.05] p-3">
+    <div className="space-y-2 border-y border-white/[0.07] py-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Google Drive</span>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-[#8B92A1]">Google Drive</span>
         <span className={`text-[10px] ${connection?.connected ? "text-emerald-400" : "text-zinc-500"}`}>{connection?.connected ? connection.email || "Conectado" : "Conecte nas Configurações"}</span>
       </div>
       <DriveControlButtons busy={busy} connection={connection} renderReady={renderReady} planId={planId} openPicker={(kind) => void openPicker(kind)} upload={() => void upload()} />
