@@ -27,6 +27,11 @@
   --palette-muted: #8b92a1;
   --palette-paper: #f4f5f7;
   --palette-accent: #7c6cf2;
+  --signal-primary: var(--palette-accent);
+  --signal-bright: #a99fff;
+  --signal-soft: color-mix(in srgb, var(--signal-primary) 14%, transparent);
+  --signal-glow: 0 0 18px color-mix(in srgb, var(--signal-primary) 28%, transparent);
+  --signal-cut: 8px;
   --surface-app: var(--palette-void);
   --surface-workspace: #0d0f14;
   --surface-sidebar: var(--palette-ink);
@@ -113,6 +118,137 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Kaoz Signal: controlled fragments connect navigation, editing and AI state. */
+.kaoz-signal-nav-item {
+  position: relative;
+  border-radius: var(--radius-md);
+}
+
+.kaoz-signal-nav-item::before {
+  position: absolute;
+  inset-block: 8px;
+  inset-inline-start: 0;
+  width: 2px;
+  content: "";
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--signal-primary) 0 52%,
+    transparent 52% 68%,
+    var(--signal-bright) 68% 100%
+  );
+  box-shadow: var(--signal-glow);
+  transform: scaleY(0.45);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.kaoz-signal-nav-item[data-active="true"] {
+  color: var(--text) !important;
+  background: linear-gradient(90deg, var(--signal-soft), transparent 78%);
+}
+
+.kaoz-signal-nav-item[data-active="true"]::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.kaoz-signal-nav-item[data-active="true"] svg {
+  color: var(--signal-bright);
+}
+
+.kaoz-signal-project,
+.kaoz-signal-inspector {
+  position: relative;
+  padding-inline-start: 14px;
+}
+
+.kaoz-signal-project::before,
+.kaoz-signal-inspector::before {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-start: 0;
+  width: 2px;
+  content: "";
+  background: linear-gradient(
+    to bottom,
+    var(--signal-bright) 0 44%,
+    transparent 44% 60%,
+    var(--signal-primary) 60% 100%
+  );
+  box-shadow: var(--signal-glow);
+}
+
+.kaoz-signal-inspector::after {
+  position: absolute;
+  inset-inline: 14px 0;
+  inset-block-end: -13px;
+  height: 1px;
+  content: "";
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    to right,
+    var(--signal-primary) 0 18px,
+    transparent 18px 24px
+  );
+}
+
+.kaoz-signal-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 0 !important;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--signal-cut)) 0,
+    100% var(--signal-cut),
+    100% 100%,
+    var(--signal-cut) 100%,
+    0 calc(100% - var(--signal-cut))
+  );
+  box-shadow: var(--signal-glow);
+}
+
+.kaoz-signal-action::after {
+  position: absolute;
+  inset: 0 auto 0 -38%;
+  z-index: -1;
+  width: 32%;
+  content: "";
+  opacity: 0.55;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.2), transparent);
+  transform: skewX(-18deg);
+  transition: translate 280ms ease;
+}
+
+.kaoz-signal-action:hover::after {
+  translate: 440% 0;
+}
+
+.kaoz-signal-action:has(.animate-spin)::after {
+  animation: kaoz-signal-sweep 1.4s linear infinite;
+}
+
+.kaoz-signal-clip {
+  border-color: color-mix(in srgb, var(--signal-primary) 74%, transparent) !important;
+  background: linear-gradient(90deg, var(--signal-soft), #171a21 72%) !important;
+  color: #dcd8ff !important;
+  box-shadow: inset 2px 0 var(--signal-bright), 0 0 12px rgb(124 108 242 / 0.14) !important;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+
+@keyframes kaoz-signal-sweep {
+  from { translate: 0 0; }
+  to { translate: 440% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaoz-signal-nav-item::before,
+  .kaoz-signal-action::after {
+    transition: none;
+    animation: none !important;
+  }
 }
 
 /* Typography carries the interface identity; system data gets a distinct technical face. */
