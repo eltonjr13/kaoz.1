@@ -281,6 +281,33 @@ export async function readStoredArtifact(id: string): Promise<{ artifact: Execut
   return { artifact: manifest.artifact, content };
 }
 
+export async function updateContentArtifact(params: {
+  id: string;
+  content: string | Uint8Array;
+  name?: string;
+}): Promise<ExecutionArtifact> {
+  if (!/^[a-f0-9-]{36}$/i.test(params.id)) throw new Error("Identificador de artefato inválido.");
+  const directory = path.join(ARTIFACT_ROOT, params.id);
+  const manifestPath = path.join(directory, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as StoredArtifactManifest;
+  const storedName = path.basename(manifest.storedName);
+  const data = typeof params.content === "string" ? Buffer.from(params.content, "utf8") : params.content;
+  await atomicWrite(path.join(directory, storedName), data);
+
+  const updatedArtifact: ExecutionArtifact = {
+    ...manifest.artifact,
+    name: params.name || manifest.artifact.name,
+    size: data.byteLength,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await atomicWrite(
+    manifestPath,
+    `${JSON.stringify({ artifact: updatedArtifact, storedName } satisfies StoredArtifactManifest, null, 2)}\n`
+  );
+  return updatedArtifact;
+}
+
 export function mimeTypeFromName(name: string): string {
   const extension = path.extname(name).toLowerCase();
   return ({

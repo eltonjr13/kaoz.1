@@ -125,3 +125,18 @@ test("registra conteúdo textual reutilizando o mesmo contrato", async () => {
   assert.equal(artifact.previewAvailable, true);
   assert.equal((await readStoredArtifact(artifact.id)).content.toString("utf8"), "conteúdo");
 });
+
+test("permite atualizar o conteúdo de um artefato existente no canvas", async () => {
+  const { updateContentArtifact } = await import("../services/artifacts/artifact.service.ts");
+  const artifact = await registerContentArtifact({ name: "documento.md", content: "# Título Original", type: "markdown" });
+  remember([artifact]);
+
+  const updated = await updateContentArtifact({
+    id: artifact.id,
+    content: "# Título Editado pelo Canvas\n\nNovo parágrafo adicionado.",
+  });
+
+  assert.equal(updated.id, artifact.id);
+  const readBack = await readStoredArtifact(artifact.id);
+  assert.match(readBack.content.toString("utf8"), /# Título Editado pelo Canvas/);
+});
