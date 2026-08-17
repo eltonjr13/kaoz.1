@@ -11,3 +11,4 @@ export * from "./creative-goal-classifier.ts";
 export * from "./creative-workflow.ts";
 export * from "./creative-workflow-planning.ts";
 export * from "./creative-war-room.ts";
+export * from "./war-room-contracts.ts";

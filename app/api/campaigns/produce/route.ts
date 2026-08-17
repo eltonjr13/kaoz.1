@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { campaignProductionService } from "@/services/campaign-production/campaign-production.service";
-import type { ProduceCampaignRequest } from "@/services/campaign-production/campaign-production.types";
+import { parseProduceCampaignRequest } from "@/services/campaign-production/campaign-production.schemas";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ function jsonError(message: string, status = 400) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as ProduceCampaignRequest & { sync?: boolean };
+    const body = parseProduceCampaignRequest(await request.json().catch(() => ({})));
 
     if (!body.artifacts?.length && !body.artifactIds?.length && !body.customScenes?.length) {
       return jsonError("Informe pelo menos um artefato, ID de artefato ou lista de cenas para produzir.");
@@ -23,7 +23,11 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         job: completed,
-        message: "Produção de campanha concluída com sucesso.",
+        message: completed.status === "completed"
+          ? "Produção de campanha concluída com sucesso."
+          : completed.status === "completed_with_warnings"
+            ? "Produção concluída com avisos; revise ativos substitutos ou com falha."
+            : "A produção não foi concluída.",
       });
     }
 

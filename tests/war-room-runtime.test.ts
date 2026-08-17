@@ -58,7 +58,7 @@ test("executa ciclo completo de rodadas entre os agentes gerando artefatos e con
     session = result.updatedSession;
   }
 
-  assert.equal(session.status, "completed");
+  assert.equal(session.status, "completed_with_warnings");
   assert.equal(session.currentStageIndex, 6);
   assert.equal(session.messages.length, 6);
   assert.equal(session.artifacts.length, 6);
@@ -82,7 +82,10 @@ test("executa ciclo completo de rodadas entre os agentes gerando artefatos e con
 
   assert.equal(session.messages[5].agentRole, "creative-reviewer");
   assert.equal(session.messages[5].status, "consensus");
-  assert.equal(session.messages[5].artifactsProduced?.[0].name, "06_Sintese_Executiva_Aprovada.md");
+  assert.equal(session.messages[5].artifactsProduced?.[0].name, "06_Sintese_Executiva.md");
+  assert.equal(session.review?.status, "approved");
+  assert.equal(session.review?.score, 100);
+  assert.ok(session.messages.every((message) => message.generationMode === "synthetic_fallback"));
 });
 
 test("formata eventos SSE da Sala de Guerra com protocolo padronizado", () => {
@@ -116,4 +119,18 @@ test("executa buildAgentTurn com sintetizador LLM real", async () => {
   assert.match(result.message.content, /Estratégia de Alto Impacto Gamer/);
   assert.equal(result.artifactReference?.name, "01_Estrategia_Gamer.md");
   assert.match(result.artifactReference?.content || "", /Posicionamento: Latência Zero/);
+  assert.equal(result.message.generationMode, "llm");
+});
+
+test("expõe fallback do provedor como execução degradada", async () => {
+  const session = createWarRoomSession("Campanha com falha de provedor");
+  const { buildAgentTurn } = await import("../services/agents/index.ts");
+  const result = await buildAgentTurn(session, 0, session.topic, async () => {
+    throw new Error("provider offline");
+  });
+
+  assert.equal(result.message.generationMode, "synthetic_fallback");
+  assert.match(result.message.warning || "", /provider offline/);
+  assert.equal(result.updatedSession.status, "in_progress");
+  assert.equal(result.updatedSession.warnings.length, 1);
 });

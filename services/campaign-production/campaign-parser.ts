@@ -4,6 +4,7 @@
  */
 
 import type { CampaignAspectRatio, CampaignParsedData, CampaignScene } from "./campaign-production.types.ts";
+import { parseCampaignProductionSpec } from "./campaign-production.schemas.ts";
 
 interface RawArtifactInput {
   filename?: string;
@@ -31,7 +32,7 @@ function extractCampaignName(artifacts: RawArtifactInput[]): string {
   for (const art of artifacts) {
     const content = art.content || "";
     // Check for Title headings
-    const titleMatch = content.match(/^#\s+(?:Briefing Criativo|Campanha|Roteiro|Estratégia|Brief)?[:\-]?\s*([^\n\r]+)/im);
+    const titleMatch = content.match(/^#\s+(?:Briefing(?:\s+(?:Criativo|Estratégico))?|Campanha|Roteiro|Estratégia)?[:\-]?\s*([^\n\r]+)/im);
     if (titleMatch && titleMatch[1].trim()) {
       const candidate = titleMatch[1].replace(/[#*`_]/g, "").trim();
       if (candidate && !/^(Briefing|Roteiro|Prompts|Estratégia)$/i.test(candidate)) {
@@ -182,6 +183,21 @@ function parseScriptArtifact(content: string): Array<{
  * Faz a fusão dos artefatos da Sala de Guerra em uma estrutura coesa de campanha.
  */
 export function parseArtifactsToCampaign(artifacts: RawArtifactInput[]): CampaignParsedData {
+  const canonicalArtifact = artifacts.find((artifact) =>
+    Boolean(artifact.content) && /campaign-production-spec\.json$/i.test(artifact.filename || artifact.title || ""),
+  );
+  if (canonicalArtifact?.content) {
+    const spec = parseCampaignProductionSpec(JSON.parse(canonicalArtifact.content));
+    return {
+      campaignName: spec.campaignName,
+      targetPlatform: spec.targetPlatform,
+      aspectRatio: spec.aspectRatio,
+      totalEstimatedDuration: spec.scenes.reduce((total, scene) => total + scene.durationSeconds, 0),
+      scenes: spec.scenes,
+      rawArtifactsCount: artifacts.length,
+      sourceMode: "canonical_spec",
+    };
+  }
   const combinedContent = artifacts.map((a) => a.content || "").join("\n\n");
   const campaignName = extractCampaignName(artifacts);
   const targetPlatform = extractTargetPlatform(combinedContent);
@@ -284,5 +300,8 @@ export function parseArtifactsToCampaign(artifacts: RawArtifactInput[]): Campaig
     tone,
     callToAction,
     rawArtifactsCount: artifacts.length,
+    sourceMode: parsedScriptScenes.length > 0
+      ? "structured_script"
+      : visualPromptsMap.size > 0 ? "visual_prompts" : "fallback",
   };
 }

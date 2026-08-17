@@ -18,6 +18,7 @@ import type {
   ProduceCampaignRequest,
 } from "./campaign-production.types.ts";
 import { readStoredArtifact } from "../artifacts/artifact.service.ts";
+import { assertCampaignProductionJob, parseCampaignProductionSpec, parseCampaignScene } from "./campaign-production.schemas.ts";
 
 export type ImageGeneratorFn = (prompt: string, options?: { aspectRatio?: string }) => Promise<{ imageUrl?: string; imagePath?: string } | null>;
 export type AudioGeneratorFn = (text: string, options?: { sceneNumber?: number; durationSeconds?: number }) => Promise<{ audioUrl?: string; audioPath?: string } | null>;
@@ -125,14 +126,25 @@ export class CampaignProductionService {
       }
     }
 
+    const canonicalArtifact = rawArtifacts.find((artifact) =>
+      Boolean(artifact.content) && /campaign-production-spec\.json$/i.test(artifact.filename || artifact.title || ""),
+    );
+    const productionSpec = canonicalArtifact?.content
+      ? parseCampaignProductionSpec(JSON.parse(canonicalArtifact.content))
+      : undefined;
+    if (productionSpec?.review.status === "needs_revision") {
+      throw new Error(`A campanha foi bloqueada pela rubrica: ${productionSpec.review.blockingIssues.join("; ") || "revisão obrigatória"}.`);
+    }
+
     const parsedData: CampaignParsedData = request.customScenes && request.customScenes.length > 0
       ? {
           campaignName: request.campaignName || "Campanha Personalizada",
           targetPlatform: "TikTok & Reels (9:16)",
           aspectRatio: request.options?.aspectRatio || "9:16",
           totalEstimatedDuration: request.customScenes.reduce((a, b) => a + b.durationSeconds, 0),
-          scenes: request.customScenes,
+          scenes: request.customScenes.map(parseCampaignScene),
           rawArtifactsCount: rawArtifacts.length,
+          sourceMode: "structured_script",
         }
       : parseArtifactsToCampaign(rawArtifacts);
 
@@ -173,6 +185,10 @@ export class CampaignProductionService {
         ...request.options,
       },
       outputDirectory,
+      warnings: parsedData.sourceMode === "fallback"
+        ? ["Os artefatos não continham cenas estruturadas; foi utilizado um roteiro genérico de fallback."]
+        : [],
+      productionSpecId: productionSpec?.id,
     };
 
     this.inMemoryJobs.set(campaignId, job);
@@ -184,6 +200,8 @@ export class CampaignProductionService {
   async executeCampaignProduction(jobId: string): Promise<CampaignProductionJob> {
     const job = await this.getCampaignProductionJob(jobId);
     if (!job) throw new Error(`Campanha ${jobId} não encontrada.`);
+
+    try {
 
     job.status = "running";
     job.updatedAt = new Date().toISOString();
@@ -232,7 +250,8 @@ export class CampaignProductionService {
             await writeFile(imageFilePath, svgBuffer);
             asset.imagePath = imageFilePath;
             asset.imageUrl = `/api/campaigns/${job.id}/assets/${imageFileName}`;
-            asset.imageStatus = "completed";
+            asset.imageStatus = "placeholder";
+            job.warnings = [...(job.warnings || []), `Cena ${scene.sceneNumber}: gerador de imagem indisponível; placeholder SVG criado.`];
           }
         } catch (err: any) {
           console.warn(`[CampaignProduction] Falha na imagem da cena ${scene.sceneNumber}:`, err);
@@ -283,7 +302,8 @@ export class CampaignProductionService {
               await writeFile(audioFilePath, wavBuffer);
               asset.audioPath = audioFilePath;
               asset.audioUrl = `/api/campaigns/${job.id}/assets/${audioFileName}`;
-              asset.audioStatus = "completed";
+              asset.audioStatus = "placeholder";
+              job.warnings = [...(job.warnings || []), `Cena ${scene.sceneNumber}: síntese de voz indisponível; áudio silencioso criado.`];
             }
           }
         } catch (err: any) {
@@ -359,13 +379,28 @@ export class CampaignProductionService {
       };
     }
 
-    job.status = "completed";
+    const hasFailedAsset = job.assets.some((asset) => asset.imageStatus === "failed" || asset.audioStatus === "failed");
+    const hasPlaceholder = job.assets.some((asset) => asset.imageStatus === "placeholder" || asset.audioStatus === "placeholder");
+    if (hasFailedAsset) job.warnings = [...(job.warnings || []), "Um ou mais ativos falharam e precisam ser gerados novamente."];
+    job.status = hasFailedAsset || hasPlaceholder || (job.warnings?.length || 0) > 0
+      ? "completed_with_warnings"
+      : "completed";
     job.progress = 100;
-    job.currentStage = "Produção concluída! Todos os ativos estão prontos.";
+    job.currentStage = job.status === "completed"
+      ? "Produção concluída. Todos os ativos solicitados foram validados."
+      : "Produção concluída com avisos. Revise os ativos antes de continuar.";
     job.updatedAt = new Date().toISOString();
     await this.saveJobManifest(job);
 
     return job;
+    } catch (error) {
+      job.status = "failed";
+      job.currentStage = "Produção interrompida por erro.";
+      job.error = error instanceof Error ? error.message : String(error);
+      job.updatedAt = new Date().toISOString();
+      await this.saveJobManifest(job);
+      throw error;
+    }
   }
 
   async getCampaignProductionJob(id: string): Promise<CampaignProductionJob | null> {
@@ -378,7 +413,7 @@ export class CampaignProductionService {
 
     const manifestPath = path.join(CAMPAIGNS_ROOT, clean, "manifest.json");
     try {
-      const data = JSON.parse(await readFile(manifestPath, "utf8")) as CampaignProductionJob;
+      const data = assertCampaignProductionJob(JSON.parse(await readFile(manifestPath, "utf8")) as CampaignProductionJob);
       this.inMemoryJobs.set(clean, data);
       return data;
     } catch {
@@ -406,6 +441,7 @@ export class CampaignProductionService {
   }
 
   private async saveJobManifest(job: CampaignProductionJob) {
+    assertCampaignProductionJob(job);
     this.inMemoryJobs.set(job.id, job);
     const dir = job.outputDirectory || path.join(CAMPAIGNS_ROOT, job.id);
     await ensureDir(dir);

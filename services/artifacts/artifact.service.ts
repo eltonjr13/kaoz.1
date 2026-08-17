@@ -191,6 +191,7 @@ async function markdownToPdf(markdown: string): Promise<Uint8Array> {
 }
 
 async function storeArtifact(params: {
+  id?: string;
   data: Uint8Array | string;
   name: string;
   type: ArtifactType;
@@ -199,7 +200,8 @@ async function storeArtifact(params: {
 }): Promise<ExecutionArtifact> {
   const size = typeof params.data === "string" ? Buffer.byteLength(params.data) : params.data.byteLength;
   if (size > MAX_TEXT_ARTIFACT_BYTES && params.mimeType.startsWith("text/")) throw new Error("Artefato de texto excede o limite de 5 MB.");
-  const id = crypto.randomUUID();
+  const id = params.id || crypto.randomUUID();
+  if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error("Identificador de artefato inválido.");
   const directory = path.join(ARTIFACT_ROOT, id);
   const storedName = path.basename(params.name).replace(/[^a-zA-Z0-9._-]/g, "-") || "artifact.bin";
   await atomicWrite(path.join(directory, storedName), params.data);
@@ -219,6 +221,7 @@ async function storeArtifact(params: {
 }
 
 export async function registerContentArtifact(params: {
+  id?: string;
   content: string | Uint8Array;
   name: string;
   type?: ArtifactType;
@@ -227,6 +230,7 @@ export async function registerContentArtifact(params: {
 }): Promise<ExecutionArtifact> {
   const mimeType = params.mimeType || mimeTypeFromName(params.name);
   return storeArtifact({
+    id: params.id,
     data: params.content,
     name: params.name,
     type: params.type || artifactTypeFromMime(mimeType),
@@ -292,6 +296,9 @@ export async function updateContentArtifact(params: {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as StoredArtifactManifest;
   const storedName = path.basename(manifest.storedName);
   const data = typeof params.content === "string" ? Buffer.from(params.content, "utf8") : params.content;
+  if (data.byteLength > MAX_TEXT_ARTIFACT_BYTES && manifest.artifact.mimeType?.startsWith("text/")) {
+    throw new Error("Artefato de texto excede o limite de 5 MB.");
+  }
   await atomicWrite(path.join(directory, storedName), data);
 
   const updatedArtifact: ExecutionArtifact = {

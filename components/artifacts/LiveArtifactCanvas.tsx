@@ -539,6 +539,14 @@ export function LiveArtifactCanvas({
             {/* Production Results Gallery */}
             {productionJob && productionJob.assets && (
               <div className="space-y-3">
+                {productionJob.status === "completed_with_warnings" && (
+                  <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-xs text-amber-100">
+                    <div className="mb-1 font-semibold">Produção concluída com avisos</div>
+                    <ul className="list-disc space-y-1 pl-4 text-[11px] text-amber-100/80">
+                      {(productionJob.warnings || []).map((warning: string, index: number) => <li key={`${warning}-${index}`}>{warning}</li>)}
+                    </ul>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-white/80 flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-emerald-400" />
@@ -573,6 +581,11 @@ export function LiveArtifactCanvas({
                         <span className="absolute top-2 left-2 rounded-md bg-black/70 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white">
                           Cena {asset.sceneNumber}
                         </span>
+                        {(asset.imageStatus === "placeholder" || asset.audioStatus === "placeholder") && (
+                          <span className="absolute right-2 top-2 rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-100">
+                            Placeholder
+                          </span>
+                        )}
                       </div>
 
                       {/* Scene Info & Audio Player */}

@@ -26,6 +26,7 @@ export interface CampaignParsedData {
   targetAudience?: string;
   callToAction?: string;
   rawArtifactsCount: number;
+  sourceMode?: 'canonical_spec' | 'structured_script' | 'visual_prompts' | 'fallback';
 }
 
 export interface CampaignAssetResult {
@@ -37,8 +38,8 @@ export interface CampaignAssetResult {
   imageUrl?: string;
   audioPath?: string;
   audioUrl?: string;
-  imageStatus: 'pending' | 'generating' | 'completed' | 'failed' | 'skipped';
-  audioStatus: 'pending' | 'generating' | 'completed' | 'failed' | 'skipped';
+  imageStatus: 'pending' | 'generating' | 'completed' | 'placeholder' | 'failed' | 'skipped';
+  audioStatus: 'pending' | 'generating' | 'completed' | 'placeholder' | 'failed' | 'skipped';
   imageError?: string;
   audioError?: string;
 }
@@ -54,7 +55,28 @@ export interface CampaignProductionOptions {
   voiceReferenceId?: string;
 }
 
-export type CampaignJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type CampaignJobStatus = 'queued' | 'running' | 'completed' | 'completed_with_warnings' | 'failed' | 'cancelled';
+
+export interface CampaignProductionReview {
+  status: 'approved' | 'needs_revision';
+  score: number;
+  minimumScore: number;
+  blockingIssues: string[];
+}
+
+export interface CampaignProductionSpec {
+  schemaVersion: '1.0';
+  id: string;
+  warRoomSessionId: string;
+  campaignName: string;
+  objective: string;
+  targetPlatform: string;
+  aspectRatio: CampaignAspectRatio;
+  scenes: CampaignScene[];
+  review: CampaignProductionReview;
+  sourceArtifactIds: string[];
+  generatedAt: string;
+}
 
 export interface CampaignProductionJob {
   id: string;
@@ -74,6 +96,8 @@ export interface CampaignProductionJob {
   };
   outputDirectory: string;
   error?: string;
+  warnings?: string[];
+  productionSpecId?: string;
 }
 
 export interface ProduceCampaignRequest {

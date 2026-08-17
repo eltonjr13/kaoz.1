@@ -37,10 +37,10 @@ import {
   isWarRoomCommand,
   extractWarRoomTopic,
   buildAgentTurn,
-  buildSyntheticAgentTurn,
   WAR_ROOM_AGENT_PROFILES,
   type WarRoomSession,
 } from "@/services/agents";
+import { createCampaignProductionSpec } from "@/services/campaign-production";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -504,13 +504,7 @@ export async function POST(request: Request) {
         }
         const createdArtifacts = [];
 
-        const llmCaller = async (promptText: string) => {
-          try {
-            return await flowProvider.queryWebLLM(modelName, promptText);
-          } catch {
-            return "";
-          }
-        };
+        const llmCaller = async (promptText: string) => flowProvider.queryWebLLM(modelName, promptText);
 
         for (let i = 0; i < WAR_ROOM_AGENT_PROFILES.length; i++) {
           const profile = WAR_ROOM_AGENT_PROFILES[i];
@@ -523,6 +517,7 @@ export async function POST(request: Request) {
           let registeredArtifact = undefined;
           if (turn.artifactReference?.content) {
             registeredArtifact = await registerContentArtifact({
+              id: turn.artifactReference.id,
               name: turn.artifactReference.name,
               content: turn.artifactReference.content,
               type: "markdown",
@@ -547,6 +542,38 @@ export async function POST(request: Request) {
           await new Promise((r) => setTimeout(r, 60));
         }
 
+        if (currentSession.review) {
+          const sourceArtifacts = currentSession.messages.flatMap((message) =>
+            (message.artifactsProduced || []).flatMap((artifact) => artifact.content ? [{
+              id: artifact.id,
+              filename: artifact.name,
+              content: artifact.content,
+            }] : []),
+          );
+          const productionSpec = createCampaignProductionSpec({
+            sessionId: currentSession.id,
+            campaignName: currentSession.topic,
+            objective: currentSession.brief.objective,
+            artifacts: sourceArtifacts,
+            review: currentSession.review,
+          });
+          const registeredSpec = await registerContentArtifact({
+            id: productionSpec.id,
+            name: "campaign-production-spec.json",
+            content: `${JSON.stringify(productionSpec, null, 2)}\n`,
+            type: "json",
+            mimeType: "application/json; charset=utf-8",
+            metadata: {
+              sessionId,
+              warRoomSessionId: currentSession.id,
+              source: "war-room-production-spec",
+              reviewStatus: productionSpec.review.status,
+            },
+          });
+          createdArtifacts.push(registeredSpec);
+          if (send) send("war_room_artifact", { artifact: registeredSpec, productionSpec });
+        }
+
         if (send) {
           send("war_room_complete", {
             session: currentSession,
@@ -554,7 +581,9 @@ export async function POST(request: Request) {
           });
         }
 
-        const consolidatedMessage = `# 🏛️ Sala de Guerra Concluída: ${topic}
+        const reviewApproved = currentSession.review?.status === "approved";
+        const degraded = currentSession.warnings.length > 0;
+        const consolidatedMessage = `# 🏛️ Sala de Guerra ${reviewApproved ? "Concluída" : "Aguardando Revisão"}: ${topic}
 
 A equipe multidisciplinar de especialistas concluiu o alinhamento estratégico e a produção de artefatos:
 
@@ -563,9 +592,14 @@ A equipe multidisciplinar de especialistas concluiu o alinhamento estratégico e
 - 🛡️ **Guardião da Marca (Valentin Ramos):** Definição de tom de voz, princípios inegociáveis e guardrails éticos.
 - ✍️ **Copywriter Viral (Helena Prado):** Ganchos magnéticos para Reels/Shorts, roteiro estruturado e CTAs.
 - 🎨 **Diretor de Arte (Theo Becker):** Conceito visual, paleta cromática e prompts cinematográficos.
-- 🔍 **Auditora Criativa (Sofia Alencar):** Revisão de conformidade, consenso total e síntese executiva aprovada.
+- 🔍 **Auditora Criativa (Sofia Alencar):** Revisão por rubrica com pontuação ${currentSession.review?.score || 0}/100.
 
-✨ **${createdArtifacts.length} artefatos** foram materializados com sucesso e estão disponíveis no **Live Artifact Canvas** para leitura, edição e download.`;
+${reviewApproved ? "✅ **Rubrica técnica aprovada.** A aprovação humana continua obrigatória antes da produção." : `⚠️ **Produção bloqueada pela rubrica:** ${currentSession.review?.blockingIssues.join("; ") || "revisão necessária"}.`}
+${degraded ? `\n⚠️ **Execução degradada:** ${currentSession.warnings.length} etapa(s) utilizaram fallback sintético e estão identificadas no histórico.` : ""}
+
+✨ **${createdArtifacts.length} artefatos** foram materializados e estão disponíveis no **Live Artifact Canvas**, incluindo o contrato canônico \`campaign-production-spec.json\`.`;
+
+        if (cortexMemoryEnabled) archiveFlowMessage({ archiveContext, role: "assistant", content: consolidatedMessage });
 
         return {
           message: consolidatedMessage,

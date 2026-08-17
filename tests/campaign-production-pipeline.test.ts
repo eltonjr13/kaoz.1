@@ -71,15 +71,15 @@ Prompt: Mesa de desenvolvedor minimalista com monitor ultrawide e teclado mecân
   // 2. Executar Job
   const completedJob = await service.executeCampaignProduction(job.id);
 
-  assert.equal(completedJob.status, "completed");
+  assert.equal(completedJob.status, "completed_with_warnings");
   assert.equal(completedJob.progress, 100);
   assert.equal(completedJob.assets.length, 3);
 
   // Validar ativos gerados
   for (const asset of completedJob.assets) {
-    assert.equal(asset.imageStatus, "completed");
+    assert.equal(asset.imageStatus, "placeholder");
     assert.ok(asset.imagePath, `Imagem da cena ${asset.sceneNumber} deve ter um caminho`);
-    assert.equal(asset.audioStatus, "completed");
+    assert.ok(asset.audioStatus === "completed" || asset.audioStatus === "placeholder");
     assert.ok(asset.audioPath, `Áudio da cena ${asset.sceneNumber} deve ter um caminho`);
   }
 
@@ -95,7 +95,7 @@ Prompt: Mesa de desenvolvedor minimalista com monitor ultrawide e teclado mecân
   const retrievedJob = await service.getCampaignProductionJob(job.id);
   assert.ok(retrievedJob);
   assert.equal(retrievedJob.id, job.id);
-  assert.equal(retrievedJob.status, "completed");
+  assert.equal(retrievedJob.status, "completed_with_warnings");
 
   // 4. Listar Jobs
   const list = await service.listCampaignProductionJobs();

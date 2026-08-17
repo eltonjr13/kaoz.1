@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -39,7 +39,8 @@ export function WarRoomFeed({
 
   const totalStages = session?.totalStages || 6;
   const currentStage = messages.length;
-  const isComplete = currentStage >= totalStages;
+  const isComplete = session?.review?.status === "approved";
+  const needsRevision = session?.review?.status === "needs_revision";
 
   return (
     <div className="w-full max-w-4xl mx-auto my-4 rounded-2xl border border-white/10 bg-[#0c0d12]/90 backdrop-blur-xl shadow-2xl overflow-hidden text-white">
@@ -59,6 +60,11 @@ export function WarRoomFeed({
                   <>
                     <CheckCircle2 size={11} className="text-emerald-400" />
                     Consenso Alcançado
+                  </>
+                ) : needsRevision ? (
+                  <>
+                    <ShieldCheck size={11} className="text-amber-400" />
+                    Revisão Obrigatória
                   </>
                 ) : isStreaming ? (
                   <>
@@ -180,7 +186,7 @@ export function WarRoomFeed({
                       >
                         <span className="flex items-center gap-1.5 font-mono text-[11px]">
                           <Brain size={12} className="text-[#9D7CFF]" />
-                          Raciocínio Estratégico
+                          Justificativa Estratégica
                         </span>
                         {isThoughtOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </button>
@@ -216,6 +222,11 @@ export function WarRoomFeed({
                           </span>
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {msg.generationMode === "synthetic_fallback" && (
+                    <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-[11px] text-amber-200">
+                      Execução degradada: {msg.warning || "conteúdo sintético local utilizado."}
                     </div>
                   )}
                 </div>
