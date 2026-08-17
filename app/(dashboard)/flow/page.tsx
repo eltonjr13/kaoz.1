@@ -219,11 +219,12 @@ interface FlowChatResponse {
   autoExecute?: boolean;
 }
 
-interface FlowChatStreamPayload extends FlowChatResponse {
+interface FlowChatStreamPayload extends Omit<FlowChatResponse, "message"> {
+  message?: string;
   text?: string;
   context?: VoiceExpressionContext;
   session?: WarRoomSession;
-  message?: WarRoomMessage | string;
+  warRoomMessage?: WarRoomMessage;
   stage?: string;
   stageIndex?: number;
   totalStages?: number;
@@ -2581,8 +2582,8 @@ export default function FlowDashboardPage() {
                   : m
               );
             });
-          } else if (parsed.event === "war_room_turn" && parsed.data.message) {
-            const turnMsg = parsed.data.message as WarRoomMessage;
+          } else if (parsed.event === "war_room_turn" && (parsed.data.warRoomMessage || (parsed.data as any).message)) {
+            const turnMsg = (parsed.data.warRoomMessage || (parsed.data as any).message) as WarRoomMessage;
             streamedWarRoomMessages = [...streamedWarRoomMessages, turnMsg];
             if (parsed.data.session) streamedWarRoomSession = parsed.data.session as WarRoomSession;
             setChatMessages((prev) =>
@@ -2602,7 +2603,7 @@ export default function FlowDashboardPage() {
               )
             );
           } else if (parsed.event === "final") {
-            streamedData = parsed.data;
+            streamedData = parsed.data as FlowChatResponse;
           } else if (parsed.event === "error") {
             throw new Error(parsed.data.error || "Falha no stream do chat.");
           }
@@ -3721,7 +3722,7 @@ export default function FlowDashboardPage() {
               </div>
             )}
 
-            {chatMessages.map(msg => (
+            {chatMessages.map((msg, idx) => (
               <div key={msg.id} className={`flex flex-col ${(msg.plan && !msg.jobId) || msg.artifacts?.length ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
                 <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                   <div className="shrink-0 mt-1">
@@ -3767,7 +3768,7 @@ export default function FlowDashboardPage() {
                       <WarRoomFeed
                         session={msg.warRoomSession}
                         messages={msg.warRoomMessages || []}
-                        isStreaming={isLoading && index === chatMessages.length - 1}
+                        isStreaming={isLoading && idx === chatMessages.length - 1}
                         onOpenArtifact={(art) => {
                           setCanvasArtifactId(art.id);
                           setIsCanvasOpen(true);
