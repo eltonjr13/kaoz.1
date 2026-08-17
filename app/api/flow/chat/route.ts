@@ -36,6 +36,7 @@ import {
   createWarRoomSession,
   isWarRoomCommand,
   extractWarRoomTopic,
+  buildAgentTurn,
   buildSyntheticAgentTurn,
   WAR_ROOM_AGENT_PROFILES,
   type WarRoomSession,
@@ -503,12 +504,20 @@ export async function POST(request: Request) {
         }
         const createdArtifacts = [];
 
+        const llmCaller = async (promptText: string) => {
+          try {
+            return await flowProvider.queryWebLLM(modelName, promptText);
+          } catch {
+            return "";
+          }
+        };
+
         for (let i = 0; i < WAR_ROOM_AGENT_PROFILES.length; i++) {
           const profile = WAR_ROOM_AGENT_PROFILES[i];
           if (send) {
-            send("status", { text: `[${profile.title}] desenvolvendo perspectiva...` });
+            send("status", { text: `[${profile.title}] desenvolvendo perspectiva autêntica...` });
           }
-          const turn = buildSyntheticAgentTurn(currentSession, i, topic);
+          const turn = await buildAgentTurn(currentSession, i, topic, llmCaller);
           currentSession = turn.updatedSession;
 
           let registeredArtifact = undefined;

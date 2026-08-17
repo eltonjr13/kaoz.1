@@ -96,3 +96,24 @@ test("formata eventos SSE da Sala de Guerra com protocolo padronizado", () => {
   assert.match(rawEvent, /^event: war_room_turn\n/);
   assert.match(rawEvent, /data: \{"agent":"Alex Vance","stage":1\}\n\n$/);
 });
+
+test("executa buildAgentTurn com sintetizador LLM real", async () => {
+  const session = createWarRoomSession("Fone Bluetooth Gamer");
+  const mockLlm = async (prompt: string) => {
+    return JSON.stringify({
+      thought: "Análise estratégica aprofundada para nicho gamer de alta performance.",
+      content: "### Estratégia de Alto Impacto Gamer\nFoco em latência zero e cancelamento ativo.",
+      artifactName: "01_Estrategia_Gamer.md",
+      artifactContent: "# Estratégia Fone Gamer\n\n- Posicionamento: Latência Zero\n- KPI: CTR > 5%",
+    });
+  };
+
+  const { buildAgentTurn } = await import("../services/agents/index.ts");
+  const result = await buildAgentTurn(session, 0, "Fone Bluetooth Gamer", mockLlm);
+
+  assert.equal(result.message.agentName, "Alex Vance");
+  assert.match(result.message.thought || "", /Análise estratégica aprofundada/);
+  assert.match(result.message.content, /Estratégia de Alto Impacto Gamer/);
+  assert.equal(result.artifactReference?.name, "01_Estrategia_Gamer.md");
+  assert.match(result.artifactReference?.content || "", /Posicionamento: Latência Zero/);
+});

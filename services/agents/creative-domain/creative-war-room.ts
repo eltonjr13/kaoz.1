@@ -305,6 +305,128 @@ export function buildSyntheticAgentTurn(
   };
 }
 
+export type WarRoomLlmCaller = (prompt: string) => Promise<string>;
+
+export async function buildAgentTurn(
+  session: WarRoomSession,
+  agentIndex: number,
+  topic: string,
+  llmCaller?: WarRoomLlmCaller
+): Promise<WarRoomTurnResult> {
+  const profile = WAR_ROOM_AGENT_PROFILES[agentIndex];
+  const stageNum = agentIndex + 1;
+  const totalStages = WAR_ROOM_AGENT_PROFILES.length;
+  const messageId = `msg-${session.id}-${agentIndex}-${Date.now()}`;
+  const now = new Date().toISOString();
+
+  if (llmCaller) {
+    try {
+      const priorSummaries = session.messages
+        .map((m) => `### ${m.agentName} (${m.agentTitle}):\n${m.content}`)
+        .join("\n\n");
+
+      const prompt = `Você é ${profile.name}, especialista em ${profile.title} na Sala de Guerra Criativa Kaoz.1.
+Especialidade: ${profile.specialty}
+Diretriz de atuação: ${profile.systemPrompt}
+
+Tema solicitado pelo usuário:
+"${topic}"
+
+${priorSummaries ? `Contexto das análises e contribuições dos especialistas anteriores:\n${priorSummaries}\n` : ""}
+
+Sua missão:
+Gerar a sua contribuição autêntica, altamente detalhada, sem enrolação e 100% personalizada para este tema.
+Responda ESTRITAMENTE em formato JSON com as 4 propriedades:
+{
+  "thought": "Seu raciocínio interno estratégico e análise crítica (1-2 parágrafos concisos)",
+  "content": "Sua fala no debate em Markdown com tópicos claros, dados e recomendações",
+  "artifactName": "0${stageNum}_${profile.name.replace(/\\s+/g, '_')}.md",
+  "artifactContent": "Conteúdo completo em Markdown pronto para ser salvo como arquivo final"
+}`;
+
+      const rawResponse = await llmCaller(prompt);
+      if (rawResponse) {
+        let jsonStr = rawResponse.trim();
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+        const parsed = JSON.parse(jsonStr);
+        if (parsed && typeof parsed.content === "string" && typeof parsed.artifactContent === "string") {
+          const thought = parsed.thought || `Estruturando ${profile.title} para ${topic}`;
+          const content = parsed.content;
+          const artifactName = parsed.artifactName || `0${stageNum}_${profile.role}.md`;
+          const artifactContent = parsed.artifactContent;
+
+          const artifactRef: WarRoomArtifactReference = {
+            id: `art-${session.id}-${agentIndex}`,
+            name: artifactName,
+            type: "markdown",
+            summary: `${profile.badge}: ${artifactName}`,
+            content: artifactContent,
+          };
+
+          const domainArtifact = createCreativeArtifact({
+            id: artifactRef.id,
+            briefId: session.id,
+            kind: profile.role,
+            name: artifactName,
+            status: "ready",
+            metadata: {
+              agent: profile.name,
+              role: profile.role,
+              summary: artifactRef.summary,
+              content: artifactContent,
+            },
+            version: 1,
+            createdAt: now,
+          });
+
+          const message: WarRoomMessage = Object.freeze({
+            id: messageId,
+            sessionId: session.id,
+            agentId: profile.id,
+            agentRole: profile.role,
+            agentName: profile.name,
+            agentTitle: profile.title,
+            agentAvatar: profile.avatar,
+            agentColor: profile.color,
+            stage: profile.title,
+            stageNumber: stageNum,
+            totalStages,
+            thought,
+            content,
+            status: agentIndex === totalStages - 1 ? "consensus" : "completed",
+            artifactsProduced: Object.freeze([artifactRef]),
+            timestamp: now,
+          });
+
+          const isComplete = stageNum >= totalStages;
+          const updatedSession: WarRoomSession = Object.freeze({
+            ...session,
+            status: isComplete ? "completed" : "in_progress",
+            currentStageIndex: stageNum,
+            messages: Object.freeze([...session.messages, message]),
+            artifacts: Object.freeze([...session.artifacts, domainArtifact]),
+            completedAt: isComplete ? now : undefined,
+          });
+
+          return {
+            message,
+            artifact: domainArtifact,
+            artifactReference: artifactRef,
+            updatedSession,
+          };
+        }
+      }
+    } catch (llmErr) {
+      console.warn(`[WarRoomEngine] Falha na chamada LLM para ${profile.name}, usando fallback avançado:`, llmErr);
+    }
+  }
+
+  // Fallback to synthetic turn
+  return buildSyntheticAgentTurn(session, agentIndex, topic);
+}
+
 export function formatWarRoomEvent(event: WarRoomEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event.payload)}\n\n`;
 }

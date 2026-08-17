@@ -88,6 +88,8 @@ Prompt: Mesa de desenvolvedor minimalista com monitor ultrawide e teclado mecân
   assert.equal(completedJob.davinciPlan.markersCount, 3);
   assert.ok(completedJob.davinciPlan.planPath);
   assert.ok(existsSync(completedJob.davinciPlan.planPath));
+  assert.ok(existsSync(path.join(completedJob.outputDirectory, "timeline.edl")), "EDL da timeline DaVinci deve existir");
+  assert.ok(existsSync(path.join(completedJob.outputDirectory, "timeline.fcpxml")), "FCPXML da timeline DaVinci deve existir");
 
   // 3. Recuperar Job por ID
   const retrievedJob = await service.getCampaignProductionJob(job.id);
