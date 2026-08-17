@@ -9,6 +9,7 @@ import { existsSync, statSync } from "node:fs";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { resolveRuntimeUploadPath } from "../../lib/runtime-uploads.ts";
 
 const execAsync = promisify(exec);
 
@@ -29,9 +30,7 @@ async function materializeGeneratedAudio(source: string, outputPath: string): Pr
     return audio.length;
   }
 
-  const sourcePath = source.startsWith("/uploads/")
-    ? path.join(process.cwd(), "public", source.replace(/^\//, ""))
-    : path.resolve(source);
+  const sourcePath = resolveRuntimeUploadPath(source);
   if (!existsSync(sourcePath)) throw new Error(`O provedor informou um áudio inexistente: ${source}`);
   if (path.resolve(sourcePath) !== path.resolve(outputPath)) await copyFile(sourcePath, outputPath);
   return statSync(outputPath).size;

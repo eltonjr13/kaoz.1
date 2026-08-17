@@ -13,6 +13,7 @@ import {
 import { getFriendlyOmniVoiceError } from "@/services/omnivoice/omnivoice.errors";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { getRuntimeUploadDir, getRuntimeUploadPublicPath } from "@/lib/runtime-uploads";
 
 export const runtime = "nodejs";
 
@@ -130,10 +131,10 @@ async function handleUploadAudio(body: OmniVoiceRequestBody) {
   const base64String = base64Data.split(",")[1] || base64Data;
   const buffer = Buffer.from(base64String, "base64");
 
-  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  const outputDir = getRuntimeUploadDir("audio");
   await mkdir(outputDir, { recursive: true });
   const diskPath = path.join(outputDir, "default_ref.wav");
-  const publicPath = `/uploads/audio/default_ref.wav`;
+  const publicPath = getRuntimeUploadPublicPath("audio", "default_ref.wav");
 
   await writeFile(diskPath, buffer);
 

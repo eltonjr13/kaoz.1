@@ -1,6 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { getRuntimeUploadDir, getRuntimeUploadPublicPath } from "../runtime-uploads.ts";
 import { getOmniVoiceRuntimeConfig } from "../../services/omnivoice/omnivoice.settings.ts";
 import type { VoiceSettings } from "../../types/index.ts";
 
@@ -84,12 +85,12 @@ async function predictVoice(app: Client, input: GenerateVoiceInput, voiceParams:
 }
 
 async function downloadVoiceAudio(audioUrl: string, jobId: string): Promise<string> {
-  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  const outputDir = getRuntimeUploadDir("audio");
   await mkdir(outputDir, { recursive: true });
   
   const audioFileName = `${jobId}-voice.mp3`;
   const diskPath = path.join(outputDir, audioFileName);
-  const publicPath = `/uploads/audio/${audioFileName}`;
+  const publicPath = getRuntimeUploadPublicPath("audio", audioFileName);
 
   const fileRes = await fetch(audioUrl);
   if (!fileRes.ok) {

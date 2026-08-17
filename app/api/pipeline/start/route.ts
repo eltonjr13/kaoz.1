@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
+import { resolveRuntimeUploadPath } from "@/lib/runtime-uploads";
 import { completeLocalJob, findLocalAvatar, findLocalJob, updateLocalJob, updateLocalJobStatus } from "@/lib/local-store";
 import { renderVerticalVideo, downloadSourceVideo, trimVideo } from "@/lib/videos/render";
 import { generateReactionScript } from "@/lib/ai/script";
@@ -253,7 +254,7 @@ export async function POST(request: Request) {
           await updateLocalJob(jobId, { audio_path: voiceResult.audioPath, voice_provider: voiceResult.provider });
           console.log(`[VOICE] Job ${jobId}: voz gerada em ${voiceResult.audioPath}.`);
           
-          voiceDiskPath = path.join(process.cwd(), "public", voiceResult.audioPath.replace(/^\//, ""));
+          voiceDiskPath = resolveRuntimeUploadPath(voiceResult.audioPath);
         }
 
         // 3. Lip-sync stage

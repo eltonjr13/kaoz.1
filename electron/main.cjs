@@ -385,6 +385,7 @@ async function startProductionServer() {
     KAOZ1_DESKTOP: "1",
     KAOZ1_DATA_DIR: path.join(dataRoot, "generated"),
     KAOZ1_STORAGE_DIR: path.join(dataRoot, "storage"),
+    KAOZ1_UPLOADS_DIR: path.join(dataRoot, "uploads"),
     FLOW_DOWNLOAD_PATH: path.join(dataRoot, "storage", "generated"),
     FLOW_PROFILE_PATH: path.join(dataRoot, "storage", "browser-profile"),
     // Use the user's installed Chrome so a separate `npx playwright install` is unnecessary.

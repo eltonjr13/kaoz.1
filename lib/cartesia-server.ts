@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { getRuntimeUploadDir, getRuntimeUploadPublicPath } from "./runtime-uploads.ts";
 
 export type CartesiaGenerateInput = {
   text: string;
@@ -35,9 +35,9 @@ export async function generateCartesiaSpeech(input: CartesiaGenerateInput): Prom
   });
   if (!response.ok) throw new Error(`Cartesia retornou ${response.status}: ${(await response.text()).slice(0, 400)}`);
 
-  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  const outputDir = getRuntimeUploadDir("audio");
   await mkdir(outputDir, { recursive: true });
   const fileName = `${input.jobId}-cartesia.mp3`;
   await writeFile(path.join(outputDir, fileName), Buffer.from(await response.arrayBuffer()));
-  return { audioPath: `/uploads/audio/${fileName}` };
+  return { audioPath: getRuntimeUploadPublicPath("audio", fileName) };
 }

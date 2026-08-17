@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getRuntimeUploadDir, getRuntimeUploadPublicPath } from "./runtime-uploads.ts";
 
 export type FishAudioGenerateInput = {
   text: string;
@@ -75,12 +76,12 @@ export async function generateFishAudioSpeech(input: FishAudioGenerateInput): Pr
     );
   }
 
-  const outputDir = path.join(process.cwd(), "public", "uploads", "audio");
+  const outputDir = getRuntimeUploadDir("audio");
   await mkdir(outputDir, { recursive: true });
 
   const audioFileName = `${input.jobId}-fish-audio.mp3`;
   const diskPath = path.join(outputDir, audioFileName);
-  const publicPath = `/uploads/audio/${audioFileName}`;
+  const publicPath = getRuntimeUploadPublicPath("audio", audioFileName);
   const buffer = Buffer.from(await response.arrayBuffer());
 
   await writeFile(diskPath, buffer);
