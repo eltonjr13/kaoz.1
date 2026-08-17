@@ -93,6 +93,16 @@ export function LiveArtifactCanvas({
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showProductionModal, setShowProductionModal] = useState<boolean>(false);
+  const [isProducing, setIsProducing] = useState<boolean>(false);
+  const [productionJob, setProductionJob] = useState<any | null>(null);
+  const [generateImages, setGenerateImages] = useState<boolean>(true);
+  const [generateAudio, setGenerateAudio] = useState<boolean>(true);
+  const [createDavinciPlan, setCreateDavinciPlan] = useState<boolean>(true);
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<"9:16" | "16:9" | "1:1">("9:16");
+  const [productionError, setProductionError] = useState<string | null>(null);
+  const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
+
   // Sync selected artifact
   useEffect(() => {
     if (activeArtifactId && normalizedArtifacts.some((a) => a.id === activeArtifactId)) {
@@ -176,6 +186,42 @@ export function LiveArtifactCanvas({
     }
   };
 
+  const handleStartProduction = async () => {
+    setIsProducing(true);
+    setProductionError(null);
+    try {
+      const res = await fetch("/api/campaigns/produce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artifacts: normalizedArtifacts.map((a) => ({
+            filename: a.name,
+            title: a.name,
+            content: a.id === currentArtifact?.id ? editorContent : a.content,
+          })),
+          artifactIds: normalizedArtifacts.map((a) => a.id),
+          options: {
+            generateImages,
+            generateAudio,
+            createDavinciPlan,
+            aspectRatio: selectedAspectRatio,
+          },
+          sync: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao produzir campanha.");
+      }
+      setProductionJob(data.job);
+      onCampaignProduced?.(data.job);
+    } catch (err: any) {
+      setProductionError(err?.message || "Erro na produção de campanha.");
+    } finally {
+      setIsProducing(false);
+    }
+  };
+
   if (!isOpen || normalizedArtifacts.length === 0) return null;
 
   return (
@@ -202,7 +248,17 @@ export function LiveArtifactCanvas({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowProductionModal(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#9D7CFF] to-[#7B5AFF] text-white px-3 py-1.5 text-xs font-semibold hover:from-[#A88BFF] hover:to-[#8C6DFF] transition-all shadow-md shadow-[#9D7CFF]/20 cursor-pointer"
+            title="Produzir Campanha Multimídia em 1 Clique"
+          >
+            <Clapperboard size={14} />
+            <span>Produzir Campanha</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsFullScreen((prev) => !prev)}
@@ -353,6 +409,222 @@ export function LiveArtifactCanvas({
         <span className="font-mono">{currentArtifact?.name || "Sem arquivo"}</span>
         <span>{editorContent.length} caracteres</span>
       </div>
+
+      {/* ── Central de Produção Automatizada Modal / Overlay ── */}
+      {showProductionModal && (
+        <div className="absolute inset-0 z-50 flex flex-col bg-[#0c0d12]/98 backdrop-blur-2xl p-5 overflow-auto">
+          {/* Header Modal */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#9D7CFF]/20 text-[#9D7CFF] border border-[#9D7CFF]/40">
+                <Clapperboard size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Central de Produção Automatizada
+                  <span className="rounded-full bg-[#9D7CFF]/20 px-2 py-0.5 text-[10px] font-semibold text-[#9D7CFF]">
+                    One-Click Pipeline
+                  </span>
+                </h3>
+                <p className="text-xs text-white/50">
+                  Transforme os roteiros e prompts deste Canvas em imagens, locuções e timeline do DaVinci.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProductionModal(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Body Modal */}
+          <div className="my-5 flex-1 space-y-5">
+            {/* Options Selector */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all ${
+                generateImages ? "bg-[#9D7CFF]/15 border-[#9D7CFF]/40 text-white" : "bg-white/[0.02] border-white/5 text-white/50"
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={generateImages}
+                  onChange={(e) => setGenerateImages(e.target.checked)}
+                  className="mt-1 rounded accent-[#9D7CFF]"
+                />
+                <div>
+                  <div className="text-xs font-semibold">🖼️ Gerar Imagens</div>
+                  <div className="text-[11px] text-white/60">Gera imagens para cada cena via Flow</div>
+                </div>
+              </label>
+
+              <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all ${
+                generateAudio ? "bg-[#9D7CFF]/15 border-[#9D7CFF]/40 text-white" : "bg-white/[0.02] border-white/5 text-white/50"
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={generateAudio}
+                  onChange={(e) => setGenerateAudio(e.target.checked)}
+                  className="mt-1 rounded accent-[#9D7CFF]"
+                />
+                <div>
+                  <div className="text-xs font-semibold">🎙️ Sintetizar Vozes</div>
+                  <div className="text-[11px] text-white/60">Sintetiza as falas do roteiro em áudio</div>
+                </div>
+              </label>
+
+              <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all ${
+                createDavinciPlan ? "bg-[#9D7CFF]/15 border-[#9D7CFF]/40 text-white" : "bg-white/[0.02] border-white/5 text-white/50"
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={createDavinciPlan}
+                  onChange={(e) => setCreateDavinciPlan(e.target.checked)}
+                  className="mt-1 rounded accent-[#9D7CFF]"
+                />
+                <div>
+                  <div className="text-xs font-semibold">🎞️ Timeline DaVinci</div>
+                  <div className="text-[11px] text-white/60">Cria plano com marcadores sincronizados</div>
+                </div>
+              </label>
+            </div>
+
+            {/* Aspect Ratio Selector */}
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs">
+              <span className="text-white/70 font-medium">Proporção dos Vídeos / Imagens:</span>
+              <div className="flex items-center gap-2">
+                {(["9:16", "16:9", "1:1"] as const).map((ratio) => (
+                  <button
+                    key={ratio}
+                    type="button"
+                    onClick={() => setSelectedAspectRatio(ratio)}
+                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                      selectedAspectRatio === ratio
+                        ? "bg-[#9D7CFF] text-white shadow-md shadow-[#9D7CFF]/20"
+                        : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {ratio} {ratio === "9:16" ? "(Reels/TikTok)" : ratio === "16:9" ? "(YouTube)" : "(Feed)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {productionError && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 flex items-center gap-2">
+                <AlertCircle size={15} />
+                <span>{productionError}</span>
+              </div>
+            )}
+
+            {/* Production Progress */}
+            {isProducing && (
+              <div className="rounded-2xl border border-[#9D7CFF]/30 bg-[#9D7CFF]/10 p-4 space-y-3">
+                <div className="flex items-center justify-between text-xs font-medium text-[#9D7CFF]">
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    Produzindo campanha multimídia...
+                  </span>
+                  <span>Aguarde a finalização</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-black/40 overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-[#9D7CFF] to-[#00F0FF] animate-pulse w-3/4 rounded-full" />
+                </div>
+              </div>
+            )}
+
+            {/* Production Results Gallery */}
+            {productionJob && productionJob.assets && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-white/80 flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-400" />
+                    Ativos Produzidos ({productionJob.assets.length} Cenas)
+                  </h4>
+                  {productionJob.davinciPlan && (
+                    <span className="text-[11px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
+                      Timeline DaVinci Pronta
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {productionJob.assets.map((asset: any) => (
+                    <div
+                      key={asset.sceneNumber}
+                      className="rounded-xl border border-white/10 bg-black/40 overflow-hidden flex flex-col"
+                    >
+                      {/* Image Preview */}
+                      <div className="aspect-[9/16] max-h-[220px] bg-black/60 relative overflow-hidden flex items-center justify-center border-b border-white/5">
+                        {asset.imageUrl ? (
+                          <img
+                            src={asset.imageUrl}
+                            alt={asset.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center p-4 text-xs text-white/40">
+                            Sem imagem
+                          </div>
+                        )}
+                        <span className="absolute top-2 left-2 rounded-md bg-black/70 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white">
+                          Cena {asset.sceneNumber}
+                        </span>
+                      </div>
+
+                      {/* Scene Info & Audio Player */}
+                      <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                        <div>
+                          <div className="text-xs font-semibold text-white truncate">{asset.title}</div>
+                          <p className="text-[11px] text-white/60 line-clamp-2 mt-0.5">{asset.voiceoverText}</p>
+                        </div>
+
+                        {asset.audioUrl && (
+                          <div className="pt-2 border-t border-white/5">
+                            <audio controls src={asset.audioUrl} className="w-full h-8" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Modal Action */}
+          <div className="flex items-center justify-between border-t border-white/10 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowProductionModal(false)}
+              className="rounded-xl px-4 py-2 text-xs text-white/60 hover:bg-white/10 hover:text-white"
+            >
+              Fechar
+            </button>
+
+            <button
+              type="button"
+              onClick={handleStartProduction}
+              disabled={isProducing || (!generateImages && !generateAudio && !createDavinciPlan)}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#9D7CFF] to-[#7B5AFF] text-white px-5 py-2 text-xs font-bold hover:from-[#A88BFF] hover:to-[#8C6DFF] transition-all shadow-lg shadow-[#9D7CFF]/25 disabled:opacity-50 cursor-pointer"
+            >
+              {isProducing ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Produzindo...</span>
+                </>
+              ) : (
+                <>
+                  <Play size={14} />
+                  <span>{productionJob ? "Produzir Novamente" : "Iniciar Produção de Ativos"}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
