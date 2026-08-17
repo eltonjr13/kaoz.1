@@ -358,11 +358,6 @@ export class CampaignProductionService {
         planPath,
       };
     }
-        timelineName: davinciPlanData.timelineName,
-        markersCount: markers.length,
-        planPath,
-      };
-    }
 
     job.status = "completed";
     job.progress = 100;
