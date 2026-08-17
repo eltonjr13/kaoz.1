@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
 import type { TTSProviderName, TTSConfig } from "./tts.types";
-import type { FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
+import type { FishAudioExpressionLevel } from "../../lib/ai/agent-voice.ts";
 
 const DATA_DIR = getLocalDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, "tts-settings.json");

@@ -1,9 +1,8 @@
-import { generateCartesiaSpeech } from "@/lib/cartesia-server";
-import { FishAudioApiError, generateFishAudioSpeech } from "@/lib/fish-audio";
-import { readTTSConfig } from "@/services/tts/tts.settings";
-import type { VoiceDirection, VoiceSettings } from "@/types";
+import { generateCartesiaSpeech } from "../cartesia-server.ts";
+import { FishAudioApiError, generateFishAudioSpeech } from "../fish-audio.ts";
+import { readTTSConfig } from "../../services/tts/tts.settings.ts";
+import type { VoiceDirection, VoiceSettings } from "../../types/index.ts";
 import { compileFishSpeech, compilePlainSpeech, inferVoiceDirection } from "./voice-direction";
-import { generateOmniVoice } from "./omni-voice";
 
 export type VideoVoiceProvider = "cartesia" | "fish-audio" | "omnivoice";
 
@@ -62,6 +61,7 @@ export async function generateJobVoice(input: GenerateJobVoiceInput): Promise<Ge
     return { audioPath: generated.audioPath, provider, compiledScript };
   }
 
+  const { generateOmniVoice } = await import("./omni-voice.ts");
   const generated = await generateOmniVoice({
     script: compiledScript,
     voiceId: "default",
