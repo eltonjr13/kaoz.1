@@ -16,7 +16,7 @@ import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageP
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionContext } from "@/lib/ai/agent-voice";
 import { prepareCharacterRuntime, recordCharacterTurn } from "@/lib/agent-personality/runtime";
-import { materializeResponseArtifacts } from "@/services/artifacts/artifact.service";
+import { materializeResponseArtifacts, registerContentArtifact } from "@/services/artifacts/artifact.service";
 import { buildSkillPromptContext, resolveSkillInvocation, skillRegistry } from "@/services/skills/skill.registry";
 import { allowsMediaAction, classifyOutputIntent, type OutputIntent } from "@/services/artifacts/artifact.intent";
 import { connectorPublishProvider } from "@/services/agent-llm/agent-llm.prompt";
@@ -32,6 +32,14 @@ import {
   parseGoalCommand,
   type AutonomousGoal,
 } from "@/services/goals";
+import {
+  createWarRoomSession,
+  isWarRoomCommand,
+  extractWarRoomTopic,
+  buildSyntheticAgentTurn,
+  WAR_ROOM_AGENT_PROFILES,
+  type WarRoomSession,
+} from "@/services/agents";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Allow long-running agent tasks
@@ -47,6 +55,7 @@ type FlowChatRequestBody = {
   stream?: boolean;
   voiceActive?: boolean;
   sessionId?: string;
+  warRoomMode?: boolean;
   archiveContext?: {
     conversationId: string;
     userMessageId: string;
@@ -482,6 +491,100 @@ export async function POST(request: Request) {
       cortexContext.relevantMemories,
       memoryOperation.receipt ? `[RESULTADO DA OPERACAO DE MEMORIA DESTE TURNO]\n${memoryOperation.receipt}\nNao afirme um resultado diferente deste.` : undefined
     ].filter(Boolean).join('\n\n') || undefined;
+
+    const isWarRoom = body.warRoomMode === true || isWarRoomCommand(rawLatestUserText);
+
+    if (isWarRoom) {
+      const topic = extractWarRoomTopic(rawLatestUserText) || rawLatestUserText || "Campanha Estratégica";
+      const runWarRoom = async (send?: StreamSender): Promise<FlowChatResult> => {
+        let currentSession = createWarRoomSession(topic, archiveContext?.userMessageId);
+        if (send) {
+          send("war_room_init", { session: currentSession });
+        }
+        const createdArtifacts = [];
+
+        for (let i = 0; i < WAR_ROOM_AGENT_PROFILES.length; i++) {
+          const profile = WAR_ROOM_AGENT_PROFILES[i];
+          if (send) {
+            send("status", { text: `[${profile.title}] desenvolvendo perspectiva...` });
+          }
+          const turn = buildSyntheticAgentTurn(currentSession, i, topic);
+          currentSession = turn.updatedSession;
+
+          let registeredArtifact = undefined;
+          if (turn.artifactReference?.content) {
+            registeredArtifact = await registerContentArtifact({
+              name: turn.artifactReference.name,
+              content: turn.artifactReference.content,
+              type: "markdown",
+              mimeType: "text/markdown; charset=utf-8",
+              metadata: {
+                sessionId,
+                warRoomSessionId: currentSession.id,
+                agentRole: profile.role,
+                agentName: profile.name,
+              },
+            });
+            createdArtifacts.push(registeredArtifact);
+          }
+
+          if (send) {
+            send("war_room_turn", {
+              message: turn.message,
+              artifact: registeredArtifact,
+              session: currentSession,
+            });
+          }
+          await new Promise((r) => setTimeout(r, 60));
+        }
+
+        if (send) {
+          send("war_room_complete", {
+            session: currentSession,
+            artifacts: createdArtifacts,
+          });
+        }
+
+        const consolidatedMessage = `# 🏛️ Sala de Guerra Concluída: ${topic}
+
+A equipe multidisciplinar de especialistas concluiu o alinhamento estratégico e a produção de artefatos:
+
+- 👑 **Diretoria de Estratégia (Alex Vance):** Posicionamento, proposta de valor única e matriz de canais/KPIs.
+- 🎯 **Estrategista de Público (Maya Lin):** Mapeamento de personas, dores críticas e quebra de objeções.
+- 🛡️ **Guardião da Marca (Valentin Ramos):** Definição de tom de voz, princípios inegociáveis e guardrails éticos.
+- ✍️ **Copywriter Viral (Helena Prado):** Ganchos magnéticos para Reels/Shorts, roteiro estruturado e CTAs.
+- 🎨 **Diretor de Arte (Theo Becker):** Conceito visual, paleta cromática e prompts cinematográficos.
+- 🔍 **Auditora Criativa (Sofia Alencar):** Revisão de conformidade, consenso total e síntese executiva aprovada.
+
+✨ **${createdArtifacts.length} artefatos** foram materializados com sucesso e estão disponíveis no **Live Artifact Canvas** para leitura, edição e download.`;
+
+        return {
+          message: consolidatedMessage,
+          action: null,
+          artifacts: createdArtifacts,
+        };
+      };
+
+      if (stream === true) {
+        cleanupInPost = false;
+        return createChatStreamResponse(
+          (send) => runWarRoom(send),
+          () => cleanupReferenceImage(referenceImagePath),
+          (response) => {
+            processPostChatLearning(latestUserText, response.message);
+          }
+        );
+      }
+
+      const response = await runWarRoom();
+      processPostChatLearning(latestUserText, response.message);
+      return NextResponse.json({
+        success: true,
+        message: response.message,
+        action: response.action,
+        artifacts: response.artifacts,
+      });
+    }
 
     const runChat = async (onMessageChunk?: (chunk: string) => void) => {
       const response = await chatWithAgent(
