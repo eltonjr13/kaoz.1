@@ -126,7 +126,8 @@ export function parseWarRoomReviewDecision(value: unknown): WarRoomReviewDecisio
   if (!isRecord(value) || !Array.isArray(value.criteria)) {
     throw new Error("Decisão de revisão da Sala de Guerra inválida.");
   }
-  const criteria = Object.freeze(RUBRIC_META.map((meta, index) => parseCriterion(value.criteria?.[index], meta)));
+  const criteriaInput = value.criteria;
+  const criteria = Object.freeze(RUBRIC_META.map((meta, index) => parseCriterion(criteriaInput[index], meta)));
   const score = criteria.reduce((total, criterion) => total + criterion.score, 0);
   const blockingIssues = textList(value.blockingIssues, "review.blockingIssues");
   const approved = score >= 80 && blockingIssues.length === 0 && criteria.every((criterion) => criterion.passed);
