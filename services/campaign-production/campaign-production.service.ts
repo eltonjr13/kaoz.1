@@ -263,12 +263,28 @@ export class CampaignProductionService {
             asset.audioPath = generatedAudioResult.audioPath || audioFilePath;
             asset.audioStatus = "completed";
           } else {
-            // Create synthetic clean WAV audio matching scene duration
-            const wavBuffer = createSyntheticWavBuffer(scene.durationSeconds || 4);
-            await writeFile(audioFilePath, wavBuffer);
-            asset.audioPath = audioFilePath;
-            asset.audioUrl = `/api/campaigns/${job.id}/assets/${audioFileName}`;
-            asset.audioStatus = "completed";
+            // Synthesize real speech with native engine / Fish Audio
+            const speechRes = await synthesizeRealSpeechToFile(
+              scene.voiceoverText,
+              audioFilePath,
+              {
+                voiceModel: job.options.voiceModel,
+                voiceReferenceId: job.options.voiceReferenceId,
+                durationSeconds: scene.durationSeconds,
+              }
+            );
+
+            if (speechRes.success) {
+              asset.audioPath = speechRes.path;
+              asset.audioUrl = `/api/campaigns/${job.id}/assets/${audioFileName}`;
+              asset.audioStatus = "completed";
+            } else {
+              const wavBuffer = createSyntheticWavBuffer(scene.durationSeconds || 4);
+              await writeFile(audioFilePath, wavBuffer);
+              asset.audioPath = audioFilePath;
+              asset.audioUrl = `/api/campaigns/${job.id}/assets/${audioFileName}`;
+              asset.audioStatus = "completed";
+            }
           }
         } catch (err: any) {
           console.warn(`[CampaignProduction] Falha no áudio da cena ${scene.sceneNumber}:`, err);
@@ -326,8 +342,22 @@ export class CampaignProductionService {
       const planPath = path.join(job.outputDirectory, "davinci-plan.json");
       await writeFile(planPath, `${JSON.stringify(davinciPlanData, null, 2)}\n`, "utf8");
 
+      // Generate EDL & FCPXML timelines for DaVinci Resolve
+      const edlContent = generateDavinciEdl(job.parsedData.campaignName, job.parsedData.scenes, fps);
+      const edlPath = path.join(job.outputDirectory, "timeline.edl");
+      await writeFile(edlPath, edlContent, "utf8");
+
+      const fcpxmlContent = generateDavinciFcpxml(job.parsedData.campaignName, job.parsedData.scenes, job.parsedData.aspectRatio, fps);
+      const fcpxmlPath = path.join(job.outputDirectory, "timeline.fcpxml");
+      await writeFile(fcpxmlPath, fcpxmlContent, "utf8");
+
       job.davinciPlan = {
         requestId: davinciPlanData.requestId,
+        timelineName: davinciPlanData.timelineName,
+        markersCount: markers.length,
+        planPath,
+      };
+    }
         timelineName: davinciPlanData.timelineName,
         markersCount: markers.length,
         planPath,
