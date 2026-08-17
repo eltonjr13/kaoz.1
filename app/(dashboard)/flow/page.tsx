@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState, useRef, type WheelEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef, type WheelEvent } from "react";
 import {
   Image as ImageIcon,
   Loader2,
@@ -25,6 +25,8 @@ import {
   ChevronUp,
   X,
   RefreshCw,
+  Users,
+  Sparkles,
 } from "lucide-react";
 
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
@@ -60,6 +62,9 @@ import {
 } from "@/services/mcp/mcp-mention";
 import { acquireMicrophoneSession } from "@/lib/speech/microphone-session";
 import { ArtifactCards } from "@/components/artifacts/artifact-viewer";
+import { WarRoomFeed } from "@/components/war-room/WarRoomFeed";
+import { LiveArtifactCanvas } from "@/components/artifacts/LiveArtifactCanvas";
+import type { WarRoomMessage, WarRoomSession, WarRoomArtifactReference } from "@/services/agents";
 import { goalHelpText, parseGoalCommand } from "@/services/goals/goal-command";
 import type { AutonomousGoal } from "@/services/goals/goal.types";
 
@@ -217,6 +222,11 @@ interface FlowChatResponse {
 interface FlowChatStreamPayload extends FlowChatResponse {
   text?: string;
   context?: VoiceExpressionContext;
+  session?: WarRoomSession;
+  message?: WarRoomMessage | string;
+  stage?: string;
+  stageIndex?: number;
+  totalStages?: number;
 }
 
 interface FlowChatStreamEvent {
@@ -244,6 +254,8 @@ export interface ChatMessageState {
   artifacts?: ExecutionArtifact[];
   artifactError?: string;
   goal?: AutonomousGoal;
+  warRoomSession?: WarRoomSession;
+  warRoomMessages?: WarRoomMessage[];
   skillDraft?: {
     id: string;
     name: string;
@@ -962,6 +974,13 @@ export default function FlowDashboardPage() {
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; messageId: string; role: 'user' | 'assistant' } | null>(null);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingConversationText, setEditingConversationText] = useState("");
+  const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+  const [canvasArtifactId, setCanvasArtifactId] = useState<string | undefined>(undefined);
+  const [warRoomModeActive, setWarRoomModeActive] = useState(false);
+
+  const allConversationArtifacts = useMemo(() => {
+    return chatMessages.flatMap((m) => m.artifacts || []);
+  }, [chatMessages]);
 
   useEffect(() => {
     if (!contextMenu && !messageContextMenu) return;
@@ -2496,6 +2515,7 @@ export default function FlowDashboardPage() {
           stream: true,
           voiceActive: options.speakResponse === true,
           sessionId: activeConversationId,
+          warRoomMode: warRoomModeActive,
           archiveContext: {
             conversationId: activeConversationId,
             userMessageId: userMsg.id,
@@ -2509,6 +2529,9 @@ export default function FlowDashboardPage() {
         throw new Error(errorPayload.error || `Falha no chat (HTTP ${res.status}).`);
       }
       let streamedData: FlowChatResponse | null = null;
+      let streamedWarRoomSession: WarRoomSession | undefined;
+      let streamedWarRoomMessages: WarRoomMessage[] = [];
+
       if (res.body && res.headers.get("content-type")?.includes("text/event-stream")) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -2538,6 +2561,46 @@ export default function FlowDashboardPage() {
             voiceExpressionContext = parsed.data.context;
           } else if (parsed.event === "status") {
             showAssistantStatus(parsed.data.text || "");
+          } else if (parsed.event === "war_room_init" && parsed.data.session) {
+            streamedWarRoomSession = parsed.data.session;
+            setChatMessages((prev) => {
+              const current = prev.find((m) => m.id === assistantMessageId);
+              if (!current) {
+                return [...prev, {
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: '',
+                  timestamp: new Date().toISOString(),
+                  warRoomSession: streamedWarRoomSession,
+                  warRoomMessages: streamedWarRoomMessages,
+                }];
+              }
+              return prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, warRoomSession: streamedWarRoomSession, warRoomMessages: streamedWarRoomMessages }
+                  : m
+              );
+            });
+          } else if (parsed.event === "war_room_turn" && parsed.data.message) {
+            const turnMsg = parsed.data.message as WarRoomMessage;
+            streamedWarRoomMessages = [...streamedWarRoomMessages, turnMsg];
+            if (parsed.data.session) streamedWarRoomSession = parsed.data.session as WarRoomSession;
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, warRoomSession: streamedWarRoomSession, warRoomMessages: streamedWarRoomMessages }
+                  : m
+              )
+            );
+          } else if (parsed.event === "war_room_complete") {
+            if (parsed.data.session) streamedWarRoomSession = parsed.data.session as WarRoomSession;
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, warRoomSession: streamedWarRoomSession, warRoomMessages: streamedWarRoomMessages }
+                  : m
+              )
+            );
           } else if (parsed.event === "final") {
             streamedData = parsed.data;
           } else if (parsed.event === "error") {
@@ -2583,7 +2646,14 @@ export default function FlowDashboardPage() {
         artifacts: data.artifacts,
         artifactError: data.artifactError,
         goal: data.goal,
+        warRoomSession: streamedWarRoomSession,
+        warRoomMessages: streamedWarRoomMessages.length > 0 ? streamedWarRoomMessages : undefined,
       };
+
+      if (data.artifacts && data.artifacts.length > 0) {
+        setCanvasArtifactId(data.artifacts[0].id);
+        setIsCanvasOpen(true);
+      }
 
       if (data.action && data.action.flow) {
         const plannedKind = data.action.flow === 'refine' ? 'project' : data.action.flow;
@@ -3576,6 +3646,39 @@ export default function FlowDashboardPage() {
                   <Square size={16} />
                 </button>
                 <div className="w-[1px] h-4 bg-white/10 mx-1" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setWarRoomModeActive((prev) => !prev);
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-300 cursor-pointer text-[11px] font-medium ${
+                    warRoomModeActive
+                      ? "bg-[#9D7CFF] text-white shadow-lg shadow-[#9D7CFF]/20"
+                      : "hover:bg-white/10 text-white/60 hover:text-white"
+                  }`}
+                  title="Ativar modo Sala de Guerra Multiagente"
+                >
+                  <Users size={13} />
+                  <span>Sala de Guerra</span>
+                </button>
+                {allConversationArtifacts.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsCanvasOpen((prev) => !prev);
+                    }}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-300 cursor-pointer text-[11px] font-medium ${
+                      isCanvasOpen
+                        ? "bg-[#9D7CFF]/25 text-white border border-[#9D7CFF]/40 shadow-sm"
+                        : "bg-[#9D7CFF]/10 text-[#9D7CFF] hover:bg-[#9D7CFF]/20 border border-[#9D7CFF]/20"
+                    }`}
+                    title="Abrir Live Artifact Canvas"
+                  >
+                    <Sparkles size={12} />
+                    <span>Canvas ({allConversationArtifacts.length})</span>
+                  </button>
+                )}
+                <div className="w-[1px] h-4 bg-white/10 mx-1" />
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
                   className="p-2 hover:bg-[#A6A297]/15 hover:text-[#A6A297] rounded-xl transition-all duration-300 text-white/60 cursor-pointer"
@@ -3660,8 +3763,33 @@ export default function FlowDashboardPage() {
                       )}
                     </div>
 
+                    {(msg.warRoomSession || (msg.warRoomMessages && msg.warRoomMessages.length > 0)) && (
+                      <WarRoomFeed
+                        session={msg.warRoomSession}
+                        messages={msg.warRoomMessages || []}
+                        isStreaming={isLoading && index === chatMessages.length - 1}
+                        onOpenArtifact={(art) => {
+                          setCanvasArtifactId(art.id);
+                          setIsCanvasOpen(true);
+                        }}
+                      />
+                    )}
+
                     {msg.artifacts && msg.artifacts.length > 0 && (
-                      <ArtifactCards artifacts={msg.artifacts} className="mt-1 max-w-[760px]" />
+                      <div className="flex flex-col gap-1.5 mt-1">
+                        <ArtifactCards artifacts={msg.artifacts} className="max-w-[760px]" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCanvasArtifactId(msg.artifacts?.[0]?.id);
+                            setIsCanvasOpen(true);
+                          }}
+                          className="self-start flex items-center gap-1.5 rounded-lg border border-[#9D7CFF]/30 bg-[#9D7CFF]/10 px-2.5 py-1 text-[11px] font-medium text-[#9D7CFF] hover:bg-[#9D7CFF]/20 transition-all cursor-pointer"
+                        >
+                          <Sparkles size={12} />
+                          Abrir no Live Artifact Canvas ({msg.artifacts.length})
+                        </button>
+                      </div>
                     )}
                     {msg.artifactError && (
                       <div className="mt-1 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-[11px] text-red-300">
@@ -4215,6 +4343,22 @@ export default function FlowDashboardPage() {
                 </motion.div>
               )}
             </AnimatePresence>
+            {warRoomModeActive && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-[#9D7CFF]/30 bg-[#9D7CFF]/15 px-3 py-1.5 text-xs text-[#9D7CFF]">
+                <div className="flex items-center gap-2">
+                  <Users size={14} />
+                  <span className="font-semibold">Modo Sala de Guerra Ativo:</span>
+                  <span className="text-white/80">6 agentes especialistas analisarão e produzirão artefatos em conjunto.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWarRoomModeActive(false)}
+                  className="text-white/50 hover:text-white text-[11px] underline cursor-pointer"
+                >
+                  Desativar
+                </button>
+              </div>
+            )}
             <PromptInputBox
               onStop={() => {
                 stop();
@@ -4227,7 +4371,7 @@ export default function FlowDashboardPage() {
               value={draftMessage}
               onValueChange={setDraftMessage}
               initialFile={editAttachmentFile}
-              placeholder={editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode && image3dReadyMode ? "Anexe a imagem pronta para gerar apenas os ângulos..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
+              placeholder={warRoomModeActive ? "Descreva o tema ou briefing para a Sala de Guerra Multiagente..." : editing3dImageMessageId ? "Descreva as correções para editar a imagem base..." : agentType === "image" && image3dMode && image3dReadyMode ? "Anexe a imagem pronta para gerar apenas os ângulos..." : agentType === "image" && image3dMode ? "Anexe uma imagem e envie para gerar o 3D..." : "Mande uma mensagem ou descreva o que quer criar..."}
               onSend={(message, files) => {
                 setEditAttachmentFile(null);
                 void handleSendMessage(message, (files ?? []).map(f => ({ file: f })), []);
@@ -4341,6 +4485,23 @@ export default function FlowDashboardPage() {
           </button>
         </div>
       )}
+
+      {/* ── Live Artifact Canvas ── */}
+      <LiveArtifactCanvas
+        isOpen={isCanvasOpen}
+        onClose={() => setIsCanvasOpen(false)}
+        artifacts={allConversationArtifacts}
+        activeArtifactId={canvasArtifactId}
+        onSelectArtifact={setCanvasArtifactId}
+        onArtifactUpdated={(updated) => {
+          setChatMessages((prev) =>
+            prev.map((msg) => ({
+              ...msg,
+              artifacts: msg.artifacts?.map((a) => (a.id === updated.id ? updated : a)),
+            }))
+          );
+        }}
+      />
     </div>
   );
 }

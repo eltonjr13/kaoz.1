@@ -12,5 +12,6 @@ export type ExecutionArtifact = {
   size?: number;
   previewAvailable?: boolean;
   createdAt?: string;
+  updatedAt?: string;
   metadata?: Record<string, unknown>;
 };
