@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CampaignProductionService } from "../services/campaign-production/campaign-production.service.ts";
 
@@ -146,4 +147,30 @@ test("permite injeção de geradores customizados e opções parciais", async ()
   assert.equal(completed.assets[0].imageUrl, "https://example.com/custom-image.png");
   assert.equal(completed.assets[0].audioUrl, "https://example.com/custom-audio.mp3");
   assert.equal(completed.davinciPlan, undefined);
+});
+
+test("copia a imagem real gerada para o diretório servido da campanha", async () => {
+  const sourcePath = path.resolve(".generated", "campaign-production-tests", "flow-result.png");
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await writeFile(sourcePath, Buffer.from("89504e470d0a1a0a", "hex"));
+
+  const service = new CampaignProductionService(async () => ({ imagePath: sourcePath }));
+  const job = await service.createCampaignProductionJob({
+    customScenes: [{
+      sceneNumber: 1,
+      title: "Imagem real",
+      visualPrompt: "Produto em estúdio",
+      voiceoverText: "Apresentação do produto.",
+      durationSeconds: 3,
+      aspectRatio: "9:16",
+    }],
+    options: { generateImages: true, generateAudio: false, createDavinciPlan: false },
+  });
+
+  const completed = await service.executeCampaignProduction(job.id);
+  const image = completed.assets[0];
+  assert.equal(image.imageStatus, "completed");
+  assert.ok(image.imagePath?.startsWith(path.join(job.outputDirectory, "assets")));
+  assert.ok(image.imagePath && existsSync(image.imagePath));
+  assert.equal(image.imageUrl, `/api/campaigns/${job.id}/assets/${path.basename(image.imagePath!)}`);
 });
