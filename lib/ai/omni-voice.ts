@@ -1,8 +1,8 @@
 import { Client, handle_file } from "@gradio/client";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { getOmniVoiceRuntimeConfig } from "@/services/omnivoice/omnivoice.settings";
-import type { VoiceSettings } from "@/types";
+import { getOmniVoiceRuntimeConfig } from "../../services/omnivoice/omnivoice.settings.ts";
+import type { VoiceSettings } from "../../types/index.ts";
 
 export type GenerateVoiceInput = {
   script: string;
