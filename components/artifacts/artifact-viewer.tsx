@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Download, Eye, File, FileJson, FileText, Image as ImageIcon, Loader2, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { RichMarkdown } from "@/components/markdown/RichMarkdown";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 
 function withDownload(url: string): string {
@@ -95,7 +95,7 @@ function ArtifactPreview({ artifact, onClose }: { artifact: ExecutionArtifact; o
           ) : artifact.type === "html" || artifact.mimeType?.startsWith("text/html") ? (
             <iframe title={artifact.name} src={url} sandbox="" className="h-full min-h-[70vh] w-full border-0 bg-white" />
           ) : artifact.type === "markdown" || artifact.mimeType?.startsWith("text/markdown") ? (
-            <article className="prose prose-invert mx-auto max-w-4xl p-6 text-sm prose-pre:border prose-pre:border-white/10 prose-pre:bg-black/40 sm:p-10"><ReactMarkdown>{content}</ReactMarkdown></article>
+            <article className="mx-auto max-w-4xl p-6 sm:p-10"><RichMarkdown content={content} /></article>
           ) : (
             <pre className="min-h-full whitespace-pre-wrap break-words p-6 font-mono text-xs leading-relaxed text-white/80 sm:p-10">{content}</pre>
           )}

@@ -31,7 +31,7 @@ import {
   AlertCircle,
   ArrowRight,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { RichMarkdown } from "@/components/markdown/RichMarkdown";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
 import type { WarRoomArtifactReference } from "@/services/agents";
 
@@ -227,10 +227,10 @@ export function LiveArtifactCanvas({
 
   return (
     <div
-      className={`fixed z-50 flex flex-col bg-[#0a0a0e]/95 backdrop-blur-2xl border-l border-white/10 text-white shadow-2xl transition-all duration-300 ${
+      className={`fixed z-[90] flex flex-col bg-[#08090d]/98 backdrop-blur-2xl border-l border-white/10 text-white shadow-2xl transition-all duration-300 ${
         isFullScreen
           ? "inset-0 w-full h-full"
-          : "inset-y-0 right-0 w-full sm:w-[560px] md:w-[680px] lg:w-[760px]"
+          : "inset-y-0 right-0 w-full md:w-[min(980px,calc(100vw-32px))]"
       }`}
     >
       {/* Top Header */}
@@ -279,8 +279,9 @@ export function LiveArtifactCanvas({
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center gap-1.5 overflow-x-auto border-b border-white/5 bg-black/40 px-3 py-2 scrollbar-thin">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      {/* Document Navigation */}
+      <aside className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/5 bg-black/40 px-3 py-2 scrollbar-thin md:w-56 md:flex-col md:items-stretch md:overflow-y-auto md:border-b-0 md:border-r md:px-2.5 md:py-3">
         {normalizedArtifacts.map((art) => {
           const isSelected = art.id === selectedId;
           return (
@@ -291,10 +292,10 @@ export function LiveArtifactCanvas({
                 setSelectedId(art.id);
                 onSelectArtifact?.(art.id);
               }}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all whitespace-nowrap md:w-full ${
                 isSelected
-                  ? "bg-[#9D7CFF]/20 text-white font-medium border border-[#9D7CFF]/40 shadow-sm"
-                  : "text-white/50 hover:bg-white/[0.05] hover:text-white/80 border border-transparent"
+                  ? "bg-[#9D7CFF]/15 text-white font-medium border-[#9D7CFF]/35 shadow-sm"
+                  : "text-white/50 hover:bg-white/[0.05] hover:text-white/80 border-transparent"
               }`}
             >
               <span className={isSelected ? "text-[#9D7CFF]" : "text-white/40"}>
@@ -304,7 +305,9 @@ export function LiveArtifactCanvas({
             </button>
           );
         })}
-      </div>
+      </aside>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
       {/* Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-2 bg-black/20 text-xs">
@@ -381,7 +384,7 @@ export function LiveArtifactCanvas({
       </div>
 
       {/* Editor / Preview Content Body */}
-      <div className="min-h-0 flex-1 overflow-auto bg-[#0d0e14] p-4 sm:p-6">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#0d0e14] p-4 sm:p-7 lg:p-10">
         {loadingContent ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-white/50">
             <Loader2 size={16} className="animate-spin text-[#9D7CFF]" />
@@ -399,8 +402,8 @@ export function LiveArtifactCanvas({
             placeholder="Conteúdo do documento..."
           />
         ) : (
-          <article className="prose prose-invert prose-sm max-w-none text-white/85 leading-relaxed prose-headings:text-white prose-a:text-[#9D7CFF] prose-code:text-[#38BDF8] prose-pre:bg-black/60 prose-pre:border prose-pre:border-white/10">
-            <ReactMarkdown>{editorContent}</ReactMarkdown>
+          <article className="mx-auto max-w-3xl rounded-2xl border border-white/[0.07] bg-white/[0.018] px-5 py-6 shadow-xl shadow-black/10 sm:px-8 sm:py-9">
+            <RichMarkdown content={editorContent} />
           </article>
         )}
       </div>
@@ -409,6 +412,8 @@ export function LiveArtifactCanvas({
       <div className="flex items-center justify-between border-t border-white/5 bg-black/30 px-4 py-2 text-[11px] text-white/40">
         <span className="font-mono">{currentArtifact?.name || "Sem arquivo"}</span>
         <span>{editorContent.length} caracteres</span>
+      </div>
+      </div>
       </div>
 
       {/* ── Central de Produção Automatizada Modal / Overlay ── */}
@@ -455,7 +460,7 @@ export function LiveArtifactCanvas({
                   className="mt-1 rounded accent-[#9D7CFF]"
                 />
                 <div>
-                  <div className="text-xs font-semibold">🖼️ Gerar Imagens</div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold"><ImageIcon size={13} /> Gerar imagens</div>
                   <div className="text-[11px] text-white/60">Gera imagens para cada cena via Flow</div>
                 </div>
               </label>
@@ -470,7 +475,7 @@ export function LiveArtifactCanvas({
                   className="mt-1 rounded accent-[#9D7CFF]"
                 />
                 <div>
-                  <div className="text-xs font-semibold">🎙️ Sintetizar Vozes</div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold"><Volume2 size={13} /> Sintetizar vozes</div>
                   <div className="text-[11px] text-white/60">Sintetiza as falas do roteiro em áudio</div>
                 </div>
               </label>
@@ -485,7 +490,7 @@ export function LiveArtifactCanvas({
                   className="mt-1 rounded accent-[#9D7CFF]"
                 />
                 <div>
-                  <div className="text-xs font-semibold">🎞️ Timeline DaVinci</div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold"><Film size={13} /> Timeline DaVinci</div>
                   <div className="text-[11px] text-white/60">Cria plano com marcadores sincronizados</div>
                 </div>
               </label>

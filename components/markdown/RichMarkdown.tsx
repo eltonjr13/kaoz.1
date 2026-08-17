@@ -1,64 +1,9 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import { normalizeRichMarkdown } from "./rich-markdown";
 
-const MOJIBAKE_REPAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["computa��o", "computação"], ["cria��o", "criação"], ["produ��o", "produção"],
-  ["configura��o", "configuração"], ["valida��o", "validação"], ["revis��o", "revisão"],
-  ["convers��o", "conversão"], ["atra��o", "atração"], ["reten��o", "retenção"],
-  ["aprova��o", "aprovação"], ["recomenda��o", "recomendação"], ["comunica��o", "comunicação"],
-  ["precis��o", "precisão"], ["a��o", "ação"],
-];
-
-function repairMojibake(content: string): string {
-  return MOJIBAKE_REPAIRS.reduce(
-    (result, [broken, repaired]) => result.replaceAll(broken, repaired),
-    content,
-  ).replace(/�+/g, "");
-}
-
-function isSectionBoundary(line: string): boolean {
-  return /^(?:#{1,4}\s+|\d+\.\s+[A-ZÀ-Ú]|[A-Z]\.|Componentes[- ]Chave|Checklist|Conclusão|Recomendações)/i.test(line.trim());
-}
-
-export function normalizeRichMarkdown(content: string): string {
-  const lines = repairMojibake(content).replace(/\r\n?/g, "\n").split("\n");
-  const normalized: string[] = [];
-  let inMermaid = false;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    const trimmed = line.trim();
-    const mermaidStart = trimmed.match(/^mermaid\s+(flowchart|graph|sequenceDiagram|classDiagram)(.*)$/i);
-
-    if (!inMermaid && (trimmed.toLowerCase() === "mermaid" || mermaidStart)) {
-      normalized.push("", "```mermaid");
-      if (mermaidStart) normalized.push(`${mermaidStart[1]}${mermaidStart[2]}`);
-      inMermaid = true;
-      continue;
-    }
-    if (inMermaid && isSectionBoundary(trimmed)) {
-      normalized.push("```", "");
-      inMermaid = false;
-    }
-    if (!inMermaid && /^(\d+)\.\s+([A-ZÀ-Ú].{4,})$/.test(trimmed)) {
-      normalized.push("", `## ${trimmed}`, "");
-      continue;
-    }
-    if (!inMermaid && /^[A-Z]\.\s+[A-ZÀ-Ú]/.test(trimmed)) {
-      normalized.push("", `### ${trimmed}`, "");
-      continue;
-    }
-    if (!inMermaid && /^(Componentes[- ]Chave|Checklist|Conclusão|Recomendações)(.*):?$/i.test(trimmed)) {
-      normalized.push("", `## ${trimmed.replace(/:$/, "")}`, "");
-      continue;
-    }
-    normalized.push(line);
-  }
-
-  if (inMermaid) normalized.push("```");
-  return normalized.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
+export { normalizeRichMarkdown } from "./rich-markdown";
 
 export function RichMarkdown({ content, className = "" }: { content: string; className?: string }) {
   return (

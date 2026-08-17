@@ -3723,9 +3723,9 @@ export default function FlowDashboardPage() {
             )}
 
             {chatMessages.map((msg, idx) => (
-              <div key={msg.id} className={`flex flex-col ${(msg.plan && !msg.jobId) || msg.artifacts?.length ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
-                <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className="shrink-0 mt-1">
+              <div key={msg.id} className={`flex flex-col ${msg.warRoomSession || msg.warRoomMessages?.length ? 'w-full max-w-[1100px]' : (msg.plan && !msg.jobId) || msg.artifacts?.length ? 'w-full max-w-[760px]' : 'max-w-[85%]'} ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+                <div className={`flex w-full gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {!(msg.warRoomSession || msg.warRoomMessages?.length) && <div className="shrink-0 mt-1">
                     {msg.role === 'user' ? (
                       <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
                         <User size={12} className="text-white/80" />
@@ -3735,9 +3735,9 @@ export default function FlowDashboardPage() {
                         <Bot size={12} className="text-[#A6A297]" />
                       </div>
                     )}
-                  </div>
+                  </div>}
                   <div 
-                    className={`flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                    className={`flex min-w-0 flex-1 flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                     onContextMenu={(e) => {
                       if (!canEditConversation) return;
                       e.preventDefault();
@@ -3751,7 +3751,7 @@ export default function FlowDashboardPage() {
                       });
                     }}
                   >
-                    <div className={`select-text cursor-text px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'flow-user-card rounded-tr-sm text-white' : 'flow-surface-card rounded-tl-sm text-white'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
+                    {!(msg.warRoomSession || msg.warRoomMessages?.length) && <div className={`select-text cursor-text px-4 py-3 text-[13px] leading-relaxed rounded-2xl ${msg.role === 'user' ? 'flow-user-card rounded-tr-sm text-white' : 'flow-surface-card rounded-tl-sm text-white'} prose prose-invert max-w-none prose-sm prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}>
                       {(!msg.attachedImage || msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() !== '') && (
                         <ReactMarkdown>
                           {msg.attachedImage ? msg.content.replace('\n\n[Imagem de referência anexada]', '').trim() : msg.content}
@@ -3762,7 +3762,7 @@ export default function FlowDashboardPage() {
                           <img src={msg.attachedImage} alt="Referência" className="w-full h-auto object-contain rounded-lg bg-black/20" />
                         </div>
                       )}
-                    </div>
+                    </div>}
 
                     {(msg.warRoomSession || (msg.warRoomMessages && msg.warRoomMessages.length > 0)) && (
                       <WarRoomFeed
