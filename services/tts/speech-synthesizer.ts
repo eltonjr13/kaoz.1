@@ -10,7 +10,26 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { generateFishAudioSpeech } from "../../lib/fish-audio.ts";
-import { readTTSConfig } from "./tts.settings.ts";
+
+async function readLocalTTSConfig(): Promise<{ fishAudioApiKey?: string; fishAudioModel?: string; fishAudioReferenceId?: string }> {
+  try {
+    const dataDir = process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, "Kaoz", "Data")
+      : path.join(process.cwd(), ".generated", "data");
+    const settingsPath = path.join(dataDir, "tts-settings.json");
+    if (existsSync(settingsPath)) {
+      const data = JSON.parse(await import("node:fs/promises").then((m) => m.readFile(settingsPath, "utf8")));
+      return data || {};
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    fishAudioApiKey: process.env.FISH_API_KEY,
+    fishAudioModel: process.env.FISH_AUDIO_MODEL,
+    fishAudioReferenceId: process.env.FISH_AUDIO_REFERENCE_ID,
+  };
+}
 
 const execAsync = promisify(exec);
 
@@ -69,7 +88,7 @@ export async function synthesizeRealSpeechToFile(
 
   // 1. Tentar Fish Audio se configurado
   try {
-    const ttsConfig = await readTTSConfig().catch(() => ({}));
+    const ttsConfig = await readLocalTTSConfig();
     if (ttsConfig?.fishAudioApiKey) {
       const fishResult = await generateFishAudioSpeech({
         text: cleanText,

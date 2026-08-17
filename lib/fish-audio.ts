@@ -16,13 +16,14 @@ export type FishAudioGenerateResult = {
 const DEFAULT_FISH_AUDIO_MODEL = "s2.1-pro-free";
 
 export class FishAudioApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly details?: string
-  ) {
+  public readonly status: number;
+  public readonly details?: string;
+
+  constructor(message: string, status: number, details?: string) {
     super(message);
     this.name = "FishAudioApiError";
+    this.status = status;
+    this.details = details;
   }
 }
 
