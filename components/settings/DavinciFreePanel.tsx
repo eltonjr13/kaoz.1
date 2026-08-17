@@ -2129,16 +2129,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     disabled={!!busy}
                     onClick={restoreAutomatic}
+                    title="Restaurar edição automática"
                     className="whitespace-nowrap rounded-[6px] px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"
                   >
-                    Restaurar automático
+                    Restaurar
                   </button>
                   <button
                     disabled={!!busy || !analysis?.courseName}
                     onClick={saveCourseStandard}
+                    title="Salvar padrão do curso"
                     className="whitespace-nowrap rounded-[6px] bg-[#242832] px-2 py-1 text-[10px] font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
                   >
-                    Salvar padrão do curso
+                    Salvar padrão
                   </button>
                 </div>
               </div>

@@ -22,6 +22,14 @@ import {
   Trash2,
   X,
   RefreshCw,
+  Play,
+  Volume2,
+  Film,
+  Sliders,
+  Clapperboard,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { ExecutionArtifact } from "@/services/orchestrator/orchestrator.types";
