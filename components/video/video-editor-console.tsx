@@ -35,11 +35,11 @@ type VideoEditorConsoleProps = {
 };
 
 const levelBadgeStyles: Record<ConsoleLogLevel, { bg: string; text: string; icon: React.ElementType }> = {
-  info: { bg: "bg-[#736D5C]/20 border-[#A6A297]/30 text-[#D6D4CD]", text: "INFO", icon: Info },
+  info: { bg: "bg-[#383D49]/20 border-[#8B92A1]/30 text-[#D5D8E0]", text: "INFO", icon: Info },
   success: { bg: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300", text: "SUCCESS", icon: CheckCircle2 },
   warn: { bg: "bg-amber-500/15 border-amber-500/30 text-amber-300", text: "WARN", icon: AlertTriangle },
   error: { bg: "bg-red-500/15 border-red-500/30 text-red-300", text: "ERROR", icon: XCircle },
-  ffmpeg: { bg: "bg-[#736D5C]/25 border-[#A6A297]/30 text-[#D6D4CD]", text: "FFMPEG", icon: Video },
+  ffmpeg: { bg: "bg-[#383D49]/25 border-[#8B92A1]/30 text-[#D5D8E0]", text: "FFMPEG", icon: Video },
 };
 
 export function VideoEditorConsole({
@@ -90,16 +90,16 @@ export function VideoEditorConsole({
   };
 
   return (
-    <div className={`overflow-hidden rounded-2xl border border-[#736D5C]/40 bg-[#1A1301]/90 shadow-2xl backdrop-blur-xl transition-all duration-300 ${fillAvailableHeight ? "flex h-full min-h-0 flex-col" : ""}`}>
+    <div className={`overflow-hidden rounded-2xl border border-[#383D49]/40 bg-[#090A0D]/90 shadow-2xl backdrop-blur-xl transition-all duration-300 ${fillAvailableHeight ? "flex h-full min-h-0 flex-col" : ""}`}>
       {/* Header do Console */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#736D5C]/35 bg-[#261D01]/85 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#383D49]/35 bg-[#101217]/85 px-4 py-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setIsOpen((prev) => !prev)}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-200 transition hover:text-white"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#736D5C]/25 text-[#D6D4CD]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#383D49]/25 text-[#D5D8E0]">
               <Terminal size={14} />
             </span>
             Console de Processamento
@@ -111,7 +111,7 @@ export function VideoEditorConsole({
             )}
           </button>
 
-          <span className="rounded-full border border-[#736D5C]/30 bg-[#403106]/45 px-2.5 py-0.5 text-[10px] font-semibold text-[#A6A297]">
+          <span className="rounded-full border border-[#383D49]/30 bg-[#171A21]/45 px-2.5 py-0.5 text-[10px] font-semibold text-[#8B92A1]">
             {logs.length} {logs.length === 1 ? "registro" : "registros"}
           </span>
         </div>
@@ -125,7 +125,7 @@ export function VideoEditorConsole({
             className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
               autoScroll
                 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                : "border-[#736D5C]/40 bg-[#403106]/35 text-[#A6A297] hover:text-[#F2F2F2]"
+                : "border-[#383D49]/40 bg-[#171A21]/35 text-[#8B92A1] hover:text-[#F4F5F7]"
             }`}
           >
             <ArrowDownCircle size={12} />
@@ -137,7 +137,7 @@ export function VideoEditorConsole({
             onClick={handleCopy}
             disabled={logs.length === 0}
             title="Copiar logs"
-            className="flex items-center gap-1 rounded-lg border border-[#736D5C]/40 bg-[#403106]/35 px-2.5 py-1 text-[11px] font-medium text-[#D6D4CD] transition hover:bg-[#736D5C]/45 hover:text-white disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg border border-[#383D49]/40 bg-[#171A21]/35 px-2.5 py-1 text-[11px] font-medium text-[#D5D8E0] transition hover:bg-[#383D49]/45 hover:text-white disabled:opacity-40"
           >
             {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
             <span className="hidden sm:inline">{copied ? "Copiado!" : "Copiar"}</span>
@@ -157,7 +157,7 @@ export function VideoEditorConsole({
           <button
             type="button"
             onClick={() => setIsOpen((prev) => !prev)}
-            className="rounded-lg border border-[#736D5C]/40 bg-[#403106]/35 p-1 text-[#A6A297] transition hover:bg-[#736D5C]/45 hover:text-[#F2F2F2]"
+            className="rounded-lg border border-[#383D49]/40 bg-[#171A21]/35 p-1 text-[#8B92A1] transition hover:bg-[#383D49]/45 hover:text-[#F4F5F7]"
             title={isOpen ? "Recolher console" : "Expandir console"}
           >
             {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -180,8 +180,8 @@ export function VideoEditorConsole({
                     onClick={() => setSelectedLevel(level)}
                     className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                       isSelected
-                        ? "bg-[#736D5C] text-white shadow-md shadow-[#1A1301]/40"
-                        : "bg-[#403106]/35 text-[#A6A297] hover:bg-[#736D5C]/35 hover:text-[#F2F2F2]"
+                        ? "bg-[#383D49] text-white shadow-md shadow-[#090A0D]/40"
+                        : "bg-[#171A21]/35 text-[#8B92A1] hover:bg-[#383D49]/35 hover:text-[#F4F5F7]"
                     }`}
                   >
                     {level === "all" ? "Todos" : level.toUpperCase()}{" "}
@@ -198,7 +198,7 @@ export function VideoEditorConsole({
                 placeholder="Filtrar mensagens..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-[#736D5C]/40 bg-[#261D01]/70 py-1 pl-8 pr-3 text-[11px] text-[#D6D4CD] placeholder-[#736D5C] outline-none focus:border-[#A6A297] focus:ring-1 focus:ring-[#A6A297]/50"
+                className="w-full rounded-lg border border-[#383D49]/40 bg-[#101217]/70 py-1 pl-8 pr-3 text-[11px] text-[#D5D8E0] placeholder-[#383D49] outline-none focus:border-[#8B92A1] focus:ring-1 focus:ring-[#8B92A1]/50"
               />
             </div>
           </div>
@@ -206,7 +206,7 @@ export function VideoEditorConsole({
           {/* Área de Logs Terminal */}
           <div
             ref={logContainerRef}
-            className={`${fillAvailableHeight ? "min-h-32 flex-1" : "h-64"} overflow-y-auto rounded-xl border border-[#736D5C]/30 bg-[#1A1301]/95 p-3 font-mono text-xs text-[#D6D4CD] shadow-inner scrollbar-thin scrollbar-thumb-[#736D5C]`}
+            className={`${fillAvailableHeight ? "min-h-32 flex-1" : "h-64"} overflow-y-auto rounded-xl border border-[#383D49]/30 bg-[#090A0D]/95 p-3 font-mono text-xs text-[#D5D8E0] shadow-inner scrollbar-thin scrollbar-thumb-[#383D49]`}
           >
             {filteredLogs.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-zinc-500">
@@ -237,7 +237,7 @@ export function VideoEditorConsole({
                         <span className="break-all font-medium text-zinc-200">{log.message}</span>
                       </div>
                       {log.details && (
-                        <div className="ml-14 whitespace-pre-wrap rounded border border-[#736D5C]/25 bg-[#261D01]/60 p-1.5 text-[11px] text-[#A6A297]">
+                        <div className="ml-14 whitespace-pre-wrap rounded border border-[#383D49]/25 bg-[#101217]/60 p-1.5 text-[11px] text-[#8B92A1]">
                           {log.details}
                         </div>
                       )}

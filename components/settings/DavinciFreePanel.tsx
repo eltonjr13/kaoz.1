@@ -217,7 +217,7 @@ type Props = {
 };
 
 const fieldClass =
-  "w-full rounded-lg border border-[#736D5C]/45 bg-[#1A1301]/80 px-2.5 py-2 text-xs text-[#F2F2F2] placeholder-[#736D5C] outline-none transition-colors focus:border-[#A6A297] focus:ring-1 focus:ring-[#A6A297]/30";
+  "w-full rounded-[6px] border border-white/10 bg-[#0D0F14] px-2.5 py-1.5 text-xs text-[#F4F5F7] placeholder-[#5D6472] outline-none transition-colors hover:border-white/15 focus:border-[#7C6CF2]/70 focus:ring-1 focus:ring-[#7C6CF2]/20";
 
 const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
@@ -235,8 +235,8 @@ const kindLabel: Record<EditEvent["kind"], string> = {
 
 const kindColorClass: Record<EditEvent["kind"], string> = {
   intro: "bg-emerald-950/90 border-emerald-500 text-emerald-300",
-  outro: "bg-[#403106]/90 border-[#736D5C] text-[#D6D4CD]",
-  "lower-third": "bg-[#261D01]/90 border-[#A6A297] text-[#F2F2F2]",
+  outro: "bg-[#171A21]/90 border-[#383D49] text-[#D5D8E0]",
+  "lower-third": "bg-[#101217]/90 border-[#8B92A1] text-[#F4F5F7]",
   "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
   zoom: "bg-amber-950/90 border-amber-500 text-amber-300",
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
@@ -1256,30 +1256,30 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis, selectedEventId]);
 
   return (
-    <div className="flex min-h-full w-full flex-col bg-[#1A1301] pb-24 text-[#F2F2F2]">
+    <div className="video-editor-system flex min-h-full w-full flex-col bg-[#090A0D] pb-24 text-[#F4F5F7]">
       {/* Workstation Header Bar (Stitch TopNavBar) */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#736D5C]/35 bg-[#261D01]/95 px-4 py-2.5 shadow-lg shadow-[#1A1301]/30">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] bg-[#101217] px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#A6A297]/30 bg-[#736D5C]/25 font-bold text-[#D6D4CD]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[6px] bg-[#1D2028] font-bold text-[#A99FFF]">
               <Video size={16} />
             </span>
             <div className="min-w-0">
-              <p className="text-[10px] font-medium tracking-wide text-[#A6A297]">Kaoz.1 / Estúdio de conteúdo</p>
-              <p className="truncate text-sm font-semibold text-[#F2F2F2]">
+              <p className="text-[10px] font-medium tracking-wide text-[#8B92A1]">Kaoz.1 / Estúdio de conteúdo</p>
+              <p className="truncate text-sm font-semibold text-[#F4F5F7]">
                 {form.lessonNumber ? `${form.lessonNumber} · ` : ""}{form.lessonName || form.moduleName || "Aula sem título"}
               </p>
             </div>
           </div>
 
           {/* Mode Switcher Tabs */}
-          <nav className="flex items-center gap-1 rounded-xl border border-[#736D5C]/35 bg-[#1A1301]/55 p-1">
+          <nav className="flex items-center gap-1 rounded-[6px] bg-[#090A0D]/70 p-1">
             <button
               onClick={() => setActiveMode("single")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "single"
-                  ? "bg-[#736D5C]/45 text-[#F2F2F2]"
-                  : "text-[#A6A297] hover:bg-[#403106] hover:text-[#F2F2F2]"
+                  ? "bg-[#242832] text-[#F4F5F7]"
+                  : "text-[#8B92A1] hover:bg-[#171A21] hover:text-[#F4F5F7]"
               }`}
             >
               <Film size={14} />
@@ -1289,8 +1289,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               onClick={() => setActiveMode("batch")}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                 activeMode === "batch"
-                  ? "bg-[#736D5C]/45 text-[#F2F2F2]"
-                  : "text-[#A6A297] hover:bg-[#403106] hover:text-[#F2F2F2]"
+                  ? "bg-[#242832] text-[#F4F5F7]"
+                  : "text-[#8B92A1] hover:bg-[#171A21] hover:text-[#F4F5F7]"
               }`}
             >
               <ListVideo size={14} />
@@ -1316,19 +1316,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             {status?.runnerInstalled ? "Runner: Online" : "Runner ainda não instalado"}
           </span>
 
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D6D4CD]">
-            <span className="h-2 w-2 rounded-full bg-[#A6A297]" />
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D5D8E0]">
+            <span className="h-2 w-2 rounded-full bg-[#8B92A1]" />
             Resolve
           </span>
 
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D6D4CD]">
-            <Sparkles size={13} className="text-[#A6A297]" />
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[#D5D8E0]">
+            <Sparkles size={13} className="text-[#8B92A1]" />
             AI ativa
           </span>
 
           <button
             onClick={() => refresh()}
-            className="flex items-center justify-center rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/55 p-1.5 text-[#A6A297] transition-all hover:bg-[#403106] hover:text-[#F2F2F2]"
+            className="flex items-center justify-center rounded-[6px] p-1.5 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]"
             title="Atualizar"
           >
             <RefreshCw size={14} className={busy === "refresh" ? "animate-spin text-emerald-400" : ""} />
@@ -1337,71 +1337,69 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       </header>
 
       {/* Editor inteligente para DaVinci Resolve Free Banner */}
-      <div className="grid shrink-0 items-center gap-2 border-b border-[#736D5C]/25 bg-[#261D01]/45 px-4 py-2 text-xs lg:grid-cols-12 lg:gap-4">
-        <h2 className="flex items-center gap-2 font-medium text-[#A6A297] lg:col-span-3">
-          <Sparkles size={14} className="text-[#736D5C]" />
+      <div className="grid shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#0D0F14] px-4 py-2 text-xs lg:grid-cols-12 lg:gap-4">
+        <h2 className="flex items-center gap-2 font-medium text-[#8B92A1] lg:col-span-3">
+          <Sparkles size={14} className="text-[#383D49]" />
           Editor inteligente para DaVinci Resolve Free
         </h2>
         {processingProgress && (
-          <div className="flex w-full items-center gap-3 rounded-lg border border-[#A6A297]/40 bg-[#403106]/35 px-3 py-1.5 lg:col-span-6 lg:col-start-4" aria-live="polite">
-            <span className="shrink-0 font-medium text-[#D6D4CD]">{processingProgress.label}</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full border border-[#736D5C]/40 bg-[#1A1301] p-px">
+          <div className="flex w-full items-center gap-3 rounded-[6px] bg-[#171A21] px-3 py-1.5 lg:col-span-6 lg:col-start-4" aria-live="polite">
+            <span className="shrink-0 font-medium text-[#D5D8E0]">{processingProgress.label}</span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#090A0D]">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#736D5C] via-[#A6A297] to-[#F2F2F2] transition-[width] duration-300"
+                className="h-full rounded-full bg-[#7C6CF2] transition-[width] duration-300"
                 style={{ width: `${processingProgress.progress}%` }}
               />
             </div>
-            <span className="shrink-0 font-mono text-[#F2F2F2]">{processingProgress.progress}%</span>
+            <span className="shrink-0 font-mono text-[#F4F5F7]">{processingProgress.progress}%</span>
             <span className="max-w-48 truncate text-[10px] text-zinc-400">{processingProgress.stage}</span>
           </div>
         )}
-        <span className={`${status?.runnerInstalled ? "text-emerald-400" : "text-amber-400"} text-[11px] lg:col-span-3 lg:col-start-10 lg:justify-self-end`}>
-          {status?.runnerInstalled ? "● Runner instalado" : "● Runner ainda não instalado"}
-        </span>
       </div>
 
       {!status?.runnerInstalled && (
-        <div className="m-3 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shrink-0">
-          <span className="text-xs text-amber-200">
-            O runner interno do Resolve ainda não foi instalado no sistema.
+        <div className="mx-4 my-2 flex shrink-0 items-center justify-between gap-3 rounded-[6px] bg-[#171A21] px-3 py-2">
+          <span className="flex items-center gap-2 text-xs text-[#D5D8E0]">
+            <span className="text-amber-400" aria-hidden="true">●</span>
+            Resolve Runner não instalado
           </span>
           <button
             disabled={!!busy}
             onClick={() =>
               action("install", { requestId: `install-${crypto.randomUUID()}` })
             }
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-xs font-semibold text-[#A99FFF] transition-colors hover:bg-[#7C6CF2]/10 disabled:opacity-50"
           >
             {busy === "install" ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <Download size={14} />
             )}
-            Instalar runner no Resolve
+            Instalar
           </button>
         </div>
       )}
 
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
-        <div className="grid flex-none items-stretch gap-0 border-t border-[#736D5C]/35 bg-[#1A1301] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
+        <div className="grid flex-none items-stretch gap-0 border-t border-[#383D49]/35 bg-[#090A0D] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-5 overflow-hidden border-t border-[#736D5C]/35 bg-[#1A1301]/95 p-5 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
-            <div className="rounded-2xl border border-[#736D5C]/45 bg-[#261D01]/80 px-4 py-3">
-              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#D6D4CD]">
+          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#101217] p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
+            <div className="border-b border-white/[0.07] pb-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
                 <Folder size={14} />
                 Configuração da edição
               </h2>
-              <p className="mt-1 text-[11px] leading-relaxed text-[#A6A297]">Defina a identidade, ritmo e tratamento de áudio desta aula.</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[#8B92A1]">Identidade, ritmo e tratamento de áudio da aula.</p>
             </div>
 
             <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-3 text-xs">
               {/* Video Metadata */}
               <div className="space-y-2">
-                <span className="block border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+                <span className="block border-b border-[#383D49]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#8B92A1]">
                   Contexto da aula
                 </span>
-                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                   Vídeo da aula
                   <div className="flex items-center gap-2">
                     <input
@@ -1417,12 +1415,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       type="button"
                       disabled={busy === "upload-video"}
                       onClick={() => void chooseSingleVideo()}
-                      className="inline-flex items-center gap-1.5 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/80 hover:border-emerald-400 transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-950/40 active:scale-95"
+                      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] bg-[#242832] px-3 py-1.5 text-xs font-semibold text-[#F4F5F7] transition-colors hover:bg-[#303541]"
                       title="Clique para escolher o arquivo de vídeo da aula"
                     >
                       {busy === "upload-video"
-                        ? <Loader2 size={14} className="animate-spin text-emerald-400" />
-                        : <Video size={14} className="text-emerald-400" />}
+                        ? <Loader2 size={14} className="animate-spin text-[#A99FFF]" />
+                        : <Video size={14} className="text-[#A99FFF]" />}
                       <span>{busy === "upload-video" ? "Enviando..." : "Selecionar Vídeo"}</span>
                     </button>
                     <input
@@ -1449,34 +1447,34 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   onStatusMessage={onStatusMessage}
                 />
 
-                <label className="block space-y-1.5 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3 font-semibold text-[#D6D4CD]">
+                <label className="block space-y-1.5 font-medium text-[#D5D8E0]">
                   Nome do curso (identidade compartilhada)
                   <input className={fieldClass} value={form.courseName} onChange={update("courseName")} />
                 </label>
 
-                <div className="grid grid-cols-[minmax(0,1fr)_84px] gap-2 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3">
-                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <div className="grid grid-cols-[minmax(0,1fr)_84px] gap-2">
+                  <label className="block space-y-1.5 font-medium text-[#D5D8E0]">
                     Nome do módulo
                     <input className={fieldClass} value={form.moduleName} onChange={update("moduleName")} />
                   </label>
-                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                  <label className="block space-y-1.5 font-medium text-[#D5D8E0]">
                     Nº da aula
                     <input className={fieldClass} value={form.lessonNumber} onChange={update("lessonNumber")} inputMode="numeric" maxLength={12} />
                   </label>
                 </div>
 
-                <label className="block space-y-1.5 rounded-xl border border-[#736D5C]/35 bg-[#261D01]/65 p-3 font-semibold text-[#D6D4CD]">
-                  Nome da aula <span className="font-normal text-[#A6A297]">(tema base e nome do arquivo)</span>
+                <label className="block space-y-1.5 font-medium text-[#D5D8E0]">
+                  Nome da aula <span className="font-normal text-[#8B92A1]">(tema base e nome do arquivo)</span>
                   <input className={fieldClass} value={form.lessonName} onChange={update("lessonName")} />
                 </label>
               </div>
 
               {/* Edit Style */}
-              <div className="space-y-3 rounded-2xl border border-[#736D5C]/35 bg-[#261D01]/55 p-3.5">
-                <span className="flex items-center gap-1.5 border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+              <div className="space-y-3 border-t border-white/[0.07] pt-4">
+                <span className="flex items-center gap-1.5 border-b border-[#383D49]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#8B92A1]">
                   <Palette size={12} /> Edição
                 </span>
-                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                   Estilo / Ritmo
                   <select className={fieldClass} value={form.style} onChange={update("style")}>
                     <option value="subtle">Discreto (Subtle)</option>
@@ -1486,7 +1484,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </select>
                 </label>
 
-                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                   Resolução de saída
                   <select
                     className={fieldClass}
@@ -1504,7 +1502,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </span>
                 </label>
 
-                <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                   Codificação de vídeo
                   <select
                     className={fieldClass}
@@ -1522,7 +1520,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </span>
                 </label>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
                   <input
                     type="checkbox"
                     checked={form.reuseCourseTheme}
@@ -1532,7 +1530,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         reuseCourseTheme: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Manter identidade do curso</strong>
@@ -1544,13 +1542,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
 
               {/* Audio & Captions */}
-              <div className="space-y-3 rounded-2xl border border-[#736D5C]/35 bg-[#261D01]/55 p-3.5">
-                <span className="flex items-center gap-1.5 border-b border-[#736D5C]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#A6A297]">
+              <div className="space-y-3 border-t border-white/[0.07] pt-4">
+                <span className="flex items-center gap-1.5 border-b border-[#383D49]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#8B92A1]">
                   <Subtitles size={12} /> Áudio e legendas
                 </span>
 
-                <div className="space-y-2 rounded-xl border border-[#736D5C]/45 bg-[#1A1301]/70 p-3">
-                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                <div className="space-y-2 rounded-[6px] bg-[#0D0F14] p-3">
+                  <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                     Modelo de transcricao
                     <select
                       className={fieldClass}
@@ -1563,7 +1561,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       ))}
                     </select>
                   </label>
-                  <label className="block space-y-1.5 font-semibold text-[#D6D4CD]">
+                  <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                     Processamento
                     <select
                       className={fieldClass}
@@ -1581,7 +1579,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     const activeDownload = ["queued", "downloading", "verifying"].includes(model.state);
                     const progress = Math.min(100, (model.downloadedBytes / Math.max(1, model.sizeBytes)) * 100);
                     return (
-                      <div className="rounded-lg border border-[#736D5C]/35 bg-[#403106]/30 p-2.5">
+                      <div className="rounded-[6px] bg-[#171A21] p-2.5">
                         <div className="flex items-center justify-between gap-2 text-[10px]">
                           <span className={model.state === "ready" ? "text-emerald-300" : model.state === "error" ? "text-red-300" : "text-amber-200"}>
                             {model.state === "ready" ? "Modelo pronto" : model.state === "error" ? model.error || "Falha no modelo" : `${formatBytes(model.sizeBytes)} · download necessario`}
@@ -1591,30 +1589,30 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               type="button"
                               disabled={speechModelBusy === model.id}
                               onClick={() => void manageSpeechModel(model.id, activeDownload ? "cancel" : "download")}
-                              className="rounded-md border border-[#A6A297]/40 px-2.5 py-1 font-bold uppercase text-[#D6D4CD] disabled:opacity-50"
+                              className="rounded-md border border-[#8B92A1]/40 px-2.5 py-1 font-bold uppercase text-[#D5D8E0] disabled:opacity-50"
                             >
                               {activeDownload ? "Cancelar" : "Baixar"}
                             </button>
                           )}
                         </div>
                         {(activeDownload || model.state === "partial") && (
-                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#A6A297]" style={{ width: `${progress}%` }} /></div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#8B92A1]" style={{ width: `${progress}%` }} /></div>
                         )}
                       </div>
                     );
                   })()}
-                  <label className="flex items-center gap-2 text-[10px] text-[#A6A297]">
+                  <label className="flex items-center gap-2 text-[10px] text-[#8B92A1]">
                     <input
                       type="checkbox"
                       checked={form.transcriptionAllowCloudFallback}
                       onChange={(event) => setForm((current) => ({ ...current, transcriptionAllowCloudFallback: event.target.checked }))}
-                      className="accent-[#A6A297]"
+                      className="accent-[#8B92A1]"
                     />
                     Permitir fallback pela nuvem se o modelo local falhar
                   </label>
                 </div>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
                   <input
                     type="checkbox"
                     checked={form.captionsEnabled}
@@ -1624,7 +1622,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         captionsEnabled: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Incluir legendas no vídeo</strong>
@@ -1635,17 +1633,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </label>
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
-                  <label className="space-y-1.5 font-medium text-[#A6A297]">
+                  <label className="space-y-1.5 font-medium text-[#8B92A1]">
                     Música opcional
                     <input className={fieldClass} value={form.musicPath} onChange={update("musicPath")} />
                   </label>
-                  <label className="space-y-1.5 font-medium text-[#A6A297]">
+                  <label className="space-y-1.5 font-medium text-[#8B92A1]">
                     Volume Música (dB)
                     <input className={fieldClass} value={form.musicDb} onChange={update("musicDb")} />
                   </label>
                 </div>
 
-                <label className="flex items-start gap-2.5 rounded-xl border border-[#736D5C]/45 bg-[#403106]/45 p-3 text-[#D6D4CD] cursor-pointer transition-all hover:border-[#A6A297]/65">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
                   <input
                     type="checkbox"
                     checked={form.sfxEnabled}
@@ -1655,7 +1653,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         sfxEnabled: event.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#736D5C]"
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
                   />
                   <span>
                     <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
@@ -1667,7 +1665,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
                 {form.sfxEnabled && (
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    <label className="space-y-1.5 font-medium text-[#A6A297]">
+                    <label className="space-y-1.5 font-medium text-[#8B92A1]">
                       Estilo de SFX
                       <select
                         className={fieldClass}
@@ -1679,7 +1677,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         <option value="tech">Tech (Moderno)</option>
                       </select>
                     </label>
-                    <label className="space-y-1.5 font-medium text-[#A6A297]">
+                    <label className="space-y-1.5 font-medium text-[#8B92A1]">
                       Volume SFX (dB)
                       <input className={fieldClass} value={form.sfxVolumeDb} onChange={update("sfxVolumeDb")} />
                     </label>
@@ -1688,11 +1686,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
             </div>
 
-            <div className="border-t border-[#736D5C]/35 pt-4">
+            <div className="border-t border-[#383D49]/35 pt-4">
             <button
               disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
               onClick={analyze}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F2] px-4 py-3 text-xs font-bold text-[#1A1301] shadow-lg shadow-[#1A1301]/40 transition-all hover:bg-[#D6D4CD] active:scale-[0.98] disabled:pointer-events-none disabled:border disabled:border-white/10 disabled:bg-white/5 disabled:text-zinc-500"
+              className="flex w-full items-center justify-center gap-2 rounded-[6px] bg-[#7C6CF2] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:pointer-events-none disabled:bg-white/5 disabled:text-zinc-500"
             >
               {busy === "analyze" ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -1701,17 +1699,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               )}
               Analisar áudio e planejar edição
             </button>
-            <p className="mt-2 text-center text-[10px] text-[#A6A297]">Analisa áudio, roteiro e identidade visual antes de gerar a prévia.</p>
+            <p className="mt-2 text-center text-[10px] text-[#8B92A1]">Analisa áudio, roteiro e identidade visual antes de gerar a prévia.</p>
             </div>
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-[#1A1301] lg:order-2 lg:col-span-6 lg:h-full">
+          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-[#0D0F14] lg:order-2 lg:col-span-6 lg:h-full">
             {/* Player Container */}
-            <div className="relative border-b border-[#736D5C]/25 bg-[#1A1301] p-3">
-              <div className="absolute inset-0 bg-[radial-gradient(#353434_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
+            <div className="relative border-b border-white/[0.06] bg-[#0D0F14] p-3">
+              <div className="absolute inset-0 bg-[radial-gradient(#242832_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-              <div className="group relative flex w-full aspect-video max-h-[38vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl border border-[#736D5C]/45 bg-[#261D01] shadow-2xl shadow-black/35">
+              <div className="group relative flex w-full aspect-video max-h-[38vh] shrink-0 flex-col items-center justify-center overflow-hidden rounded-[6px] bg-[#090A0D] shadow-[0_12px_32px_rgba(0,0,0,0.28)] ring-1 ring-white/[0.07]">
                 {videoMediaSrc ? (
                   <video
                     ref={videoRef}
@@ -1733,10 +1731,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     className="w-full h-full object-contain bg-black"
                   />
                 ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center bg-[#261D01]/90 p-6 text-center">
-                    <Video size={28} className="mb-3 text-[#736D5C]" />
-                    <p className="text-xs font-medium text-[#D6D4CD]">Nenhum vídeo carregado</p>
-                    <p className="mt-1 max-w-md text-[11px] text-[#A6A297]">
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-[#101217]/90 p-6 text-center">
+                    <Video size={28} className="mb-3 text-[#383D49]" />
+                    <p className="text-xs font-medium text-[#D5D8E0]">Nenhum vídeo carregado</p>
+                    <p className="mt-1 max-w-md text-[11px] text-[#8B92A1]">
                       Selecione uma fonte para iniciar a análise.
                     </p>
                   </div>
@@ -1788,7 +1786,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {videoMediaSrc && activeMediaAsset === "source" && (
-              <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-[#736D5C]/35 bg-[#201802] px-3 py-2">
+              <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#101217] px-3 py-2">
                 <span className="mr-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400">
                   <Scissors size={13} /> Cortes
                 </span>
@@ -1805,7 +1803,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   onClick={toggleCutAtPlayhead}
                   className={`rounded border px-2.5 py-1 text-[10px] font-semibold ${
                     cutStartTime === null
-                      ? "border-[#A6A297]/40 bg-[#736D5C]/20 text-[#D6D4CD] hover:bg-[#736D5C]/40"
+                      ? "border-[#8B92A1]/40 bg-[#383D49]/20 text-[#D5D8E0] hover:bg-[#383D49]/40"
                       : "border-amber-400/60 bg-amber-950/60 text-amber-200"
                   }`}
                 >
@@ -1828,14 +1826,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             )}
 
             {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} flex shrink-0 flex-col border-t border-[#736D5C]/35 bg-[#261D01]/70`}>
+            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} flex shrink-0 flex-col border-t border-white/[0.07] bg-[#0B0D12]`}>
               {/* Timeline Header Toolbar */}
-              <div className="flex h-9 items-center justify-between border-b border-[#736D5C]/35 bg-[#1A1301]/90 px-3 text-[#A6A297]">
+              <div className="flex h-9 items-center justify-between border-b border-white/[0.06] bg-[#101217] px-3 text-[#8B92A1]">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Timeline</span>
                   <button
                     onClick={addEventAtPlayhead}
-                    className="flex items-center gap-1 rounded border border-[#A6A297]/35 bg-[#736D5C]/25 px-2 py-0.5 text-[10px] font-bold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/45"
+                    className="flex items-center gap-1 rounded border border-[#8B92A1]/35 bg-[#383D49]/25 px-2 py-0.5 text-[10px] font-bold text-[#D5D8E0] transition-all hover:bg-[#383D49]/45"
                     title="Inserir evento no corte"
                   >
                     <Plus size={13} />
@@ -1949,12 +1947,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <div className="relative z-10 flex h-full flex-col gap-2 pointer-events-none">
 
                 {/* Track V1 (Video Clips) */}
-                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
+                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">V1</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {activeMediaAsset === "preview" && (
                       <div
-                        className="absolute flex h-7 items-center truncate rounded border border-[#736D5C]/45 bg-[#403106]/65 px-2 font-mono text-[10px] text-[#D6D4CD]"
+                        className="absolute flex h-7 items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
                         style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
                       >
                         Intro
@@ -1971,7 +1969,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     </div>
                     {activeMediaAsset === "preview" && (
                       <div
-                        className="absolute flex h-7 items-center truncate rounded border border-[#736D5C]/45 bg-[#403106]/65 px-2 font-mono text-[10px] text-[#D6D4CD]"
+                        className="absolute flex h-7 items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
                         style={{
                           left: `${(((analysis?.media.durationSeconds || 0) + 4) / timelineDuration) * 100}%`,
                           width: `${(4 / timelineDuration) * 100}%`,
@@ -1984,8 +1982,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track FX (AI Efficacy Event Clips) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/65 pointer-events-auto">
-                  <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">FX</span>
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto">
+                  <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">FX</span>
                   <div className="flex-1 relative h-full flex items-center">
                     {timelineEvents.length ? (
                       timelineEvents.map((evt) => {
@@ -2010,7 +2008,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               isSelected
                                 ? "bg-emerald-500 text-black border-white shadow-lg shadow-emerald-500/40 z-10"
                                 : enabled
-                                  ? `${kindColorClass[evt.kind] || "bg-[#261D01] border-[#A6A297] text-[#F2F2F2]"} hover:brightness-125`
+                                  ? `${kindColorClass[evt.kind] || "bg-[#101217] border-[#8B92A1] text-[#F4F5F7]"} hover:brightness-125`
                                   : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                             }`}
                             title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
@@ -2029,7 +2027,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Track A1 (Audio Waveform) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
+                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">A1</span>
                   <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                     {waveformBusy && !waveform.length ? (
@@ -2054,18 +2052,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 </div>
                 {musicWaveform.length > 0 && (
-                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/80 pointer-events-auto">
-                    <span className="pl-2 text-[10px] font-mono font-bold text-[#A6A297]">A2</span>
+                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
+                    <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">A2</span>
                     <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
                       {musicWaveform.map((peak, index) => (
                         <div
                           key={index}
-                          className="min-w-px flex-1 rounded-full bg-[#736D5C]"
+                          className="min-w-px flex-1 rounded-full bg-[#383D49]"
                           style={{ height: waveformBarHeight(peak, 82) }}
                         />
                       ))}
                     </div>
-                    <span className="ml-2 text-[8px] text-[#A6A297]">{analysis?.media.musicDb} dB</span>
+                    <span className="ml-2 text-[8px] text-[#8B92A1]">{analysis?.media.musicDb} dB</span>
                   </div>
                 )}
                 </div>
@@ -2073,7 +2071,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
             </div>
             </div>
-            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-[#736D5C]/35 bg-[#261D01]/55 p-3">
+            <div className="min-h-[180px] flex-1 overflow-hidden border-t border-white/[0.07] bg-[#0D0F14] p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
                 onClearLogs={() => setConsoleLogs([])}
@@ -2084,14 +2082,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-[#736D5C]/35 bg-[#261D01]/70 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
-            <div className="rounded-2xl border border-[#736D5C]/40 bg-[#1A1301]/60 p-3">
-              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#D6D4CD]">
-                <Sparkles size={14} className="text-[#A6A297]" />
+          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-[#383D49]/35 bg-[#101217]/70 p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
+            <div className="rounded-2xl border border-[#383D49]/40 bg-[#090A0D]/60 p-3">
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#D5D8E0]">
+                <Sparkles size={14} className="text-[#8B92A1]" />
                 AI Inspector
               </h2>
-              <p className="mt-1 text-[11px] text-[#A6A297]">
-                Decisões: <span className="font-medium text-[#D6D4CD]">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
+              <p className="mt-1 text-[11px] text-[#8B92A1]">
+                Decisões: <span className="font-medium text-[#D5D8E0]">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
                 {analysis?.semantic.model ? ` · ${analysis.semantic.model}` : ""}
               </p>
             </div>
@@ -2099,7 +2097,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3">
               {/* Course Identity Card */}
               {analysis?.courseTheme && (
-              <div className="rounded-xl border border-[#A6A297]/35 bg-[#403106]/45 p-3 text-xs text-[#D6D4CD]">
+              <div className="rounded-xl border border-[#8B92A1]/35 bg-[#171A21]/45 p-3 text-xs text-[#D5D8E0]">
                 <p className="font-bold text-white">
                   Identidade {analysis.courseTheme.reused ? "reutilizada" : "criada"}: {analysis.courseTheme.label}
                 </p>
@@ -2138,7 +2136,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     disabled={!!busy || !analysis?.courseName}
                     onClick={saveCourseStandard}
-                    className="rounded-lg border border-[#A6A297]/40 bg-[#736D5C]/20 px-2 py-1 text-[10px] font-semibold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/35 disabled:opacity-40"
+                    className="rounded-lg border border-[#8B92A1]/40 bg-[#383D49]/20 px-2 py-1 text-[10px] font-semibold text-[#D5D8E0] transition-all hover:bg-[#383D49]/35 disabled:opacity-40"
                   >
                     Salvar padrão do curso
                   </button>
@@ -2274,7 +2272,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   const change = captionReview(index);
                   const enabled = change.enabled !== false;
                   return (
-                    <div key={`caption-${index}`} className="grid gap-1.5 rounded-lg border border-[#736D5C]/35 bg-[#1A1301]/65 p-2 text-[10px]">
+                    <div key={`caption-${index}`} className="grid gap-1.5 rounded-lg border border-[#383D49]/35 bg-[#090A0D]/65 p-2 text-[10px]">
                       <input
                         className={fieldClass}
                         value={change.text ?? caption.text}
@@ -2298,15 +2296,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
       {/* Visão de Processamento em Lote (Batch View) */}
       {activeMode === "batch" && (
-        <div className="space-y-5 rounded-2xl border border-[#736D5C]/50 bg-[#261D01]/85 p-6 backdrop-blur-xl shadow-2xl">
+        <div className="space-y-5 rounded-2xl border border-[#383D49]/50 bg-[#101217]/85 p-6 backdrop-blur-xl shadow-2xl">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#736D5C]/25 border border-[#A6A297]/30 text-[#D6D4CD]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#383D49]/25 border border-[#8B92A1]/30 text-[#D5D8E0]">
                 <ListVideo size={18} />
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Editar curso inteiro em lote</h3>
-                <p className="text-xs text-[#A6A297] font-medium">Pipeline Automatizado de Aulas</p>
+                <p className="text-xs text-[#8B92A1] font-medium">Pipeline Automatizado de Aulas</p>
               </div>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-zinc-400">
@@ -2344,24 +2342,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </select>
           </label>
 
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/55 p-1.5">
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#383D49]/40 bg-[#090A0D]/55 p-1.5">
             <button
               type="button"
               onClick={() => setBatchSource("local")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "local" ? "bg-[#736D5C] text-white" : "text-zinc-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "local" ? "bg-[#383D49] text-white" : "text-zinc-400 hover:bg-white/5"}`}
             >
               Pasta local
             </button>
             <button
               type="button"
               onClick={() => setBatchSource("google-drive")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "google-drive" ? "bg-[#736D5C] text-white" : "text-zinc-400 hover:bg-white/5"}`}
+              className={`rounded-lg px-3 py-2 text-xs font-bold ${batchSource === "google-drive" ? "bg-[#383D49] text-white" : "text-zinc-400 hover:bg-white/5"}`}
             >
               Google Drive
             </button>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/65 p-4">
+          <div className="space-y-2 rounded-xl border border-[#383D49]/40 bg-[#090A0D]/65 p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Pasta selecionada</p>
             <div className="flex items-center justify-between gap-3">
               <p className="truncate font-mono text-xs text-zinc-200">
@@ -2381,7 +2379,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               <button
                 disabled={!!busy || ["queued", "running"].includes(batch?.status || "")}
                 onClick={batchSource === "google-drive" ? discoverDriveBatch : discoverBatch}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#383D49] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-[#090A0D]/30 transition-all hover:bg-[#8B92A1] disabled:opacity-40"
               >
                 {busy === "discover-batch" || busy === "discover-drive-batch" || busy === "drive-picker" || busy === "choose-folder" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -2394,10 +2392,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </div>
 
           {batchSource === "google-drive" && (
-            <div className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#403106]/25 p-3.5">
+            <div className="space-y-2 rounded-xl border border-[#383D49]/40 bg-[#171A21]/25 p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#D6D4CD]">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#D5D8E0]">
                     Pasta de Download e Processamento Local (Disco)
                   </p>
                   <p className="mt-0.5 truncate font-mono text-xs text-zinc-200">
@@ -2408,7 +2406,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   type="button"
                   disabled={!!busy}
                   onClick={chooseDownloadFolder}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#A6A297]/35 bg-[#736D5C]/20 px-3 py-1.5 text-xs font-semibold text-[#D6D4CD] transition-all hover:bg-[#736D5C]/35 disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#8B92A1]/35 bg-[#383D49]/20 px-3 py-1.5 text-xs font-semibold text-[#D5D8E0] transition-all hover:bg-[#383D49]/35 disabled:opacity-40"
                 >
                   <Folder size={14} />
                   Alterar pasta / disco
@@ -2422,10 +2420,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
           {/* Seleção de Vídeos - Pasta Local */}
           {batchSource === "local" && batchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
-            <div className="space-y-4 rounded-xl border border-[#736D5C]/50 bg-[#1A1301]/70 p-4 shadow-xl">
+            <div className="space-y-4 rounded-xl border border-[#383D49]/50 bg-[#090A0D]/70 p-4 shadow-xl">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#D6D4CD]">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#D5D8E0]">
                     <Film size={15} />
                     Seleção de Vídeos para Exportar
                   </div>
@@ -2458,7 +2456,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   placeholder="Filtrar vídeos por nome ou módulo..."
                   value={batchSearchQuery}
                   onChange={(e) => setBatchSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-[#A6A297]"
+                  className="w-full rounded-lg border border-white/10 bg-black/60 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-[#8B92A1]"
                 />
               </div>
 
@@ -2477,7 +2475,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         key={video.sourcePath}
                         className={`flex items-center gap-3 rounded-lg border p-2.5 transition-all cursor-pointer ${
                           isSelected
-                            ? "border-[#A6A297]/40 bg-[#736D5C]/25 text-white"
+                            ? "border-[#8B92A1]/40 bg-[#383D49]/25 text-white"
                             : "border-white/5 bg-black/20 text-zinc-400 hover:border-white/15 hover:bg-white/5"
                         }`}
                       >
@@ -2491,9 +2489,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               setSelectedLocalVideos((prev) => prev.filter((p) => p !== video.relativePath));
                             }
                           }}
-                          className="h-4 w-4 rounded border-white/20 bg-black accent-[#736D5C]"
+                          className="h-4 w-4 rounded border-white/20 bg-black accent-[#383D49]"
                         />
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#736D5C]/25 font-mono text-[10px] font-bold text-[#D6D4CD]">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#383D49]/25 font-mono text-[10px] font-bold text-[#D5D8E0]">
                           {video.index}
                         </span>
                         <div className="min-w-0 flex-1">
@@ -2509,7 +2507,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 type="button"
                 disabled={selectedLocalVideos.length === 0 || busy === "start-batch"}
                 onClick={() => startBatch()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#383D49] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#090A0D]/30 transition-all hover:bg-[#8B92A1] disabled:opacity-40"
               >
                 {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 Iniciar exportação por lote ({selectedLocalVideos.length} vídeos selecionados)
@@ -2521,12 +2519,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           {batchSource === "google-drive" && driveBatchDiscovery && !["queued", "running"].includes(batch?.status || "") && (
             <div
               className={`space-y-4 rounded-xl border p-4 shadow-xl ${
-                driveBatchDiscovery.valid ? "border-[#736D5C]/45 bg-[#1A1301]/65" : "border-red-500/25 bg-red-500/[0.04]"
+                driveBatchDiscovery.valid ? "border-[#383D49]/45 bg-[#090A0D]/65" : "border-red-500/25 bg-red-500/[0.04]"
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#D6D4CD]">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#D5D8E0]">
                     <Film size={15} />
                     Seleção de Aulas do Google Drive
                   </div>
@@ -2535,7 +2533,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       {selectedDriveLessons.length} de {driveBatchDiscovery.lessons.length} aulas selecionadas
                     </span>
                     <span>·</span>
-                    <span className="font-semibold text-[#D6D4CD]">
+                    <span className="font-semibold text-[#D5D8E0]">
                       Tamanho total:{" "}
                       {formatBytes(
                         driveBatchDiscovery.lessons
@@ -2582,7 +2580,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   placeholder="Filtrar por aula ou módulo no Drive..."
                   value={batchSearchQuery}
                   onChange={(e) => setBatchSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/75 pl-8 pr-3 py-1.5 text-xs text-[#D6D4CD] placeholder-[#736D5C] outline-none focus:border-[#A6A297]"
+                  className="w-full rounded-lg border border-[#383D49]/40 bg-[#090A0D]/75 pl-8 pr-3 py-1.5 text-xs text-[#D5D8E0] placeholder-[#383D49] outline-none focus:border-[#8B92A1]"
                 />
               </div>
 
@@ -2604,7 +2602,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   if (filteredLessons.length === 0 && batchSearchQuery.trim()) return null;
 
                   return (
-                    <div key={module.id} className="space-y-2 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/70 p-3">
+                    <div key={module.id} className="space-y-2 rounded-xl border border-[#383D49]/40 bg-[#090A0D]/70 p-3">
                       <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -2620,9 +2618,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                 setSelectedDriveLessons((prev) => prev.filter((id) => !moduleLessonIds.includes(id)));
                               }
                             }}
-                            className="h-4 w-4 rounded border-white/20 bg-black accent-[#736D5C]"
+                            className="h-4 w-4 rounded border-white/20 bg-black accent-[#383D49]"
                           />
-                          <span className="text-xs font-bold text-[#D6D4CD]">
+                          <span className="text-xs font-bold text-[#D5D8E0]">
                             {module.index}. {module.name}
                           </span>
                         </label>
@@ -2639,7 +2637,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               key={lesson.id}
                               className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs transition-all cursor-pointer ${
                                 isSelected
-                                  ? "border-[#A6A297]/40 bg-[#736D5C]/20 text-zinc-100"
+                                  ? "border-[#8B92A1]/40 bg-[#383D49]/20 text-zinc-100"
                                   : "border-white/5 bg-black/30 text-zinc-400 hover:border-white/15 hover:bg-white/5"
                               }`}
                             >
@@ -2654,7 +2652,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                       setSelectedDriveLessons((prev) => prev.filter((id) => id !== lesson.id));
                                     }
                                   }}
-                                  className="h-3.5 w-3.5 rounded border-white/20 bg-black accent-[#736D5C]"
+                                  className="h-3.5 w-3.5 rounded border-white/20 bg-black accent-[#383D49]"
                                 />
                                 <div className="min-w-0">
                                   <p className="font-semibold text-zinc-200 truncate">
@@ -2679,7 +2677,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 type="button"
                 disabled={selectedDriveLessons.length === 0 || !driveBatchDiscovery.valid || busy === "start-batch"}
                 onClick={() => startDriveBatch(driveBatchDiscovery)}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#736D5C] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#1A1301]/30 transition-all hover:bg-[#A6A297] disabled:opacity-40"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#383D49] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#090A0D]/30 transition-all hover:bg-[#8B92A1] disabled:opacity-40"
               >
                 {busy === "start-batch" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 Iniciar exportação por lote do Drive ({selectedDriveLessons.length} aulas selecionadas)
@@ -2688,14 +2686,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           )}
 
           {batch && (
-            <div className="space-y-4 rounded-xl border border-[#736D5C]/40 bg-[#1A1301]/65 p-4">
+            <div className="space-y-4 rounded-xl border border-[#383D49]/40 bg-[#090A0D]/65 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold text-zinc-100">
                     {batch.courseIdentity?.title || batch.courseName} · {batch.completed}/{batch.total} concluídas
                   </p>
                   <p className="text-[11px] text-zinc-400">
-                    Estado: <span className="font-semibold text-[#D6D4CD]">{batch.status}</span>
+                    Estado: <span className="font-semibold text-[#D5D8E0]">{batch.status}</span>
                     {batch.failed > 0 ? ` · ${batch.failed} com falha` : ""}
                   </p>
                   {batch.error && <p className="mt-1 text-[10px] text-red-300">{batch.error}</p>}
@@ -2705,7 +2703,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <button disabled={!!busy} onClick={() => changeBatchState("cancel-batch")} className="rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-xs font-semibold text-red-200 disabled:opacity-40">Cancelar lote</button>
                   )}
                   {batch.status === "cancelled" && (
-                    <button disabled={!!busy} onClick={() => changeBatchState("resume-batch")} className="rounded-xl border border-[#A6A297]/35 bg-[#736D5C]/20 px-3 py-1.5 text-xs font-semibold text-[#D6D4CD] disabled:opacity-40">Retomar lote</button>
+                    <button disabled={!!busy} onClick={() => changeBatchState("resume-batch")} className="rounded-xl border border-[#8B92A1]/35 bg-[#383D49]/20 px-3 py-1.5 text-xs font-semibold text-[#D5D8E0] disabled:opacity-40">Retomar lote</button>
                   )}
                   {batch.failed > 0 && !["queued", "running"].includes(batch.status) && (
                     <button
@@ -2726,7 +2724,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               )}
               <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#736D5C] via-[#A6A297] to-emerald-400 transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-[#383D49] via-[#8B92A1] to-emerald-400 transition-all duration-500"
                   style={{
                     width: `${batch.total ? Math.round(((batch.completed + batch.failed) / batch.total) * 100) : 0}%`,
                   }}
@@ -2787,9 +2785,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       )}
 
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
-      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-[#736D5C]/40 bg-[#261D01]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(26,19,1,0.38)] backdrop-blur-xl">
+      <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-[#383D49]/40 bg-[#101217]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(26,19,1,0.38)] backdrop-blur-xl">
         <div className="flex flex-col">
-          <span className="flex items-center gap-2 text-[11px] font-medium text-[#D6D4CD]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
+          <span className="flex items-center gap-2 text-[11px] font-medium text-[#D5D8E0]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
           {analysis?.artifacts.previewPath ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
               Prévia: {analysis.artifacts.previewPath}
@@ -2803,7 +2801,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis}
             onClick={renderPreview}
-            className="flex items-center gap-2 rounded-lg border border-[#736D5C]/40 bg-[#1A1301]/45 px-3 py-2 text-xs font-medium text-[#D6D4CD] transition-colors hover:bg-[#403106] disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg border border-[#383D49]/40 bg-[#090A0D]/45 px-3 py-2 text-xs font-medium text-[#D5D8E0] transition-colors hover:bg-[#171A21] disabled:opacity-40"
           >
             {busy === "render-preview" ? (
               <Loader2 size={14} className="animate-spin" />
@@ -2816,7 +2814,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           <button
             disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
             onClick={approve}
-            className="flex items-center gap-2 rounded-lg bg-[#F2F2F2] px-4 py-2 text-xs font-semibold text-[#1A1301] transition-colors hover:bg-[#D6D4CD] disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg bg-[#F4F5F7] px-4 py-2 text-xs font-semibold text-[#090A0D] transition-colors hover:bg-[#D5D8E0] disabled:opacity-40"
           >
             <CheckCircle size={15} />
             Preparar para o DaVinci (opcional)
