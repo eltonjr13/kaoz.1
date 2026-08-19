@@ -7,6 +7,7 @@ import ffmpegStaticPath from "ffmpeg-static";
 
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { createAudioWaveformPeaks } from "./audio-waveform";
+import { editedVideoDuration } from "./video-cuts";
 import { lessonDownloadFileName } from "./lesson-download";
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { resolveLocalVideoSource } from "./video-source";
@@ -97,7 +98,9 @@ function mediaDurationSeconds(
   plan: NonNullable<Awaited<ReturnType<typeof readIntelligentEditPlan>>>,
   asset: IntelligentMediaAsset,
 ) {
-  return asset === "preview" ? plan.media.durationSeconds + 8 : plan.media.durationSeconds;
+  return asset === "preview"
+    ? editedVideoDuration(plan.events, plan.media.durationSeconds) + 8
+    : plan.media.durationSeconds;
 }
 
 export async function resolveIntelligentMedia(
