@@ -67,6 +67,8 @@ import { LiveArtifactCanvas } from "@/components/artifacts/LiveArtifactCanvas";
 import type { WarRoomMessage, WarRoomSession, WarRoomArtifactReference } from "@/services/agents";
 import { goalHelpText, parseGoalCommand } from "@/services/goals/goal-command";
 import type { AutonomousGoal } from "@/services/goals/goal.types";
+import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
+import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -978,6 +980,7 @@ export default function FlowDashboardPage() {
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [canvasArtifactId, setCanvasArtifactId] = useState<string | undefined>(undefined);
   const [warRoomModeActive, setWarRoomModeActive] = useState(false);
+  const { registerActionHandler } = useShortcuts();
 
   const allConversationArtifacts = useMemo(() => {
     return chatMessages.flatMap((m) => m.artifacts || []);
@@ -3440,6 +3443,29 @@ export default function FlowDashboardPage() {
     void persistNewConversation(conversation);
   };
 
+  useEffect(() => {
+    const unregisterNew = registerActionHandler("chat.newChat", () => {
+      handleCreateConversation();
+    });
+    const unregisterFocus = registerActionHandler("chat.focusPrompt", () => {
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
+      textarea?.focus();
+    });
+    return () => {
+      unregisterNew();
+      unregisterFocus();
+    };
+  }, [registerActionHandler]);
+
+  useHotkey(["ctrl+n", "meta+n"], () => {
+    handleCreateConversation();
+  }, { allowInInput: true });
+
+  useHotkey(["ctrl+j", "meta+j"], () => {
+    const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
+    textarea?.focus();
+  }, { allowInInput: false });
+
   const handleExportConversation = () => {
     if (!activeConversation) return;
     const messages = sanitizeChatMessages(chatMessages);
@@ -3674,20 +3700,6 @@ export default function FlowDashboardPage() {
                         : "bg-[#9D7CFF]/10 text-[#9D7CFF] hover:bg-[#9D7CFF]/20 border border-[#9D7CFF]/20"
                     }`}
                     title="Abrir Live Artifact Canvas"
-                  >
-                    <Sparkles size={12} />
-                    <span>Canvas ({allConversationArtifacts.length})</span>
-                  </button>
-                )}
-                <div className="w-[1px] h-4 bg-white/10 mx-1" />
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
-                  className="p-2 hover:bg-[#A6A297]/15 hover:text-[#A6A297] rounded-xl transition-all duration-300 text-white/60 cursor-pointer"
-                  title="Nova conversa"
-                >
-                  <MessageSquarePlus size={16} />
-                </button>
-                <div className="w-[1px] h-4 bg-white/10 mx-1.5" />
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

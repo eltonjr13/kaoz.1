@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import { DesktopTitlebar } from "@/components/layout/desktop-titlebar";
+import { ShortcutProvider } from "@/lib/shortcuts/ShortcutContext";
+import { CommandPalette, ShortcutsCheatsheetModal } from "@/components/shortcuts";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -15,20 +17,24 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({
-  children
+  children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={ibmPlexMono.variable} suppressHydrationWarning>
-        <DesktopTitlebar />
-        <div className="flow-cinematic-background" aria-hidden="true">
-          <div className="flow-cinematic-background__art" />
-          <div className="flow-cinematic-background__overlay" />
-          <div className="flow-cinematic-background__grain" />
-        </div>
-        {children}
+        <ShortcutProvider>
+          <DesktopTitlebar />
+          <div className="flow-cinematic-background" aria-hidden="true">
+            <div className="flow-cinematic-background__art" />
+            <div className="flow-cinematic-background__overlay" />
+            <div className="flow-cinematic-background__grain" />
+          </div>
+          {children}
+          <CommandPalette />
+          <ShortcutsCheatsheetModal />
+        </ShortcutProvider>
       </body>
     </html>
   );

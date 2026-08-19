@@ -148,9 +148,12 @@ function CommandPalette({
   );
 }
 
+import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
+
 export function DesktopTitlebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { openCommandPalette, isCommandPaletteOpen, closeCommandPalette } = useShortcuts();
   const [desktop, setDesktop] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [navigation, setNavigation] = useState(INITIAL_NAVIGATION_STATE);
@@ -181,25 +184,20 @@ export function DesktopTitlebar() {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setCommandsOpen((open) => !open);
+        openCommandPalette();
       } else if (event.key === "Escape") {
-        setCommandsOpen(false);
+        closeCommandPalette();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [openCommandPalette, closeCommandPalette]);
 
   if (!desktop) return null;
 
   const bridge = window.kaoz1Desktop;
   if (!bridge) return null;
 
-  const openCommand = (href: string) => {
-    setCommandsOpen(false);
-    setQuery("");
-    router.push(href);
-  };
   const toggleMaximize = () => void bridge.toggleMaximize();
   const context = contextForPath(pathname);
 
@@ -221,8 +219,8 @@ export function DesktopTitlebar() {
         type="button"
         className="kaoz1-desktop-titlebar__command-trigger"
         aria-haspopup="dialog"
-        aria-expanded={commandsOpen}
-        onClick={() => setCommandsOpen(true)}
+        aria-expanded={isCommandPaletteOpen}
+        onClick={openCommandPalette}
       >
         <Search size={12} aria-hidden="true" />
         <span>Pesquisar ou executar…</span>
@@ -233,7 +231,6 @@ export function DesktopTitlebar() {
 
       <UpdateIndicator status={updateStatus} onOpenSettings={() => router.push("/settings")} />
       <WindowControls bridge={bridge} maximized={maximized} onToggleMaximize={toggleMaximize} />
-      <CommandPalette open={commandsOpen} query={query} onQueryChange={setQuery} onClose={() => setCommandsOpen(false)} onOpenCommand={openCommand} />
     </header>
   );
 }
