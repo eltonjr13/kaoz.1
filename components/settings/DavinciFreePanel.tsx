@@ -2327,7 +2327,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={togglePlayPause}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-emerald-400 disabled:opacity-30"
-                    title={isPlaying ? "Pausar (Espaço)" : "Reproduzir (Espaço)"}
+                    title={isPlaying ? "Pausar" : "Reproduzir"}
                   >
                     {isPlaying
                       ? <Pause size={14} className="fill-current text-emerald-400" />
