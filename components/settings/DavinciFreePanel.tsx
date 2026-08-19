@@ -140,6 +140,8 @@ type EditEvent = {
   scale?: number;
   x?: number;
   y?: number;
+  memeTag?: string;
+  soundEffect?: string;
 };
 
 type EditorialReview = {
