@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Cpu, Info, Sparkles, Video, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
+import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
+import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
 
@@ -84,7 +86,7 @@ function SideStatusNotification({ status, variant, Icon, onClose }: StatusOverla
             <p className="text-sm font-bold">{variant.label}</p>
             <p className="mt-1 text-sm leading-relaxed text-white/80">{status.text}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-[6px] p-1 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]" aria-label="Fechar notifica\u00e7\u00e3o">
+          <button type="button" onClick={onClose} className="rounded-[6px] p-1 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]" aria-label="Fechar notificação">
             <X size={18} />
           </button>
         </div>
@@ -95,9 +97,32 @@ function SideStatusNotification({ status, variant, Icon, onClose }: StatusOverla
 
 export function VideoEditorClient() {
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const { registerActionHandler } = useShortcuts();
   const statusVariant = status ? statusVariants[status.type] : null;
   const StatusIcon = statusVariant?.icon;
   const isUrgentStatus = status?.type === "error";
+
+  const toggleVideoPlayback = () => {
+    const video = document.querySelector<HTMLVideoElement>("video");
+    if (!video) return;
+    if (video.paused) {
+      void video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  };
+
+  useEffect(() => {
+    const unregisterPlay = registerActionHandler("video.playPause", toggleVideoPlayback);
+    return () => {
+      unregisterPlay();
+    };
+  }, [registerActionHandler]);
+
+  // Video editor hotkeys
+  useHotkey("space", () => {
+    toggleVideoPlayback();
+  }, { allowInInput: false });
 
   useEffect(() => {
     if (!status || isUrgentStatus) return;

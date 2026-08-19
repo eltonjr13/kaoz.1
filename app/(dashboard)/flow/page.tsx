@@ -3700,6 +3700,20 @@ export default function FlowDashboardPage() {
                         : "bg-[#9D7CFF]/10 text-[#9D7CFF] hover:bg-[#9D7CFF]/20 border border-[#9D7CFF]/20"
                     }`}
                     title="Abrir Live Artifact Canvas"
+                  >
+                    <Sparkles size={12} />
+                    <span>Canvas ({allConversationArtifacts.length})</span>
+                  </button>
+                )}
+                <div className="w-[1px] h-4 bg-white/10 mx-1" />
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCreateConversation(); }} 
+                  className="p-2 hover:bg-[#A6A297]/15 hover:text-[#A6A297] rounded-xl transition-all duration-300 text-white/60 cursor-pointer"
+                  title="Nova conversa (Ctrl+N)"
+                >
+                  <MessageSquarePlus size={16} />
+                </button>
+                <div className="w-[1px] h-4 bg-white/10 mx-1.5" />
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
