@@ -1108,8 +1108,49 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   function eventPlayerTime(event: EditEvent, sourceTime: number) {
     if (activeMediaAsset !== "preview") return sourceTime;
     if (event.kind === "intro") return 0;
-    if (event.kind === "outro") return (analysis?.media.durationSeconds || sourceTime) + 4;
-    return sourceTime + 4;
+    const rawDuration = analysis?.media.durationSeconds || sourceTime;
+    const duration = analysis ? editedVideoDuration(analysis.events, rawDuration) : rawDuration;
+    if (event.kind === "outro") return duration + 4;
+    return (analysis ? editedVideoTime(analysis.events, rawDuration, sourceTime) : sourceTime) + 4;
+  }
+
+  const isScrubbingRef = useRef(false);
+
+  const seekToClientX = useCallback((clientX: number) => {
+    if (!timelineTrackRef.current) return;
+    const rect = timelineTrackRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const clickX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const ratio = clickX / rect.width;
+    const newTime = Math.max(0, Math.min(timelineDuration, ratio * timelineDuration));
+    const roundedTime = Math.round(newTime * 100) / 100;
+    setPlayheadTime(roundedTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = roundedTime;
+    }
+  }, [timelineDuration]);
+
+  function handleTimelineMouseDown(event: React.MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    isScrubbingRef.current = true;
+    seekToClientX(event.clientX);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (isScrubbingRef.current) {
+        seekToClientX(moveEvent.clientX);
+      }
+    };
+    const onMouseUp = () => {
+      isScrubbingRef.current = false;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  function handleTimelineClick(event: React.MouseEvent<HTMLDivElement>) {
+    seekToClientX(event.clientX);
   }
 
   function handleSelectEvent(eventId: string, time: number) {
@@ -1124,17 +1165,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  function handleTimelineClick(event: React.MouseEvent<HTMLDivElement>) {
-    if (!timelineTrackRef.current) return;
-    const rect = timelineTrackRef.current.getBoundingClientRect();
-    const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    const ratio = clickX / rect.width;
-    const newTime = Math.round(ratio * timelineDuration * 10) / 10;
-    setPlayheadTime(newTime);
-    if (videoRef.current) {
-      videoRef.current.currentTime = newTime;
-    }
-  }
+  useEffect(() => {
+    if (!isPlaying) return;
+    let frameId: number;
+    const tick = () => {
+      if (videoRef.current && !isScrubbingRef.current) {
+        setPlayheadTime(videoRef.current.currentTime);
+      }
+      frameId = requestAnimationFrame(tick);
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying]);
 
   function addEventAtPlayhead() {
     if (!analysis) return;
@@ -1216,11 +1258,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       ));
       if (cut) {
         player.currentTime = Math.min(player.duration, cut.start + cut.duration);
-        setPlayheadTime(player.currentTime);
+        if (!isScrubbingRef.current) setPlayheadTime(player.currentTime);
         return;
       }
     }
-    setPlayheadTime(player.currentTime);
+    if (!isScrubbingRef.current) {
+      setPlayheadTime(player.currentTime);
+    }
   }
 
   function togglePlayPause() {
