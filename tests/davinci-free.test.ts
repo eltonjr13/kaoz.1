@@ -27,8 +27,12 @@ import {
 import { parseMediaByteRange } from "../services/davinci-free/media-range.ts";
 import { createAudioWaveformPeaks } from "../services/davinci-free/audio-waveform.ts";
 import {
+  detectSilenceRanges,
   editedVideoDuration,
   editedVideoTime,
+  findActiveClipAtTime,
+  nextPlayheadAfterCuts,
+  videoActiveClips,
   videoCutRanges,
   videoCutSelectExpression,
 } from "../services/davinci-free/video-cuts.ts";
