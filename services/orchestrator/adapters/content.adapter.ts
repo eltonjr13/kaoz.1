@@ -12,6 +12,7 @@ import {
 } from "../../davinci-free/davinci-free.service";
 import {
   analyzeIntelligentEdit,
+  clearVideoEditorCache,
   readIntelligentEditPlan,
 } from "../../davinci-free/intelligent-edit.service";
 import {
@@ -90,6 +91,9 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:resume-batch": async (args) => ({
     output: await resumeCourseBatch(args),
+  }),
+  "davinci-free:clear-cache": async (args) => ({
+    output: await clearVideoEditorCache(args),
   }),
   "content:start-video-pipeline": async (args) => {
     const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";

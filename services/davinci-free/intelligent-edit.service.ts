@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -1471,4 +1471,36 @@ export async function readIntelligentEditPlan(planId?: string) {
   if (!plan) return null;
   const { applyEditorialReview, readEditorialReview } = await import("./intelligent-edit.review");
   return applyEditorialReview(plan, await readEditorialReview(plan));
+}
+
+export async function clearVideoEditorCache(_input?: Record<string, unknown>) {
+  const baseDir = path.join(getLocalDataDir(), "davinci-resolve-free");
+  const root = path.join(baseDir, "intelligent");
+  const latestPath = path.join(root, "latest-analysis.json");
+  const analysisStatusPath = path.join(root, "analysis-status.json");
+  const renderStatusPath = path.join(root, "render-status.json");
+  const pendingPath = path.join(baseDir, "pending-plan.json");
+  const sourceWaveformsDir = path.join(baseDir, "source-waveforms");
+  const webUploadsDir = path.join(baseDir, "web-uploads");
+
+  await Promise.allSettled([
+    unlink(latestPath),
+    unlink(analysisStatusPath),
+    unlink(renderStatusPath),
+    unlink(pendingPath),
+    rm(sourceWaveformsDir, { recursive: true, force: true }),
+    rm(webUploadsDir, { recursive: true, force: true }),
+  ]);
+
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  await Promise.allSettled(
+    entries
+      .filter((entry) => entry.isDirectory() && /^[a-f0-9]{16}$/.test(entry.name))
+      .map((entry) => rm(path.join(root, entry.name), { recursive: true, force: true })),
+  );
+
+  return {
+    cleared: true,
+    message: "Cache do editor de vídeo limpo com sucesso.",
+  };
 }

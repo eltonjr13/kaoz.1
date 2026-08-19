@@ -33,6 +33,7 @@ const TOOL_BY_ACTION = {
   "retry-batch": "davinci-free:retry-batch",
   "cancel-batch": "davinci-free:cancel-batch",
   "resume-batch": "davinci-free:resume-batch",
+  "clear-cache": "davinci-free:clear-cache",
 } as const;
 
 type Action = keyof typeof TOOL_BY_ACTION;
