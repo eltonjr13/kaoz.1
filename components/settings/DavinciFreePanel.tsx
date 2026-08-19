@@ -3560,6 +3560,150 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </div>
       )}
 
+      {/* Auto-Cut Silences Modal */}
+      {showSilenceModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="silence-modal-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowSilenceModal(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-[8px] border border-white/10 bg-[#13161C] p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-[6px] bg-emerald-500/15 text-emerald-400">
+                  <WandSparkles size={18} />
+                </span>
+                <div>
+                  <h2 id="silence-modal-title" className="text-sm font-bold text-white">
+                    Auto-Corte Inteligente de Silêncios
+                  </h2>
+                  <p className="text-[11px] text-[#8B92A1]">
+                    Identifica pausas longas no waveform para fatiar e remover silêncios instantaneamente.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSilenceModal(false)}
+                className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Silence Summary Card */}
+            <div className="rounded-[6px] border border-emerald-500/30 bg-emerald-950/30 p-3 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-emerald-200 block">
+                  {detectedSilences.length} pausa(s) detectada(s)
+                </span>
+                <span className="text-[10px] text-emerald-300/80">
+                  Economia de tempo estimada: {totalSilenceSeconds.toFixed(1)}s ({clock(totalSilenceSeconds)})
+                </span>
+              </div>
+              <span className="rounded bg-emerald-500/20 px-2 py-1 font-mono text-[11px] font-bold text-emerald-300">
+                -{( (totalSilenceSeconds / (timelineDuration || 1)) * 100 ).toFixed(1)}% do vídeo
+              </span>
+            </div>
+
+            {/* Adjustments */}
+            <div className="space-y-3 rounded-[6px] border border-white/5 bg-[#0D0F14] p-3 text-xs">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">
+                Ajustes do Detector
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="space-y-1 block">
+                  <span className="text-[10px] text-zinc-300 font-medium">Sensibilidade (Volume)</span>
+                  <select
+                    className={fieldClass}
+                    value={silenceThreshold}
+                    onChange={(e) => setSilenceThreshold(Number(e.target.value))}
+                  >
+                    <option value={0.02}>Alta (-42 dB)</option>
+                    <option value={0.045}>Normal (-35 dB)</option>
+                    <option value={0.08}>Baixa (-28 dB)</option>
+                  </select>
+                </label>
+
+                <label className="space-y-1 block">
+                  <span className="text-[10px] text-zinc-300 font-medium">Duração Mínima</span>
+                  <select
+                    className={fieldClass}
+                    value={silenceMinDuration}
+                    onChange={(e) => setSilenceMinDuration(Number(e.target.value))}
+                  >
+                    <option value={0.25}>0.25s (Jump Cuts rápidos)</option>
+                    <option value={0.4}>0.4s (Pausas naturais)</option>
+                    <option value={0.8}>0.8s (Apenas pausas longas)</option>
+                    <option value={1.5}>1.5s (Silêncios estendidos)</option>
+                  </select>
+                </label>
+
+                <label className="space-y-1 block">
+                  <span className="text-[10px] text-zinc-300 font-medium">Margem / Padding</span>
+                  <select
+                    className={fieldClass}
+                    value={silencePadding}
+                    onChange={(e) => setSilencePadding(Number(e.target.value))}
+                  >
+                    <option value={0.04}>0.04s (Corte seco)</option>
+                    <option value={0.08}>0.08s (Natural)</option>
+                    <option value={0.15}>0.15s (Suave)</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {/* List of preview silences */}
+            <div className="max-h-36 overflow-y-auto space-y-1 rounded-[6px] border border-white/5 bg-[#090A0D] p-2 text-[10px] font-mono scrollbar-thin scrollbar-thumb-zinc-700">
+              {detectedSilences.length === 0 ? (
+                <p className="text-center text-zinc-500 py-3 italic">Nenhuma pausa detectada com os parâmetros atuais.</p>
+              ) : (
+                detectedSilences.map((silence, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between rounded px-2 py-1 bg-white/[0.02] hover:bg-white/[0.05]"
+                  >
+                    <span className="text-zinc-300">Pausa {idx + 1}</span>
+                    <span className="text-zinc-400">
+                      {clock(silence.start)} &rarr; {clock(silence.end)}
+                    </span>
+                    <span className="text-emerald-400 font-bold">
+                      {(silence.end - silence.start).toFixed(2)}s
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => setShowSilenceModal(false)}
+                className="rounded-[6px] border border-white/10 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={detectedSilences.length === 0}
+                onClick={() => applyAutoCutSilences(detectedSilences)}
+                className="flex items-center gap-1.5 rounded-[6px] bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+              >
+                <Check size={14} />
+                Aplicar Auto-Corte ({detectedSilences.length} trechos)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
       <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-white/[0.08] bg-[#101217]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(0,0,0,0.32)] backdrop-blur-xl">
         <div className="flex flex-col">
