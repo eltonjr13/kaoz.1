@@ -1440,9 +1440,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [playheadTime, timelineDuration]);
 
   const changePlaybackSpeed = useCallback((direction: number) => {
-    const speeds = [0.5, 1, 1.25, 1.5, 2];
+    const speeds = [0.5, 1, 1.5, 2];
     const currentIndex = speeds.indexOf(playbackSpeed);
-    const nextIndex = Math.max(0, Math.min(speeds.length - 1, (currentIndex === -1 ? 1 : currentIndex) + direction));
+    const baseIndex = currentIndex === -1 ? 1 : currentIndex;
+    const nextIndex = (baseIndex + direction + speeds.length) % speeds.length;
     const nextSpeed = speeds[nextIndex];
     setPlaybackSpeed(nextSpeed);
     if (videoRef.current) {
