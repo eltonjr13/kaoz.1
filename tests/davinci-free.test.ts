@@ -294,6 +294,40 @@ test("cortes manuais unem intervalos e recalculam duração e tempo editado", ()
   assert.equal(editedVideoDuration([...events], 10), 5.5);
   assert.equal(editedVideoTime([...events], 10, 8), 3.5);
   assert.equal(videoCutSelectExpression([...events], 10), "not(between(t,0.000,4.500))");
+  // Total preview duration is edited duration + 8s (4s intro + 4s outro)
+  const previewDuration = editedVideoDuration([...events], 10) + 8;
+  assert.equal(previewDuration, 13.5);
+  // Event at 8s in source time occurs at 3.5s in edited body + 4s intro = 7.5s in preview video
+  assert.equal(editedVideoTime([...events], 10, 8) + 4, 7.5);
+});
+
+test("régua da timeline evita sobreposição de marcas quando o último segundo está próximo do passo", () => {
+  function generateRulerTicks(duration: number, scale = 1) {
+    const ticks: number[] = [];
+    const visibleDuration = duration / scale;
+    const step = visibleDuration > 300 ? 60 : visibleDuration > 120 ? 30 : visibleDuration > 60 ? 15 : 5;
+    for (let i = 0; i <= duration; i += step) {
+      ticks.push(i);
+    }
+    const lastWholeSecond = Math.floor(duration);
+    if (ticks.length > 0) {
+      const lastTick = ticks[ticks.length - 1];
+      if (lastWholeSecond - lastTick >= step * 0.6) {
+        ticks.push(lastWholeSecond);
+      }
+    } else {
+      ticks.push(0);
+    }
+    return ticks;
+  }
+
+  // Duration 47.4s with step 5 should NOT include 47 directly next to 45 (which caused 0:450:47 collision)
+  const ticks47 = generateRulerTicks(47.4);
+  assert.deepEqual(ticks47, [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]);
+
+  // Duration 48.5s (48 - 45 = 3 >= 5 * 0.6 = 3) safely includes 48
+  const ticks48 = generateRulerTicks(48.5);
+  assert.deepEqual(ticks48, [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 48]);
 });
 
 test("ancora visual usa coordenadas locais e mantem o apresentador longe dos cantos", () => {
