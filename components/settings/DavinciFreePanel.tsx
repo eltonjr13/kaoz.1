@@ -60,6 +60,7 @@ import {
   type VideoActiveClip,
   type VideoCutRange,
 } from "@/services/davinci-free/video-cuts";
+import type { IntelligentSoundEffect } from "@/services/davinci-free/intelligent-edit.types";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -141,7 +142,7 @@ type EditEvent = {
   x?: number;
   y?: number;
   memeTag?: string;
-  soundEffect?: string;
+  soundEffect?: IntelligentSoundEffect;
 };
 
 type EditorialReview = {
