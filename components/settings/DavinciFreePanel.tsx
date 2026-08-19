@@ -60,7 +60,10 @@ import {
   type VideoActiveClip,
   type VideoCutRange,
 } from "@/services/davinci-free/video-cuts";
-import type { IntelligentSoundEffect } from "@/services/davinci-free/intelligent-edit.types";
+import type {
+  IntelligentEditEvent,
+  IntelligentSoundEffect,
+} from "@/services/davinci-free/intelligent-edit.types";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -119,31 +122,7 @@ function mergeProgressStatus(current: Status | null, progress: ProgressStatus): 
   return { ...(current ?? EMPTY_STATUS), ...progress };
 }
 
-type EditEvent = {
-  id: string;
-  kind:
-    | "intro"
-    | "outro"
-    | "lower-third"
-    | "impact-text"
-    | "zoom"
-    | "cut"
-    | "remove"
-    | "cursor"
-    | "transition"
-    | "sound-effect"
-    | "meme-sfx";
-  start: number;
-  duration: number;
-  label: string;
-  subtitle?: string;
-  reason: string;
-  scale?: number;
-  x?: number;
-  y?: number;
-  memeTag?: string;
-  soundEffect?: IntelligentSoundEffect;
-};
+type EditEvent = IntelligentEditEvent;
 
 type EditorialReview = {
   captionsEnabled?: boolean;
@@ -2071,6 +2050,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     preload="metadata"
                     playsInline
                     onTimeUpdate={handleVideoTimeUpdate}
+                    onSeeking={(event) => {
+                      if (!isScrubbingRef.current) setPlayheadTime(event.currentTarget.currentTime);
+                    }}
+                    onSeeked={(event) => {
+                      if (!isScrubbingRef.current) setPlayheadTime(event.currentTarget.currentTime);
+                    }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     onLoadedMetadata={(event) => {
