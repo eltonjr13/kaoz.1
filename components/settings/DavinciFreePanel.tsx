@@ -1963,8 +1963,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               {/* Tracks Area */}
               <div className="flex-1 overflow-x-auto overflow-y-hidden">
                 <div
+                  onMouseDown={handleTimelineMouseDown}
                   onClick={handleTimelineClick}
-                  className="h-full min-w-full flex flex-col cursor-crosshair"
+                  className="h-full min-w-full flex flex-col cursor-crosshair select-none"
                   style={{ width: `${100 * timelineScale}%` }}
                 >
                   <div className="grid h-6 shrink-0 grid-cols-[40px_minmax(0,1fr)] items-end border-b border-white/5 px-3">
@@ -1997,7 +1998,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     >
                       <div
                         className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#7C6CF2] shadow-[0_0_10px_rgba(124,108,242,0.9)] transition-all duration-75"
-                        style={{ left: `${Math.min(100, (playheadTime / timelineDuration) * 100)}%` }}
+                        style={{ left: `${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%` }}
                       >
                         <div className="absolute -top-1 h-2.5 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)]" />
                       </div>
@@ -2008,33 +2009,43 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Track V1 (Video Clips) */}
                 <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">V1</span>
-                  <div className="flex-1 relative h-full flex items-center">
-                    {activeMediaAsset === "preview" && (
+                  <div className="relative h-full flex-1 overflow-hidden">
+                    {activeMediaAsset === "preview" ? (
+                      <>
+                        <div
+                          className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
+                          style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
+                        >
+                          Intro
+                        </div>
+                        <div
+                          className="kaoz-signal-clip absolute top-1 bottom-1 flex items-center truncate px-2 font-mono text-[10px] font-bold"
+                          style={{
+                            left: `${(4 / timelineDuration) * 100}%`,
+                            width: `${((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) / timelineDuration) * 100}%`,
+                          }}
+                        >
+                          A-Roll ({form.lessonName || form.moduleName || "Ativo"})
+                        </div>
+                        <div
+                          className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
+                          style={{
+                            left: `${(((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) + 4) / timelineDuration) * 100}%`,
+                            width: `${(4 / timelineDuration) * 100}%`,
+                          }}
+                        >
+                          Outro
+                        </div>
+                      </>
+                    ) : (
                       <div
-                        className="absolute flex h-7 items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
-                        style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
-                      >
-                        Intro
-                      </div>
-                    )}
-                    <div
-                      className="kaoz-signal-clip absolute flex h-7 items-center truncate px-2 font-mono text-[10px] font-bold"
-                      style={{
-                        left: `${activeMediaAsset === "preview" ? (4 / timelineDuration) * 100 : 0}%`,
-                        width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
-                      }}
-                    >
-                      A-Roll ({form.lessonName || form.moduleName || "Ativo"})
-                    </div>
-                    {activeMediaAsset === "preview" && (
-                      <div
-                        className="absolute flex h-7 items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
+                        className="kaoz-signal-clip absolute top-1 bottom-1 flex items-center truncate px-2 font-mono text-[10px] font-bold"
                         style={{
-                          left: `${(((analysis?.media.durationSeconds || 0) + 4) / timelineDuration) * 100}%`,
-                          width: `${(4 / timelineDuration) * 100}%`,
+                          left: 0,
+                          width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
                         }}
                       >
-                        Outro
+                        A-Roll ({form.lessonName || form.moduleName || "Ativo"})
                       </div>
                     )}
                   </div>
@@ -2043,7 +2054,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Track FX (AI Efficacy Event Clips) */}
                 <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">FX</span>
-                  <div className="flex-1 relative h-full flex items-center">
+                  <div className="relative h-full flex-1 overflow-hidden">
                     {timelineEvents.length ? (
                       timelineEvents.map((evt) => {
                         const change = eventReview(evt);
@@ -2052,7 +2063,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         const evtDuration = change.duration ?? evt.duration;
                         const playerEventStart = eventPlayerTime(evt, evtStart);
                         const leftPct = (playerEventStart / timelineDuration) * 100;
-                        const widthPct = Math.max(1.5, (evtDuration / timelineDuration) * 100);
+                        const widthPct = Math.max(1.5, Math.min(100 - leftPct, (evtDuration / timelineDuration) * 100));
                         const isSelected = selectedEventId === evt.id;
 
                         return (
@@ -2063,7 +2074,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                               handleSelectEvent(evt.id, playerEventStart);
                             }}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            className={`absolute h-6 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
+                            className={`absolute top-1 bottom-1 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
                               isSelected
                                 ? "kaoz-signal-clip z-10"
                                 : enabled
@@ -2088,41 +2099,102 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Track A1 (Audio Waveform) */}
                 <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
                   <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">A1</span>
-                  <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
+                  <div className="relative flex-1 h-full flex items-center overflow-hidden">
                     {waveformBusy && !waveform.length ? (
-                      <span className="flex items-center gap-1 text-[9px] text-zinc-500">
+                      <span className="flex items-center gap-1 pl-2 text-[9px] text-zinc-500">
                         <Loader2 size={10} className="animate-spin" />
                         Lendo áudio
                       </span>
-                    ) : waveform.length ? waveform.map((peak, index) => {
-                      const pointTime = (index / waveform.length) * timelineDuration;
-                      return (
-                        <div
-                          key={index}
-                          className={`min-w-px flex-1 rounded-full ${
-                            pointTime <= playheadTime ? "bg-emerald-300" : "bg-emerald-700"
-                          }`}
-                          style={{ height: waveformBarHeight(peak, 92) }}
-                        />
-                      );
-                    }) : (
-                      <span className="text-[9px] italic text-zinc-600">Faixa de áudio indisponível</span>
+                    ) : waveform.length ? (
+                      <div className="relative w-full h-full flex items-center">
+                        <svg
+                          className="w-full h-full block pointer-events-none"
+                          viewBox={`0 0 ${waveform.length} 100`}
+                          preserveAspectRatio="none"
+                        >
+                          <defs>
+                            <clipPath id="waveform-played-clip">
+                              <rect
+                                x="0"
+                                y="0"
+                                width={`${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%`}
+                                height="100"
+                              />
+                            </clipPath>
+                          </defs>
+                          {/* Unplayed Background Waveform */}
+                          <g fill="#047857">
+                            {waveform.map((peak, index) => {
+                              const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
+                              const y = (100 - barHeight) / 2;
+                              return (
+                                <rect
+                                  key={index}
+                                  x={index + 0.1}
+                                  y={y}
+                                  width={0.8}
+                                  height={barHeight}
+                                  rx={0.3}
+                                />
+                              );
+                            })}
+                          </g>
+                          {/* Played Highlighted Waveform */}
+                          <g fill="#6ee7b7" clipPath="url(#waveform-played-clip)">
+                            {waveform.map((peak, index) => {
+                              const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
+                              const y = (100 - barHeight) / 2;
+                              return (
+                                <rect
+                                  key={index}
+                                  x={index + 0.1}
+                                  y={y}
+                                  width={0.8}
+                                  height={barHeight}
+                                  rx={0.3}
+                                />
+                              );
+                            })}
+                          </g>
+                        </svg>
+                      </div>
+                    ) : (
+                      <span className="pl-2 text-[9px] italic text-zinc-600">Faixa de áudio indisponível</span>
                     )}
                   </div>
                 </div>
+
+                {/* Track A2 (Music Waveform) */}
                 {musicWaveform.length > 0 && (
-                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)_auto] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
+                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
                     <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">A2</span>
-                    <div className="flex-1 h-full flex items-center gap-px px-2 overflow-hidden">
-                      {musicWaveform.map((peak, index) => (
-                        <div
-                          key={index}
-                          className="min-w-px flex-1 rounded-full bg-[#383D49]"
-                          style={{ height: waveformBarHeight(peak, 82) }}
-                        />
-                      ))}
+                    <div className="relative flex-1 h-full flex items-center overflow-hidden">
+                      <svg
+                        className="w-full h-full block pointer-events-none"
+                        viewBox={`0 0 ${musicWaveform.length} 100`}
+                        preserveAspectRatio="none"
+                      >
+                        <g fill="#475569">
+                          {musicWaveform.map((peak, index) => {
+                            const barHeight = peak <= 0 ? 3 : Math.max(6, peak * 82);
+                            const y = (100 - barHeight) / 2;
+                            return (
+                              <rect
+                                key={index}
+                                x={index + 0.1}
+                                y={y}
+                                width={0.8}
+                                height={barHeight}
+                                rx={0.3}
+                              />
+                            );
+                          })}
+                        </g>
+                      </svg>
+                      <span className="absolute right-2 text-[8px] font-mono text-[#8B92A1] bg-[#13161C]/80 px-1 py-0.5 rounded border border-white/5">
+                        {analysis?.media.musicDb} dB
+                      </span>
                     </div>
-                    <span className="ml-2 text-[8px] text-[#8B92A1]">{analysis?.media.musicDb} dB</span>
                   </div>
                 )}
                 </div>
