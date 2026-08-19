@@ -315,6 +315,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [liveCutPreview, setLiveCutPreview] = useState<boolean>(true);
   const [showSilenceModal, setShowSilenceModal] = useState<boolean>(false);
+  const [showClearCacheModal, setShowClearCacheModal] = useState<boolean>(false);
+  const initialAnalysisLoadedRef = useRef<boolean>(false);
   const [silenceThreshold, setSilenceThreshold] = useState<number>(0.045);
   const [silenceMinDuration, setSilenceMinDuration] = useState<number>(0.4);
   const [silencePadding, setSilencePadding] = useState<number>(0.08);
@@ -443,7 +445,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [busy, refreshProgress, status?.analysisStatus?.status]);
 
   useEffect(() => {
+    if (initialAnalysisLoadedRef.current) return;
     if (status?.analysisStatus?.status !== "completed" || analysis) return;
+    initialAnalysisLoadedRef.current = true;
     fetch("/api/davinci-free?analysis=1", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => {
@@ -639,17 +643,95 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setForm((current) => ({
       ...current,
       sourcePath,
-      lessonName: current.lessonName || inferredLessonName,
+      lessonName: inferredLessonName || current.lessonName,
     }));
     setAnalysis(null);
     setReview({ events: [], captions: [] });
     setPendingSourceCuts([]);
     setCutStartTime(null);
+    setInPoint(null);
+    setOutPoint(null);
+    setSelectedClipId(null);
+    setSelectedEventId(null);
     setPlayerDuration(0);
     setPlayheadTime(0);
+    setPlayerError(null);
+    setWaveform([]);
+    setMusicWaveform([]);
     setPreviewStale(false);
+    setStatus((current) => current ? { ...current, analysisStatus: null, renderStatus: null } : current);
     addLog("info", "Vídeo selecionado:", sourcePath);
     onStatusMessage({ text: `Vídeo selecionado: ${sourcePath}`, type: "info" });
+  }
+
+  async function clearEditorCache() {
+    setBusy("clear-cache");
+    try {
+      addLog("info", "Limpando cache do editor de vídeo e redefinindo workspace...");
+      await action("clear-cache", {});
+
+      setAnalysis(null);
+      setReview({ events: [], captions: [] });
+      setPendingSourceCuts([]);
+      setCutStartTime(null);
+      setInPoint(null);
+      setOutPoint(null);
+      setSelectedEventId(null);
+      setSelectedClipId(null);
+      setPlayheadTime(0);
+      setPlayerDuration(0);
+      setPlayerError(null);
+      setWaveform([]);
+      setMusicWaveform([]);
+      setWaveformBusy(false);
+      setPreviewStale(false);
+      setDriveSourceOrigin(null);
+
+      setForm((current) => ({
+        ...current,
+        sourcePath: "",
+        courseName: "",
+        moduleName: "Módulo 1",
+        lessonNumber: "1",
+        lessonName: "",
+        musicPath: "",
+      }));
+
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = "";
+      }
+      if (videoFileInputRef.current) {
+        videoFileInputRef.current.value = "";
+      }
+
+      setStatus((current) => current ? {
+        ...current,
+        analysisStatus: null,
+        renderStatus: null,
+        pendingPlan: null,
+        latestResult: null,
+      } : current);
+
+      addLog(
+        "success",
+        "Cache do editor de vídeo limpo com sucesso!",
+        "Prévias temporárias, waveforms e planos anteriores foram resetados.",
+      );
+      onStatusMessage({
+        text: "Cache do editor limpo com sucesso. Pronto para iniciar um novo vídeo.",
+        type: "success",
+      });
+    } catch (error) {
+      addLog("error", "Erro ao limpar o cache do editor.", caughtMessage(error));
+      onStatusMessage({
+        text: `Erro ao limpar cache: ${caughtMessage(error)}`,
+        type: "error",
+      });
+    } finally {
+      setBusy(null);
+      setShowClearCacheModal(false);
+    }
   }
 
   async function chooseSingleVideo() {
@@ -1661,6 +1743,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </span>
 
           <button
+            type="button"
+            onClick={() => setShowClearCacheModal(true)}
+            disabled={busy === "clear-cache"}
+            className="flex items-center gap-1.5 rounded-[6px] border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200 disabled:opacity-50"
+            title="Limpar cache do editor e iniciar novo vídeo"
+          >
+            {busy === "clear-cache" ? (
+              <Loader2 size={13} className="animate-spin text-red-400" />
+            ) : (
+              <RotateCcw size={13} className="text-red-400" />
+            )}
+            <span>Limpar Cache</span>
+          </button>
+
+          <button
             onClick={() => refresh()}
             className="flex items-center justify-center rounded-[6px] p-1.5 text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]"
             title="Atualizar"
@@ -1730,9 +1827,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-3 text-xs">
               {/* Video Metadata */}
               <div className="space-y-2">
-                <span className="block border-b border-[#383D49]/30 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#8B92A1]">
-                  Contexto da aula
-                </span>
+                <div className="flex items-center justify-between border-b border-[#383D49]/30 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#8B92A1]">
+                    Contexto da aula
+                  </span>
+                  {(form.sourcePath || analysis) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearCacheModal(true)}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-red-400 transition-colors hover:text-red-300"
+                      title="Limpar vídeo atual e iniciar novo"
+                    >
+                      <RotateCcw size={11} />
+                      Limpar / Novo Vídeo
+                    </button>
+                  )}
+                </div>
                 <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                   Vídeo da aula
                   <div className="flex items-center gap-2">
@@ -3685,6 +3795,59 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               >
                 <Check size={14} />
                 Aplicar Auto-Corte ({detectedSilences.length} trechos)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Cache Confirmation Modal */}
+      {showClearCacheModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clear-cache-modal-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && busy !== "clear-cache") setShowClearCacheModal(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-[8px] border border-white/10 bg-[#13161C] p-5 shadow-2xl space-y-4 text-[#F4F5F7]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-red-500/15 text-red-400">
+                <RotateCcw size={20} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 id="clear-cache-modal-title" className="text-sm font-bold text-white">
+                  Limpar Cache e Iniciar Novo Vídeo?
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-[#8B92A1]">
+                  Esta ação limpa o estado de análise, waveforms, prévias temporárias, marcações e cortes do vídeo anterior para que você comece com o editor totalmente livre de interferências.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
+              <button
+                type="button"
+                disabled={busy === "clear-cache"}
+                onClick={() => setShowClearCacheModal(false)}
+                className="rounded-[6px] border border-white/10 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/5 disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={busy === "clear-cache"}
+                onClick={() => void clearEditorCache()}
+                className="flex items-center gap-1.5 rounded-[6px] bg-red-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-red-500 disabled:opacity-40"
+              >
+                {busy === "clear-cache" ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                Limpar e Redefinir
               </button>
             </div>
           </div>
