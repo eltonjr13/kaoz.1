@@ -6,7 +6,7 @@ import {
   normalizeKeyCombo,
   eventToKeyCombo,
   isEditableElement,
-} from "../lib/shortcuts/shortcut-definitions";
+} from "../lib/shortcuts/shortcut-definitions.ts";
 
 test("shortcut definitions are correctly configured and unique", () => {
   const ids = new Set<string>();
@@ -99,14 +99,12 @@ test("eventToKeyCombo parses synthetic KeyboardEvents accurately", () => {
 });
 
 test("isEditableElement detects text input elements vs non-input elements", () => {
-  // Mock element structure
   const inputEl = {
     tagName: "INPUT",
     type: "text",
     isContentEditable: false,
     getAttribute: () => null,
   };
-  Object.setPrototypeOf(inputEl, HTMLElement.prototype);
   assert.equal(isEditableElement(inputEl as unknown as EventTarget), true);
 
   const textareaEl = {
@@ -114,7 +112,6 @@ test("isEditableElement detects text input elements vs non-input elements", () =
     isContentEditable: false,
     getAttribute: () => null,
   };
-  Object.setPrototypeOf(textareaEl, HTMLElement.prototype);
   assert.equal(isEditableElement(textareaEl as unknown as EventTarget), true);
 
   const checkboxEl = {
@@ -123,7 +120,6 @@ test("isEditableElement detects text input elements vs non-input elements", () =
     isContentEditable: false,
     getAttribute: () => null,
   };
-  Object.setPrototypeOf(checkboxEl, HTMLElement.prototype);
   assert.equal(isEditableElement(checkboxEl as unknown as EventTarget), false);
 
   const buttonEl = {
@@ -131,7 +127,6 @@ test("isEditableElement detects text input elements vs non-input elements", () =
     isContentEditable: false,
     getAttribute: () => null,
   };
-  Object.setPrototypeOf(buttonEl, HTMLElement.prototype);
   assert.equal(isEditableElement(buttonEl as unknown as EventTarget), false);
 
   const contentEditableDiv = {
@@ -139,6 +134,5 @@ test("isEditableElement detects text input elements vs non-input elements", () =
     isContentEditable: true,
     getAttribute: () => "true",
   };
-  Object.setPrototypeOf(contentEditableDiv, HTMLElement.prototype);
   assert.equal(isEditableElement(contentEditableDiv as unknown as EventTarget), true);
 });

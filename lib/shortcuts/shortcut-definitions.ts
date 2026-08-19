@@ -242,14 +242,24 @@ export function eventToKeyCombo(event: KeyboardEvent): string {
  * Checks whether an event target is an active text input, textarea or contenteditable element.
  */
 export function isEditableElement(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName.toUpperCase();
+  if (!target) return false;
+  if (typeof HTMLElement !== "undefined" && !(target instanceof HTMLElement)) return false;
+  const element = target as unknown as {
+    tagName?: string;
+    type?: string;
+    isContentEditable?: boolean;
+    getAttribute?: (name: string) => string | null;
+  };
+  const tagName = element.tagName ? element.tagName.toUpperCase() : "";
   if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") {
-    const inputType = (target as HTMLInputElement).type?.toLowerCase();
+    const inputType = element.type?.toLowerCase();
     if (inputType === "checkbox" || inputType === "radio" || inputType === "button" || inputType === "submit") {
       return false;
     }
     return true;
   }
-  return target.isContentEditable || target.getAttribute("contenteditable") === "true";
+  return (
+    Boolean(element.isContentEditable) ||
+    (typeof element.getAttribute === "function" && element.getAttribute("contenteditable") === "true")
+  );
 }
