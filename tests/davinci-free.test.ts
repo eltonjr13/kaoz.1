@@ -305,6 +305,39 @@ test("cortes manuais unem intervalos e recalculam duração e tempo editado", ()
   assert.equal(editedVideoTime([...events], 10, 8) + 4, 7.5);
 });
 
+test("fatiamento em clipes ativos, detecção de silêncio e pulo de corte em tempo real", () => {
+  const events = [
+    { id: "c1", kind: "remove" as const, start: 5, duration: 3, label: "pausa 1", reason: "corte" },
+    { id: "c2", kind: "remove" as const, start: 12, duration: 2, label: "pausa 2", reason: "corte" },
+  ];
+  const clips = videoActiveClips(events, 20);
+  assert.equal(clips.length, 3);
+  assert.deepEqual(clips[0], { id: "clip-0", index: 0, start: 0, end: 5, duration: 5 });
+  assert.deepEqual(clips[1], { id: "clip-1", index: 1, start: 8, end: 12, duration: 4 });
+  assert.deepEqual(clips[2], { id: "clip-2", index: 2, start: 14, end: 20, duration: 6 });
+
+  const clipAt7 = findActiveClipAtTime(clips, 7);
+  assert.equal(clipAt7?.id, "clip-1");
+  const clipAt10 = findActiveClipAtTime(clips, 10);
+  assert.equal(clipAt10?.id, "clip-1");
+
+  // Live cut skipping
+  const skipDuringCut = nextPlayheadAfterCuts(6, [{ start: 5, end: 8 }]);
+  assert.equal(skipDuringCut.jumped, true);
+  assert.equal(skipDuringCut.newTime, 8);
+
+  const skipOutsideCut = nextPlayheadAfterCuts(9, [{ start: 5, end: 8 }]);
+  assert.equal(skipOutsideCut.jumped, false);
+  assert.equal(skipOutsideCut.newTime, 9);
+
+  // Silence detection from waveform peaks (normalized 0..1)
+  // 20 points for 20 seconds (1s per point). Points 4, 5, 6, 7 are 0 (silent)
+  const peaks = [0.8, 0.9, 0.7, 0.5, 0.01, 0.01, 0.01, 0.01, 0.6, 0.8, 0.9, 0.7, 0.6, 0.5, 0.6, 0.7, 0.8, 0.7, 0.6, 0.5];
+  const silences = detectSilenceRanges(peaks, 20, { minSilenceDuration: 0.5, threshold: 0.04, padding: 0.05 });
+  assert.ok(silences.length >= 1);
+  assert.ok(silences[0].start >= 4 && silences[0].end <= 8);
+});
+
 test("régua da timeline evita sobreposição de marcas quando o último segundo está próximo do passo", () => {
   function generateRulerTicks(duration: number, scale = 1) {
     const ticks: number[] = [];

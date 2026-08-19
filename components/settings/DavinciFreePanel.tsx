@@ -27,6 +27,20 @@ import {
   Subtitles,
   Video,
   Search,
+  Trash2,
+  Split,
+  Eye,
+  EyeOff,
+  Layers,
+  Type,
+  Sliders,
+  Clock,
+  FastForward,
+  Rewind,
+  Check,
+  X,
+  ChevronRight,
+  Zap,
 } from "lucide-react";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
 import {
@@ -35,7 +49,17 @@ import {
   type ConsoleLogLevel,
 } from "@/components/video/video-editor-console";
 import { BUILD_VERSION } from "@/lib/app-version";
-import { editedVideoDuration, editedVideoTime } from "@/services/davinci-free/video-cuts";
+import {
+  detectSilenceRanges,
+  editedVideoDuration,
+  editedVideoTime,
+  findActiveClipAtTime,
+  nextPlayheadAfterCuts,
+  videoActiveClips,
+  videoCutRanges,
+  type VideoActiveClip,
+  type VideoCutRange,
+} from "@/services/davinci-free/video-cuts";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -304,6 +328,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [previewStale, setPreviewStale] = useState<boolean>(false);
   const [pendingSourceCuts, setPendingSourceCuts] = useState<EditEvent[]>([]);
   const [cutStartTime, setCutStartTime] = useState<number | null>(null);
+  const [inPoint, setInPoint] = useState<number | null>(null);
+  const [outPoint, setOutPoint] = useState<number | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [liveCutPreview, setLiveCutPreview] = useState<boolean>(true);
+  const [showSilenceModal, setShowSilenceModal] = useState<boolean>(false);
+  const [silenceThreshold, setSilenceThreshold] = useState<number>(0.045);
+  const [silenceMinDuration, setSilenceMinDuration] = useState<number>(0.4);
+  const [silencePadding, setSilencePadding] = useState<number>(0.08);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [driveSourceOrigin, setDriveSourceOrigin] = useState<GoogleDriveSelection | null>(null);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
     {
@@ -1037,12 +1070,40 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     () => analysis?.events.filter((event) => event.kind === "remove") || pendingSourceCuts,
     [analysis, pendingSourceCuts],
   );
+
+  const activeClips = useMemo(() => {
+    if (activeMediaAsset === "preview") return [];
+    const events = analysis?.events || pendingSourceCuts;
+    const rawDuration = analysis?.media.durationSeconds || playerDuration || 0.1;
+    return videoActiveClips(events, rawDuration);
+  }, [activeMediaAsset, analysis?.events, analysis?.media.durationSeconds, pendingSourceCuts, playerDuration]);
+
+  const activeCutRanges = useMemo(() => {
+    const events = analysis?.events || pendingSourceCuts;
+    const rawDuration = analysis?.media.durationSeconds || playerDuration || 0.1;
+    return videoCutRanges(events, rawDuration);
+  }, [analysis?.events, analysis?.media.durationSeconds, pendingSourceCuts, playerDuration]);
+
+  const detectedSilences = useMemo(() => {
+    if (!waveform.length || timelineDuration <= 0) return [];
+    return detectSilenceRanges(waveform, timelineDuration, {
+      minSilenceDuration: silenceMinDuration,
+      threshold: silenceThreshold,
+      padding: silencePadding,
+    });
+  }, [waveform, timelineDuration, silenceMinDuration, silenceThreshold, silencePadding]);
+
+  const totalSilenceSeconds = useMemo(() => {
+    return detectedSilences.reduce((acc, s) => acc + (s.end - s.start), 0);
+  }, [detectedSilences]);
+
   const timelineEvents = useMemo(() => {
     if (activeMediaAsset === "preview") {
       return (analysis?.events || []).filter((evt) => evt.kind !== "remove");
     }
     return analysis?.events || pendingSourceCuts;
   }, [activeMediaAsset, analysis?.events, pendingSourceCuts]);
+
   const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
       ? { ...status.renderStatus, label: "Renderizando" }
@@ -1062,6 +1123,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setPlayerDuration(0);
     setPlayerError(null);
     setPlayheadTime(0);
+    setInPoint(null);
+    setOutPoint(null);
+    setSelectedClipId(null);
   }, [videoMediaSrc]);
 
   useEffect(() => {
@@ -1170,13 +1234,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     let frameId: number;
     const tick = () => {
       if (videoRef.current && !isScrubbingRef.current) {
-        setPlayheadTime(videoRef.current.currentTime);
+        const curTime = videoRef.current.currentTime;
+        if (liveCutPreview && activeMediaAsset === "source" && activeCutRanges.length) {
+          const skip = nextPlayheadAfterCuts(curTime, activeCutRanges);
+          if (skip.jumped) {
+            videoRef.current.currentTime = skip.newTime;
+            setPlayheadTime(skip.newTime);
+            frameId = requestAnimationFrame(tick);
+            return;
+          }
+        }
+        setPlayheadTime(curTime);
       }
       frameId = requestAnimationFrame(tick);
     };
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [isPlaying]);
+  }, [activeCutRanges, activeMediaAsset, isPlaying, liveCutPreview]);
 
   function addEventAtPlayhead() {
     if (!analysis) return;
@@ -1205,7 +1279,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     onStatusMessage({ text: `Novo evento inserido em ${clock(sourceTime)}`, type: "success" });
   }
 
-  function addRemovalCut(start: number, end: number, label = "Corte manual") {
+  const addRemovalCut = useCallback((start: number, end: number, label = "Corte manual") => {
     const safeStart = Math.max(0, Math.min(start, end));
     const safeEnd = Math.min(timelineDuration, Math.max(start, end));
     if (safeEnd - safeStart < 0.1) {
@@ -1229,7 +1303,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
     setCutStartTime(null);
     onStatusMessage({ text: `Corte marcado de ${clock(cut.start)} até ${clock(cut.start + cut.duration)}.`, type: "success" });
-  }
+  }, [analysis, onStatusMessage, timelineDuration]);
 
   function toggleCutAtPlayhead() {
     if (cutStartTime === null) {
@@ -1240,7 +1314,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     addRemovalCut(cutStartTime, playheadTime, "Silêncio ou trecho removido");
   }
 
-  function undoLastRemovalCut() {
+  const undoLastRemovalCut = useCallback(() => {
     if (analysis) {
       const last = [...sourceCutEvents].at(-1);
       if (!last) return;
@@ -1248,16 +1322,158 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       return;
     }
     setPendingSourceCuts((current) => current.slice(0, -1));
-  }
+  }, [analysis, sourceCutEvents]);
+
+  const markIn = useCallback(() => {
+    const rounded = Math.round(playheadTime * 100) / 100;
+    setInPoint(rounded);
+    if (outPoint !== null && outPoint <= rounded) {
+      setOutPoint(null);
+    }
+    onStatusMessage({ text: `Ponto de Entrada [In] marcado em ${clock(rounded)}.`, type: "info" });
+  }, [onStatusMessage, outPoint, playheadTime]);
+
+  const markOut = useCallback(() => {
+    const rounded = Math.round(playheadTime * 100) / 100;
+    setOutPoint(rounded);
+    if (inPoint !== null && inPoint >= rounded) {
+      setInPoint(null);
+    }
+    onStatusMessage({ text: `Ponto de Saída [Out] marcado em ${clock(rounded)}.`, type: "info" });
+  }, [inPoint, onStatusMessage, playheadTime]);
+
+  const clearInOut = useCallback(() => {
+    setInPoint(null);
+    setOutPoint(null);
+  }, []);
+
+  const deleteInOutRange = useCallback(() => {
+    if (inPoint === null || outPoint === null) {
+      onStatusMessage({ text: "Marque os pontos de Entrada [In] e Saída [Out] antes de excluir.", type: "error" });
+      return;
+    }
+    const start = Math.min(inPoint, outPoint);
+    const end = Math.max(inPoint, outPoint);
+    addRemovalCut(start, end, `Corte [${clock(start)} - ${clock(end)}]`);
+    setInPoint(null);
+    setOutPoint(null);
+  }, [addRemovalCut, inPoint, onStatusMessage, outPoint]);
+
+  const splitAtPlayhead = useCallback(() => {
+    if (!activeClips.length) return;
+    const clip = findActiveClipAtTime(activeClips, playheadTime);
+    if (!clip) {
+      onStatusMessage({ text: "Posicione a agulha dentro de um clipe para fatiar.", type: "error" });
+      return;
+    }
+    if (playheadTime <= clip.start + 0.05 || playheadTime >= clip.end - 0.05) {
+      onStatusMessage({ text: "Agulha muito próxima da borda do clipe.", type: "error" });
+      return;
+    }
+    setCutStartTime(playheadTime);
+    onStatusMessage({
+      text: `Fatiado em ${clock(playheadTime)}. Use Q para cortar início, W para cortar fim ou selecione outro ponto.`,
+      type: "success",
+    });
+  }, [activeClips, onStatusMessage, playheadTime]);
+
+  const trimClipInAtPlayhead = useCallback(() => {
+    if (!activeClips.length) return;
+    const clip = findActiveClipAtTime(activeClips, playheadTime);
+    if (!clip || playheadTime <= clip.start + 0.05) return;
+    addRemovalCut(clip.start, playheadTime, `Início até ${clock(playheadTime)}`);
+  }, [activeClips, addRemovalCut, playheadTime]);
+
+  const trimClipOutAtPlayhead = useCallback(() => {
+    if (!activeClips.length) return;
+    const clip = findActiveClipAtTime(activeClips, playheadTime);
+    if (!clip || playheadTime >= clip.end - 0.05) return;
+    addRemovalCut(playheadTime, clip.end, `${clock(playheadTime)} até fim`);
+  }, [activeClips, addRemovalCut, playheadTime]);
+
+  const deleteSelectedClip = useCallback(() => {
+    if (!selectedClipId) return;
+    const clip = activeClips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    addRemovalCut(clip.start, clip.end, `Clipe ${clip.index + 1} removido`);
+    setSelectedClipId(null);
+  }, [activeClips, addRemovalCut, selectedClipId]);
+
+  const removeSpecificCut = useCallback((cutId: string) => {
+    if (analysis) {
+      setAnalysis((current) => current ? {
+        ...current,
+        events: current.events.filter((e) => e.id !== cutId),
+      } : null);
+      setReview((current) => ({
+        ...current,
+        events: current.events.map((e) => e.id === cutId ? { ...e, enabled: false } : e),
+        addedEvents: (current.addedEvents || []).filter((e) => e.id !== cutId),
+      }));
+      setPreviewStale(true);
+    } else {
+      setPendingSourceCuts((current) => current.filter((c) => c.id !== cutId));
+    }
+    onStatusMessage({ text: "Trecho cortado restaurado na timeline.", type: "success" });
+  }, [analysis, onStatusMessage]);
+
+  const applyAutoCutSilences = useCallback((ranges: VideoCutRange[]) => {
+    if (!ranges.length) {
+      onStatusMessage({ text: "Nenhum silêncio para cortar.", type: "error" });
+      return;
+    }
+    const newCuts: EditEvent[] = ranges.map((r, i) => ({
+      id: `silence-cut-${crypto.randomUUID().slice(0, 8)}`,
+      kind: "remove" as const,
+      start: r.start,
+      duration: Math.round((r.end - r.start) * 100) / 100,
+      label: `Silêncio ${i + 1}`,
+      reason: "Pausa/silêncio detectado por IA.",
+    }));
+
+    if (analysis) {
+      setAnalysis((current) => current ? {
+        ...current,
+        events: [...current.events, ...newCuts],
+      } : null);
+      setReview((current) => ({
+        ...current,
+        addedEvents: [...(current.addedEvents || []), ...newCuts],
+      }));
+      setPreviewStale(true);
+    } else {
+      setPendingSourceCuts((current) => [...current, ...newCuts]);
+    }
+    setShowSilenceModal(false);
+    onStatusMessage({ text: `${newCuts.length} silêncio(s) removidos automaticamente!`, type: "success" });
+  }, [analysis, onStatusMessage]);
+
+  const stepPlayhead = useCallback((deltaSeconds: number) => {
+    const newTime = Math.max(0, Math.min(timelineDuration, playheadTime + deltaSeconds));
+    const rounded = Math.round(newTime * 100) / 100;
+    setPlayheadTime(rounded);
+    if (videoRef.current) {
+      videoRef.current.currentTime = rounded;
+    }
+  }, [playheadTime, timelineDuration]);
+
+  const changePlaybackSpeed = useCallback((direction: number) => {
+    const speeds = [0.5, 1, 1.25, 1.5, 2];
+    const currentIndex = speeds.indexOf(playbackSpeed);
+    const nextIndex = Math.max(0, Math.min(speeds.length - 1, (currentIndex === -1 ? 1 : currentIndex) + direction));
+    const nextSpeed = speeds[nextIndex];
+    setPlaybackSpeed(nextSpeed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = nextSpeed;
+    }
+  }, [playbackSpeed]);
 
   function handleVideoTimeUpdate(event: React.SyntheticEvent<HTMLVideoElement>) {
     const player = event.currentTarget;
-    if (activeMediaAsset === "source") {
-      const cut = sourceCutEvents.find((item) => (
-        player.currentTime >= item.start && player.currentTime < item.start + item.duration
-      ));
-      if (cut) {
-        player.currentTime = Math.min(player.duration, cut.start + cut.duration);
+    if (activeMediaAsset === "source" && liveCutPreview && activeCutRanges.length) {
+      const skip = nextPlayheadAfterCuts(player.currentTime, activeCutRanges);
+      if (skip.jumped) {
+        player.currentTime = Math.min(player.duration, skip.newTime);
         if (!isScrubbingRef.current) setPlayheadTime(player.currentTime);
         return;
       }
@@ -1267,15 +1483,91 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  function togglePlayPause() {
+  const togglePlayPause = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
     } else {
       videoRef.current.play().catch(() => undefined);
     }
-    setIsPlaying(!isPlaying);
-  }
+    setIsPlaying((prev) => !prev);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlayPause();
+      } else if (event.key === "s" || event.key === "S" || event.key === "c" || event.key === "C") {
+        event.preventDefault();
+        splitAtPlayhead();
+      } else if (event.key === "i" || event.key === "I") {
+        event.preventDefault();
+        markIn();
+      } else if (event.key === "o" || event.key === "O") {
+        event.preventDefault();
+        markOut();
+      } else if (event.key === "q" || event.key === "Q") {
+        event.preventDefault();
+        trimClipInAtPlayhead();
+      } else if (event.key === "w" || event.key === "W") {
+        event.preventDefault();
+        trimClipOutAtPlayhead();
+      } else if (event.key === "Delete" || event.key === "Backspace") {
+        if (inPoint !== null && outPoint !== null) {
+          event.preventDefault();
+          deleteInOutRange();
+        } else if (selectedClipId) {
+          event.preventDefault();
+          deleteSelectedClip();
+        }
+      } else if (event.key === "j" || event.key === "J") {
+        event.preventDefault();
+        changePlaybackSpeed(-1);
+      } else if (event.key === "k" || event.key === "K") {
+        event.preventDefault();
+        if (videoRef.current) videoRef.current.pause();
+        setIsPlaying(false);
+      } else if (event.key === "l" || event.key === "L") {
+        event.preventDefault();
+        changePlaybackSpeed(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        const step = event.shiftKey ? 1 : 1 / 30;
+        stepPlayhead(-step);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        const step = event.shiftKey ? 1 : 1 / 30;
+        stepPlayhead(step);
+      } else if ((event.ctrlKey || event.metaKey) && (event.key === "z" || event.key === "Z")) {
+        event.preventDefault();
+        undoLastRemovalCut();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    changePlaybackSpeed,
+    deleteInOutRange,
+    deleteSelectedClip,
+    inPoint,
+    markIn,
+    markOut,
+    outPoint,
+    selectedClipId,
+    splitAtPlayhead,
+    stepPlayhead,
+    togglePlayPause,
+    trimClipInAtPlayhead,
+    trimClipOutAtPlayhead,
+    undoLastRemovalCut,
+  ]);
 
   function toggleMute() {
     if (!videoRef.current) return;
@@ -1845,51 +2137,148 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             {videoMediaSrc && activeMediaAsset === "source" && (
-              <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#101217] px-3 py-2">
-                <span className="mr-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400">
-                  <Scissors size={13} /> Cortes
-                </span>
-                <button
-                  type="button"
-                  onClick={() => addRemovalCut(0, playheadTime, "Remover início")}
-                  disabled={playheadTime < 0.1}
-                  className="rounded border border-red-500/40 bg-red-950/40 px-2.5 py-1 text-[10px] font-semibold text-red-200 hover:bg-red-900/60 disabled:opacity-35"
-                >
-                  Cortar início até aqui
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleCutAtPlayhead}
-                  className={`rounded border px-2.5 py-1 text-[10px] font-semibold ${
-                    cutStartTime === null
-                      ? "border-[#8B92A1]/40 bg-[#383D49]/20 text-[#D5D8E0] hover:bg-[#383D49]/40"
-                      : "border-amber-400/60 bg-amber-950/60 text-amber-200"
-                  }`}
-                >
-                  {cutStartTime === null ? "Marcar início do corte" : `Finalizar corte desde ${clock(cutStartTime)}`}
-                </button>
-                <button
-                  type="button"
-                  onClick={undoLastRemovalCut}
-                  disabled={!sourceCutEvents.length}
-                  className="rounded border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-zinc-300 hover:bg-white/10 disabled:opacity-30"
-                >
-                  Desfazer último
-                </button>
-                <span className="ml-auto text-[10px] text-zinc-500">
-                  {sourceCutEvents.length
-                    ? `${sourceCutEvents.length} trecho(s) serão removidos na renderização`
-                    : "Use o playhead para remover silêncios ou partes indesejadas"}
-                </span>
+              <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[#101217] px-3 py-2">
+                {/* Left Group: Primary NLE Editing Actions */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#A99FFF]">
+                    <Scissors size={13} /> Edição & Cortes
+                  </span>
+
+                  {/* Split / Fatiar no Playhead (S) */}
+                  <button
+                    type="button"
+                    onClick={splitAtPlayhead}
+                    className="flex items-center gap-1 rounded border border-[#7C6CF2]/40 bg-[#7C6CF2]/15 px-2.5 py-1 text-[10px] font-semibold text-[#D5D8E0] transition hover:bg-[#7C6CF2]/30 hover:text-white"
+                    title="Fatiar clipe na agulha atual (Atalho: S ou C)"
+                  >
+                    <Split size={12} className="text-[#A99FFF]" />
+                    Fatiar (S)
+                  </button>
+
+                  {/* Mark In (I) & Mark Out (O) */}
+                  <div className="flex items-center rounded border border-white/10 bg-[#171A21] p-0.5">
+                    <button
+                      type="button"
+                      onClick={markIn}
+                      className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold transition ${
+                        inPoint !== null
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                          : "text-zinc-400 hover:text-white"
+                      }`}
+                      title="Marcar Ponto de Entrada (Atalho: I)"
+                    >
+                      [ In {inPoint !== null ? clock(inPoint) : ""}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={markOut}
+                      className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold transition ${
+                        outPoint !== null
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                          : "text-zinc-400 hover:text-white"
+                      }`}
+                      title="Marcar Ponto de Saída (Atalho: O)"
+                    >
+                      Out ] {outPoint !== null ? clock(outPoint) : ""}
+                    </button>
+                    {(inPoint !== null || outPoint !== null) && (
+                      <button
+                        type="button"
+                        onClick={clearInOut}
+                        className="px-1 text-[10px] text-zinc-500 hover:text-zinc-300"
+                        title="Limpar seleção In/Out"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Ripple Delete In/Out Range */}
+                  {inPoint !== null && outPoint !== null && (
+                    <button
+                      type="button"
+                      onClick={deleteInOutRange}
+                      className="flex items-center gap-1 rounded border border-red-500/60 bg-red-950/70 px-2.5 py-1 text-[10px] font-bold text-red-200 animate-pulse transition hover:bg-red-900"
+                      title="Excluir trecho selecionado [In - Out] (Atalho: Del / Backspace)"
+                    >
+                      <Trash2 size={11} />
+                      Excluir Seleção ({clock(Math.min(inPoint, outPoint))} - {clock(Math.max(inPoint, outPoint))})
+                    </button>
+                  )}
+
+                  {/* Ripple Trim In (Q) & Ripple Trim Out (W) */}
+                  <button
+                    type="button"
+                    onClick={trimClipInAtPlayhead}
+                    className="rounded border border-white/10 bg-[#171A21] px-2 py-1 text-[10px] font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                    title="Cortar do início do clipe ativo até a agulha (Atalho: Q)"
+                  >
+                    Trim In (Q)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={trimClipOutAtPlayhead}
+                    className="rounded border border-white/10 bg-[#171A21] px-2 py-1 text-[10px] font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                    title="Cortar da agulha até o fim do clipe ativo (Atalho: W)"
+                  >
+                    Trim Out (W)
+                  </button>
+
+                  {/* Auto-Cut Silences Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => setShowSilenceModal(true)}
+                    className="flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-950/30 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-900/50"
+                    title="Detectar silêncios e pausas longas automaticamente"
+                  >
+                    <WandSparkles size={12} className="text-emerald-400" />
+                    Auto-Corte Silêncios ({detectedSilences.length})
+                  </button>
+                </div>
+
+                {/* Right Group: Live Preview Skip Toggle & Undo */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLiveCutPreview((v) => !v)}
+                    className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-semibold transition ${
+                      liveCutPreview
+                        ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300"
+                        : "border-white/10 bg-[#171A21] text-zinc-400 hover:text-white"
+                    }`}
+                    title={liveCutPreview ? "Pulo automático de cortes ao vivo ATIVADO" : "Pulo automático DESATIVADO"}
+                  >
+                    <Zap size={11} className={liveCutPreview ? "text-emerald-400 fill-current" : ""} />
+                    {liveCutPreview ? "Prévia c/ Cortes Ativa" : "Pular Cortes (Off)"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={undoLastRemovalCut}
+                    disabled={!sourceCutEvents.length}
+                    className="flex items-center gap-1 rounded border border-white/10 bg-[#171A21] px-2 py-1 text-[10px] text-zinc-300 transition hover:bg-white/10 disabled:opacity-30"
+                    title="Desfazer último corte (Ctrl+Z)"
+                  >
+                    <RotateCcw size={11} />
+                    Desfazer
+                  </button>
+
+                  <span className="hidden xl:inline text-[10px] font-mono text-zinc-500">
+                    {sourceCutEvents.length} corte(s) | {activeClips.length} clipe(s)
+                  </span>
+                </div>
               </div>
             )}
 
-            {/* Visual Multi-Track Timeline (Stitch Timeline) */}
-            <div className={`${musicWaveform.length ? "h-[268px]" : "h-56"} flex shrink-0 flex-col border-t border-white/[0.07] bg-[#0B0D12]`}>
+            {/* Visual Multi-Track Timeline (7 Linhas Profissionais) */}
+            <div className="h-[360px] flex shrink-0 flex-col border-t border-white/[0.07] bg-[#0B0D12]">
               {/* Timeline Header Toolbar */}
               <div className="flex h-9 items-center justify-between border-b border-white/[0.06] bg-[#101217] px-3 text-[#8B92A1]">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="mr-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#8B92A1]">04 / Timeline</span>
+                  <span className="mr-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#A99FFF] flex items-center gap-1">
+                    <Layers size={11} /> 04 / Timeline Multi-Track
+                  </span>
+
                   <button
                     onClick={addEventAtPlayhead}
                     className="flex items-center gap-1 rounded border border-[#8B92A1]/35 bg-[#383D49]/25 px-2 py-0.5 text-[10px] font-bold text-[#D5D8E0] transition-all hover:bg-[#383D49]/45"
@@ -1898,36 +2287,79 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <Plus size={13} />
                     Adicionar Evento
                   </button>
+
                   <div className="w-px h-3.5 bg-white/10 mx-1" />
+
+                  {/* Zoom Controls */}
                   <button
-                    onClick={() => setTimelineScale((s) => Math.min(3, s + 0.25))}
+                    onClick={() => setTimelineScale((s) => Math.min(4, s + 0.25))}
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
-                    title="Zoom In"
+                    title="Aproximar Zoom (Zoom In)"
                   >
                     <ZoomIn size={14} />
                   </button>
                   <button
                     onClick={() => setTimelineScale((s) => Math.max(1, s - 0.25))}
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
-                    title="Zoom Out"
+                    title="Afastar Zoom (Zoom Out)"
                   >
                     <ZoomOut size={14} />
                   </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
+
                   <div className="mx-1 h-3.5 w-px bg-white/10" />
+
+                  {/* Frame Step Back / Forward */}
+                  <button
+                    type="button"
+                    onClick={() => stepPlayhead(-1 / 30)}
+                    disabled={!videoMediaSrc}
+                    className="p-1 rounded text-zinc-400 hover:bg-white/10 hover:text-white transition disabled:opacity-30"
+                    title="Voltar 1 frame (Seta Esquerda)"
+                  >
+                    <Rewind size={13} />
+                  </button>
+
+                  {/* Play / Pause */}
                   <button
                     onClick={togglePlayPause}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-emerald-400 disabled:opacity-30"
-                    title={isPlaying ? "Pausar" : "Reproduzir"}
+                    title={isPlaying ? "Pausar (Espaço)" : "Reproduzir (Espaço)"}
                   >
                     {isPlaying
                       ? <Pause size={14} className="fill-current text-emerald-400" />
                       : <Play size={14} className="fill-current" />}
                   </button>
-                  <span className="min-w-[68px] text-[10px] font-mono text-zinc-400">
+
+                  {/* Step Forward 1 frame */}
+                  <button
+                    type="button"
+                    onClick={() => stepPlayhead(1 / 30)}
+                    disabled={!videoMediaSrc}
+                    className="p-1 rounded text-zinc-400 hover:bg-white/10 hover:text-white transition disabled:opacity-30"
+                    title="Avançar 1 frame (Seta Direita)"
+                  >
+                    <FastForward size={13} />
+                  </button>
+
+                  {/* Timecode clock */}
+                  <span className="min-w-[76px] text-[10px] font-mono font-bold text-[#D5D8E0]">
                     {clock(playheadTime)} / {clock(timelineDuration)}
                   </span>
+
+                  {/* Playback speed selector */}
+                  <button
+                    type="button"
+                    onClick={() => changePlaybackSpeed(1)}
+                    className="rounded bg-[#171A21] px-1.5 py-0.5 text-[9px] font-mono font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                    title="Alterar velocidade de reprodução (J/K/L)"
+                  >
+                    {playbackSpeed}x
+                  </button>
+
+                  <div className="mx-1 h-3.5 w-px bg-white/10" />
+
                   <button
                     onClick={toggleMute}
                     disabled={!videoMediaSrc}
@@ -1936,6 +2368,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   >
                     {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                   </button>
+
                   {videoMediaSrc && (
                     <button
                       type="button"
@@ -1946,6 +2379,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       <Download size={14} />
                     </button>
                   )}
+
                   <button
                     onClick={toggleFullscreen}
                     disabled={!videoMediaSrc}
@@ -1955,22 +2389,43 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <Maximize2 size={14} />
                   </button>
                 </div>
-                <span className="text-[10px] font-mono text-zinc-500">
-                  Duração {clock(timelineDuration)}
-                </span>
+
+                <div className="flex items-center gap-3 text-[10px] font-mono text-zinc-500">
+                  {activeMediaAsset === "source" && activeCutRanges.length > 0 && (
+                    <span className="text-amber-400/90 font-medium">
+                      Editado: {clock(editedVideoDuration(analysis?.events || pendingSourceCuts, timelineDuration))}
+                    </span>
+                  )}
+                  <span>Bruto: {clock(timelineDuration)}</span>
+                </div>
               </div>
 
               {/* Tracks Area */}
-              <div className="flex-1 overflow-x-auto overflow-y-hidden">
+              <div className="flex-1 overflow-x-auto overflow-y-auto">
                 <div
                   onMouseDown={handleTimelineMouseDown}
                   onClick={handleTimelineClick}
-                  className="h-full min-w-full flex flex-col cursor-crosshair select-none"
+                  className="min-h-full min-w-full flex flex-col cursor-crosshair select-none pb-2"
                   style={{ width: `${100 * timelineScale}%` }}
                 >
+                  {/* Régua / Timecode Header (TC) */}
                   <div className="grid h-6 shrink-0 grid-cols-[40px_minmax(0,1fr)] items-end border-b border-white/5 px-3">
-                    <span className="pb-1 text-[8px] font-mono text-zinc-600">TC</span>
+                    <span className="pb-1 text-[8px] font-mono text-zinc-600 font-bold">TC</span>
                     <div className="relative h-full select-none">
+                      {/* Highlighted In/Out Range Banner */}
+                      {inPoint !== null && outPoint !== null && Math.abs(outPoint - inPoint) > 0.05 && (
+                        <div
+                          className="pointer-events-none absolute bottom-0 top-1 rounded-[2px] bg-amber-500/20 border-x-2 border-amber-400/80 z-10 flex items-center justify-between px-1"
+                          style={{
+                            left: `${(Math.min(inPoint, outPoint) / timelineDuration) * 100}%`,
+                            width: `${(Math.abs(outPoint - inPoint) / timelineDuration) * 100}%`,
+                          }}
+                        >
+                          <span className="text-[7px] font-mono font-bold text-amber-300">[ In</span>
+                          <span className="text-[7px] font-mono font-bold text-amber-300">Out ]</span>
+                        </div>
+                      )}
+
                       {rulerTicks.map((tick, index) => (
                         <span
                           key={tick}
@@ -1992,211 +2447,398 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
 
                   <div className="relative flex-1 px-3 pb-3 pt-2">
+                    {/* Playhead Vertical Cursor */}
                     <div
                       ref={timelineTrackRef}
                       className="absolute bottom-3 left-[52px] right-3 top-2 bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%]"
                     >
                       <div
-                        className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#7C6CF2] shadow-[0_0_10px_rgba(124,108,242,0.9)] transition-all duration-75"
+                        className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-[#7C6CF2] shadow-[0_0_12px_rgba(124,108,242,0.95)] transition-all duration-75"
                         style={{ left: `${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%` }}
                       >
-                        <div className="absolute -top-1 h-2.5 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)]" />
+                        <div className="absolute -top-1.5 h-3 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)] shadow-md" />
                       </div>
                     </div>
 
-                    <div className="relative z-10 flex h-full flex-col gap-2 pointer-events-none">
+                    <div className="relative z-10 flex h-full flex-col gap-1.5 pointer-events-none">
 
-                {/* Track V1 (Video Clips) */}
-                <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
-                  <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">V1</span>
-                  <div className="relative h-full flex-1 overflow-hidden">
-                    {activeMediaAsset === "preview" ? (
-                      <>
-                        <div
-                          className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
-                          style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
-                        >
-                          Intro
+                      {/* 1. Track V2 (B-Roll, Overlays, Zooms, Transições) */}
+                      <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03]">
+                        <span className="pl-2 text-[9px] font-mono font-bold text-cyan-400/80">V2</span>
+                        <div className="relative h-full flex-1 overflow-hidden">
+                          {timelineEvents.filter((evt) => ["zoom", "transition", "intro", "outro"].includes(evt.kind)).length > 0 ? (
+                            timelineEvents
+                              .filter((evt) => ["zoom", "transition", "intro", "outro"].includes(evt.kind))
+                              .map((evt) => {
+                                const change = eventReview(evt);
+                                const enabled = change.enabled !== false;
+                                const evtStart = change.start ?? evt.start;
+                                const evtDuration = change.duration ?? evt.duration;
+                                const playerEventStart = eventPlayerTime(evt, evtStart);
+                                const leftPct = (playerEventStart / timelineDuration) * 100;
+                                const widthPct = Math.max(1.5, Math.min(100 - leftPct, (evtDuration / timelineDuration) * 100));
+                                const isSelected = selectedEventId === evt.id;
+
+                                return (
+                                  <div
+                                    key={evt.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectEvent(evt.id, playerEventStart);
+                                    }}
+                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                      isSelected
+                                        ? "kaoz-signal-clip z-10"
+                                        : enabled
+                                          ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-200 hover:brightness-125"
+                                          : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
+                                    }`}
+                                    title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
+                                  >
+                                    <span className="truncate">{kindLabel[evt.kind]}: {evt.label}</span>
+                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                  </div>
+                                );
+                              })
+                          ) : (
+                            <span className="pl-2 text-[8px] italic text-zinc-600">Zooms, cortes de câmera e transições</span>
+                          )}
                         </div>
-                        <div
-                          className="kaoz-signal-clip absolute top-1 bottom-1 flex items-center truncate px-2 font-mono text-[10px] font-bold"
-                          style={{
-                            left: `${(4 / timelineDuration) * 100}%`,
-                            width: `${((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) / timelineDuration) * 100}%`,
-                          }}
-                        >
-                          A-Roll ({form.lessonName || form.moduleName || "Ativo"})
-                        </div>
-                        <div
-                          className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
-                          style={{
-                            left: `${(((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) + 4) / timelineDuration) * 100}%`,
-                            width: `${(4 / timelineDuration) * 100}%`,
-                          }}
-                        >
-                          Outro
-                        </div>
-                      </>
-                    ) : (
-                      <div
-                        className="kaoz-signal-clip absolute top-1 bottom-1 flex items-center truncate px-2 font-mono text-[10px] font-bold"
-                        style={{
-                          left: 0,
-                          width: `${((analysis?.media.durationSeconds || timelineDuration) / timelineDuration) * 100}%`,
-                        }}
-                      >
-                        A-Roll ({form.lessonName || form.moduleName || "Ativo"})
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Track FX (AI Efficacy Event Clips) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto">
-                  <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">FX</span>
-                  <div className="relative h-full flex-1 overflow-hidden">
-                    {timelineEvents.length ? (
-                      timelineEvents.map((evt) => {
-                        const change = eventReview(evt);
-                        const enabled = change.enabled !== false;
-                        const evtStart = change.start ?? evt.start;
-                        const evtDuration = change.duration ?? evt.duration;
-                        const playerEventStart = eventPlayerTime(evt, evtStart);
-                        const leftPct = (playerEventStart / timelineDuration) * 100;
-                        const widthPct = Math.max(1.5, Math.min(100 - leftPct, (evtDuration / timelineDuration) * 100));
-                        const isSelected = selectedEventId === evt.id;
+                      {/* 2. Track V1 (Vídeo Principal & Clipes Fatiados) */}
+                      <div className="grid h-10 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto border border-white/[0.04]">
+                        <span className="pl-2 text-[10px] font-mono font-bold text-zinc-400">V1</span>
+                        <div className="relative h-full flex-1 overflow-hidden">
+                          {activeMediaAsset === "preview" ? (
+                            <>
+                              <div
+                                className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
+                                style={{ left: 0, width: `${(4 / timelineDuration) * 100}%` }}
+                              >
+                                Intro
+                              </div>
+                              <div
+                                className="kaoz-signal-clip absolute top-1 bottom-1 flex items-center truncate px-2 font-mono text-[10px] font-bold"
+                                style={{
+                                  left: `${(4 / timelineDuration) * 100}%`,
+                                  width: `${((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) / timelineDuration) * 100}%`,
+                                }}
+                              >
+                                A-Roll ({form.lessonName || form.moduleName || "Ativo"})
+                              </div>
+                              <div
+                                className="absolute top-1 bottom-1 flex items-center truncate rounded border border-[#383D49]/45 bg-[#171A21]/65 px-2 font-mono text-[10px] text-[#D5D8E0]"
+                                style={{
+                                  left: `${(((analysis ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) : (timelineDuration - 8)) + 4) / timelineDuration) * 100}%`,
+                                  width: `${(4 / timelineDuration) * 100}%`,
+                                }}
+                              >
+                                Outro
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* Clipes Ativos Fatiados */}
+                              {activeClips.map((clip) => {
+                                const leftPct = (clip.start / timelineDuration) * 100;
+                                const widthPct = Math.max(0.8, (clip.duration / timelineDuration) * 100);
+                                const isSelected = selectedClipId === clip.id;
 
-                        return (
-                          <div
-                            key={evt.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectEvent(evt.id, playerEventStart);
-                            }}
-                            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            className={`absolute top-1 bottom-1 px-2 rounded text-[9px] font-mono font-semibold border flex items-center justify-between cursor-pointer transition-all ${
-                              isSelected
-                                ? "kaoz-signal-clip z-10"
-                                : enabled
-                                  ? `${kindColorClass[evt.kind] || "bg-[#101217] border-[#8B92A1] text-[#F4F5F7]"} hover:brightness-125`
-                                  : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
-                            }`}
-                            title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
-                          >
-                            <span className="truncate">{kindLabel[evt.kind]}</span>
-                            <span className="text-[8px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                return (
+                                  <div
+                                    key={clip.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedClipId(clip.id);
+                                      setPlayheadTime(clip.start);
+                                      if (videoRef.current) videoRef.current.currentTime = clip.start;
+                                    }}
+                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                    className={`group/clip absolute top-1 bottom-1 px-2 rounded-[4px] border flex items-center justify-between transition-all cursor-pointer select-none ${
+                                      isSelected
+                                        ? "bg-[#252a3a] border-[#A99FFF] ring-2 ring-[#7C6CF2] z-20 shadow-lg text-white"
+                                        : "bg-gradient-to-r from-[#171A21] to-[#202533] border-[#7C6CF2]/40 text-[#D5D8E0] hover:border-[#7C6CF2] hover:brightness-110"
+                                    }`}
+                                    title={`Clipe ${clip.index + 1} (${clock(clip.start)} - ${clock(clip.end)} | ${clip.duration.toFixed(1)}s)`}
+                                  >
+                                    {/* Left Trim Handle */}
+                                    <div
+                                      className="absolute left-0 top-0 bottom-0 w-2.5 bg-[#7C6CF2]/30 hover:bg-[#A99FFF] cursor-ew-resize rounded-l-[3px] flex items-center justify-center opacity-0 group-hover/clip:opacity-100 transition"
+                                      title="Alça de ajuste: Início do clipe"
+                                    >
+                                      <div className="w-0.5 h-3 bg-white/70" />
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 truncate pl-1 min-w-0">
+                                      <span className="font-mono text-[9px] font-bold text-white truncate">
+                                        Clipe {clip.index + 1}
+                                      </span>
+                                      <span className="font-mono text-[8px] text-zinc-400 truncate hidden sm:inline">
+                                        ({clock(clip.start)} - {clock(clip.end)})
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 shrink-0 ml-1">
+                                      <span className="rounded bg-black/40 px-1 py-0.5 font-mono text-[8px] text-[#A99FFF]">
+                                        {clip.duration.toFixed(1)}s
+                                      </span>
+                                    </div>
+
+                                    {/* Right Trim Handle */}
+                                    <div
+                                      className="absolute right-0 top-0 bottom-0 w-2.5 bg-[#7C6CF2]/30 hover:bg-[#A99FFF] cursor-ew-resize rounded-r-[3px] flex items-center justify-center opacity-0 group-hover/clip:opacity-100 transition"
+                                      title="Alça de ajuste: Fim do clipe"
+                                    >
+                                      <div className="w-0.5 h-3 bg-white/70" />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {/* Trechos Cortados / Removidos */}
+                              {activeCutRanges.map((cut, idx) => {
+                                const leftPct = (cut.start / timelineDuration) * 100;
+                                const cutDuration = cut.end - cut.start;
+                                const widthPct = Math.max(0.8, (cutDuration / timelineDuration) * 100);
+                                const matchingEvent = sourceCutEvents.find(
+                                  (e) => Math.abs(e.start - cut.start) < 0.2,
+                                );
+
+                                return (
+                                  <div
+                                    key={`cut-${idx}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPlayheadTime(cut.start);
+                                      if (videoRef.current) videoRef.current.currentTime = cut.start;
+                                    }}
+                                    style={{
+                                      left: `${leftPct}%`,
+                                      width: `${widthPct}%`,
+                                      background: "repeating-linear-gradient(45deg, rgba(239,68,68,0.25), rgba(239,68,68,0.25) 6px, rgba(15,23,42,0.7) 6px, rgba(15,23,42,0.7) 12px)",
+                                    }}
+                                    className="group/cut absolute top-1 bottom-1 rounded-[4px] border border-dashed border-red-500/70 bg-red-950/80 flex items-center justify-between px-1.5 cursor-pointer z-10 transition hover:brightness-125"
+                                    title={`Trecho Removido (${clock(cut.start)} - ${clock(cut.end)} | ${cutDuration.toFixed(1)}s)`}
+                                  >
+                                    <span className="text-[8px] font-mono font-bold text-red-300 truncate">
+                                      Cortado ({cutDuration.toFixed(1)}s)
+                                    </span>
+                                    {matchingEvent && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          removeSpecificCut(matchingEvent.id);
+                                        }}
+                                        className="hidden group-hover/cut:flex items-center gap-0.5 rounded bg-red-800 px-1 py-0.5 text-[8px] font-bold text-white hover:bg-red-700 shadow"
+                                        title="Restaurar este corte"
+                                      >
+                                        <Plus size={9} /> Restaurar
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. Track TXT (Títulos, Lower-Thirds & Legendas) */}
+                      <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03]">
+                        <span className="pl-2 text-[9px] font-mono font-bold text-amber-400/80">TXT</span>
+                        <div className="relative h-full flex-1 overflow-hidden">
+                          {timelineEvents.filter((evt) => ["lower-third", "impact-text"].includes(evt.kind)).length > 0 ? (
+                            timelineEvents
+                              .filter((evt) => ["lower-third", "impact-text"].includes(evt.kind))
+                              .map((evt) => {
+                                const change = eventReview(evt);
+                                const enabled = change.enabled !== false;
+                                const evtStart = change.start ?? evt.start;
+                                const evtDuration = change.duration ?? evt.duration;
+                                const playerEventStart = eventPlayerTime(evt, evtStart);
+                                const leftPct = (playerEventStart / timelineDuration) * 100;
+                                const widthPct = Math.max(1.5, Math.min(100 - leftPct, (evtDuration / timelineDuration) * 100));
+                                const isSelected = selectedEventId === evt.id;
+
+                                return (
+                                  <div
+                                    key={evt.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectEvent(evt.id, playerEventStart);
+                                    }}
+                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                      isSelected
+                                        ? "kaoz-signal-clip z-10"
+                                        : enabled
+                                          ? "bg-amber-950/80 border-amber-500/60 text-amber-200 hover:brightness-125"
+                                          : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
+                                    }`}
+                                    title={`Texto: ${evt.label} (${clock(playerEventStart)})`}
+                                  >
+                                    <span className="truncate">{evt.label}</span>
+                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                  </div>
+                                );
+                              })
+                          ) : (
+                            <span className="pl-2 text-[8px] italic text-zinc-600">Lower-thirds, títulos de destaque e legendas</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 4. Track FX (Efeitos Especiais & Memes) */}
+                      <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03]">
+                        <span className="pl-2 text-[9px] font-mono font-bold text-purple-400/80">FX</span>
+                        <div className="relative h-full flex-1 overflow-hidden">
+                          {timelineEvents.filter((evt) => ["sound-effect", "meme-sfx", "cursor"].includes(evt.kind)).length > 0 ? (
+                            timelineEvents
+                              .filter((evt) => ["sound-effect", "meme-sfx", "cursor"].includes(evt.kind))
+                              .map((evt) => {
+                                const change = eventReview(evt);
+                                const enabled = change.enabled !== false;
+                                const evtStart = change.start ?? evt.start;
+                                const evtDuration = change.duration ?? evt.duration;
+                                const playerEventStart = eventPlayerTime(evt, evtStart);
+                                const leftPct = (playerEventStart / timelineDuration) * 100;
+                                const widthPct = Math.max(1.5, Math.min(100 - leftPct, (evtDuration / timelineDuration) * 100));
+                                const isSelected = selectedEventId === evt.id;
+
+                                return (
+                                  <div
+                                    key={evt.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectEvent(evt.id, playerEventStart);
+                                    }}
+                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                      isSelected
+                                        ? "kaoz-signal-clip z-10"
+                                        : enabled
+                                          ? "bg-purple-950/80 border-purple-500/60 text-purple-200 hover:brightness-125"
+                                          : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
+                                    }`}
+                                    title={`Efeito: ${evt.label} (${clock(playerEventStart)})`}
+                                  >
+                                    <span className="truncate">{evt.memeTag || evt.label}</span>
+                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                  </div>
+                                );
+                              })
+                          ) : (
+                            <span className="pl-2 text-[8px] italic text-zinc-600">Efeitos sonoros, animações e memes</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 5. Track A1 (Áudio Principal / Waveform SVG) */}
+                      <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto border border-white/[0.04]">
+                        <span className="pl-2 text-[10px] font-mono font-bold text-emerald-400">A1</span>
+                        <div className="relative flex-1 h-full flex items-center overflow-hidden">
+                          {waveformBusy && !waveform.length ? (
+                            <span className="flex items-center gap-1 pl-2 text-[9px] text-zinc-500">
+                              <Loader2 size={10} className="animate-spin" />
+                              Lendo áudio
+                            </span>
+                          ) : waveform.length ? (
+                            <div className="relative w-full h-full flex items-center">
+                              <svg
+                                className="w-full h-full block pointer-events-none"
+                                viewBox={`0 0 ${waveform.length} 100`}
+                                preserveAspectRatio="none"
+                              >
+                                <defs>
+                                  <clipPath id="waveform-played-clip">
+                                    <rect
+                                      x="0"
+                                      y="0"
+                                      width={`${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%`}
+                                      height="100"
+                                    />
+                                  </clipPath>
+                                </defs>
+                                {/* Unplayed Background Waveform */}
+                                <g fill="#047857">
+                                  {waveform.map((peak, index) => {
+                                    const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
+                                    const y = (100 - barHeight) / 2;
+                                    return (
+                                      <rect
+                                        key={index}
+                                        x={index + 0.1}
+                                        y={y}
+                                        width={0.8}
+                                        height={barHeight}
+                                        rx={0.3}
+                                      />
+                                    );
+                                  })}
+                                </g>
+                                {/* Played Highlighted Waveform */}
+                                <g fill="#6ee7b7" clipPath="url(#waveform-played-clip)">
+                                  {waveform.map((peak, index) => {
+                                    const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
+                                    const y = (100 - barHeight) / 2;
+                                    return (
+                                      <rect
+                                        key={index}
+                                        x={index + 0.1}
+                                        y={y}
+                                        width={0.8}
+                                        height={barHeight}
+                                        rx={0.3}
+                                      />
+                                    );
+                                  })}
+                                </g>
+                              </svg>
+                            </div>
+                          ) : (
+                            <span className="pl-2 text-[9px] italic text-zinc-600">Faixa de áudio indisponível</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 6. Track A2 (Música de Fundo / Trilha Sonora) */}
+                      {musicWaveform.length > 0 && (
+                        <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto border border-white/[0.04]">
+                          <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">A2</span>
+                          <div className="relative flex-1 h-full flex items-center overflow-hidden">
+                            <svg
+                              className="w-full h-full block pointer-events-none"
+                              viewBox={`0 0 ${musicWaveform.length} 100`}
+                              preserveAspectRatio="none"
+                            >
+                              <g fill="#475569">
+                                {musicWaveform.map((peak, index) => {
+                                  const barHeight = peak <= 0 ? 3 : Math.max(6, peak * 82);
+                                  const y = (100 - barHeight) / 2;
+                                  return (
+                                    <rect
+                                      key={index}
+                                      x={index + 0.1}
+                                      y={y}
+                                      width={0.8}
+                                      height={barHeight}
+                                      rx={0.3}
+                                    />
+                                  );
+                                })}
+                              </g>
+                            </svg>
+                            <span className="absolute right-2 text-[8px] font-mono text-[#8B92A1] bg-[#13161C]/80 px-1 py-0.5 rounded border border-white/5">
+                              {analysis?.media.musicDb} dB
+                            </span>
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-[10px] text-zinc-500 italic pl-2">
-                        Carregue o vídeo e marque os cortes; a análise adicionará os demais ajustes
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Track A1 (Audio Waveform) */}
-                <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
-                  <span className="pl-2 text-[10px] font-mono font-bold text-zinc-500">A1</span>
-                  <div className="relative flex-1 h-full flex items-center overflow-hidden">
-                    {waveformBusy && !waveform.length ? (
-                      <span className="flex items-center gap-1 pl-2 text-[9px] text-zinc-500">
-                        <Loader2 size={10} className="animate-spin" />
-                        Lendo áudio
-                      </span>
-                    ) : waveform.length ? (
-                      <div className="relative w-full h-full flex items-center">
-                        <svg
-                          className="w-full h-full block pointer-events-none"
-                          viewBox={`0 0 ${waveform.length} 100`}
-                          preserveAspectRatio="none"
-                        >
-                          <defs>
-                            <clipPath id="waveform-played-clip">
-                              <rect
-                                x="0"
-                                y="0"
-                                width={`${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%`}
-                                height="100"
-                              />
-                            </clipPath>
-                          </defs>
-                          {/* Unplayed Background Waveform */}
-                          <g fill="#047857">
-                            {waveform.map((peak, index) => {
-                              const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
-                              const y = (100 - barHeight) / 2;
-                              return (
-                                <rect
-                                  key={index}
-                                  x={index + 0.1}
-                                  y={y}
-                                  width={0.8}
-                                  height={barHeight}
-                                  rx={0.3}
-                                />
-                              );
-                            })}
-                          </g>
-                          {/* Played Highlighted Waveform */}
-                          <g fill="#6ee7b7" clipPath="url(#waveform-played-clip)">
-                            {waveform.map((peak, index) => {
-                              const barHeight = peak <= 0 ? 3 : Math.max(8, peak * 92);
-                              const y = (100 - barHeight) / 2;
-                              return (
-                                <rect
-                                  key={index}
-                                  x={index + 0.1}
-                                  y={y}
-                                  width={0.8}
-                                  height={barHeight}
-                                  rx={0.3}
-                                />
-                              );
-                            })}
-                          </g>
-                        </svg>
-                      </div>
-                    ) : (
-                      <span className="pl-2 text-[9px] italic text-zinc-600">Faixa de áudio indisponível</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Track A2 (Music Waveform) */}
-                {musicWaveform.length > 0 && (
-                  <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto">
-                    <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">A2</span>
-                    <div className="relative flex-1 h-full flex items-center overflow-hidden">
-                      <svg
-                        className="w-full h-full block pointer-events-none"
-                        viewBox={`0 0 ${musicWaveform.length} 100`}
-                        preserveAspectRatio="none"
-                      >
-                        <g fill="#475569">
-                          {musicWaveform.map((peak, index) => {
-                            const barHeight = peak <= 0 ? 3 : Math.max(6, peak * 82);
-                            const y = (100 - barHeight) / 2;
-                            return (
-                              <rect
-                                key={index}
-                                x={index + 0.1}
-                                y={y}
-                                width={0.8}
-                                height={barHeight}
-                                rx={0.3}
-                              />
-                            );
-                          })}
-                        </g>
-                      </svg>
-                      <span className="absolute right-2 text-[8px] font-mono text-[#8B92A1] bg-[#13161C]/80 px-1 py-0.5 rounded border border-white/5">
-                        {analysis?.media.musicDb} dB
-                      </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
                 </div>
               </div>
             </div>
