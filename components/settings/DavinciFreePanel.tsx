@@ -35,6 +35,7 @@ import {
   type ConsoleLogLevel,
 } from "@/components/video/video-editor-console";
 import { BUILD_VERSION } from "@/lib/app-version";
+import { editedVideoDuration, editedVideoTime } from "@/services/davinci-free/video-cuts";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -1001,10 +1002,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const timelineDuration = useMemo(() => {
     if (playerDuration > 0) return playerDuration;
     if (analysis?.media.durationSeconds) {
-      return analysis.media.durationSeconds + (activeMediaAsset === "preview" ? 8 : 0);
+      return activeMediaAsset === "preview"
+        ? editedVideoDuration(analysis.events, analysis.media.durationSeconds) + 8
+        : analysis.media.durationSeconds;
     }
     return 1;
-  }, [activeMediaAsset, analysis?.media.durationSeconds, playerDuration]);
+  }, [activeMediaAsset, analysis, playerDuration]);
 
   const rulerTicks = useMemo(() => {
     const ticks: number[] = [];
@@ -1014,7 +1017,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       ticks.push(i);
     }
     const lastWholeSecond = Math.floor(timelineDuration);
-    if (ticks.at(-1) !== lastWholeSecond) ticks.push(lastWholeSecond);
+    if (ticks.length > 0) {
+      const lastTick = ticks[ticks.length - 1];
+      if (lastWholeSecond - lastTick >= step * 0.6) {
+        ticks.push(lastWholeSecond);
+      }
+    } else {
+      ticks.push(0);
+    }
     return ticks;
   }, [timelineDuration, timelineScale]);
 
@@ -1027,7 +1037,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     () => analysis?.events.filter((event) => event.kind === "remove") || pendingSourceCuts,
     [analysis, pendingSourceCuts],
   );
-  const timelineEvents = analysis?.events || pendingSourceCuts;
+  const timelineEvents = useMemo(() => {
+    if (activeMediaAsset === "preview") {
+      return (analysis?.events || []).filter((evt) => evt.kind !== "remove");
+    }
+    return analysis?.events || pendingSourceCuts;
+  }, [activeMediaAsset, analysis?.events, pendingSourceCuts]);
   const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
       ? { ...status.renderStatus, label: "Renderizando" }
