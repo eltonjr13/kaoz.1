@@ -2456,7 +2456,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       className="absolute bottom-3 left-[52px] right-3 top-2 bg-[linear-gradient(to_right,#18181b_1px,transparent_1px)] [background-size:40px_100%]"
                     >
                       <div
-                        className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-[#7C6CF2] shadow-[0_0_12px_rgba(124,108,242,0.95)] transition-all duration-75"
+                        className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-[#7C6CF2] shadow-[0_0_12px_rgba(124,108,242,0.95)]"
                         style={{ left: `${Math.min(100, Math.max(0, (playheadTime / timelineDuration) * 100))}%` }}
                       >
                         <div className="absolute -top-1.5 h-3 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)] shadow-md" />
