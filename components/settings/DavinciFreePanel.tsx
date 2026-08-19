@@ -2842,8 +2842,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
               </div>
             </div>
-            </div>
-            </div>
             <div className="min-h-[180px] flex-1 overflow-hidden border-t border-white/[0.07] bg-[#0D0F14] p-3">
               <VideoEditorConsole
                 logs={consoleLogs}
