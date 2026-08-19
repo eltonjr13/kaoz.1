@@ -946,3 +946,43 @@ test("lote de vídeos suporta filtragem por seleção prévia e pasta de downloa
   assert.match(driveService, /customDownloadFolder/);
   assert.match(driveService, /path\.isAbsolute\(resolved\)/);
 });
+
+test("limpeza de cache do editor remove estado persistido, waveforms, uploads e previne interferência entre vídeos", async () => {
+  const service = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.service.ts"),
+    "utf8",
+  );
+  const registry = await readFile(
+    path.join(process.cwd(), "services", "tools", "tool.registry.ts"),
+    "utf8",
+  );
+  const adapter = await readFile(
+    path.join(process.cwd(), "services", "orchestrator", "adapters", "content.adapter.ts"),
+    "utf8",
+  );
+  const route = await readFile(
+    path.join(process.cwd(), "app", "api", "davinci-free", "route.ts"),
+    "utf8",
+  );
+  const panel = await readFile(
+    path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
+    "utf8",
+  );
+
+  assert.match(service, /clearVideoEditorCache/);
+  assert.match(service, /latest-analysis\.json/);
+  assert.match(service, /analysis-status\.json/);
+  assert.match(service, /render-status\.json/);
+  assert.match(service, /pending-plan\.json/);
+  assert.match(service, /source-waveforms/);
+  assert.match(service, /web-uploads/);
+
+  assert.match(registry, /"davinci-free:clear-cache"/);
+  assert.match(adapter, /"davinci-free:clear-cache"/);
+  assert.match(route, /"clear-cache": "davinci-free:clear-cache"/);
+
+  assert.match(panel, /clearEditorCache/);
+  assert.match(panel, /showClearCacheModal/);
+  assert.match(panel, /initialAnalysisLoadedRef/);
+  assert.match(panel, /Limpar Cache/);
+});
