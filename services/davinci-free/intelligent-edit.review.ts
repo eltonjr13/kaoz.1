@@ -18,7 +18,12 @@ import type {
   IntelligentPedagogicalItemStatus,
   IntelligentPedagogicalReviewOverride,
 } from "./intelligent-edit.types";
-import { normalizeMotionPace } from "./intelligent-edit.motion";
+import {
+  composeMotionEvents,
+  motionEventDuration,
+  normalizeMotionPace,
+  resolveMotionProfile,
+} from "./intelligent-edit.motion";
 
 const STANDARD_ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "course-editorial-standards");
 const ADDED_EVENT_KINDS = new Set<IntelligentEditEvent["kind"]>([
@@ -267,11 +272,26 @@ export async function readEditorialReview(plan: IntelligentEditPlan) {
 export function applyEditorialReview(plan: IntelligentEditPlan, review: IntelligentEditorialReview): IntelligentEditPlan {
   const events = new Map(review.events.map((event) => [event.id, event]));
   const captions = new Map(review.captions.map((caption) => [caption.index, caption]));
-  const reviewedEvents = plan.events.flatMap((event) => {
+  const motionPace = review.motionPace ?? normalizeMotionPace(plan.motion?.pace, plan.style);
+  const motionProfile = resolveMotionProfile(motionPace, plan.style);
+  const shouldApplyMotionProfile = !plan.motion || (
+    review.motionPace !== undefined && review.motionPace !== plan.motion.pace
+  );
+  const profileEvents = shouldApplyMotionProfile
+    ? plan.events.map((event) => ({
+        ...event,
+        duration: motionEventDuration(event.kind, motionProfile) ?? event.duration,
+        ...(event.kind === "zoom" && event.scale === undefined ? { scale: motionProfile.zoomScale } : {}),
+      }))
+    : plan.events;
+  let reviewedEvents = profileEvents.flatMap((event) => {
     const change = events.get(event.id);
     if (change?.enabled === false) return [];
     return [{ ...event, ...change, id: event.id }];
   }).concat(review.addedEvents || []);
+  if (shouldApplyMotionProfile) {
+    reviewedEvents = composeMotionEvents(reviewedEvents, plan.media.durationSeconds, motionProfile);
+  }
   const reviewedCaptions = plan.captions.flatMap((caption, index) => {
     const change = captions.get(index);
     if (change?.enabled === false) return [];
@@ -301,7 +321,7 @@ export function applyEditorialReview(plan: IntelligentEditPlan, review: Intellig
   const captionsEnabled = review.captionsEnabled ?? (plan.design?.captionsEnabled !== false);
   return {
     ...plan,
-    motion: { pace: review.motionPace ?? normalizeMotionPace(plan.motion?.pace, plan.style) },
+    motion: { pace: motionPace },
     events: reviewedEvents,
     captions: reviewedCaptions,
     ...(reviewedPedagogy ? { pedagogy: reviewedPedagogy } : {}),

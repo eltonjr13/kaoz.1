@@ -58,10 +58,50 @@ import {
   buildPedagogicalTranscriptChunks,
   consolidatePedagogicalItems,
 } from "../services/davinci-free/pedagogical-analysis.ts";
+import {
+  composeMotionEvents,
+  defaultMotionPace,
+  resolveMotionProfile,
+} from "../services/davinci-free/intelligent-edit.motion.ts";
 import type {
+  IntelligentEditEvent,
   IntelligentPedagogicalItem,
   TimedTranscriptSegment,
 } from "../services/davinci-free/intelligent-edit.types.ts";
+
+test("presets de movimento mantêm ritmo legível em todos os estilos", () => {
+  assert.equal(defaultMotionPace("subtle"), "calm");
+  assert.equal(defaultMotionPace("balanced"), "natural");
+  assert.equal(defaultMotionPace("dynamic"), "energetic");
+  const calm = resolveMotionProfile("calm", "balanced");
+  const natural = resolveMotionProfile("natural", "balanced");
+  const energetic = resolveMotionProfile("energetic", "dynamic");
+  assert.ok(calm.zoomDuration > natural.zoomDuration);
+  assert.ok(natural.zoomDuration > energetic.zoomDuration);
+  assert.ok(energetic.zoomDuration >= 2.4);
+  assert.ok(calm.transitionDuration >= 0.9);
+  assert.ok(energetic.transitionDuration >= 0.65);
+  assert.equal(calm.cardDuration, 4);
+});
+
+test("composição de movimento separa efeitos concorrentes sem perder eventos", () => {
+  const profile = resolveMotionProfile("natural", "balanced");
+  const events: IntelligentEditEvent[] = [
+    { id: "zoom", kind: "zoom", start: 10, duration: profile.zoomDuration, label: "Zoom", reason: "teste" },
+    { id: "impact", kind: "impact-text", start: 10, duration: profile.impactDuration, label: "Texto", reason: "teste" },
+    { id: "lower", kind: "lower-third", start: 10.1, duration: profile.lowerThirdDuration, label: "Tarja", reason: "teste" },
+    { id: "transition-a", kind: "transition", start: 20, duration: profile.transitionDuration, label: "A", reason: "teste" },
+    { id: "transition-b", kind: "transition", start: 20.2, duration: profile.transitionDuration, label: "B", reason: "teste" },
+  ];
+  const composed = composeMotionEvents(events, 60, profile);
+  const impact = composed.find((event) => event.id === "impact")!;
+  const lower = composed.find((event) => event.id === "lower")!;
+  const transitions = composed.filter((event) => event.kind === "transition");
+  assert.ok(impact.start > 10);
+  assert.ok(lower.start >= impact.start + impact.duration + profile.minimumStrongEffectGap);
+  assert.ok(transitions[1].start - transitions[0].start >= profile.minimumStrongEffectGap);
+  assert.equal(composed.length, events.length);
+});
 
 test("análise pedagógica divide aulas longas sem perder o final da transcrição", async () => {
   const segments: TimedTranscriptSegment[] = Array.from({ length: 36 }, (_, index) => ({
@@ -682,8 +722,11 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /function transitionExpression/);
   assert.match(renderer, /function focalExpression/);
   assert.match(renderer, /const zoomEvents = events\.filter\(\(event\) => event\.kind === "zoom"\)/);
-  assert.match(renderer, /for \(const event of \[\.\.\.zoomEvents\]\.reverse\(\)\)/);
-  assert.match(renderer, /\$\{defaultValue\},\$\{expression\}/);
+  assert.match(renderer, /for \(const event of \[\.\.\.candidates, \.\.\.zoomEvents\]\.reverse\(\)\)/);
+  assert.match(renderer, /3-2\*\(/);
+  assert.match(renderer, /transitionDarkness/);
+  assert.doesNotMatch(renderer, /-0\.95\*/);
+  assert.match(renderer, /ImpactBox/);
   assert.match(renderer, /ImpactIcon/);
   assert.match(renderer, /ImpactMeta/);
   assert.match(renderer, /CardNumber/);
@@ -712,7 +755,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*10/);
+  assert.match(analysis, /analysisVersion:\s*11/);
   assert.match(analysis, /analyzePedagogicalTranscript/);
   assert.match(analysis, /pedagogical-analysis\.json/);
   assert.match(analysis, /transcript\.txt/);
@@ -728,6 +771,8 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /Manter identidade do curso/);
   assert.match(panel, /Nº da aula/);
   assert.match(panel, /Nome da aula/);
+  assert.match(panel, /Ritmo das animações/);
+  assert.match(panel, /updateMotionPace/);
   assert.match(panel, /asset=transcript&download=true/);
   assert.match(panel, /Download do vídeo e da transcrição TXT iniciado/);
   assert.match(panel, /type="checkbox"/);
@@ -814,7 +859,7 @@ test("SFX imersivos usam os nove áudios reais e decisões semânticas da IA", a
   assert.match(analysis, /"soundEffects"/);
   assert.match(analysis, /nunca use som ambiente/);
   assert.match(analysis, /kind: "sound-effect"/);
-  assert.match(analysis, /analysisVersion: 10/);
+  assert.match(analysis, /analysisVersion: 11/);
   assert.match(analysis, /sfxEnabled: input\.sfxEnabled/);
   assert.match(analysis, /sfxPack: input\.sfxPack/);
   assert.match(renderer, /event\.soundEffect/);
@@ -843,6 +888,10 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(review, /applyEditorialReview/);
   assert.match(review, /enabledKinds/);
   assert.match(review, /zoomScale/);
+  assert.match(review, /eventDurations/);
+  assert.match(review, /motionPace/);
+  assert.match(review, /shouldApplyMotionProfile/);
+  assert.match(review, /composeMotionEvents/);
   assert.match(review, /recordEditorialPreview/);
   assert.match(review, /addedEvents/);
   assert.match(review, /pedagogicalOverrideEntry/);
