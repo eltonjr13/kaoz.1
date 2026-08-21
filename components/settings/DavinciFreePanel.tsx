@@ -1388,7 +1388,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         const curTime = videoRef.current.currentTime;
         if (liveCutPreview && activeMediaAsset === "source" && activeCutRanges.length) {
           const skip = nextPlayheadAfterCuts(curTime, activeCutRanges);
-          if (skip.jumped) {
+          if (skip.jumped && Number.isFinite(skip.newTime)) {
             videoRef.current.currentTime = skip.newTime;
             setPlayheadTime(skip.newTime);
             frameId = requestAnimationFrame(tick);
@@ -1625,9 +1625,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (activeMediaAsset === "source" && liveCutPreview && activeCutRanges.length) {
       const skip = nextPlayheadAfterCuts(player.currentTime, activeCutRanges);
       if (skip.jumped) {
-        player.currentTime = Math.min(player.duration, skip.newTime);
-        if (!isScrubbingRef.current) setPlayheadTime(player.currentTime);
-        return;
+        const targetTime = Number.isFinite(player.duration)
+          ? Math.min(player.duration, skip.newTime)
+          : skip.newTime;
+        if (Number.isFinite(targetTime)) {
+          player.currentTime = targetTime;
+          if (!isScrubbingRef.current) setPlayheadTime(player.currentTime);
+          return;
+        }
       }
     }
     if (!isScrubbingRef.current) {
