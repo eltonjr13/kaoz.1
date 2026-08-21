@@ -726,6 +726,11 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
+  assert.match(panel, /return !window\.kaoz1Desktop \|\| !form\.transcriptionModelId/);
+  assert.match(panel, /Transcrição Web\/API automática/);
+  assert.match(panel, /Web\/API automática · OpenAI ou Gemini/);
+  assert.match(panel, /disabled=\{!isDesktopRuntime\}/);
+  assert.match(panel, /transcriptionModelId: webTranscription \? undefined : form\.transcriptionModelId/);
   assert.match(panel, /processingProgress/);
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);

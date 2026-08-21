@@ -34,10 +34,11 @@ function getChunkMs(provider: SpeechProviderName): number {
 }
 
 function engineFor(settings: SpeechSettings, runtime?: SpeechRuntimeEnvironment): SpeechEngine {
-  if (speechRuntimeEnvironment(runtime) === "web" && settings.provider === "webspeech") return "webspeech";
+  const provider = resolveSpeechProvider(settings.provider, runtime);
+  if (speechRuntimeEnvironment(runtime) === "web" && provider === "webspeech") return "webspeech";
   const model = getSpeechModelDefinition(settings.modelId);
   if (model) return model.engine;
-  return settings.provider === "webspeech" ? "cloud" : settings.provider === "parakeet" ? "parakeet" : "cloud";
+  return provider === "webspeech" ? "cloud" : provider === "parakeet" ? "parakeet" : "cloud";
 }
 
 async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscriptionResult | null> {

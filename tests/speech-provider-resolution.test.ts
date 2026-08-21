@@ -7,18 +7,19 @@ import {
 
 test("keeps Web Speech for live recognition in the browser", () => {
   assert.equal(resolveSpeechProvider("webspeech", "web"), "webspeech");
+  assert.equal(resolveSpeechProvider("whisper", "web"), "webspeech");
+  assert.equal(resolveSpeechProvider("parakeet", "web"), "webspeech");
 });
 
-test("uses local Whisper for server-side files when Web Speech is selected", () => {
-  assert.equal(resolveServerSpeechProvider("webspeech", "web"), "whisper-speed");
-});
-
-test("keeps the configured local provider for server-side Web files", () => {
-  assert.equal(resolveServerSpeechProvider("whisper", "web"), "whisper");
-  assert.equal(resolveServerSpeechProvider("parakeet", "web"), "parakeet");
+test("forces Web/API transcription for server-side files received from the browser", () => {
+  assert.equal(resolveServerSpeechProvider("webspeech", "web"), "webspeech");
+  assert.equal(resolveServerSpeechProvider("whisper", "web"), "webspeech");
+  assert.equal(resolveServerSpeechProvider("parakeet", "web"), "webspeech");
 });
 
 test("keeps the configured provider in the desktop runtime", () => {
+  assert.equal(resolveSpeechProvider("whisper", "desktop"), "whisper");
+  assert.equal(resolveSpeechProvider("parakeet", "desktop"), "parakeet");
   assert.equal(resolveServerSpeechProvider("webspeech", "desktop"), "whisper-speed");
   assert.equal(resolveServerSpeechProvider("whisper", "desktop"), "whisper");
   assert.equal(resolveServerSpeechProvider("parakeet", "desktop"), "parakeet");
