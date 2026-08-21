@@ -122,6 +122,7 @@ export interface CourseBatchJob {
   outputResolution?: VideoOutputResolution;
   videoEncoder?: VideoEncoderPreference;
   transcriptionRuntime?: "web" | "desktop";
+  transcriptionMode?: "cloud" | "local";
   transcriptionModelId?: string;
   transcriptionDevice?: "auto" | "vulkan" | "cpu";
   transcriptionAllowCloudFallback?: boolean;
@@ -283,6 +284,7 @@ async function analyzeItem(job: CourseBatchJob, item: CourseBatchItem) {
     sfxPack: job.sfxPack,
     useAgent: job.useAgent,
     transcriptionRuntime: job.transcriptionRuntime,
+    transcriptionMode: job.transcriptionMode,
     transcriptionModelId: job.transcriptionModelId,
     transcriptionDevice: job.transcriptionDevice,
     transcriptionAllowCloudFallback: job.transcriptionAllowCloudFallback,
@@ -653,6 +655,7 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     outputResolution: normalizeVideoOutputResolution(input.outputResolution),
     videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),
     transcriptionRuntime: input.transcriptionRuntime === "desktop" ? "desktop" as const : "web" as const,
+    transcriptionMode: input.transcriptionMode === "cloud" ? "cloud" as const : "local" as const,
     transcriptionModelId: typeof input.transcriptionModelId === "string" ? input.transcriptionModelId : undefined,
     transcriptionDevice: (["auto", "vulkan", "cpu"].includes(String(input.transcriptionDevice)) ? input.transcriptionDevice : "auto") as "auto" | "vulkan" | "cpu",
     transcriptionAllowCloudFallback: input.transcriptionAllowCloudFallback === true,

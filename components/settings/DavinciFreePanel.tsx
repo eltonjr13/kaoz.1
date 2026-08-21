@@ -582,7 +582,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function analyze() {
     if (!hasReadySpeechModel()) return;
-    const webTranscription = shouldUseWebTranscription();
+    const transcriptionMode = selectedTranscriptionMode();
+    let transcriptionSegments: WebSpeechMediaSegment[] | undefined;
+    if (transcriptionMode === "webspeech") {
+      transcriptionSegments = await transcribeSelectedVideoInBrowser();
+      if (!transcriptionSegments) return;
+    }
     addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
@@ -601,10 +606,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sfxVolumeDb: Number(form.sfxVolumeDb),
       sfxPack: form.sfxPack,
       useAgent: true,
-      transcriptionRuntime: webTranscription ? "web" : "desktop",
-      transcriptionModelId: webTranscription ? undefined : form.transcriptionModelId,
-      transcriptionDevice: webTranscription ? undefined : form.transcriptionDevice,
-      transcriptionAllowCloudFallback: webTranscription ? undefined : form.transcriptionAllowCloudFallback,
+      transcriptionRuntime: transcriptionMode === "local" ? "desktop" : "web",
+      transcriptionMode,
+      transcriptionSegments,
+      transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
+      transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
+      transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
     });
     if (result?.id) {
       const prepared = await prepareAnalyzedVideo(result as Analysis);
@@ -991,12 +998,39 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  function shouldUseWebTranscription(): boolean {
-    return !window.kaoz1Desktop || !form.transcriptionModelId;
+  function selectedTranscriptionMode(): "webspeech" | "cloud" | "local" {
+    if (form.transcriptionModelId === WEB_SPEECH_MODE) return "webspeech";
+    if (form.transcriptionModelId === CLOUD_API_MODE) return "cloud";
+    return "local";
+  }
+
+  async function transcribeSelectedVideoInBrowser(): Promise<WebSpeechMediaSegment[] | null> {
+    if (!form.sourcePath) {
+      onStatusMessage({ text: "Web Speech exige um vídeo carregado no navegador. O lote do Google Drive ainda requer API ou modelo local.", type: "error" });
+      return null;
+    }
+    if (!supportsWebSpeechMedia()) {
+      onStatusMessage({ text: "Este navegador não suporta Web Speech a partir da faixa do vídeo. Use uma versão recente do Chrome.", type: "error" });
+      return null;
+    }
+    setBusy("webspeech");
+    addLog("info", "Iniciando Web Speech sem chave de API...", "O vídeo será processado em tempo real pelo navegador.");
+    onStatusMessage({ text: "Web Speech iniciado. Mantenha esta página aberta durante a transcrição.", type: "info" });
+    try {
+      const sourceUrl = `/api/davinci-free/media?sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
+      const segments = await transcribeMediaWithWebSpeech(sourceUrl);
+      addLog("success", "Web Speech concluído.", `${segments.length} segmento(s) reconhecido(s) sem chave de API.`);
+      return segments;
+    } catch (error) {
+      onStatusMessage({ text: caughtMessage(error), type: "error" });
+      return null;
+    } finally {
+      setBusy(null);
+    }
   }
 
   function hasReadySpeechModel(): boolean {
-    if (shouldUseWebTranscription()) return true;
+    if (selectedTranscriptionMode() !== "local") return true;
     const selected = speechModels.find((model) => model.id === form.transcriptionModelId);
     if (selected?.state === "ready") return true;
     onStatusMessage({ text: selected ? `Baixe ${selected.name} antes de iniciar.` : "Selecione um modelo de transcricao antes de iniciar.", type: "error" });
@@ -1010,7 +1044,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       onStatusMessage({ text: "Selecione pelo menos uma aula para exportar.", type: "error" });
       return;
     }
-    const webTranscription = shouldUseWebTranscription();
+    const transcriptionMode = selectedTranscriptionMode();
+    if (transcriptionMode === "webspeech") {
+      onStatusMessage({ text: "Web Speech processa uma aula aberta por vez. Para lotes, selecione API ou um modelo local.", type: "error" });
+      return;
+    }
     setBusy("start-batch");
     try {
       const result = await action("start-batch", {
@@ -1029,10 +1067,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         downloadFolder: downloadFolder || undefined,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
-        transcriptionRuntime: webTranscription ? "web" : "desktop",
-        transcriptionModelId: webTranscription ? undefined : form.transcriptionModelId,
-        transcriptionDevice: webTranscription ? undefined : form.transcriptionDevice,
-        transcriptionAllowCloudFallback: webTranscription ? undefined : form.transcriptionAllowCloudFallback,
+        transcriptionRuntime: transcriptionMode === "local" ? "desktop" : "web",
+        transcriptionMode,
+        transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
+        transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
+        transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -1047,6 +1086,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function startBatch(folderPath = batchFolder, courseName = form.courseName, selectedPaths = selectedLocalVideos) {
     if (!hasReadySpeechModel()) return;
+    const transcriptionMode = selectedTranscriptionMode();
+    if (transcriptionMode === "webspeech") {
+      onStatusMessage({ text: "Web Speech processa uma aula aberta por vez. Para lotes, selecione API ou um modelo local.", type: "error" });
+      return;
+    }
     if (selectedPaths.length === 0) {
       onStatusMessage({ text: "Selecione pelo menos um vídeo para exportar.", type: "error" });
       return;
@@ -1068,6 +1112,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         selectedRelativePaths: selectedPaths,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
+        transcriptionRuntime: transcriptionMode === "local" ? "desktop" : "web",
+        transcriptionMode,
+        transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
+        transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
+        transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -2007,7 +2056,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       value={form.transcriptionModelId}
                       onChange={(event) => setForm((current) => ({ ...current, transcriptionModelId: event.target.value }))}
                     >
-                      <option value="">Web/API automática · OpenAI ou Gemini</option>
+                      <option value={WEB_SPEECH_MODE}>Web Speech · navegador sem chave</option>
+                      <option value={CLOUD_API_MODE}>API · OpenAI ou Gemini configurada</option>
                       {speechModels.map((model) => (
                         <option key={model.id} value={model.id} disabled={!isDesktopRuntime}>
                           {model.name} · {!isDesktopRuntime ? "somente desktop" : model.state === "ready" ? "instalado" : "nao instalado"}
@@ -2015,13 +2065,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       ))}
                     </select>
                   </label>
-                  {!isDesktopRuntime || !form.transcriptionModelId ? (
+                  {form.transcriptionModelId === WEB_SPEECH_MODE ? (
                     <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
                       <Subtitles size={14} className="mt-0.5 shrink-0 text-sky-300" />
                       <div>
-                        <strong className="block text-[11px] text-zinc-100">Transcrição Web/API automática</strong>
+                        <strong className="block text-[11px] text-zinc-100">Web Speech sem chave de API</strong>
                         <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
-                          A análise usa OpenAI ou Gemini configurada e não exige modelo local, CPU ou Vulkan.
+                          O Chrome reconhece a faixa do vídeo em tempo real. Mantenha a página aberta até concluir.
+                        </p>
+                      </div>
+                    </div>
+                  ) : form.transcriptionModelId === CLOUD_API_MODE ? (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
+                      <Subtitles size={14} className="mt-0.5 shrink-0 text-amber-300" />
+                      <div>
+                        <strong className="block text-[11px] text-zinc-100">API selecionada explicitamente</strong>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
+                          Usa OpenAI ou Gemini configurada. Este é o único modo que chama uma API de transcrição.
                         </p>
                       </div>
                     </div>
