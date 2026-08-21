@@ -152,6 +152,20 @@ function googleDriveSourceOrigin(value: unknown): IntelligentEditAnalysisInput["
   };
 }
 
+function webSpeechTranscriptSegments(value: unknown): TimedTranscriptSegment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const segments = value.slice(0, 2_000).flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const candidate = entry as Record<string, unknown>;
+    const start = Number(candidate.start);
+    const end = Number(candidate.end);
+    const text = cleanText(candidate.text).replace(/\s+/g, " ").slice(0, 2_000);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > 43_200 || !text) return [];
+    return [{ start, end, text, source: "webspeech" as const }];
+  });
+  return segments.length ? segments : undefined;
+}
+
 function requestId(value: unknown) {
   const normalized = cleanText(value);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{7,79}$/.test(normalized)) {
@@ -1130,6 +1144,10 @@ export async function analyzeIntelligentEdit(
       ? rawInput.transcriptionDevice
       : "auto") as "auto" | "vulkan" | "cpu",
     transcriptionAllowCloudFallback: rawInput.transcriptionAllowCloudFallback === true,
+    transcriptionMode: (["webspeech", "cloud", "local"].includes(String(rawInput.transcriptionMode))
+      ? rawInput.transcriptionMode
+      : "local") as "webspeech" | "cloud" | "local",
+    transcriptionSegments: webSpeechTranscriptSegments(rawInput.transcriptionSegments),
   };
   const transcriptionRuntime = input.transcriptionRuntime || speechRuntimeEnvironment(rawInput.transcriptionRuntime);
   const startedAt = new Date().toISOString();
@@ -1172,6 +1190,10 @@ export async function analyzeIntelligentEdit(
       transcriptionModelId: input.transcriptionModelId,
       transcriptionDevice: input.transcriptionDevice,
       transcriptionAllowCloudFallback: input.transcriptionAllowCloudFallback,
+      transcriptionMode: input.transcriptionMode,
+      transcriptionSegmentsHash: input.transcriptionSegments
+        ? crypto.createHash("sha256").update(JSON.stringify(input.transcriptionSegments)).digest("hex")
+        : undefined,
     }))
     .digest("hex");
   const directory = path.join(ROOT, cacheKey.slice(0, 16));
@@ -1199,24 +1221,33 @@ export async function analyzeIntelligentEdit(
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
   await reportAnalysisProgress(20, "Detectando falas e transcrevendo o áudio...");
-  const transcriptionResult = await transcriptForAnalysis(
-    input.sourcePath,
-    directory,
-    media.durationSeconds,
-    sourceHash,
-    transcriptionRuntime,
-    {
-      modelId: input.transcriptionModelId,
-      device: input.transcriptionDevice,
-      allowCloudFallback: input.transcriptionAllowCloudFallback,
-    },
-    (completed, total) => {
-      void reportAnalysisProgress(
-        20 + (completed / Math.max(1, total)) * 38,
-        `Transcrevendo áudio: ${completed}/${total} trechos...`,
+  if (input.transcriptionMode === "webspeech" && !input.transcriptionSegments?.length) {
+    throw new Error("A transcrição Web Speech não foi recebida do navegador.");
+  }
+  const transcriptionResult = input.transcriptionMode === "webspeech"
+    ? {
+        segments: input.transcriptionSegments!,
+        transcription: { engine: "webspeech" as const, backend: "web" as const, language: "pt" as const },
+      }
+    : await transcriptForAnalysis(
+        input.sourcePath,
+        directory,
+        media.durationSeconds,
+        sourceHash,
+        transcriptionRuntime,
+        {
+          modelId: input.transcriptionModelId,
+          device: input.transcriptionDevice,
+          allowCloudFallback: input.transcriptionAllowCloudFallback,
+          mode: input.transcriptionMode === "cloud" ? "cloud" : "configured",
+        },
+        (completed, total) => {
+          void reportAnalysisProgress(
+            20 + (completed / Math.max(1, total)) * 38,
+            `Transcrevendo áudio: ${completed}/${total} trechos...`,
+          );
+        },
       );
-    },
-  );
   const transcript = transcriptionResult.segments;
   await analysisStatusWrite;
   await reportAnalysisProgress(60, "Mapeando objetivos, conceitos e estrutura pedagógica...");
