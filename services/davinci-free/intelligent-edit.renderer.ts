@@ -725,20 +725,32 @@ function sfxFileForEvent(
 
 async function collectSfxEvents(plan: IntelligentEditPlan) {
   if (plan.media.sfxEnabled === false) return [];
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const sfxPaths = await ensureSfxLibrary();
   const events: Array<{ time: number; file: string; gainDb: number }> = [
     { time: 0.1, file: sfxPaths["soft-whoosh"], gainDb: -3 },
     { time: Math.max(0.1, editedVideoDuration(plan.events, plan.media.durationSeconds) + 4.1), file: sfxPaths["rising-swoosh"], gainDb: -3 },
   ];
   const hasSemanticSfx = plan.events.some((event) => event.kind === "sound-effect" && event.soundEffect);
+  const visualEvents = plan.events.filter((event) =>
+    ["transition", "cut", "impact-text", "lower-third", "zoom"].includes(event.kind),
+  );
   for (const event of plan.events) {
     if (event.kind === "remove" || videoCutRanges(plan.events, plan.media.durationSeconds).some(
       (range) => event.start >= range.start && event.start < range.end,
     )) continue;
     if (hasSemanticSfx && event.kind !== "sound-effect" && event.kind !== "meme-sfx") continue;
     const file = sfxFileForEvent(event, sfxPaths);
+    const nearestVisual = event.kind === "sound-effect"
+      ? visualEvents
+          .filter((candidate) => Math.abs(candidate.start - event.start) <= 0.8)
+          .sort((left, right) => Math.abs(left.start - event.start) - Math.abs(right.start - event.start))[0]
+      : event;
+    const visualPeak = nearestVisual
+      ? nearestVisual.start + Math.min(motion.entranceSeconds, nearestVisual.duration * 0.28) * 0.82
+      : event.start;
     if (file) events.push({
-      time: editedVideoTime(plan.events, plan.media.durationSeconds, event.start) + 4,
+      time: editedVideoTime(plan.events, plan.media.durationSeconds, visualPeak) + 4,
       file,
       gainDb: Math.max(-9, Math.min(3, event.soundEffectGainDb ?? 0)),
     });

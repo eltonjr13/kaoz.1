@@ -67,6 +67,7 @@ import {
 } from "@/services/davinci-free/video-cuts";
 import type {
   IntelligentEditEvent,
+  IntelligentMotionPace,
   IntelligentSoundEffect,
 } from "@/services/davinci-free/intelligent-edit.types";
 import type {
@@ -131,6 +132,7 @@ type EditEvent = IntelligentEditEvent;
 
 type EditorialReview = {
   captionsEnabled?: boolean;
+  motionPace?: IntelligentMotionPace;
   events: Array<Partial<EditEvent> & { id: string; enabled?: boolean }>;
   addedEvents?: EditEvent[];
   captions: Array<{ index: number; enabled?: boolean; start?: number; end?: number; text?: string }>;
@@ -143,6 +145,7 @@ type Analysis = {
   moduleName: string;
   lessonNumber?: string;
   lessonName?: string;
+  motion?: { pace: IntelligentMotionPace };
   media: {
     durationSeconds: number;
     width: number;
@@ -361,6 +364,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     lessonNumber: "1",
     lessonName: "Boas-vindas",
     style: "balanced",
+    motionPace: "natural" as IntelligentMotionPace,
     captionsEnabled: true,
     reuseCourseTheme: true,
     musicPath: "",
@@ -599,6 +603,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       lessonNumber: form.lessonNumber,
       lessonName: form.lessonName,
       style: form.style,
+      motionPace: form.motionPace,
       captionsEnabled: form.captionsEnabled,
       reuseCourseTheme: form.reuseCourseTheme,
       musicPath: form.musicPath,
@@ -878,6 +883,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setReview((current) => ({ ...current, captionsEnabled: enabled }));
   }
 
+  function updateMotionPace(motionPace: IntelligentMotionPace) {
+    setPreviewStale(true);
+    setForm((current) => ({ ...current, motionPace }));
+    setReview((current) => ({ ...current, motionPace }));
+  }
+
   async function restoreAutomatic() {
     if (!analysis) return;
     const result = await action("reset-editorial-review", { planId: analysis.id });
@@ -1062,6 +1073,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         manifestId: discovery.id,
         courseName: discovery.root.name,
         style: form.style,
+        motionPace: form.motionPace,
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
@@ -1108,6 +1120,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         folderPath,
         courseName,
         style: form.style,
+        motionPace: form.motionPace,
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
