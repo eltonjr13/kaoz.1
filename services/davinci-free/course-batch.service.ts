@@ -21,7 +21,8 @@ import {
 } from "./intelligent-edit.service";
 import { renderIntelligentEdit } from "./intelligent-edit.renderer";
 import { applyCourseEditorialStandard } from "./intelligent-edit.review";
-import type { IntelligentCourseIdentity, IntelligentEditStyle } from "./intelligent-edit.types";
+import type { IntelligentCourseIdentity, IntelligentEditStyle, IntelligentMotionPace } from "./intelligent-edit.types";
+import { normalizeMotionPace } from "./intelligent-edit.motion";
 import {
   normalizeVideoOutputResolution,
   type VideoOutputResolution,
@@ -111,6 +112,7 @@ export interface CourseBatchJob {
   folderPath: string;
   courseName: string;
   style: IntelligentEditStyle;
+  motionPace?: IntelligentMotionPace;
   captionsEnabled: boolean;
   reuseCourseTheme: true;
   musicPath?: string;
@@ -275,6 +277,7 @@ async function analyzeItem(job: CourseBatchJob, item: CourseBatchItem) {
     courseName: job.courseName,
     moduleName: item.moduleName,
     style: job.style,
+    motionPace: job.motionPace,
     captionsEnabled: job.captionsEnabled,
     reuseCourseTheme: false,
     musicPath: job.musicPath,
@@ -461,6 +464,7 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
     sourceModifiedAt: item.remoteModifiedTime,
     sourceChecksum: item.remoteChecksum,
     style: job.style,
+    motionPace: job.motionPace,
     captionsEnabled: job.captionsEnabled,
     musicPath: job.musicPath,
     musicDb: job.musicDb,
@@ -642,6 +646,7 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     folderPath: "",
     courseName,
     style: styleFrom(input.style),
+    motionPace: normalizeMotionPace(input.motionPace, styleFrom(input.style)),
     captionsEnabled: input.captionsEnabled !== false,
     reuseCourseTheme: true as const,
     musicPath: cleanText(input.musicPath) || undefined,

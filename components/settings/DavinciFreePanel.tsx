@@ -465,8 +465,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       .then((response) => response.json())
       .then((data) => {
         if (!data.analysis) return;
-        setAnalysis(data.analysis as Analysis);
-        setReview((data.editorialReview as EditorialReview | null) || { events: [], captions: [] });
+        const loadedAnalysis = data.analysis as Analysis;
+        const loadedReview = (data.editorialReview as EditorialReview | null) || { events: [], captions: [] };
+        setAnalysis(loadedAnalysis);
+        setReview(loadedReview);
+        setForm((current) => ({
+          ...current,
+          motionPace: loadedReview.motionPace || loadedAnalysis.motion?.pace || current.motionPace,
+        }));
         setPreviewStale(false);
       })
       .catch(() => undefined);
@@ -643,6 +649,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function prepareAnalyzedVideo(result: Analysis) {
     const draftReview: EditorialReview = {
+      motionPace: form.motionPace,
       events: [],
       captions: [],
       ...(pendingSourceCuts.length ? { addedEvents: pendingSourceCuts } : {}),
@@ -894,7 +901,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const result = await action("reset-editorial-review", { planId: analysis.id });
     if (result) {
       setAnalysis(result as Analysis);
-      setReview({ events: [], captions: [] });
+      const restored = result as Analysis;
+      const motionPace = restored.motion?.pace || form.motionPace;
+      setReview({ motionPace, events: [], captions: [] });
+      setForm((current) => ({ ...current, motionPace }));
       setPreviewStale(true);
       onStatusMessage({ text: "Decisões automáticas restauradas. Renderize a prévia quando quiser conferir.", type: "success" });
     }
@@ -2003,6 +2013,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="dynamic">Dinâmico (Dynamic)</option>
                     <option value="meme">🤡 Modo Meme (Edição Cômica)</option>
                   </select>
+                </label>
+
+                <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
+                  Ritmo das animações
+                  <select
+                    className={fieldClass}
+                    value={review.motionPace || form.motionPace}
+                    onChange={(event) => updateMotionPace(event.target.value as IntelligentMotionPace)}
+                  >
+                    <option value="calm">Calmo — entradas longas e suaves</option>
+                    <option value="natural">Natural — ritmo equilibrado</option>
+                    <option value="energetic">Energético — ágil, sem cortes bruscos</option>
+                  </select>
+                  <span className="block text-[10px] font-normal leading-relaxed text-[#8B92A1]">
+                    Controla easing, duração, intervalo entre efeitos e sincronização dos SFX.
+                  </span>
                 </label>
 
                 <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
