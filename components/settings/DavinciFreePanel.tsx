@@ -50,6 +50,11 @@ import {
 } from "@/components/video/video-editor-console";
 import { BUILD_VERSION } from "@/lib/app-version";
 import {
+  supportsWebSpeechMedia,
+  transcribeMediaWithWebSpeech,
+  type WebSpeechMediaSegment,
+} from "@/lib/speech/web-speech-media";
+import {
   detectSilenceRanges,
   editedVideoDuration,
   editedVideoTime,
@@ -225,6 +230,8 @@ type Props = {
 
 const fieldClass =
   "w-full rounded-[6px] border border-white/10 bg-[#0D0F14] px-2.5 py-1.5 text-xs text-[#F4F5F7] placeholder-[#5D6472] outline-none transition-colors hover:border-white/15 focus:border-[#7C6CF2]/70 focus:ring-1 focus:ring-[#7C6CF2]/20";
+const WEB_SPEECH_MODE = "__webspeech__";
+const CLOUD_API_MODE = "__cloud_api__";
 
 const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
@@ -363,7 +370,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
     outputResolution: "full-hd" as "full-hd" | "source",
     videoEncoder: "auto" as "auto" | "cpu",
-    transcriptionModelId: "",
+    transcriptionModelId: WEB_SPEECH_MODE,
     transcriptionDevice: "auto" as "auto" | "vulkan" | "cpu",
     transcriptionAllowCloudFallback: false,
   });
@@ -384,7 +391,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         if (!active || !response.ok) return;
         setForm((current) => ({
           ...current,
-          transcriptionModelId: window.kaoz1Desktop && typeof data.modelId === "string" ? data.modelId : "",
+          transcriptionModelId: window.kaoz1Desktop && typeof data.modelId === "string" ? data.modelId : WEB_SPEECH_MODE,
           transcriptionDevice: data.device === "vulkan" || data.device === "cpu" ? data.device : "auto",
           transcriptionAllowCloudFallback: data.allowCloudFallback === true,
         }));
