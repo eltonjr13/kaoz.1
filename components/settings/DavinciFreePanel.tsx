@@ -585,8 +585,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const transcriptionMode = selectedTranscriptionMode();
     let transcriptionSegments: WebSpeechMediaSegment[] | undefined;
     if (transcriptionMode === "webspeech") {
-      transcriptionSegments = await transcribeSelectedVideoInBrowser();
-      if (!transcriptionSegments) return;
+      const browserSegments = await transcribeSelectedVideoInBrowser();
+      if (!browserSegments) return;
+      transcriptionSegments = browserSegments;
     }
     addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
@@ -611,7 +612,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       transcriptionSegments,
       transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
       transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
-      transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
+      transcriptionAllowCloudFallback: false,
     });
     if (result?.id) {
       const prepared = await prepareAnalyzedVideo(result as Analysis);
@@ -1071,7 +1072,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         transcriptionMode,
         transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
         transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
-        transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
+        transcriptionAllowCloudFallback: false,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -1116,7 +1117,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         transcriptionMode,
         transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
         transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
-        transcriptionAllowCloudFallback: transcriptionMode === "local" ? form.transcriptionAllowCloudFallback : undefined,
+        transcriptionAllowCloudFallback: false,
       });
       if (result?.id) {
         setBatch(result as BatchJob);
@@ -2127,15 +2128,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       </div>
                     );
                   })()}
-                  <label className="flex items-center gap-2 text-[10px] text-[#8B92A1]">
-                    <input
-                      type="checkbox"
-                      checked={form.transcriptionAllowCloudFallback}
-                      onChange={(event) => setForm((current) => ({ ...current, transcriptionAllowCloudFallback: event.target.checked }))}
-                      className="accent-[#8B92A1]"
-                    />
-                    Permitir fallback pela nuvem se o modelo local falhar
-                  </label>
                     </>
                   )}
                 </div>

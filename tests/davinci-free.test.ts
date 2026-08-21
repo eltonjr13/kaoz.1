@@ -654,6 +654,10 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
     path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"),
     "utf8",
   );
+  const webSpeechMedia = await readFile(
+    path.join(process.cwd(), "lib", "speech", "web-speech-media.ts"),
+    "utf8",
+  );
   const courseTheme = await readFile(
     path.join(process.cwd(), "services", "davinci-free", "course-theme.service.ts"),
     "utf8",
@@ -663,6 +667,9 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /const speech = getSpeechService\(\)/);
   assert.match(analysis, /speech\.transcribe/);
   assert.match(analysis, /findReusableTranscript/);
+  assert.match(analysis, /webSpeechTranscriptSegments/);
+  assert.match(analysis, /backend: "web" as const/);
+  assert.match(analysis, /input\.transcriptionMode === "cloud" \? "cloud" : "configured"/);
   assert.match(analysis, /reportAnalysisProgress/);
   assert.match(analysis, /Transcrevendo áudio:/);
   assert.match(analysis, /useExternalTools:\s*false/);
@@ -726,11 +733,15 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
-  assert.match(panel, /return !window\.kaoz1Desktop \|\| !form\.transcriptionModelId/);
-  assert.match(panel, /Transcrição Web\/API automática/);
-  assert.match(panel, /Web\/API automática · OpenAI ou Gemini/);
+  assert.match(panel, /Web Speech · navegador sem chave/);
+  assert.match(panel, /API · OpenAI ou Gemini configurada/);
+  assert.match(panel, /transcribeMediaWithWebSpeech/);
+  assert.match(panel, /transcriptionSegments/);
   assert.match(panel, /disabled=\{!isDesktopRuntime\}/);
-  assert.match(panel, /transcriptionModelId: webTranscription \? undefined : form\.transcriptionModelId/);
+  assert.match(panel, /transcriptionModelId: transcriptionMode === "local" \? form\.transcriptionModelId : undefined/);
+  assert.match(webSpeechMedia, /recognition\.start\(audioTrack\)/);
+  assert.match(webSpeechMedia, /createMediaStreamDestination/);
+  assert.match(webSpeechMedia, /O Web Speech terminou sem retornar texto/);
   assert.match(panel, /processingProgress/);
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);

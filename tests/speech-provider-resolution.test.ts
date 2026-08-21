@@ -7,14 +7,14 @@ import {
 
 test("keeps Web Speech for live recognition in the browser", () => {
   assert.equal(resolveSpeechProvider("webspeech", "web"), "webspeech");
-  assert.equal(resolveSpeechProvider("whisper", "web"), "webspeech");
-  assert.equal(resolveSpeechProvider("parakeet", "web"), "webspeech");
+  assert.equal(resolveSpeechProvider("whisper", "web"), "whisper");
+  assert.equal(resolveSpeechProvider("parakeet", "web"), "parakeet");
 });
 
-test("forces Web/API transcription for server-side files received from the browser", () => {
-  assert.equal(resolveServerSpeechProvider("webspeech", "web"), "webspeech");
-  assert.equal(resolveServerSpeechProvider("whisper", "web"), "webspeech");
-  assert.equal(resolveServerSpeechProvider("parakeet", "web"), "webspeech");
+test("does not force cloud API merely because a server-side file came from the browser", () => {
+  assert.equal(resolveServerSpeechProvider("webspeech", "web"), "whisper-speed");
+  assert.equal(resolveServerSpeechProvider("whisper", "web"), "whisper");
+  assert.equal(resolveServerSpeechProvider("parakeet", "web"), "parakeet");
 });
 
 test("keeps the configured provider in the desktop runtime", () => {

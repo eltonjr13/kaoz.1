@@ -166,6 +166,14 @@ function webSpeechTranscriptSegments(value: unknown): TimedTranscriptSegment[] |
   return segments.length ? segments : undefined;
 }
 
+function fitTranscriptToMedia(segments: TimedTranscriptSegment[], durationSeconds: number) {
+  return segments.flatMap((segment) => {
+    const start = Math.min(durationSeconds, Math.max(0, segment.start));
+    const end = Math.min(durationSeconds, Math.max(start, segment.end));
+    return end > start ? [{ ...segment, start, end }] : [];
+  });
+}
+
 function requestId(value: unknown) {
   const normalized = cleanText(value);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{7,79}$/.test(normalized)) {
@@ -1222,12 +1230,15 @@ export async function analyzeIntelligentEdit(
   const media = await inspectMedia(input.sourcePath);
   if (!media.hasAudio) throw new Error("O vídeo não possui áudio para orientar a edição.");
   await reportAnalysisProgress(20, "Detectando falas e transcrevendo o áudio...");
-  if (input.transcriptionMode === "webspeech" && !input.transcriptionSegments?.length) {
+  const webSpeechSegments = input.transcriptionSegments
+    ? fitTranscriptToMedia(input.transcriptionSegments, media.durationSeconds)
+    : undefined;
+  if (input.transcriptionMode === "webspeech" && !webSpeechSegments?.length) {
     throw new Error("A transcrição Web Speech não foi recebida do navegador.");
   }
   const transcriptionResult = input.transcriptionMode === "webspeech"
     ? {
-        segments: input.transcriptionSegments!,
+        segments: webSpeechSegments!,
         transcription: { engine: "webspeech" as const, backend: "web" as const, language: "pt" as const },
       }
     : await transcriptForAnalysis(
