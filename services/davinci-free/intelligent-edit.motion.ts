@@ -22,7 +22,7 @@ export type IntelligentMotionProfile = {
 const MOTION_PROFILES: Record<IntelligentMotionPace, IntelligentMotionProfile> = {
   calm: {
     pace: "calm",
-    cardDuration: 4.8,
+    cardDuration: 4,
     lowerThirdDuration: 5.2,
     impactDuration: 3.8,
     zoomDuration: 3.4,
@@ -36,7 +36,7 @@ const MOTION_PROFILES: Record<IntelligentMotionPace, IntelligentMotionProfile> =
   },
   natural: {
     pace: "natural",
-    cardDuration: 4.4,
+    cardDuration: 4,
     lowerThirdDuration: 4.8,
     impactDuration: 3.3,
     zoomDuration: 2.9,
@@ -50,7 +50,7 @@ const MOTION_PROFILES: Record<IntelligentMotionPace, IntelligentMotionProfile> =
   },
   energetic: {
     pace: "energetic",
-    cardDuration: 4.2,
+    cardDuration: 4,
     lowerThirdDuration: 4.5,
     impactDuration: 3,
     zoomDuration: 2.4,

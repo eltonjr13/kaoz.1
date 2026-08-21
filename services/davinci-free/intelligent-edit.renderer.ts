@@ -478,7 +478,6 @@ function transitionExpression(events: IntelligentEditEvent[]) {
 }
 
 function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
-  const design = resolveIntelligentEditDesign(plan);
   const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const scale = scaleExpression(plan.events);
   const focusX = focalExpression(plan.events, "x");
@@ -597,6 +596,7 @@ async function renderCard(
   encoder: VideoEncoder,
   onProgress?: (progress: number) => void,
 ) {
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
   const { colors } = resolveIntelligentEditDesign(plan);
   const cardFilter = [
@@ -607,8 +607,8 @@ async function renderCard(
     `drawbox=x=iw*0.76:y=ih*0.15:w=iw*0.17:h=2:color=0x${colors.muted.slice(1)}@0.24:t=fill`,
     ...cardLayoutFilters(plan, kind),
     `ass='${filterPath(assPath)}'`,
-    "fade=t=in:st=0:d=0.35",
-    `fade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
+    `fade=t=in:st=0:d=${Math.min(0.65, motion.entranceSeconds).toFixed(3)}`,
+    `fade=t=out:st=${(duration - Math.min(0.65, motion.exitSeconds)).toFixed(3)}:d=${Math.min(0.65, motion.exitSeconds).toFixed(3)}`,
   ].join(",");
   await runFfmpeg([
     "-y",
@@ -625,7 +625,7 @@ async function renderCard(
     "-vf",
     cardFilter,
     "-af",
-    `afade=t=in:st=0:d=0.35,afade=t=out:st=${(duration - 0.35).toFixed(3)}:d=0.35`,
+    `afade=t=in:st=0:d=${Math.min(0.65, motion.entranceSeconds).toFixed(3)},afade=t=out:st=${(duration - Math.min(0.65, motion.exitSeconds)).toFixed(3)}:d=${Math.min(0.65, motion.exitSeconds).toFixed(3)}`,
     "-t",
     duration.toFixed(3),
     ...videoEncoderArguments(encoder),
