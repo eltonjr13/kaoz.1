@@ -2828,10 +2828,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       </div>
 
                       {/* 3. Track SUB (Legendas) */}
-                      <div className={`grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] border pointer-events-auto transition-opacity ${
-                        captionsEnabled
-                          ? "border-sky-400/20 bg-[#101217]"
-                          : "border-white/[0.03] bg-[#0D0F14] opacity-45"
+                      <div className={`grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03] transition-opacity ${
+                        captionsEnabled ? "" : "opacity-45"
                       }`}>
                         <button
                           type="button"
@@ -2841,11 +2839,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                             event.stopPropagation();
                             updateCaptionsEnabled(!captionsEnabled);
                           }}
-                          className="flex h-full items-center justify-center gap-0.5 font-mono text-[8px] font-bold text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-100"
+                          className="flex h-full items-center justify-start gap-0.5 pl-2 font-mono text-[9px] font-bold text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-100"
                           title={captionsEnabled ? "Desativar legendas no próximo render" : "Ativar legendas no próximo render"}
                         >
-                          {captionsEnabled ? <Eye size={10} /> : <EyeOff size={10} />}
                           SUB
+                          {captionsEnabled ? <Eye size={9} /> : <EyeOff size={9} />}
                         </button>
                         <div className="relative h-full flex-1 overflow-hidden">
                           {analysis?.captions.length ? (
