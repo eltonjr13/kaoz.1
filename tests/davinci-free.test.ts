@@ -836,6 +836,11 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /Timeline editorial/);
   assert.match(panel, /Salvar padrão do curso/);
   assert.match(panel, /Exibir legendas/);
+  assert.match(panel, /Track SUB \(Legendas\)/);
+  assert.match(panel, /aria-pressed=\{captionsEnabled\}/);
+  assert.match(panel, /updateCaptionsEnabled\(!captionsEnabled\)/);
+  assert.match(panel, /timeline-caption-/);
+  assert.match(panel, /editedVideoTime\(analysis\.events, rawDuration, sourceStart\) \+ 4/);
   assert.match(panel, /Restaurar automático/);
   assert.match(panel, /api\/davinci-free\/media/);
   assert.match(panel, /musicWaveform/);
