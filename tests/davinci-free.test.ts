@@ -726,6 +726,9 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
+  assert.match(panel, /if \(!window\.kaoz1Desktop\) return true/);
+  assert.match(panel, /Transcrição Web\/API automática/);
+  assert.match(panel, /transcriptionModelId: desktopRuntime \? form\.transcriptionModelId : undefined/);
   assert.match(panel, /processingProgress/);
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);

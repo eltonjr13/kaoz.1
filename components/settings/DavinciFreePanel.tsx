@@ -333,6 +333,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   ]);
   const [speechModels, setSpeechModels] = useState<VideoSpeechModel[]>([]);
   const [speechModelBusy, setSpeechModelBusy] = useState<string | null>(null);
+  const [isDesktopRuntime, setIsDesktopRuntime] = useState<boolean>(false);
 
   const addLog = useCallback((level: ConsoleLogLevel, message: string, details?: string) => {
     const timestamp = new Date().toLocaleTimeString("pt-BR");
@@ -414,6 +415,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   useEffect(() => {
     const bridge = window.kaoz1Desktop;
+    setIsDesktopRuntime(Boolean(bridge));
     if (!bridge) return;
 
     let mounted = true;
@@ -572,15 +574,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function analyze() {
-    const selectedSpeechModel = speechModels.find((model) => model.id === form.transcriptionModelId);
-    if (!selectedSpeechModel || selectedSpeechModel.state !== "ready") {
-      const text = selectedSpeechModel
-        ? `O modelo ${selectedSpeechModel.name} ainda nao foi baixado.`
-        : "Selecione um modelo de transcricao antes de analisar o video.";
-      addLog("warn", text);
-      onStatusMessage({ text, type: "error" });
-      return;
-    }
+    if (!hasReadySpeechModel()) return;
+    const desktopRuntime = Boolean(window.kaoz1Desktop);
     addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
@@ -599,10 +594,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sfxVolumeDb: Number(form.sfxVolumeDb),
       sfxPack: form.sfxPack,
       useAgent: true,
-      transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
-      transcriptionModelId: form.transcriptionModelId,
-      transcriptionDevice: form.transcriptionDevice,
-      transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
+      transcriptionRuntime: desktopRuntime ? "desktop" : "web",
+      transcriptionModelId: desktopRuntime ? form.transcriptionModelId : undefined,
+      transcriptionDevice: desktopRuntime ? form.transcriptionDevice : undefined,
+      transcriptionAllowCloudFallback: desktopRuntime ? form.transcriptionAllowCloudFallback : undefined,
     });
     if (result?.id) {
       const prepared = await prepareAnalyzedVideo(result as Analysis);
@@ -995,6 +990,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function hasReadySpeechModel(): boolean {
+    if (!window.kaoz1Desktop) return true;
     const selected = speechModels.find((model) => model.id === form.transcriptionModelId);
     if (selected?.state === "ready") return true;
     onStatusMessage({ text: selected ? `Baixe ${selected.name} antes de iniciar.` : "Selecione um modelo de transcricao antes de iniciar.", type: "error" });
@@ -1998,6 +1994,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </span>
 
                 <div className="space-y-2 rounded-[6px] bg-[#0D0F14] p-3">
+                  {!isDesktopRuntime ? (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
+                      <Subtitles size={14} className="mt-0.5 shrink-0 text-sky-300" />
+                      <div>
+                        <strong className="block text-[11px] text-zinc-100">Transcrição Web/API automática</strong>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
+                          A análise usa OpenAI ou Gemini configurada e não exige modelo local, CPU ou Vulkan.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                     Modelo de transcricao
                     <select
@@ -2060,6 +2068,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     />
                     Permitir fallback pela nuvem se o modelo local falhar
                   </label>
+                    </>
+                  )}
                 </div>
 
                 <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
