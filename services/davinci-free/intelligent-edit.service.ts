@@ -412,6 +412,7 @@ function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption
 
 function isReusableTranscript(candidate: IntelligentEditPlan | null, sourceHash: string, options: SpeechTranscriptionOptions): candidate is IntelligentEditPlan {
   if (!candidate || candidate.sourceHash !== sourceHash || candidate.transcript.length === 0) return false;
+  if (options.mode === "cloud") return candidate.transcription?.backend === "cloud";
   return (candidate.transcription?.modelId || null) === (options.modelId || null);
 }
 
