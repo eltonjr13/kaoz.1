@@ -191,6 +191,7 @@ function assHeader(plan: IntelligentEditPlan) {
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
     `Style: LowerThird,Segoe UI Semibold,40,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
+    `Style: ImpactBox,Segoe UI,10,${assColor(colors.surface)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1`,
     `Style: ImpactIcon,Segoe UI Semibold,24,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,0,0,5,0,0,0,1`,
     `Style: ImpactMeta,Segoe UI Semibold,18,${assColor(colors.muted)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,0,0,4,0,0,0,1`,
     `Style: ImpactText,Segoe UI Semibold,42,${assColor(colors.text)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,0,0,0,1`,
@@ -408,24 +409,24 @@ function filterPath(filePath: string) {
 }
 
 function scaleExpression(events: IntelligentEditEvent[]) {
-  const zoomExpressions = events
-    .filter((event) => event.kind === "zoom")
+  const animatedEvents = events.filter((event) => event.kind === "zoom" || event.kind === "cut");
+  const zoomExpressions = animatedEvents
     .map((event) => {
-      const peak = Math.max(1.04, Math.min(1.16, event.scale || 1.12));
+      const peak = Math.max(1.025, Math.min(1.14, event.scale || (event.kind === "cut" ? 1.055 : 1.09)));
       const delta = peak - 1;
+      const entry = Math.max(0.4, Math.min(0.8, event.duration * 0.28));
+      const exit = Math.max(0.35, Math.min(0.65, event.duration * 0.24));
       const start = event.start.toFixed(3);
-      const rampEnd = (event.start + 0.34).toFixed(3);
-      const holdEnd = (event.start + Math.max(0.75, event.duration - 0.34)).toFixed(3);
+      const rampEnd = (event.start + entry).toFixed(3);
+      const holdEnd = (event.start + Math.max(entry, event.duration - exit)).toFixed(3);
       const end = (event.start + event.duration).toFixed(3);
-      return `if(between(t,${start},${rampEnd}),1+${delta.toFixed(4)}*(t-${start})/0.34,if(between(t,${rampEnd},${holdEnd}),${peak.toFixed(4)},if(between(t,${holdEnd},${end}),${peak.toFixed(4)}-${delta.toFixed(4)}*(t-${holdEnd})/0.34,1)))`;
+      const enterProgress = `(t-${start})/${entry.toFixed(3)}`;
+      const exitProgress = `(t-${holdEnd})/${exit.toFixed(3)}`;
+      const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
+      const exitEase = `(${exitProgress})*(${exitProgress})*(3-2*(${exitProgress}))`;
+      return `if(between(t,${start},${rampEnd}),1+${delta.toFixed(4)}*(${enterEase}),if(between(t,${rampEnd},${holdEnd}),${peak.toFixed(4)},if(between(t,${holdEnd},${end}),${peak.toFixed(4)}-${delta.toFixed(4)}*(${exitEase}),1)))`;
     });
-  const cutExpressions = events
-    .filter((event) => event.kind === "cut")
-    .map((event) =>
-      `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${Math.max(1, Math.min(1.14, event.scale || 1.055)).toFixed(4)},1)`,
-    );
-  const expressions = [...zoomExpressions, ...cutExpressions];
-  return expressions.length ? expressions.reduce((left, right) => `max(${left},${right})`) : "1";
+  return zoomExpressions.length ? zoomExpressions.reduce((left, right) => `max(${left},${right})`) : "1";
 }
 
 function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
@@ -437,13 +438,22 @@ function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
   const inputSize = axis === "x" ? "in_w" : "in_h";
   const outputSize = axis === "x" ? "out_w" : "out_h";
   let expression = defaultValue;
-  for (const event of [...candidates].reverse()) {
-    const coordinate = Math.max(0, Math.min(1, event[axis]!)).toFixed(4);
+  for (const event of [...candidates, ...zoomEvents].reverse()) {
+    const coordinate = Math.max(0, Math.min(1, event[axis] ?? 0.5)).toFixed(4);
     const focused = `${coordinate}*${inputSize}-${outputSize}/2`;
-    expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${focused},${expression})`;
-  }
-  for (const event of [...zoomEvents].reverse()) {
-    expression = `if(between(t,${event.start.toFixed(3)},${(event.start + event.duration).toFixed(3)}),${defaultValue},${expression})`;
+    const entry = Math.max(0.4, Math.min(0.8, event.duration * 0.28));
+    const exit = Math.max(0.35, Math.min(0.65, event.duration * 0.24));
+    const start = event.start.toFixed(3);
+    const rampEnd = (event.start + entry).toFixed(3);
+    const holdEnd = (event.start + Math.max(entry, event.duration - exit)).toFixed(3);
+    const end = (event.start + event.duration).toFixed(3);
+    const enterProgress = `(t-${start})/${entry.toFixed(3)}`;
+    const exitProgress = `(t-${holdEnd})/${exit.toFixed(3)}`;
+    const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
+    const exitEase = `1-((${exitProgress})*(${exitProgress})*(3-2*(${exitProgress})))`;
+    const entering = `${defaultValue}+((${focused})-(${defaultValue}))*(${enterEase})`;
+    const exiting = `${defaultValue}+((${focused})-(${defaultValue}))*(${exitEase})`;
+    expression = `if(between(t,${start},${rampEnd}),${entering},if(between(t,${rampEnd},${holdEnd}),${focused},if(between(t,${holdEnd},${end}),${exiting},${expression})))`;
   }
   return `max(0,min(${inputSize}-${outputSize},${expression}))`;
 }
@@ -456,7 +466,11 @@ function transitionExpression(events: IntelligentEditEvent[]) {
       const start = Math.max(0, event.start - half);
       const middle = event.start;
       const end = event.start + half;
-      return `if(between(t,${start.toFixed(3)},${middle.toFixed(3)}),(t-${start.toFixed(3)})/${half.toFixed(3)},if(between(t,${middle.toFixed(3)},${end.toFixed(3)}),1-(t-${middle.toFixed(3)})/${half.toFixed(3)},0))`;
+      const enterProgress = `(t-${start.toFixed(3)})/${half.toFixed(3)}`;
+      const exitProgress = `(t-${middle.toFixed(3)})/${half.toFixed(3)}`;
+      const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
+      const exitEase = `1-((${exitProgress})*(${exitProgress})*(3-2*(${exitProgress})))`;
+      return `if(between(t,${start.toFixed(3)},${middle.toFixed(3)}),${enterEase},if(between(t,${middle.toFixed(3)},${end.toFixed(3)}),${exitEase},0))`;
     });
   return expressions.length
     ? expressions.reduce((left, right) => `max(${left},${right})`)
@@ -465,6 +479,7 @@ function transitionExpression(events: IntelligentEditEvent[]) {
 
 function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
   const design = resolveIntelligentEditDesign(plan);
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const scale = scaleExpression(plan.events);
   const focusX = focalExpression(plan.events, "x");
   const focusY = focalExpression(plan.events, "y");
@@ -473,19 +488,8 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
     `scale=${plan.media.width}:${plan.media.height}:flags=lanczos`,
     `scale=w='trunc(iw*(${scale})/2)*2':h='trunc(ih*(${scale})/2)*2':eval=frame`,
     `crop=${plan.media.width}:${plan.media.height}:x='${focusX}':y='${focusY}'`,
-    `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-0.95*(${transition})':eval=frame`,
+    `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-${motion.transitionDarkness.toFixed(3)}*(${transition})':eval=frame`,
   ];
-  for (const layout of impactLayouts(plan)) {
-    const enable = `between(t,${layout.start.toFixed(3)},${layout.end.toFixed(3)})`;
-    const edgeWidth = layout.event.variant === "quote" ? 7 : 5;
-    filters.push(
-      `drawbox=x=${layout.x + 10}:y=${layout.y + 10}:w=${layout.width}:h=${layout.height}:color=black@0.22:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x}:y=${layout.y}:w=${layout.width}:h=${layout.height}:color=0x${design.colors.surface.slice(1)}@0.92:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x}:y=${layout.y}:w=${edgeWidth}:h=${layout.height}:color=0x${layout.accent.slice(1)}:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x + 18}:y=${layout.y + Math.round((layout.height - 54) / 2)}:w=54:h=54:color=0x${design.colors.background.slice(1)}@0.84:t=fill:enable='${enable}'`,
-      `drawbox=x=${layout.x + 92}:y=${layout.y + 45}:w=${Math.min(120, layout.width - 120)}:h=2:color=0x${layout.accent.slice(1)}@0.72:t=fill:enable='${enable}'`,
-    );
-  }
   filters.push(`ass='${filterPath(assPath)}'`);
   for (const event of plan.events.filter(
     (item) => item.kind === "cursor" && item.x !== undefined && item.y !== undefined,
@@ -496,8 +500,8 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
     );
   }
   filters.push(
-    "fade=t=in:st=0:d=0.25",
-    `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - 0.35).toFixed(3)}:d=0.35`,
+    `fade=t=in:st=0:d=${Math.min(0.55, motion.entranceSeconds).toFixed(3)}`,
+    `fade=t=out:st=${Math.max(0, plan.media.durationSeconds - Math.min(0.6, motion.exitSeconds)).toFixed(3)}:d=${Math.min(0.6, motion.exitSeconds).toFixed(3)}`,
   );
   return filters.join(",");
 }
