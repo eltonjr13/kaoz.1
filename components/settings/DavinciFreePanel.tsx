@@ -333,6 +333,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   ]);
   const [speechModels, setSpeechModels] = useState<VideoSpeechModel[]>([]);
   const [speechModelBusy, setSpeechModelBusy] = useState<string | null>(null);
+  const [isDesktopRuntime, setIsDesktopRuntime] = useState<boolean>(false);
 
   const addLog = useCallback((level: ConsoleLogLevel, message: string, details?: string) => {
     const timestamp = new Date().toLocaleTimeString("pt-BR");
@@ -414,6 +415,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   useEffect(() => {
     const bridge = window.kaoz1Desktop;
+    setIsDesktopRuntime(Boolean(bridge));
     if (!bridge) return;
 
     let mounted = true;
@@ -572,15 +574,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   async function analyze() {
-    const selectedSpeechModel = speechModels.find((model) => model.id === form.transcriptionModelId);
-    if (!selectedSpeechModel || selectedSpeechModel.state !== "ready") {
-      const text = selectedSpeechModel
-        ? `O modelo ${selectedSpeechModel.name} ainda nao foi baixado.`
-        : "Selecione um modelo de transcricao antes de analisar o video.";
-      addLog("warn", text);
-      onStatusMessage({ text, type: "error" });
-      return;
-    }
+    if (!hasReadySpeechModel()) return;
+    const desktopRuntime = Boolean(window.kaoz1Desktop);
     addLog("info", "Iniciando análise inteligente do áudio e vídeo...", form.sourcePath ? `Caminho: ${form.sourcePath}` : "Google Drive");
     const result = await action("analyze", {
       requestId: `analysis-${crypto.randomUUID()}`,
@@ -599,10 +594,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       sfxVolumeDb: Number(form.sfxVolumeDb),
       sfxPack: form.sfxPack,
       useAgent: true,
-      transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
-      transcriptionModelId: form.transcriptionModelId,
-      transcriptionDevice: form.transcriptionDevice,
-      transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
+      transcriptionRuntime: desktopRuntime ? "desktop" : "web",
+      transcriptionModelId: desktopRuntime ? form.transcriptionModelId : undefined,
+      transcriptionDevice: desktopRuntime ? form.transcriptionDevice : undefined,
+      transcriptionAllowCloudFallback: desktopRuntime ? form.transcriptionAllowCloudFallback : undefined,
     });
     if (result?.id) {
       const prepared = await prepareAnalyzedVideo(result as Analysis);
@@ -863,6 +858,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }));
   }
 
+  function updateCaptionsEnabled(enabled: boolean) {
+    setPreviewStale(true);
+    setReview((current) => ({ ...current, captionsEnabled: enabled }));
+  }
+
   async function restoreAutomatic() {
     if (!analysis) return;
     const result = await action("reset-editorial-review", { planId: analysis.id });
@@ -990,6 +990,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function hasReadySpeechModel(): boolean {
+    if (!window.kaoz1Desktop) return true;
     const selected = speechModels.find((model) => model.id === form.transcriptionModelId);
     if (selected?.state === "ready") return true;
     onStatusMessage({ text: selected ? `Baixe ${selected.name} antes de iniciar.` : "Selecione um modelo de transcricao antes de iniciar.", type: "error" });
@@ -1167,6 +1168,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
     return analysis?.events || pendingSourceCuts;
   }, [activeMediaAsset, analysis?.events, pendingSourceCuts]);
+  const captionsEnabled = review.captionsEnabled ?? (analysis?.design?.captionsEnabled !== false);
 
   const processingProgress = busy === "render-preview"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
@@ -1992,6 +1994,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </span>
 
                 <div className="space-y-2 rounded-[6px] bg-[#0D0F14] p-3">
+                  {!isDesktopRuntime ? (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
+                      <Subtitles size={14} className="mt-0.5 shrink-0 text-sky-300" />
+                      <div>
+                        <strong className="block text-[11px] text-zinc-100">Transcrição Web/API automática</strong>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
+                          A análise usa OpenAI ou Gemini configurada e não exige modelo local, CPU ou Vulkan.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
                     Modelo de transcricao
                     <select
@@ -2054,6 +2068,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     />
                     Permitir fallback pela nuvem se o modelo local falhar
                   </label>
+                    </>
+                  )}
                 </div>
 
                 <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
@@ -2369,7 +2385,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
             )}
 
-            {/* Visual Multi-Track Timeline (7 Linhas Profissionais) */}
+            {/* Visual Multi-Track Timeline (8 Linhas Profissionais) */}
             <div className="h-[360px] flex shrink-0 flex-col border-t border-white/[0.07] bg-[#0B0D12]">
               {/* Timeline Header Toolbar */}
               <div className="flex h-9 items-center justify-between border-b border-white/[0.06] bg-[#101217] px-3 text-[#8B92A1]">
@@ -2745,7 +2761,72 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         </div>
                       </div>
 
-                      {/* 3. Track TXT (Títulos, Lower-Thirds & Legendas) */}
+                      {/* 3. Track SUB (Legendas) */}
+                      <div className={`grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] border pointer-events-auto transition-opacity ${
+                        captionsEnabled
+                          ? "border-sky-400/20 bg-[#101217]"
+                          : "border-white/[0.03] bg-[#0D0F14] opacity-45"
+                      }`}>
+                        <button
+                          type="button"
+                          aria-label={captionsEnabled ? "Desativar legendas" : "Ativar legendas"}
+                          aria-pressed={captionsEnabled}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            updateCaptionsEnabled(!captionsEnabled);
+                          }}
+                          className="flex h-full items-center justify-center gap-0.5 font-mono text-[8px] font-bold text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-100"
+                          title={captionsEnabled ? "Desativar legendas no próximo render" : "Ativar legendas no próximo render"}
+                        >
+                          {captionsEnabled ? <Eye size={10} /> : <EyeOff size={10} />}
+                          SUB
+                        </button>
+                        <div className="relative h-full flex-1 overflow-hidden">
+                          {analysis?.captions.length ? (
+                            analysis.captions.map((caption, index) => {
+                              const change = captionReview(index);
+                              const enabled = change.enabled !== false;
+                              const sourceStart = change.start ?? caption.start;
+                              const sourceEnd = change.end ?? caption.end;
+                              const rawDuration = analysis.media.durationSeconds || timelineDuration;
+                              const captionStart = activeMediaAsset === "preview"
+                                ? editedVideoTime(analysis.events, rawDuration, sourceStart) + 4
+                                : sourceStart;
+                              const captionEnd = activeMediaAsset === "preview"
+                                ? editedVideoTime(analysis.events, rawDuration, sourceEnd) + 4
+                                : sourceEnd;
+                              const leftPct = (captionStart / timelineDuration) * 100;
+                              const widthPct = Math.max(0.8, Math.min(100 - leftPct, ((captionEnd - captionStart) / timelineDuration) * 100));
+                              const text = change.text ?? caption.text;
+
+                              return (
+                                <button
+                                  key={`timeline-caption-${index}`}
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPlayheadTime(captionStart);
+                                    if (videoRef.current) videoRef.current.currentTime = captionStart;
+                                  }}
+                                  style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                  className={`absolute bottom-1 top-1 truncate rounded-[3px] border px-1 text-left font-mono text-[8px] transition-colors ${
+                                    captionsEnabled && enabled
+                                      ? "border-sky-400/45 bg-sky-950/75 text-sky-100 hover:border-sky-300"
+                                      : "border-zinc-700 bg-zinc-900 text-zinc-500"
+                                  }`}
+                                  title={`${text} (${clock(captionStart)})`}
+                                >
+                                  {text}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <span className="pl-2 text-[8px] italic text-zinc-600">Legendas disponíveis após a transcrição</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 4. Track TXT (Títulos & Lower-Thirds) */}
                       <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03]">
                         <span className="pl-2 text-[9px] font-mono font-bold text-amber-400/80">TXT</span>
                         <div className="relative h-full flex-1 overflow-hidden">
@@ -2785,12 +2866,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                 );
                               })
                           ) : (
-                            <span className="pl-2 text-[8px] italic text-zinc-600">Lower-thirds, títulos de destaque e legendas</span>
+                            <span className="pl-2 text-[8px] italic text-zinc-600">Lower-thirds e títulos de destaque</span>
                           )}
                         </div>
                       </div>
 
-                      {/* 4. Track FX (Efeitos Especiais & Memes) */}
+                      {/* 5. Track FX (Efeitos Especiais & Memes) */}
                       <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#101217] pointer-events-auto border border-white/[0.03]">
                         <span className="pl-2 text-[9px] font-mono font-bold text-purple-400/80">FX</span>
                         <div className="relative h-full flex-1 overflow-hidden">
@@ -2835,7 +2916,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         </div>
                       </div>
 
-                      {/* 5. Track A1 (Áudio Principal / Waveform SVG) */}
+                      {/* 6. Track A1 (Áudio Principal / Waveform SVG) */}
                       <div className="grid h-9 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto border border-white/[0.04]">
                         <span className="pl-2 text-[10px] font-mono font-bold text-emerald-400">A1</span>
                         <div className="relative flex-1 h-full flex items-center overflow-hidden">
@@ -2903,7 +2984,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         </div>
                       </div>
 
-                      {/* 6. Track A2 (Música de Fundo / Trilha Sonora) */}
+                      {/* 7. Track A2 (Música de Fundo / Trilha Sonora) */}
                       {musicWaveform.length > 0 && (
                         <div className="grid h-8 grid-cols-[40px_minmax(0,1fr)] items-center rounded-[4px] bg-[#13161C] pointer-events-auto border border-white/[0.04]">
                           <span className="pl-2 text-[10px] font-mono font-bold text-[#8B92A1]">A2</span>
@@ -3132,11 +3213,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <label className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={review.captionsEnabled ?? (analysis?.design?.captionsEnabled !== false)}
-                    onChange={(input) => {
-                      setPreviewStale(true);
-                      setReview((current) => ({ ...current, captionsEnabled: input.target.checked }));
-                    }}
+                    checked={captionsEnabled}
+                    onChange={(input) => updateCaptionsEnabled(input.target.checked)}
                     className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
                   />
                   Exibir legendas

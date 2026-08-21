@@ -726,6 +726,9 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /type="checkbox"/);
   assert.match(panel, /captionsEnabled/);
   assert.match(panel, /reuseCourseTheme/);
+  assert.match(panel, /if \(!window\.kaoz1Desktop\) return true/);
+  assert.match(panel, /Transcrição Web\/API automática/);
+  assert.match(panel, /transcriptionModelId: desktopRuntime \? form\.transcriptionModelId : undefined/);
   assert.match(panel, /processingProgress/);
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);
   assert.match(courseTheme, /course-themes/);
@@ -836,6 +839,11 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /Timeline editorial/);
   assert.match(panel, /Salvar padrão do curso/);
   assert.match(panel, /Exibir legendas/);
+  assert.match(panel, /Track SUB \(Legendas\)/);
+  assert.match(panel, /aria-pressed=\{captionsEnabled\}/);
+  assert.match(panel, /updateCaptionsEnabled\(!captionsEnabled\)/);
+  assert.match(panel, /timeline-caption-/);
+  assert.match(panel, /editedVideoTime\(analysis\.events, rawDuration, sourceStart\) \+ 4/);
   assert.match(panel, /Restaurar automático/);
   assert.match(panel, /api\/davinci-free\/media/);
   assert.match(panel, /musicWaveform/);
