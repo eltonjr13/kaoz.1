@@ -71,7 +71,7 @@ export interface TimedTranscriptSegment {
   start: number;
   end: number;
   text: string;
-  source: "local-asr";
+  source: "local-asr" | "webspeech";
 }
 
 export type IntelligentPedagogicalItemKind =
@@ -335,4 +335,6 @@ export interface IntelligentEditAnalysisInput {
   transcriptionModelId?: string | null;
   transcriptionDevice?: "auto" | "vulkan" | "cpu";
   transcriptionAllowCloudFallback?: boolean;
+  transcriptionMode?: "webspeech" | "cloud" | "local";
+  transcriptionSegments?: TimedTranscriptSegment[];
 }

@@ -64,6 +64,7 @@ export interface SpeechTranscriptionOptions {
   modelId?: string | null;
   device?: SpeechDevicePreference;
   allowCloudFallback?: boolean;
+  mode?: "configured" | "cloud";
 }
 
 export interface PythonSpeechResponse {

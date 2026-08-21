@@ -154,7 +154,10 @@ async function transcribeWithEngine(
   engine: SpeechEngine,
 ): Promise<SpeechTranscriptionResult> {
   if (engine === "whisper-cpp" && settings.modelId) return whisperCppTranscription(audio, settings);
-  if (engine === "cloud" || engine === "webspeech") return cloudTranscriptionOrThrow(audio);
+  if (engine === "webspeech") {
+    throw new Error("Web Speech precisa ser executado no navegador e enviado ao backend como transcrição pronta.");
+  }
+  if (engine === "cloud") return cloudTranscriptionOrThrow(audio);
   return pythonTranscriptionWithFallback(audio, provider, settings.allowCloudFallback);
 }
 
@@ -205,6 +208,7 @@ export class SpeechService {
   async transcribe(audio: File, runtime?: SpeechRuntimeEnvironment, options?: SpeechTranscriptionOptions): Promise<SpeechTranscriptionResult> {
     const storedSettings = await readSpeechSettings();
     validateTranscriptionOptions(options);
+    if (options?.mode === "cloud") return cloudTranscriptionOrThrow(audio);
     const settings = transcriptionSettings(storedSettings, options);
     const provider = resolveServerSpeechProvider(settings.provider, runtime);
     const engine = engineFor(settings, runtime);
