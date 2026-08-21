@@ -12,6 +12,7 @@ import {
   type IntelligentEditPlan,
 } from "./intelligent-edit.types";
 import { resolveIntelligentEditDesign } from "./intelligent-edit.design";
+import { resolveMotionProfile } from "./intelligent-edit.motion";
 import { readIntelligentEditPlan } from "./intelligent-edit.service";
 import { recordEditorialPreview } from "./intelligent-edit.review";
 import { ensureSfxLibrary } from "./sfx.service";
@@ -321,6 +322,7 @@ function impactLayouts(plan: IntelligentEditPlan): ImpactLayout[] {
 
 function bodyAss(plan: IntelligentEditPlan) {
   const design = resolveIntelligentEditDesign(plan);
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const lines = [assHeader(plan)];
   if (design.captionsEnabled) {
     for (const caption of plan.captions) {
@@ -330,20 +332,33 @@ function bodyAss(plan: IntelligentEditPlan) {
     }
   }
   for (const event of plan.events.filter((item) => item.kind === "lower-third")) {
+    const enterMs = Math.round(Math.min(motion.entranceSeconds, event.duration * 0.28) * 1000);
+    const exitMs = Math.round(Math.min(motion.exitSeconds, event.duration * 0.22) * 1000);
     lines.push(
-      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(100,180)\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,260)\\1c${assColor(design.colors.primary)}&}▌{\\1c${assColor(design.colors.text)}&} ${assText(event.label)}`,
+      `Dialogue: 1,${assTime(event.start)},${assTime(event.start + event.duration)},LowerThird,,0,0,0,,{\\fad(${enterMs},${exitMs})\\move(-650,${Math.round(plan.media.height * 0.86)},70,${Math.round(plan.media.height * 0.86)},0,${enterMs})\\1c${assColor(design.colors.primary)}&}▌{\\1c${assColor(design.colors.text)}&} ${assText(event.label)}`,
     );
   }
   for (const layout of impactLayouts(plan)) {
     const centerY = layout.y + Math.round(layout.height / 2);
+    const enterMs = Math.round(Math.min(motion.entranceSeconds, layout.event.duration * 0.28) * 1000);
+    const exitMs = Math.round(Math.min(motion.exitSeconds, layout.event.duration * 0.22) * 1000);
+    const rectangle = (x: number, y: number, width: number, height: number, color: string, alpha = "00") =>
+      `Dialogue: 1,${assTime(layout.start)},${assTime(layout.end)},ImpactBox,,0,0,0,,{\\an7\\pos(${x},${y})\\fad(${enterMs},${exitMs})\\1c${assColor(color, alpha)}&\\p1}m 0 0 l ${width} 0 l ${width} ${height} l 0 ${height}{\\p0}`;
     lines.push(
-      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactIcon,,0,0,0,,{\\pos(${layout.x + 44},${centerY})\\fad(80,170)\\1c${assColor(layout.accent)}&}${assText(layout.icon)}`,
+      rectangle(layout.x + 10, layout.y + 10, layout.width, layout.height, "#000000", "C8"),
+      rectangle(layout.x, layout.y, layout.width, layout.height, design.colors.surface, "14"),
+      rectangle(layout.x, layout.y, layout.event.variant === "quote" ? 7 : 5, layout.height, layout.accent),
+      rectangle(layout.x + 18, layout.y + Math.round((layout.height - 54) / 2), 54, 54, design.colors.background, "28"),
+      rectangle(layout.x + 92, layout.y + 45, Math.min(120, layout.width - 120), 2, layout.accent, "48"),
     );
     lines.push(
-      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactMeta,,0,0,0,,{\\an4\\move(${layout.x + 88},${layout.y + 27},${layout.x + 98},${layout.y + 27},0,220)\\fad(70,160)\\1c${assColor(layout.accent)}&}${assText(layout.meta)}`,
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactIcon,,0,0,0,,{\\pos(${layout.x + 44},${centerY})\\fad(${enterMs},${exitMs})\\1c${assColor(layout.accent)}&}${assText(layout.icon)}`,
     );
     lines.push(
-      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactText,,0,0,0,,{\\an4\\move(${layout.x + 88},${centerY + 13},${layout.x + 98},${centerY + 13},0,240)\\fad(90,180)\\fs${layout.fontSize}}${assText(layout.label)}`,
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactMeta,,0,0,0,,{\\an4\\move(${layout.x + 88},${layout.y + 27},${layout.x + 98},${layout.y + 27},0,${enterMs})\\fad(${enterMs},${exitMs})\\1c${assColor(layout.accent)}&}${assText(layout.meta)}`,
+    );
+    lines.push(
+      `Dialogue: 2,${assTime(layout.start)},${assTime(layout.end)},ImpactText,,0,0,0,,{\\an4\\move(${layout.x + 88},${centerY + 13},${layout.x + 98},${centerY + 13},0,${enterMs})\\fad(${enterMs},${exitMs})\\fs${layout.fontSize}}${assText(layout.label)}`,
     );
   }
   return `${lines.join("\n")}\n`;
@@ -353,6 +368,7 @@ function titleAss(
   plan: IntelligentEditPlan,
   kind: "intro" | "outro",
 ) {
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const event = plan.events.find((item) => item.kind === kind);
   const duration = event?.duration || 4;
   const title = event?.label || (kind === "intro" ? plan.moduleName : "Próxima aula");
@@ -373,13 +389,16 @@ function titleAss(
     : kind === "outro"
       ? "ENCERRAMENTO"
       : `AULA ${number}`;
+  const enterMs = Math.round(motion.entranceSeconds * 1000);
+  const exitMs = Math.round(motion.exitSeconds * 1000);
+  const titleScaleMs = Math.round(motion.entranceSeconds * 1_000);
   return [
     assHeader(plan),
-    `Dialogue: 0,${assTime(0.2)},${assTime(duration - 0.3)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.22)})\\fad(100,180)}${assText(kicker.toUpperCase())}`,
-    `Dialogue: 0,${assTime(0.38)},${assTime(duration - 0.3)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.43)})\\fad(120,180)\\fscx90\\fscy90\\t(0,320,\\fscx100\\fscy100)}${assText(wrapCardTitle(title))}`,
-    `Dialogue: 0,${assTime(0.78)},${assTime(duration - 0.3)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.63)})\\fad(140,180)}${assText(subtitle)}`,
-    `Dialogue: 0,${assTime(0.95)},${assTime(duration - 0.3)},CardIndex,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.78)})\\fad(150,180)}${assText(index)}`,
-    `Dialogue: 0,${assTime(0.3)},${assTime(duration - 0.3)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(160,180)}${assText(number)}`,
+    `Dialogue: 0,${assTime(0.2)},${assTime(duration - motion.exitSeconds)},CardKicker,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.22)})\\fad(${enterMs},${exitMs})}${assText(kicker.toUpperCase())}`,
+    `Dialogue: 0,${assTime(0.48)},${assTime(duration - motion.exitSeconds)},CardTitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.43)})\\fad(${enterMs},${exitMs})\\fscx94\\fscy94\\t(0,${titleScaleMs},1,\\fscx100\\fscy100)}${assText(wrapCardTitle(title))}`,
+    `Dialogue: 0,${assTime(0.98)},${assTime(duration - motion.exitSeconds)},CardSubtitle,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.63)})\\fad(${enterMs},${exitMs})}${assText(subtitle)}`,
+    `Dialogue: 0,${assTime(1.28)},${assTime(duration - motion.exitSeconds)},CardIndex,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.11)},${Math.round(plan.media.height * 0.78)})\\fad(${enterMs},${exitMs})}${assText(index)}`,
+    `Dialogue: 0,${assTime(0.36)},${assTime(duration - motion.exitSeconds)},CardNumber,,0,0,0,,{\\pos(${Math.round(plan.media.width * 0.85)},${Math.round(plan.media.height * 0.47)})\\fad(${enterMs},${exitMs})}${assText(number)}`,
     "",
   ].join("\n");
 }

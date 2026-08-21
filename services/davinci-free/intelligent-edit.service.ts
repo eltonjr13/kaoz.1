@@ -22,10 +22,16 @@ import {
   type IntelligentEditPlan,
   type IntelligentPedagogicalAnalysis,
   type IntelligentEditStyle,
+  type IntelligentMotionPace,
   type IntelligentEditTextVariant,
   type IntelligentSoundEffect,
   type TimedTranscriptSegment,
 } from "./intelligent-edit.types";
+import {
+  composeMotionEvents,
+  normalizeMotionPace,
+  resolveMotionProfile,
+} from "./intelligent-edit.motion";
 import { courseThemeDesign } from "./intelligent-edit.design";
 import { resolveCourseTheme } from "./course-theme.service";
 import {
@@ -759,16 +765,18 @@ export function buildEditEvents(input: {
   moduleName: string;
   duration: number;
   style: IntelligentEditStyle;
+  motionPace?: IntelligentMotionPace;
   semantic: SemanticDecision | null;
   sfxEnabled?: boolean;
   sfxPack?: "minimal" | "dynamic" | "tech";
 }) {
+  const motion = resolveMotionProfile(input.motionPace, input.style);
   const events: IntelligentEditEvent[] = [
     {
       id: "intro",
       kind: "intro",
       start: 0,
-      duration: 4,
+      duration: motion.cardDuration,
       label: safeLabel(
         input.semantic?.introTitle || input.semantic?.moduleTitle || input.moduleName,
         72,
@@ -783,7 +791,7 @@ export function buildEditEvents(input: {
       id: "lower-third-start",
       kind: "lower-third",
       start: 0.6,
-      duration: 4,
+      duration: motion.lowerThirdDuration,
       label: input.semantic?.moduleTitle || input.moduleName,
       reason: "Identificação inicial do módulo.",
     },
@@ -796,7 +804,7 @@ export function buildEditEvents(input: {
       id: `lower-third-${index + 1}`,
       kind: "lower-third",
       start: time,
-      duration: 4,
+      duration: motion.lowerThirdDuration,
       label: safeLabel(item.title || input.moduleName),
       reason: cleanText(item.reason, "Mudança de seção detectada na fala."),
     });
@@ -810,9 +818,10 @@ export function buildEditEvents(input: {
       id: `zoom-${index + 1}`,
       kind: "zoom",
       start: clampTime(item.time, input.duration),
-      duration: input.style === "dynamic" ? 1.6 : 2.2,
+      duration: motion.zoomDuration,
       label: safeLabel(item.label || "Ênfase"),
       reason: cleanText(item.reason, "Momento de ênfase identificado pela fala."),
+      scale: motion.zoomScale,
     });
   }
   const impactTexts =
@@ -829,7 +838,7 @@ export function buildEditEvents(input: {
       id: `impact-text-${index + 1}`,
       kind: "impact-text",
       start: requestedTime < 2 ? Math.min(5.2, input.duration - 1.8) : requestedTime,
-      duration: input.style === "dynamic" ? 2.15 : 1.85,
+      duration: motion.impactDuration,
       label: safeLabel(item.text || "Ponto importante", 44),
       reason: cleanText(item.reason, "Conceito principal identificado na fala."),
       variant: (["concept", "stat", "action", "quote"].includes(String(item.variant))
@@ -843,7 +852,7 @@ export function buildEditEvents(input: {
       id: `transition-${index + 1}`,
       kind: "transition",
       start: clampTime(item.time, input.duration),
-      duration: 0.35,
+      duration: motion.transitionDuration,
       label: safeLabel(item.label || "Mudança de seção"),
       reason: cleanText(item.reason, "Mudança de assunto."),
     });
@@ -871,7 +880,7 @@ export function buildEditEvents(input: {
     id: "outro",
     kind: "outro",
     start: input.duration,
-    duration: 4,
+    duration: motion.cardDuration,
     label: safeLabel(input.semantic?.outroTitle || "Coloque esta ideia em prática", 72),
     subtitle: safeLabel(
       input.semantic?.outroSubtitle || "Continue para a próxima etapa",
@@ -924,13 +933,13 @@ export function buildEditEvents(input: {
         memeTag,
       });
       if (event.kind === "zoom") {
-        event.scale = 1.32;
-        event.duration = 0.85;
+        event.scale = 1.14;
+        event.duration = Math.max(1.9, motion.zoomDuration * 0.8);
       }
     }
   }
 
-  return events.sort((a, b) => a.start - b.start);
+  return composeMotionEvents(events, input.duration, motion);
 }
 
 function extractVisualAnchors(output: string): VisualAnchor[] {
@@ -1137,6 +1146,12 @@ export async function analyzeIntelligentEdit(
     style: (["subtle", "balanced", "dynamic", "meme"].includes(String(rawInput.style))
       ? rawInput.style
       : "subtle") as IntelligentEditStyle,
+    motionPace: normalizeMotionPace(
+      rawInput.motionPace,
+      (["subtle", "balanced", "dynamic", "meme"].includes(String(rawInput.style))
+        ? rawInput.style
+        : "subtle") as IntelligentEditStyle,
+    ),
     captionsEnabled: rawInput.captionsEnabled !== false,
     reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
@@ -1183,12 +1198,13 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 10,
+      analysisVersion: 11,
       courseName: input.courseName,
       moduleName: input.moduleName,
       lessonNumber: input.lessonNumber,
       lessonName: input.lessonName,
       style: input.style,
+      motionPace: input.motionPace,
       captionsEnabled: input.captionsEnabled,
       reuseCourseTheme: input.reuseCourseTheme,
       musicPath: input.musicPath,
@@ -1293,6 +1309,7 @@ export async function analyzeIntelligentEdit(
     moduleName: input.lessonName || input.moduleName,
     duration: media.durationSeconds,
     style: input.style || "subtle",
+    motionPace: input.motionPace,
     semantic: semantic.decision,
     sfxEnabled: input.sfxEnabled,
     sfxPack: input.sfxPack,
@@ -1318,6 +1335,7 @@ export async function analyzeIntelligentEdit(
     sourceOrigin: input.sourceOrigin,
     createdAt: new Date().toISOString(),
     style: input.style || "subtle",
+    motion: { pace: normalizeMotionPace(input.motionPace, input.style || "subtle") },
     design: courseThemeDesign(
       courseTheme.profile,
       input.captionsEnabled !== false,
@@ -1402,6 +1420,7 @@ function sharedIdentityEvents(
   identity: IntelligentCourseIdentity,
   lessonIndex: number,
 ) {
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const lesson = identity.lessons[lessonIndex - 1];
   const nextLesson = identity.lessons[lessonIndex];
   const generatedHighlights = narrativeHighlights(
@@ -1418,19 +1437,19 @@ function sharedIdentityEvents(
       id: `impact-text-${index + 1}`,
       kind: "impact-text" as const,
       start: highlight.time,
-      duration: plan.style === "dynamic" ? 2.4 : 2.1,
+      duration: motion.impactDuration,
       label: highlight.text,
       variant: highlight.variant,
       reason: "Síntese semântica compartilhada do módulo.",
     })));
   }
-  return [
+  return composeMotionEvents([
     ...preserved,
     {
       id: "intro",
       kind: "intro" as const,
       start: 0,
-      duration: 4,
+      duration: motion.cardDuration,
       label: lesson.title,
       subtitle: lesson.subtitle,
       reason: "Abertura padronizada pela identidade semântica do módulo.",
@@ -1439,7 +1458,7 @@ function sharedIdentityEvents(
       id: "lower-third-start",
       kind: "lower-third" as const,
       start: 0.6,
-      duration: 4,
+      duration: motion.lowerThirdDuration,
       label: `${identity.title} • ${lesson.title}`.slice(0, 100),
       reason: "Identificação consistente da série e da aula.",
     },
@@ -1447,14 +1466,14 @@ function sharedIdentityEvents(
       id: "outro",
       kind: "outro" as const,
       start: plan.media.durationSeconds,
-      duration: 4,
+      duration: motion.cardDuration,
       label: nextLesson
         ? `Próxima aula\n${nextLesson.title.replace(" · ", ": ")}`.slice(0, 72)
         : "Plano concluído",
       subtitle: nextLesson?.subtitle || identity.promise,
       reason: "Encerramento conectado à progressão do módulo.",
     },
-  ].sort((left, right) => left.start - right.start);
+  ], plan.media.durationSeconds, motion);
 }
 
 export async function applyCourseIdentity(

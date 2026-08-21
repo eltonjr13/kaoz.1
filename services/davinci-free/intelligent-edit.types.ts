@@ -2,6 +2,7 @@ export const INTELLIGENT_EDIT_PLAN_VERSION = 2 as const;
 export const INTELLIGENT_PEDAGOGICAL_ANALYSIS_VERSION = 2 as const;
 
 export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic" | "meme";
+export type IntelligentMotionPace = "calm" | "natural" | "energetic";
 export type IntelligentEditPalette =
   | "kaoz"
   | "electric"
@@ -203,6 +204,7 @@ export interface IntelligentEditorialReview {
   planId: string;
   updatedAt: string;
   captionsEnabled?: boolean;
+  motionPace?: IntelligentMotionPace;
   events: IntelligentEditorialEventOverride[];
   addedEvents?: IntelligentEditEvent[];
   captions: IntelligentEditorialCaptionOverride[];
@@ -217,6 +219,8 @@ export interface IntelligentCourseEditorialStandard {
   captionsEnabled: boolean;
   enabledKinds: Partial<Record<IntelligentEditEvent["kind"], boolean>>;
   zoomScale?: number;
+  motionPace?: IntelligentMotionPace;
+  eventDurations?: Partial<Record<IntelligentEditEvent["kind"], number>>;
 }
 
 export interface IntelligentEditPlan {
@@ -236,6 +240,7 @@ export interface IntelligentEditPlan {
   };
   createdAt: string;
   style: IntelligentEditStyle;
+  motion?: { pace: IntelligentMotionPace };
   design?: IntelligentEditDesign;
   courseTheme?: IntelligentCourseThemeProfile & { reused: boolean };
   courseIdentity?: IntelligentCourseIdentity & {
@@ -322,6 +327,7 @@ export interface IntelligentEditAnalysisInput {
   lessonNumber?: string;
   lessonName?: string;
   style?: IntelligentEditStyle;
+  motionPace?: IntelligentMotionPace;
   palette?: IntelligentEditPalette;
   captionsEnabled?: boolean;
   reuseCourseTheme?: boolean;

@@ -18,6 +18,7 @@ import type {
   IntelligentPedagogicalItemStatus,
   IntelligentPedagogicalReviewOverride,
 } from "./intelligent-edit.types";
+import { normalizeMotionPace } from "./intelligent-edit.motion";
 
 const STANDARD_ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "course-editorial-standards");
 const ADDED_EVENT_KINDS = new Set<IntelligentEditEvent["kind"]>([
@@ -250,6 +251,9 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
     pedagogy,
   };
   if (typeof raw.captionsEnabled === "boolean") review.captionsEnabled = raw.captionsEnabled;
+  if (["calm", "natural", "energetic"].includes(String(raw.motionPace))) {
+    review.motionPace = normalizeMotionPace(raw.motionPace, plan.style);
+  }
   if (previewPath) review.previewPath = previewPath;
   return review;
 }
@@ -297,6 +301,7 @@ export function applyEditorialReview(plan: IntelligentEditPlan, review: Intellig
   const captionsEnabled = review.captionsEnabled ?? (plan.design?.captionsEnabled !== false);
   return {
     ...plan,
+    motion: { pace: review.motionPace ?? normalizeMotionPace(plan.motion?.pace, plan.style) },
     events: reviewedEvents,
     captions: reviewedCaptions,
     ...(reviewedPedagogy ? { pedagogy: reviewedPedagogy } : {}),
@@ -344,12 +349,27 @@ export async function saveCourseEditorialStandard(rawInput: Record<string, unkno
     enabledKinds[kind] = items.some((event) => review.events.find((change) => change.id === event.id)?.enabled !== false);
   }
   const zooms = review.events.filter((event) => event.scale !== undefined).map((event) => event.scale!);
+  const reviewedPlan = applyEditorialReview(plan, review);
+  const reusableDurationKinds = new Set<IntelligentEditEvent["kind"]>([
+    "intro", "outro", "lower-third", "impact-text", "zoom", "transition",
+  ]);
+  const eventDurations: NonNullable<IntelligentCourseEditorialStandard["eventDurations"]> = {};
+  for (const kind of reusableDurationKinds) {
+    const durations = reviewedPlan.events
+      .filter((event) => event.kind === kind)
+      .map((event) => event.duration);
+    if (durations.length) {
+      eventDurations[kind] = Math.round((durations.reduce((sum, value) => sum + value, 0) / durations.length) * 100) / 100;
+    }
+  }
   const standard: IntelligentCourseEditorialStandard = {
     version: 1,
     courseName: plan.courseName,
     updatedAt: new Date().toISOString(),
     captionsEnabled: review.captionsEnabled ?? plan.design?.captionsEnabled !== false,
     enabledKinds,
+    motionPace: reviewedPlan.motion?.pace,
+    eventDurations,
     ...(zooms.length ? { zoomScale: zooms.reduce((sum, scale) => sum + scale, 0) / zooms.length } : {}),
   };
   await mkdir(STANDARD_ROOT, { recursive: true });
@@ -364,11 +384,23 @@ export async function applyCourseEditorialStandard(plan: IntelligentEditPlan) {
     .catch(() => null);
   if (!standard || standard.version !== 1) return plan;
   const review: IntelligentEditorialReview = {
-    version: 1, planId: plan.id, updatedAt: new Date().toISOString(), captionsEnabled: standard.captionsEnabled,
+    version: 1,
+    planId: plan.id,
+    updatedAt: new Date().toISOString(),
+    captionsEnabled: standard.captionsEnabled,
+    motionPace: normalizeMotionPace(standard.motionPace, plan.style),
     events: plan.events.flatMap((event) => {
       const enabled = standard.enabledKinds[event.kind];
       const scale = event.kind === "zoom" ? standard.zoomScale : undefined;
-      return enabled === undefined && scale === undefined ? [] : [{ id: event.id, ...(enabled === false ? { enabled: false } : {}), ...(scale ? { scale } : {}) }];
+      const duration = standard.eventDurations?.[event.kind];
+      return enabled === undefined && scale === undefined && duration === undefined
+        ? []
+        : [{
+            id: event.id,
+            ...(enabled === false ? { enabled: false } : {}),
+            ...(scale ? { scale } : {}),
+            ...(duration ? { duration } : {}),
+          }];
     }), captions: [],
   };
   await writeFile(reviewPath(plan), `${JSON.stringify(review, null, 2)}\n`, "utf8");
