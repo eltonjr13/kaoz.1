@@ -10,8 +10,9 @@ export function speechRuntimeEnvironment(value?: unknown): SpeechRuntimeEnvironm
 
 export function resolveSpeechProvider(
   preferred: SpeechProviderName,
-  _runtime?: SpeechRuntimeEnvironment,
+  runtime?: SpeechRuntimeEnvironment,
 ): SpeechProviderName {
+  if (speechRuntimeEnvironment(runtime) === "web") return "webspeech";
   return preferred;
 }
 
@@ -20,5 +21,6 @@ export function resolveServerSpeechProvider(
   runtime?: SpeechRuntimeEnvironment,
 ): SpeechProviderName {
   const provider = resolveSpeechProvider(preferred, runtime);
+  if (speechRuntimeEnvironment(runtime) === "web") return "webspeech";
   return provider === "webspeech" ? "whisper-speed" : provider;
 }
