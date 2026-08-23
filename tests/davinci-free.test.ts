@@ -913,6 +913,11 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /addedEvents/);
   assert.match(panel, /grid flex-none items-stretch gap-0/);
   assert.match(panel, /lg:h-\[980px\]/);
+  assert.match(panel, /leftPanelCollapsed/);
+  assert.match(panel, /rightPanelCollapsed/);
+  assert.match(panel, /Retrair painel de configuração/);
+  assert.match(panel, /Retrair AI Inspector/);
+  assert.match(panel, /lg:col-span-10/);
   assert.match(panel, /min-h-\[180px\] flex-1 overflow-hidden border-t/);
   assert.match(panel, /fillAvailableHeight/);
   assert.match(panel, /fixed inset-x-0 bottom-0/);

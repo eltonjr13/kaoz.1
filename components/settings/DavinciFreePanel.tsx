@@ -39,6 +39,7 @@ import {
   Rewind,
   Check,
   X,
+  ChevronLeft,
   ChevronRight,
   Zap,
 } from "lucide-react";
@@ -307,6 +308,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [driveConnection, setDriveConnection] = useState<GoogleDriveConnectionStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<"single" | "batch">("single");
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [playheadTime, setPlayheadTime] = useState<number>(0);
   const [timelineScale, setTimelineScale] = useState<number>(1);
@@ -1762,6 +1765,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const selectedEvent = useMemo(() => {
     return analysis?.events.find((e) => e.id === selectedEventId) || null;
   }, [analysis, selectedEventId]);
+  const centerWorkspaceColumns = leftPanelCollapsed && rightPanelCollapsed
+    ? "lg:col-span-10"
+    : leftPanelCollapsed || rightPanelCollapsed
+      ? "lg:col-span-8"
+      : "lg:col-span-6";
 
   return (
     <div className="video-editor-system flex min-h-full w-full flex-col bg-[#090A0D] pb-24 text-[#F4F5F7]">
@@ -1907,16 +1915,27 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {activeMode === "single" && (
         <div className="grid flex-none items-stretch gap-0 border-t border-[#383D49]/35 bg-[#090A0D] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className="order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#101217] p-4 lg:order-1 lg:col-span-3 lg:h-full lg:border-r lg:border-t-0">
-            <div className="border-b border-white/[0.07] pb-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
-                <Folder size={14} />
-                Configuração da edição
-              </h2>
-              <p className="mt-1 text-[11px] leading-relaxed text-[#8B92A1]">Identidade, ritmo e tratamento de áudio da aula.</p>
+          <aside className={`order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#101217] p-4 lg:order-1 lg:h-full lg:border-r lg:border-t-0 ${leftPanelCollapsed ? "lg:col-span-1 lg:p-2" : "lg:col-span-3"}`}>
+            <div className={`flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${leftPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
+              <div className={leftPanelCollapsed ? "lg:hidden" : ""}>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
+                  <Folder size={14} />
+                  Configuração da edição
+                </h2>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#8B92A1]">Identidade, ritmo e tratamento de áudio da aula.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLeftPanelCollapsed((value) => !value)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]"
+                aria-label={leftPanelCollapsed ? "Expandir painel de configuração" : "Retrair painel de configuração"}
+                title={leftPanelCollapsed ? "Expandir painel de configuração" : "Retrair painel de configuração"}
+              >
+                {leftPanelCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+              </button>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-3 text-xs">
+            <div className={`flex-1 space-y-5 overflow-y-auto pr-1 pb-3 text-xs ${leftPanelCollapsed ? "lg:hidden" : ""}`}>
               {/* Video Metadata */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between border-b border-[#383D49]/30 pb-2">
@@ -2256,7 +2275,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </div>
             </div>
 
-            <div className="border-t border-[#383D49]/35 pt-4">
+            <div className={`border-t border-[#383D49]/35 pt-4 ${leftPanelCollapsed ? "lg:hidden" : ""}`}>
             <button
               disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
               onClick={analyze}
@@ -2274,7 +2293,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </aside>
 
           {/* PAINEL CENTRAL: Center Workspace (Player & Visual Timeline) */}
-          <main className="relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-[#0D0F14] lg:order-2 lg:col-span-6 lg:h-full">
+          <main className={`relative order-1 flex min-h-0 min-w-0 flex-col self-stretch overflow-hidden bg-[#0D0F14] lg:order-2 lg:h-full ${centerWorkspaceColumns}`}>
             {/* Player Container */}
             <div className="relative border-b border-white/[0.06] bg-[#0D0F14] p-3">
               <div className="absolute inset-0 bg-[radial-gradient(#242832_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
@@ -3141,20 +3160,31 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </main>
 
           {/* PAINEL DIREITO: Right Sidebar (Inspector & AI Insights) */}
-          <aside className="order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#13161C] p-4 font-body-sm lg:col-span-3 lg:h-full lg:border-l lg:border-t-0">
-            <div className="kaoz-signal-inspector border-b border-white/[0.07] pb-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
-                <Sparkles size={14} className="text-[#A99FFF]" />
-                <span className="font-mono text-[9px] font-medium tracking-[0.14em] text-[#8B92A1]" aria-hidden="true">05 /</span>
-                AI Inspector
-              </h2>
-              <p className="mt-1 text-[11px] text-[#8B92A1]">
-                Decisões: <span className="font-medium text-[#D5D8E0]">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
-                {analysis?.semantic.model ? ` · ${analysis.semantic.model}` : ""}
-              </p>
+          <aside className={`order-3 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#13161C] p-4 font-body-sm lg:h-full lg:border-l lg:border-t-0 ${rightPanelCollapsed ? "lg:col-span-1 lg:p-2" : "lg:col-span-3"}`}>
+            <div className={`kaoz-signal-inspector flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${rightPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
+              <div className={rightPanelCollapsed ? "lg:hidden" : ""}>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
+                  <Sparkles size={14} className="text-[#A99FFF]" />
+                  <span className="font-mono text-[9px] font-medium tracking-[0.14em] text-[#8B92A1]" aria-hidden="true">05 /</span>
+                  AI Inspector
+                </h2>
+                <p className="mt-1 text-[11px] text-[#8B92A1]">
+                  Decisões: <span className="font-medium text-[#D5D8E0]">{analysis?.semantic.source === "agent" ? "agente semântico" : "fallback local"}</span>
+                  {analysis?.semantic.model ? ` · ${analysis.semantic.model}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRightPanelCollapsed((value) => !value)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[#8B92A1] transition-colors hover:bg-white/[0.06] hover:text-[#F4F5F7]"
+                aria-label={rightPanelCollapsed ? "Expandir AI Inspector" : "Retrair AI Inspector"}
+                title={rightPanelCollapsed ? "Expandir AI Inspector" : "Retrair AI Inspector"}
+              >
+                {rightPanelCollapsed ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
+              </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3">
+            <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-3 ${rightPanelCollapsed ? "lg:hidden" : ""}`}>
               {/* Course Identity Card */}
               {analysis?.courseTheme && (
               <div className="rounded-[6px] border-l-2 border-l-[#7C6CF2] bg-[#171A21] px-3 py-2.5 text-xs text-[#D5D8E0]">
