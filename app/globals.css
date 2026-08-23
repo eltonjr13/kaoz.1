@@ -1115,6 +1115,7 @@ select option {
   background:
     radial-gradient(circle at 74% 42%, rgb(124 108 242 / 0.09), transparent 28%),
     linear-gradient(90deg, rgb(9 10 13 / 0.98) 0 36%, rgb(9 10 13 / 0.82) 62%, rgb(9 10 13 / 0.96) 100%);
+  animation: home-entry-atmosphere 1100ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__header,
@@ -1132,6 +1133,7 @@ select option {
 .home-entry__header {
   min-height: 76px;
   border-bottom: 1px solid var(--line);
+  animation: home-entry-reveal-down 520ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__brand {
@@ -1158,6 +1160,7 @@ select option {
   background: var(--palette-paper);
   color: var(--palette-void);
   clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+  animation: home-entry-mark 620ms 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__edition {
@@ -1187,6 +1190,7 @@ select option {
   font-weight: 500;
   letter-spacing: 0.13em;
   text-transform: uppercase;
+  animation: home-entry-reveal 560ms 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__signal {
@@ -1194,6 +1198,8 @@ select option {
   height: 2px;
   background: linear-gradient(90deg, var(--signal-bright) 0 56%, transparent 56% 70%, var(--signal-primary) 70% 100%);
   box-shadow: var(--signal-glow);
+  transform-origin: left;
+  animation: home-entry-signal 540ms 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry h1 {
@@ -1204,6 +1210,7 @@ select option {
   font-weight: 500;
   letter-spacing: -0.06em;
   line-height: 0.94;
+  animation: home-entry-reveal 720ms 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .home-entry h1 span {
@@ -1217,6 +1224,7 @@ select option {
   color: #a7adba;
   font-size: clamp(0.95rem, 1.35vw, 1.08rem);
   line-height: 1.7;
+  animation: home-entry-reveal 620ms 430ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__actions {
@@ -1224,6 +1232,7 @@ select option {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 34px;
+  animation: home-entry-reveal 600ms 540ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__primary,
@@ -1272,6 +1281,7 @@ select option {
   font-family: var(--font-technical);
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
+  animation: home-entry-reveal 560ms 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__meta span {
@@ -1293,6 +1303,8 @@ select option {
   background: color-mix(in srgb, var(--surface-workspace) 92%, transparent);
   box-shadow: 0 30px 90px rgb(0 0 0 / 0.24);
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  transform-origin: 50% 60%;
+  animation: home-entry-panel 760ms 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .home-entry__system::before {
@@ -1310,6 +1322,7 @@ select option {
   justify-content: space-between;
   padding: 25px 26px 23px;
   border-bottom: 1px solid var(--line);
+  animation: home-entry-reveal 500ms 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__system-head svg {
@@ -1345,6 +1358,19 @@ select option {
   padding: 20px 0;
   border-bottom: 1px solid var(--line);
   grid-template-columns: 24px 34px 1fr;
+  animation: home-entry-reveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.home-entry__capability:nth-child(1) {
+  animation-delay: 800ms;
+}
+
+.home-entry__capability:nth-child(2) {
+  animation-delay: 900ms;
+}
+
+.home-entry__capability:nth-child(3) {
+  animation-delay: 1000ms;
 }
 
 .home-entry__capability-index {
@@ -1387,6 +1413,7 @@ select option {
   font-size: 0.5625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  animation: home-entry-reveal 500ms 1100ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-entry__system-foot i {
@@ -1401,6 +1428,70 @@ select option {
   color: #555c69;
   letter-spacing: 0.05em;
   text-transform: none;
+  animation: home-entry-reveal 520ms 1180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes home-entry-atmosphere {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes home-entry-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(5px);
+  }
+}
+
+@keyframes home-entry-reveal-down {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes home-entry-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.65) rotate(-12deg);
+  }
+}
+
+@keyframes home-entry-signal {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+}
+
+@keyframes home-entry-panel {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.975);
+    filter: blur(7px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-entry::before,
+  .home-entry__header,
+  .home-entry__brand-mark,
+  .home-entry__eyebrow,
+  .home-entry__signal,
+  .home-entry h1,
+  .home-entry__lead,
+  .home-entry__actions,
+  .home-entry__meta,
+  .home-entry__system,
+  .home-entry__system-head,
+  .home-entry__capability,
+  .home-entry__system-foot,
+  .home-entry__footer {
+    animation: none;
+  }
 }
 
 @media (max-width: 980px) {
