@@ -288,9 +288,15 @@ function caughtMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function waveformBarHeight(peak: number, maximumPercent: number) {
-  return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
-}
+type DragMode = "move" | "resize-left" | "resize-right";
+type DragState = {
+  eventId: string;
+  mode: DragMode;
+  startClientX: number;
+  initialStart: number;
+  initialDuration: number;
+  trackKind: string;
+};
 
 export function DavinciFreePanel({ onStatusMessage }: Props) {
   const { registerActionHandler } = useShortcuts();
@@ -374,6 +380,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     reuseCourseTheme: true,
     musicPath: "",
     musicDb: "-38",
+    autoDucking: true,
+    duckingDb: "-16",
+    voiceEnhance: true,
     sfxEnabled: true,
     sfxVolumeDb: "-12",
     sfxPack: "dynamic" as "minimal" | "dynamic" | "tech",
@@ -383,6 +392,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     transcriptionDevice: "auto" as "auto" | "vulkan" | "cpu",
     transcriptionAllowCloudFallback: false,
   });
+
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
 
   const refreshSpeechModels = useCallback(async () => {
     const response = await fetch("/api/speech/models", { cache: "no-store" });
