@@ -764,7 +764,10 @@ async function mixFinalAudio(
   outputPath: string,
 ) {
   const sfxEvents = await collectSfxEvents(plan);
-  if (!plan.media.musicPath && sfxEvents.length === 0) {
+  const voiceEnhanceEnabled = plan.media.voiceEnhance === true;
+  const musicEnabled = Boolean(plan.media.musicPath);
+
+  if (!musicEnabled && sfxEvents.length === 0 && !voiceEnhanceEnabled) {
     await runFfmpeg([
       "-y", "-i", joinedPath,
       "-map", "0:v:0", "-map", "0:a:0",
@@ -776,14 +779,30 @@ async function mixFinalAudio(
   const args = ["-y", "-i", joinedPath];
   const totalDuration = editedVideoDuration(plan.events, plan.media.durationSeconds) + 8;
   const filterParts: string[] = [];
-  const mixLabels = ["[0:a]"];
+  let voiceLabel = "[0:a]";
+
+  if (voiceEnhanceEnabled) {
+    filterParts.push(
+      "[0:a]highpass=f=80,agate=threshold=-34dB:ratio=2:attack=10:release=120,acompressor=threshold=-18dB:ratio=3:attack=15:release=150[voice_clean]",
+    );
+    voiceLabel = "[voice_clean]";
+  }
+
+  const mixLabels = [voiceLabel];
   let nextInputIndex = 1;
 
-  if (plan.media.musicPath) {
+  if (musicEnabled && plan.media.musicPath) {
     args.push("-stream_loop", "-1", "-i", plan.media.musicPath);
+    const musicRawLabel = plan.media.autoDucking !== false ? "[music_raw]" : "[music]";
     filterParts.push(
-      `[${nextInputIndex}:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5[music]`,
+      `[${nextInputIndex}:a]volume=${plan.media.musicDb}dB,atrim=0:${totalDuration.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 1.5).toFixed(3)}:d=1.5${musicRawLabel}`,
     );
+
+    if (plan.media.autoDucking !== false) {
+      filterParts.push(
+        `[music_raw]${voiceLabel}sidechaincompress=threshold=0.06:ratio=4:attack=40:release=350[music]`,
+      );
+    }
     mixLabels.push("[music]");
     nextInputIndex += 1;
   }
@@ -798,9 +817,15 @@ async function mixFinalAudio(
     mixLabels.push(label);
     nextInputIndex += 1;
   });
-  filterParts.push(
-    `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[aout]`,
-  );
+
+  if (mixLabels.length > 1) {
+    filterParts.push(
+      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2,alimiter=limit=0.95[aout]`,
+    );
+  } else {
+    filterParts.push(`${voiceLabel}alimiter=limit=0.95[aout]`);
+  }
+
   args.push(
     "-filter_complex", filterParts.join(";"),
     "-map", "0:v:0", "-map", "[aout]",

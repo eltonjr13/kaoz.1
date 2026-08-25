@@ -251,6 +251,24 @@ export interface IntelligentEditPlan {
   moduleName: string;
   lessonNumber?: string;
   lessonName?: string;
+  media: {
+    durationSeconds: number;
+    width: number;
+    height: number;
+    fps: number;
+    hasAudio: boolean;
+    musicPath?: string;
+    musicDb: number;
+    autoDucking?: boolean;
+    duckingDb?: number;
+    voiceEnhance?: boolean;
+    voiceEnhanceMode?: "subtle" | "studio" | "aggressive";
+    sfxEnabled?: boolean;
+    sfxVolumeDb?: number;
+    sfxPack?: "minimal" | "dynamic" | "tech";
+  };
+  transcript: TimedTranscriptSegment[];
+  transcription?: {
     engine: "webspeech" | "cloud" | "whisper-cpp" | "parakeet";
     modelId?: string;
     backend?: "web" | "cloud" | "vulkan" | "cpu" | "parakeet";
@@ -319,6 +337,10 @@ export interface IntelligentEditAnalysisInput {
   reuseCourseTheme?: boolean;
   musicPath?: string;
   musicDb?: number;
+  autoDucking?: boolean;
+  duckingDb?: number;
+  voiceEnhance?: boolean;
+  voiceEnhanceMode?: "subtle" | "studio" | "aggressive";
   sfxEnabled?: boolean;
   sfxVolumeDb?: number;
   sfxPack?: "minimal" | "dynamic" | "tech";

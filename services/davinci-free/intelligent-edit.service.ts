@@ -1156,6 +1156,12 @@ export async function analyzeIntelligentEdit(
     reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
     musicDb: Math.min(-35, Math.max(-40, Number(rawInput.musicDb) || -38)),
+    autoDucking: rawInput.autoDucking !== false,
+    duckingDb: typeof rawInput.duckingDb === "number" ? Math.min(-6, Math.max(-30, rawInput.duckingDb)) : -16,
+    voiceEnhance: rawInput.voiceEnhance !== false,
+    voiceEnhanceMode: (["subtle", "studio", "aggressive"].includes(String(rawInput.voiceEnhanceMode))
+      ? rawInput.voiceEnhanceMode
+      : "studio") as "subtle" | "studio" | "aggressive",
     sfxEnabled: rawInput.sfxEnabled !== false,
     sfxVolumeDb: Math.min(-6, Math.max(-30, Number(rawInput.sfxVolumeDb) || -12)),
     sfxPack: (["minimal", "dynamic", "tech"].includes(String(rawInput.sfxPack))
@@ -1349,6 +1355,10 @@ export async function analyzeIntelligentEdit(
       ...media,
       musicPath: input.musicPath,
       musicDb: input.musicDb ?? -38,
+      autoDucking: input.autoDucking !== false,
+      duckingDb: input.duckingDb ?? -16,
+      voiceEnhance: input.voiceEnhance !== false,
+      voiceEnhanceMode: input.voiceEnhanceMode || "studio",
       sfxEnabled: input.sfxEnabled !== false,
       sfxVolumeDb: input.sfxVolumeDb ?? -18,
       sfxPack: input.sfxPack || "dynamic",
