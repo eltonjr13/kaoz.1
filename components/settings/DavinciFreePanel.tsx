@@ -1445,9 +1445,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       duration: Math.round((safeEnd - safeStart) * 10) / 10,
       label,
       reason: "Trecho marcado manualmente para remoção.",
-    };}
-    const cut: EditEvent = {
-      reason: "Trecho marcado manualmente para remoção.",
     };
     if (analysis) {
       setAnalysis((current) => current ? { ...current, events: [...current.events, cut] } : null);
@@ -1654,6 +1651,92 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setIsPlaying((prev) => !prev);
   }, [isPlaying]);
 
+  const jumpToStart = useCallback(() => {
+    setPlayheadTime(0);
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+    }
+  }, []);
+
+  const jumpToEnd = useCallback(() => {
+    setPlayheadTime(timelineDuration);
+    if (videoRef.current) {
+      videoRef.current.currentTime = timelineDuration;
+    }
+  }, [timelineDuration]);
+
+  const jumpToPrevCut = useCallback(() => {
+    const points = [0, ...activeClips.flatMap((c) => [c.start, c.end]), timelineDuration]
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort((a, b) => a - b);
+    const prevPoint = points.filter((p) => p < playheadTime - 0.05).at(-1) ?? 0;
+    const rounded = Math.round(prevPoint * 100) / 100;
+    setPlayheadTime(rounded);
+    if (videoRef.current) {
+      videoRef.current.currentTime = rounded;
+    }
+  }, [activeClips, playheadTime, timelineDuration]);
+
+  const jumpToNextCut = useCallback(() => {
+    const points = [0, ...activeClips.flatMap((c) => [c.start, c.end]), timelineDuration]
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort((a, b) => a - b);
+    const nextPoint = points.find((p) => p > playheadTime + 0.05) ?? timelineDuration;
+    const rounded = Math.round(nextPoint * 100) / 100;
+    setPlayheadTime(rounded);
+    if (videoRef.current) {
+      videoRef.current.currentTime = rounded;
+    }
+  }, [activeClips, playheadTime, timelineDuration]);
+
+  const fitTimeline = useCallback(() => {
+    setTimelineScale(1);
+    onStatusMessage({ text: "Escala da timeline ajustada para 100%.", type: "info" });
+  }, [onStatusMessage]);
+
+  const zoomInTimeline = useCallback(() => {
+    setTimelineScale((s) => Math.min(4, Math.round((s + 0.25) * 100) / 100));
+  }, []);
+
+  const zoomOutTimeline = useCallback(() => {
+    setTimelineScale((s) => Math.max(1, Math.round((s - 0.25) * 100) / 100));
+  }, []);
+
+  const toggleCutPreview = useCallback(() => {
+    setLiveCutPreview((prev) => {
+      const next = !prev;
+      onStatusMessage({
+        text: next ? "Prévia c/ pulo de cortes ATIVADA." : "Prévia c/ pulo de cortes DESATIVADA.",
+        type: "info",
+      });
+      return next;
+    });
+  }, [onStatusMessage]);
+
+  const openSilenceModal = useCallback(() => {
+    setShowSilenceModal(true);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (!videoRef.current) return;
+    const nextMuted = !videoRef.current.muted;
+    videoRef.current.muted = nextMuted;
+    setIsMuted(nextMuted);
+    onStatusMessage({
+      text: nextMuted ? "Áudio silenciado (Mute)." : "Áudio ativado.",
+      type: "info",
+    });
+  }, [onStatusMessage]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!videoRef.current) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    } else {
+      void videoRef.current.requestFullscreen().catch(() => undefined);
+    }
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -1661,22 +1744,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         return;
       }
 
+      const isCtrlOrMeta = event.ctrlKey || event.metaKey;
+
       if (event.code === "Space") {
         event.preventDefault();
         togglePlayPause();
-      } else if (event.key === "s" || event.key === "S" || event.key === "c" || event.key === "C") {
+      } else if (isCtrlOrMeta && event.shiftKey && (event.key === "s" || event.key === "S")) {
+        event.preventDefault();
+        openSilenceModal();
+      } else if (event.altKey && (event.key === "s" || event.key === "S")) {
+        event.preventDefault();
+        openSilenceModal();
+      } else if (isCtrlOrMeta && (event.key === "z" || event.key === "Z")) {
+        event.preventDefault();
+        undoLastRemovalCut();
+      } else if (event.altKey && (event.key === "x" || event.key === "X")) {
+        event.preventDefault();
+        clearInOut();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "s" || event.key === "S" || event.key === "c" || event.key === "C")) {
         event.preventDefault();
         splitAtPlayhead();
-      } else if (event.key === "i" || event.key === "I") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "i" || event.key === "I")) {
         event.preventDefault();
         markIn();
-      } else if (event.key === "o" || event.key === "O") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "o" || event.key === "O")) {
         event.preventDefault();
         markOut();
-      } else if (event.key === "q" || event.key === "Q") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "x" || event.key === "X")) {
+        if (inPoint !== null || outPoint !== null) {
+          event.preventDefault();
+          clearInOut();
+        }
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "q" || event.key === "Q")) {
         event.preventDefault();
         trimClipInAtPlayhead();
-      } else if (event.key === "w" || event.key === "W") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "w" || event.key === "W")) {
         event.preventDefault();
         trimClipOutAtPlayhead();
       } else if (event.key === "Delete" || event.key === "Backspace") {
@@ -1687,16 +1789,40 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           event.preventDefault();
           deleteSelectedClip();
         }
-      } else if (event.key === "j" || event.key === "J") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "j" || event.key === "J")) {
         event.preventDefault();
         changePlaybackSpeed(-1);
-      } else if (event.key === "k" || event.key === "K") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "k" || event.key === "K")) {
         event.preventDefault();
         if (videoRef.current) videoRef.current.pause();
         setIsPlaying(false);
-      } else if (event.key === "l" || event.key === "L") {
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "l" || event.key === "L")) {
         event.preventDefault();
         changePlaybackSpeed(1);
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "m" || event.key === "M")) {
+        event.preventDefault();
+        toggleMute();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "f" || event.key === "F")) {
+        event.preventDefault();
+        toggleFullscreen();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "\\" || event.key === "p" || event.key === "P")) {
+        event.preventDefault();
+        toggleCutPreview();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "e" || event.key === "E" || event.key === "n" || event.key === "N")) {
+        event.preventDefault();
+        addEventAtPlayhead();
+      } else if (event.key === "Home" || (!isCtrlOrMeta && event.key === "ArrowUp")) {
+        event.preventDefault();
+        jumpToStart();
+      } else if (event.key === "End" || (!isCtrlOrMeta && event.key === "ArrowDown")) {
+        event.preventDefault();
+        jumpToEnd();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "[" || event.key === "a" || event.key === "A")) {
+        event.preventDefault();
+        jumpToPrevCut();
+      } else if (!isCtrlOrMeta && !event.altKey && (event.key === "]" || event.key === "d" || event.key === "D")) {
+        event.preventDefault();
+        jumpToNextCut();
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
         const step = event.shiftKey ? 1 : 1 / 30;
@@ -1705,40 +1831,124 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         event.preventDefault();
         const step = event.shiftKey ? 1 : 1 / 30;
         stepPlayhead(step);
-      } else if ((event.ctrlKey || event.metaKey) && (event.key === "z" || event.key === "Z")) {
+      } else if (event.key === "+" || event.key === "=") {
         event.preventDefault();
-        undoLastRemovalCut();
+        zoomInTimeline();
+      } else if (event.key === "-") {
+        event.preventDefault();
+        zoomOutTimeline();
+      } else if (event.key === "0" || (event.shiftKey && (event.key === "z" || event.key === "Z"))) {
+        event.preventDefault();
+        fitTimeline();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    addEventAtPlayhead,
     changePlaybackSpeed,
+    clearInOut,
     deleteInOutRange,
     deleteSelectedClip,
+    fitTimeline,
     inPoint,
+    jumpToEnd,
+    jumpToNextCut,
+    jumpToPrevCut,
+    jumpToStart,
     markIn,
     markOut,
+    openSilenceModal,
     outPoint,
     selectedClipId,
     splitAtPlayhead,
     stepPlayhead,
+    toggleCutPreview,
+    toggleFullscreen,
+    toggleMute,
     togglePlayPause,
     trimClipInAtPlayhead,
     trimClipOutAtPlayhead,
     undoLastRemovalCut,
+    zoomInTimeline,
+    zoomOutTimeline,
   ]);
 
-  function toggleMute() {
-    if (!videoRef.current) return;
-    videoRef.current.muted = !videoRef.current.muted;
-    setIsMuted(videoRef.current.muted);
-  }
+  useEffect(() => {
+    const unregisters = [
+      registerActionHandler("video.playPause", togglePlayPause),
+      registerActionHandler("video.shuttleForward", () => changePlaybackSpeed(1)),
+      registerActionHandler("video.shuttleReverse", () => changePlaybackSpeed(-1)),
+      registerActionHandler("video.shuttlePause", () => {
+        if (videoRef.current) videoRef.current.pause();
+        setIsPlaying(false);
+      }),
+      registerActionHandler("video.stepForward", () => stepPlayhead(1 / 30)),
+      registerActionHandler("video.stepBackward", () => stepPlayhead(-1 / 30)),
+      registerActionHandler("video.stepForwardSecond", () => stepPlayhead(1)),
+      registerActionHandler("video.stepBackwardSecond", () => stepPlayhead(-1)),
+      registerActionHandler("video.jumpStart", jumpToStart),
+      registerActionHandler("video.jumpEnd", jumpToEnd),
+      registerActionHandler("video.prevCut", jumpToPrevCut),
+      registerActionHandler("video.nextCut", jumpToNextCut),
+      registerActionHandler("video.splitClip", splitAtPlayhead),
+      registerActionHandler("video.markIn", markIn),
+      registerActionHandler("video.markOut", markOut),
+      registerActionHandler("video.clearInOut", clearInOut),
+      registerActionHandler("video.trimStart", trimClipInAtPlayhead),
+      registerActionHandler("video.trimEnd", trimClipOutAtPlayhead),
+      registerActionHandler("video.deleteSelected", () => {
+        if (inPoint !== null && outPoint !== null) {
+          deleteInOutRange();
+        } else if (selectedClipId) {
+          deleteSelectedClip();
+        }
+      }),
+      registerActionHandler("video.undoCut", undoLastRemovalCut),
+      registerActionHandler("video.autoCutSilences", openSilenceModal),
+      registerActionHandler("video.addEvent", addEventAtPlayhead),
+      registerActionHandler("video.zoomIn", zoomInTimeline),
+      registerActionHandler("video.zoomOut", zoomOutTimeline),
+      registerActionHandler("video.fitTimeline", fitTimeline),
+      registerActionHandler("video.toggleMute", toggleMute),
+      registerActionHandler("video.toggleFullscreen", toggleFullscreen),
+      registerActionHandler("video.toggleCutPreview", toggleCutPreview),
+    ];
 
-  function toggleFullscreen() {
-    videoRef.current?.requestFullscreen().catch(() => undefined);
-  }
+    return () => {
+      unregisters.forEach((fn) => fn());
+    };
+  }, [
+    registerActionHandler,
+    togglePlayPause,
+    changePlaybackSpeed,
+    stepPlayhead,
+    jumpToStart,
+    jumpToEnd,
+    jumpToPrevCut,
+    jumpToNextCut,
+    splitAtPlayhead,
+    markIn,
+    markOut,
+    clearInOut,
+    trimClipInAtPlayhead,
+    trimClipOutAtPlayhead,
+    inPoint,
+    outPoint,
+    deleteInOutRange,
+    selectedClipId,
+    deleteSelectedClip,
+    undoLastRemovalCut,
+    openSilenceModal,
+    addEventAtPlayhead,
+    zoomInTimeline,
+    zoomOutTimeline,
+    fitTimeline,
+    toggleMute,
+    toggleFullscreen,
+    toggleCutPreview,
+  ]);
 
   function downloadLessonFiles() {
     if (!videoMediaSrc || !analysis) return;
@@ -2431,7 +2641,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         type="button"
                         onClick={clearInOut}
                         className="px-1 text-[10px] text-zinc-500 hover:text-zinc-300"
-                        title="Limpar seleção In/Out"
+                        title="Limpar seleção In/Out (Atalho: Alt+X / X)"
                       >
                         <X size={11} />
                       </button>
@@ -2474,7 +2684,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     type="button"
                     onClick={() => setShowSilenceModal(true)}
                     className="flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-950/30 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-900/50"
-                    title="Detectar silêncios e pausas longas automaticamente"
+                    title="Detectar silêncios e pausas longas automaticamente (Atalho: Ctrl+Shift+S / Alt+S)"
                   >
                     <WandSparkles size={12} className="text-emerald-400" />
                     Auto-Corte Silêncios ({detectedSilences.length})
@@ -2491,7 +2701,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300"
                         : "border-white/10 bg-[#171A21] text-zinc-400 hover:text-white"
                     }`}
-                    title={liveCutPreview ? "Pulo automático de cortes ao vivo ATIVADO" : "Pulo automático DESATIVADO"}
+                    title={liveCutPreview ? "Pulo automático de cortes ao vivo ATIVADO (Atalho: \\ ou P)" : "Pulo automático DESATIVADO (Atalho: \\ ou P)"}
                   >
                     <Zap size={11} className={liveCutPreview ? "text-emerald-400 fill-current" : ""} />
                     {liveCutPreview ? "Prévia c/ Cortes Ativa" : "Pular Cortes (Off)"}
@@ -2502,7 +2712,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={undoLastRemovalCut}
                     disabled={!sourceCutEvents.length}
                     className="flex items-center gap-1 rounded border border-white/10 bg-[#171A21] px-2 py-1 text-[10px] text-zinc-300 transition hover:bg-white/10 disabled:opacity-30"
-                    title="Desfazer último corte (Ctrl+Z)"
+                    title="Desfazer último corte (Atalho: Ctrl+Z)"
                   >
                     <RotateCcw size={11} />
                     Desfazer
@@ -2527,7 +2737,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     onClick={addEventAtPlayhead}
                     className="flex items-center gap-1 rounded border border-[#8B92A1]/35 bg-[#383D49]/25 px-2 py-0.5 text-[10px] font-bold text-[#D5D8E0] transition-all hover:bg-[#383D49]/45"
-                    title="Inserir evento no corte"
+                    title="Inserir evento no corte (Atalho: E ou N)"
                   >
                     <Plus size={13} />
                     Adicionar Evento
@@ -2539,15 +2749,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <button
                     onClick={() => setTimelineScale((s) => Math.min(4, s + 0.25))}
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
-                    title="Aproximar Zoom (Zoom In)"
+                    title="Aproximar Zoom (Atalho: + ou =)"
                   >
                     <ZoomIn size={14} />
                   </button>
                   <button
                     onClick={() => setTimelineScale((s) => Math.max(1, s - 0.25))}
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
-                    title="Afastar Zoom (Zoom Out)"
+                    title="Afastar Zoom (Atalho: -)"
                   >
+                    <ZoomOut size={14} />
+                  </button>
+                  <button
+                    onClick={() => setTimelineScale(1)}
+                    className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
+                    title="Ajustar Timeline (Atalho: Shift+Z ou 0)"
+                  >
+                    <Maximize size={14} />
+                  </button>
                     <ZoomOut size={14} />
                   </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
