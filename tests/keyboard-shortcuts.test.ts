@@ -35,7 +35,42 @@ test("shortcut definitions are correctly configured and unique", () => {
   assert.ok(ids.has("nav.settings"), "Must contain nav.settings");
   assert.ok(ids.has("chat.newChat"), "Must contain chat.newChat");
   assert.ok(ids.has("chat.focusPrompt"), "Must contain chat.focusPrompt");
-  assert.ok(ids.has("video.playPause"), "Must contain video.playPause");
+
+  // Video Editing Shortcuts
+  const expectedVideoShortcuts = [
+    "video.playPause",
+    "video.shuttleReverse",
+    "video.shuttlePause",
+    "video.shuttleForward",
+    "video.stepBackward",
+    "video.stepForward",
+    "video.stepBackwardSecond",
+    "video.stepForwardSecond",
+    "video.jumpStart",
+    "video.jumpEnd",
+    "video.prevCut",
+    "video.nextCut",
+    "video.splitClip",
+    "video.markIn",
+    "video.markOut",
+    "video.clearInOut",
+    "video.trimStart",
+    "video.trimEnd",
+    "video.deleteSelected",
+    "video.undoCut",
+    "video.autoCutSilences",
+    "video.addEvent",
+    "video.zoomIn",
+    "video.zoomOut",
+    "video.fitTimeline",
+    "video.toggleMute",
+    "video.toggleFullscreen",
+    "video.toggleCutPreview",
+  ];
+
+  for (const videoAction of expectedVideoShortcuts) {
+    assert.ok(ids.has(videoAction), `Must contain video shortcut action: ${videoAction}`);
+  }
 });
 
 test("normalizeKeyCombo standardizes various modifier representations", () => {
@@ -46,9 +81,17 @@ test("normalizeKeyCombo standardizes various modifier representations", () => {
   assert.equal(normalizeKeyCombo("Alt+1"), "alt+1");
   assert.equal(normalizeKeyCombo("opt+1"), "alt+1");
   assert.equal(normalizeKeyCombo("Shift+Ctrl+K"), "ctrl+shift+k");
+  assert.equal(normalizeKeyCombo("Ctrl+Shift+S"), "ctrl+shift+s");
+  assert.equal(normalizeKeyCombo("Alt+X"), "alt+x");
+  assert.equal(normalizeKeyCombo("Shift+Z"), "shift+z");
   assert.equal(normalizeKeyCombo("Escape"), "escape");
   assert.equal(normalizeKeyCombo("space"), "space");
   assert.equal(normalizeKeyCombo("?"), "?");
+  assert.equal(normalizeKeyCombo("Home"), "home");
+  assert.equal(normalizeKeyCombo("End"), "end");
+  assert.equal(normalizeKeyCombo("["), "[");
+  assert.equal(normalizeKeyCombo("]"), "]");
+  assert.equal(normalizeKeyCombo("\\"), "\\");
 });
 
 test("eventToKeyCombo parses synthetic KeyboardEvents accurately", () => {
@@ -78,6 +121,24 @@ test("eventToKeyCombo parses synthetic KeyboardEvents accurately", () => {
     shiftKey: false,
   } as unknown as KeyboardEvent;
   assert.equal(eventToKeyCombo(alt1Event), "alt+1");
+
+  const ctrlShiftSEvent = {
+    key: "s",
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: true,
+  } as unknown as KeyboardEvent;
+  assert.equal(eventToKeyCombo(ctrlShiftSEvent), "ctrl+shift+s");
+
+  const altXEvent = {
+    key: "x",
+    ctrlKey: false,
+    metaKey: false,
+    altKey: true,
+    shiftKey: false,
+  } as unknown as KeyboardEvent;
+  assert.equal(eventToKeyCombo(altXEvent), "alt+x");
 
   const questionEvent = {
     key: "?",

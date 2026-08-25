@@ -2767,8 +2767,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   >
                     <Maximize size={14} />
                   </button>
-                    <ZoomOut size={14} />
-                  </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
 
                   <div className="mx-1 h-3.5 w-px bg-white/10" />
@@ -2779,7 +2777,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={() => stepPlayhead(-1 / 30)}
                     disabled={!videoMediaSrc}
                     className="p-1 rounded text-zinc-400 hover:bg-white/10 hover:text-white transition disabled:opacity-30"
-                    title="Voltar 1 frame (Seta Esquerda)"
+                    title="Voltar 1 frame (Seta Esquerda / Shift+Seta para 1s)"
                   >
                     <Rewind size={13} />
                   </button>
@@ -2789,7 +2787,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={togglePlayPause}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-emerald-400 disabled:opacity-30"
-                    title={isPlaying ? "Pausar" : "Reproduzir"}
+                    title={isPlaying ? "Pausar (Espaço / K)" : "Reproduzir (Espaço / L)"}
                   >
                     {isPlaying
                       ? <Pause size={14} className="fill-current text-emerald-400" />
@@ -2802,7 +2800,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={() => stepPlayhead(1 / 30)}
                     disabled={!videoMediaSrc}
                     className="p-1 rounded text-zinc-400 hover:bg-white/10 hover:text-white transition disabled:opacity-30"
-                    title="Avançar 1 frame (Seta Direita)"
+                    title="Avançar 1 frame (Seta Direita / Shift+Seta para 1s)"
                   >
                     <FastForward size={13} />
                   </button>
@@ -2817,7 +2815,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     type="button"
                     onClick={() => changePlaybackSpeed(1)}
                     className="rounded bg-[#171A21] px-1.5 py-0.5 text-[9px] font-mono font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                    title="Alterar velocidade de reprodução (J/K/L)"
+                    title="Velocidade de reprodução (J: Voltar / K: Pausar / L: Avançar)"
                   >
                     {playbackSpeed}x
                   </button>
@@ -2828,7 +2826,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={toggleMute}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30"
-                    title={isMuted ? "Ativar áudio" : "Silenciar"}
+                    title={isMuted ? "Ativar áudio (Atalho: M)" : "Silenciar áudio (Atalho: M)"}
                   >
                     {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                   </button>
@@ -2848,7 +2846,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={toggleFullscreen}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30"
-                    title="Tela cheia"
+                    title="Tela cheia (Atalho: F)"
                   >
                     <Maximize2 size={14} />
                   </button>
