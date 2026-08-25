@@ -1369,7 +1369,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     window.addEventListener("mouseup", onMouseUp);
   }
 
-  function handleTimelineCl  function handleSelectEvent(eventId: string, time: number) {
+  function handleTimelineClick(event: React.MouseEvent<HTMLDivElement>) {
+    seekToClientX(event.clientX);
+  }
+
+  function handleSelectEvent(eventId: string, time: number) {
     setSelectedEventId(eventId);
     setPlayheadTime(time);
     if (videoRef.current) {
