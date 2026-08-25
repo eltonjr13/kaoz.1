@@ -288,6 +288,10 @@ function caughtMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function waveformBarHeight(peak: number, maximumPercent: number) {
+  return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
+}
+
 type DragMode = "move" | "resize-left" | "resize-right";
 type DragState = {
   eventId: string;
@@ -632,6 +636,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       reuseCourseTheme: form.reuseCourseTheme,
       musicPath: form.musicPath,
       musicDb: Number(form.musicDb),
+      autoDucking: form.autoDucking,
+      duckingDb: Number(form.duckingDb),
+      voiceEnhance: form.voiceEnhance,
       sfxEnabled: form.sfxEnabled,
       sfxVolumeDb: Number(form.sfxVolumeDb),
       sfxPack: form.sfxPack,
@@ -1105,6 +1112,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
+        autoDucking: form.autoDucking,
+        duckingDb: Number(form.duckingDb),
+        voiceEnhance: form.voiceEnhance,
         sfxEnabled: form.sfxEnabled,
         sfxVolumeDb: Number(form.sfxVolumeDb),
         sfxPack: form.sfxPack,
@@ -1152,6 +1162,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         captionsEnabled: form.captionsEnabled,
         musicPath: form.musicPath,
         musicDb: Number(form.musicDb),
+        autoDucking: form.autoDucking,
+        duckingDb: Number(form.duckingDb),
+        voiceEnhance: form.voiceEnhance,
         sfxEnabled: form.sfxEnabled,
         sfxVolumeDb: Number(form.sfxVolumeDb),
         sfxPack: form.sfxPack,
@@ -1397,6 +1410,155 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }
+
+  const getSnapPoints = useCallback((excludeEventId?: string) => {
+    const points: number[] = [0, playheadTime, timelineDuration];
+    if (inPoint !== null) points.push(inPoint);
+    if (outPoint !== null) points.push(outPoint);
+    for (const clip of activeClips) {
+      points.push(clip.start, clip.end);
+    }
+    for (const cut of activeCutRanges) {
+      points.push(cut.start, cut.end);
+    }
+    if (analysis?.events) {
+      for (const evt of analysis.events) {
+        if (evt.id !== excludeEventId) {
+          const rev = review.events.find((e) => e.id === evt.id);
+          const s = rev?.start ?? evt.start;
+          const d = rev?.duration ?? evt.duration;
+          points.push(s, s + d);
+        }
+      }
+    }
+    return points.filter((v, i, a) => Number.isFinite(v) && a.indexOf(v) === i);
+  }, [activeClips, activeCutRanges, analysis?.events, inPoint, outPoint, playheadTime, review.events, timelineDuration]);
+
+  function handleEventMouseDown(
+    e: React.MouseEvent,
+    eventId: string,
+    mode: DragMode,
+    currentStart: number,
+    currentDuration: number,
+    trackKind: string,
+  ) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedEventId(eventId);
+    const newDragState: DragState = {
+      eventId,
+      mode,
+      startClientX: e.clientX,
+      initialStart: currentStart,
+      initialDuration: currentDuration,
+      trackKind,
+    };
+    setDragState(newDragState);
+    dragStateRef.current = newDragState;
+  }
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const currentDrag = dragStateRef.current;
+      if (!currentDrag || !timelineTrackRef.current) return;
+      const rect = timelineTrackRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const deltaX = e.clientX - currentDrag.startClientX;
+      const deltaSeconds = (deltaX / rect.width) * timelineDuration;
+      const snapThresholdSec = Math.max(0.12, (10 / rect.width) * timelineDuration);
+      const snapPoints = getSnapPoints(currentDrag.eventId);
+
+      let newStart = currentDrag.initialStart;
+      let newDuration = currentDrag.initialDuration;
+      let activeSnapTime: number | null = null;
+
+      if (currentDrag.mode === "move") {
+        let candidateStart = Math.max(0, Math.min(timelineDuration - currentDrag.initialDuration, currentDrag.initialStart + deltaSeconds));
+        const candidateEnd = candidateStart + currentDrag.initialDuration;
+
+        const startSnap = snapPoints.find((p) => Math.abs(p - candidateStart) <= snapThresholdSec);
+        const endSnap = snapPoints.find((p) => Math.abs(p - candidateEnd) <= snapThresholdSec);
+
+        if (startSnap !== undefined) {
+          candidateStart = startSnap;
+          activeSnapTime = startSnap;
+        } else if (endSnap !== undefined) {
+          candidateStart = Math.max(0, endSnap - currentDrag.initialDuration);
+          activeSnapTime = endSnap;
+        }
+
+        newStart = Math.round(candidateStart * 100) / 100;
+      } else if (currentDrag.mode === "resize-left") {
+        const initialEnd = currentDrag.initialStart + currentDrag.initialDuration;
+        let candidateStart = Math.max(0, Math.min(initialEnd - 0.2, currentDrag.initialStart + deltaSeconds));
+
+        const startSnap = snapPoints.find((p) => Math.abs(p - candidateStart) <= snapThresholdSec);
+        if (startSnap !== undefined && startSnap <= initialEnd - 0.2) {
+          candidateStart = startSnap;
+          activeSnapTime = startSnap;
+        }
+
+        newStart = Math.round(candidateStart * 100) / 100;
+        newDuration = Math.round((initialEnd - newStart) * 100) / 100;
+      } else if (currentDrag.mode === "resize-right") {
+        let candidateEnd = Math.min(timelineDuration, Math.max(currentDrag.initialStart + 0.2, currentDrag.initialStart + currentDrag.initialDuration + deltaSeconds));
+
+        const endSnap = snapPoints.find((p) => Math.abs(p - candidateEnd) <= snapThresholdSec);
+        if (endSnap !== undefined && endSnap >= currentDrag.initialStart + 0.2) {
+          candidateEnd = endSnap;
+          activeSnapTime = endSnap;
+        }
+
+        newDuration = Math.round((candidateEnd - currentDrag.initialStart) * 100) / 100;
+      }
+
+      setSnapGuideTime(activeSnapTime);
+
+      if (analysis) {
+        setAnalysis((cur) => {
+          if (!cur) return null;
+          return {
+            ...cur,
+            events: cur.events.map((evt) =>
+              evt.id === currentDrag.eventId
+                ? { ...evt, start: newStart, duration: newDuration }
+                : evt,
+            ),
+          };
+        });
+      }
+      setReview((cur) => {
+        const existingIdx = cur.events.findIndex((ev) => ev.id === currentDrag.eventId);
+        if (existingIdx >= 0) {
+          const updated = [...cur.events];
+          updated[existingIdx] = { ...updated[existingIdx], start: newStart, duration: newDuration };
+          return { ...cur, events: updated };
+        }
+        return {
+          ...cur,
+          events: [...cur.events, { id: currentDrag.eventId, start: newStart, duration: newDuration }],
+        };
+      });
+      setPreviewStale(true);
+    };
+
+    const onMouseUp = () => {
+      setDragState(null);
+      dragStateRef.current = null;
+      setSnapGuideTime(null);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [analysis, dragState, getSnapPoints, timelineDuration]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -2460,6 +2622,48 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </label>
                 </div>
 
+                {/* Auto-Ducking Inteligente */}
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <input
+                    type="checkbox"
+                    checked={form.autoDucking}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        autoDucking: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                  />
+                  <span>
+                    <strong className="block text-zinc-100 font-bold text-[11px]">Auto-Ducking Inteligente (Sidechain)</strong>
+                    <span className="text-[10px] text-zinc-400 leading-tight block">
+                      Abaixa a trilha de música automaticamente (-16dB) durante a fala e sobe nas pausas.
+                    </span>
+                  </span>
+                </label>
+
+                {/* Studio Voice Enhancer */}
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <input
+                    type="checkbox"
+                    checked={form.voiceEnhance}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        voiceEnhance: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                  />
+                  <span>
+                    <strong className="block text-zinc-100 font-bold text-[11px]">Studio Voice Enhancer</strong>
+                    <span className="text-[10px] text-zinc-400 leading-tight block">
+                      High-Pass 80Hz, Noise Gate anti-ruído de fundo e compressor de voz broadcast.
+                    </span>
+                  </span>
+                </label>
+
                 <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
                   <input
                     type="checkbox"
@@ -2937,6 +3141,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       >
                         <div className="absolute -top-1.5 h-3 w-3 -translate-x-1/2 bg-[#A99FFF] [clip-path:polygon(0_0,100%_0,50%_100%)] shadow-md" />
                       </div>
+
+                      {/* Magnetic Snap Guide Line */}
+                      {snapGuideTime !== null && (
+                        <div
+                          className="pointer-events-none absolute bottom-0 top-0 z-40 w-px border-r-2 border-dashed border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+                          style={{ left: `${Math.min(100, Math.max(0, (snapGuideTime / timelineDuration) * 100))}%` }}
+                        >
+                          <div className="absolute -top-3.5 -translate-x-1/2 rounded bg-amber-500 px-1 py-0.5 text-[8px] font-mono font-bold text-black shadow">
+                            🧲 {clock(snapGuideTime)}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="relative z-10 flex h-full flex-col gap-1.5 pointer-events-none">
@@ -2966,17 +3182,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                       handleSelectEvent(evt.id, playerEventStart);
                                     }}
                                     style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                    className={`group/item absolute top-1 bottom-1 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between select-none transition-all ${
                                       isSelected
-                                        ? "kaoz-signal-clip z-10"
+                                        ? "kaoz-signal-clip z-20 shadow-md ring-1 ring-cyan-400"
                                         : enabled
                                           ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-200 hover:brightness-125"
                                           : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                                     }`}
-                                    title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)})`}
+                                    title={`${kindLabel[evt.kind]}: ${evt.label} (${clock(playerEventStart)}) - Arraste para mover ou use as bordas para redimensionar`}
                                   >
-                                    <span className="truncate">{kindLabel[evt.kind]}: {evt.label}</span>
-                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    {/* Left Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-left", evtStart, evtDuration, evt.kind)}
+                                      className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l-[2px] bg-cyan-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-cyan-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar início (Trim In)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
+
+                                    {/* Move Zone */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "move", evtStart, evtDuration, evt.kind)}
+                                      className="flex-1 h-full flex items-center justify-between cursor-grab active:cursor-grabbing truncate px-1.5 min-w-0"
+                                    >
+                                      <span className="truncate">{kindLabel[evt.kind]}: {evt.label}</span>
+                                      <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    </div>
+
+                                    {/* Right Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-right", evtStart, evtDuration, evt.kind)}
+                                      className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-[2px] bg-cyan-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-cyan-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar duração (Trim Out)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
                                   </div>
                                 );
                               })
@@ -3213,17 +3453,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                       handleSelectEvent(evt.id, playerEventStart);
                                     }}
                                     style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                    className={`group/item absolute top-1 bottom-1 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between select-none transition-all ${
                                       isSelected
-                                        ? "kaoz-signal-clip z-10"
+                                        ? "kaoz-signal-clip z-20 shadow-md ring-1 ring-amber-400"
                                         : enabled
                                           ? "bg-amber-950/80 border-amber-500/60 text-amber-200 hover:brightness-125"
                                           : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                                     }`}
-                                    title={`Texto: ${evt.label} (${clock(playerEventStart)})`}
+                                    title={`Texto: ${evt.label} (${clock(playerEventStart)}) - Arraste para mover ou use as bordas para redimensionar`}
                                   >
-                                    <span className="truncate">{evt.label}</span>
-                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    {/* Left Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-left", evtStart, evtDuration, evt.kind)}
+                                      className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l-[2px] bg-amber-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-amber-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar início do texto (Trim In)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
+
+                                    {/* Move Zone */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "move", evtStart, evtDuration, evt.kind)}
+                                      className="flex-1 h-full flex items-center justify-between cursor-grab active:cursor-grabbing truncate px-1.5 min-w-0"
+                                    >
+                                      <span className="truncate">{evt.label}</span>
+                                      <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    </div>
+
+                                    {/* Right Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-right", evtStart, evtDuration, evt.kind)}
+                                      className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-[2px] bg-amber-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-amber-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar duração do texto (Trim Out)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
                                   </div>
                                 );
                               })
@@ -3258,17 +3522,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                       handleSelectEvent(evt.id, playerEventStart);
                                     }}
                                     style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                                    className={`absolute top-1 bottom-1 px-1.5 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between cursor-pointer transition-all ${
+                                    className={`group/item absolute top-1 bottom-1 rounded-[3px] text-[8px] font-mono font-bold border flex items-center justify-between select-none transition-all ${
                                       isSelected
-                                        ? "kaoz-signal-clip z-10"
+                                        ? "kaoz-signal-clip z-20 shadow-md ring-1 ring-purple-400"
                                         : enabled
                                           ? "bg-purple-950/80 border-purple-500/60 text-purple-200 hover:brightness-125"
                                           : "bg-zinc-900 border-zinc-700 text-zinc-500 opacity-40"
                                     }`}
-                                    title={`Efeito: ${evt.label} (${clock(playerEventStart)})`}
+                                    title={`Efeito: ${evt.label} (${clock(playerEventStart)}) - Arraste para mover ou use as bordas para redimensionar`}
                                   >
-                                    <span className="truncate">{evt.memeTag || evt.label}</span>
-                                    <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    {/* Left Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-left", evtStart, evtDuration, evt.kind)}
+                                      className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l-[2px] bg-purple-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-purple-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar início do SFX (Trim In)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
+
+                                    {/* Move Zone */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "move", evtStart, evtDuration, evt.kind)}
+                                      className="flex-1 h-full flex items-center justify-between cursor-grab active:cursor-grabbing truncate px-1.5 min-w-0"
+                                    >
+                                      <span className="truncate">{evt.memeTag || evt.label}</span>
+                                      <span className="text-[7px] opacity-75 font-mono ml-1">{clock(playerEventStart)}</span>
+                                    </div>
+
+                                    {/* Right Trim Handle */}
+                                    <div
+                                      onMouseDown={(e) => handleEventMouseDown(e, evt.id, "resize-right", evtStart, evtDuration, evt.kind)}
+                                      className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-[2px] bg-purple-400/30 opacity-0 group-hover/item:opacity-100 hover:bg-purple-300 transition z-20 flex items-center justify-center"
+                                      title="Ajustar duração do SFX (Trim Out)"
+                                    >
+                                      <div className="w-0.5 h-2 bg-white" />
+                                    </div>
                                   </div>
                                 );
                               })
