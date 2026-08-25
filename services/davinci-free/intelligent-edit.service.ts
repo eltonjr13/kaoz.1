@@ -1153,6 +1153,10 @@ export async function analyzeIntelligentEdit(
         : "subtle") as IntelligentEditStyle,
     ),
     captionsEnabled: rawInput.captionsEnabled !== false,
+    captionPreset: (["hormozi", "karaoke", "clean", "classic"].includes(String(rawInput.captionPreset))
+      ? rawInput.captionPreset
+      : "hormozi") as "hormozi" | "karaoke" | "clean" | "classic",
+    captionEmojis: rawInput.captionEmojis !== false,
     reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),
     musicDb: Math.min(-35, Math.max(-40, Number(rawInput.musicDb) || -38)),
@@ -1345,6 +1349,8 @@ export async function analyzeIntelligentEdit(
     design: courseThemeDesign(
       courseTheme.profile,
       input.captionsEnabled !== false,
+      input.captionPreset || "hormozi",
+      input.captionEmojis !== false,
     ),
     courseTheme: { ...courseTheme.profile, reused: courseTheme.reused },
     courseName: input.courseName,

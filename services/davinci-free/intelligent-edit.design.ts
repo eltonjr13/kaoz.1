@@ -159,22 +159,30 @@ export const INTELLIGENT_COURSE_THEME_PRESETS: Record<
 export function courseThemeDesign(
   profile: Pick<IntelligentCourseThemeProfile, "colors">,
   captionsEnabled: boolean,
+  captionPreset?: IntelligentEditDesign["captionPreset"],
+  captionEmojis?: boolean,
 ): IntelligentEditDesign {
   return {
     palette: "course-theme",
     colors: { ...profile.colors },
     captionsEnabled,
+    captionPreset: captionPreset || "hormozi",
+    captionEmojis: captionEmojis !== false,
   };
 }
 
 export function intelligentEditDesign(
   palette: IntelligentEditPalette,
   captionsEnabled: boolean,
+  captionPreset?: IntelligentEditDesign["captionPreset"],
+  captionEmojis?: boolean,
 ): IntelligentEditDesign {
   return {
     ...INTELLIGENT_EDIT_PALETTES[palette],
     colors: { ...INTELLIGENT_EDIT_PALETTES[palette].colors },
     captionsEnabled,
+    captionPreset: captionPreset || "hormozi",
+    captionEmojis: captionEmojis !== false,
   };
 }
 
@@ -187,5 +195,8 @@ export function resolveIntelligentEditDesign(
     ...preset,
     colors: { ...preset.colors, ...plan.design?.colors },
     captionsEnabled: plan.design?.captionsEnabled !== false,
+    captionPreset: plan.design?.captionPreset || "hormozi",
+    captionEmojis: plan.design?.captionEmojis !== false,
+    captionPosition: plan.design?.captionPosition || "bottom",
   };
 }

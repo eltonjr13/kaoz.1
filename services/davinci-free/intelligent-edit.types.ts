@@ -30,9 +30,14 @@ export type IntelligentCourseThemeKey =
   | "technology"
   | "creative";
 
+export type IntelligentCaptionPreset = "hormozi" | "karaoke" | "clean" | "classic";
+
 export interface IntelligentEditDesign {
   palette: IntelligentEditPalette;
   captionsEnabled: boolean;
+  captionPreset?: IntelligentCaptionPreset;
+  captionEmojis?: boolean;
+  captionPosition?: "bottom" | "center" | "top";
   colors: {
     background: string;
     surface: string;
@@ -204,6 +209,8 @@ export interface IntelligentEditorialReview {
   planId: string;
   updatedAt: string;
   captionsEnabled?: boolean;
+  captionPreset?: IntelligentCaptionPreset;
+  captionEmojis?: boolean;
   motionPace?: IntelligentMotionPace;
   events: IntelligentEditorialEventOverride[];
   addedEvents?: IntelligentEditEvent[];
@@ -334,6 +341,8 @@ export interface IntelligentEditAnalysisInput {
   motionPace?: IntelligentMotionPace;
   palette?: IntelligentEditPalette;
   captionsEnabled?: boolean;
+  captionPreset?: IntelligentCaptionPreset;
+  captionEmojis?: boolean;
   reuseCourseTheme?: boolean;
   musicPath?: string;
   musicDb?: number;

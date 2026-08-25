@@ -42,6 +42,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Copy,
+  BookOpen,
+  Bookmark,
 } from "lucide-react";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
 import {
@@ -177,6 +180,17 @@ type Analysis = {
     tone: string;
     reused: boolean;
   };
+  pedagogy?: {
+    items?: Array<{
+      id: string;
+      start: number;
+      end: number;
+      title: string;
+      kind: string;
+      importance?: string;
+      editorialSuggestion?: string;
+    }>;
+  };
   artifacts: { previewPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
 };
 
@@ -292,6 +306,28 @@ function waveformBarHeight(peak: number, maximumPercent: number) {
   return peak <= 0 ? "1px" : `${Math.max(4, peak * maximumPercent)}%`;
 }
 
+const CONTEXTUAL_EMOJIS: Array<{ pattern: RegExp; emoji: string }> = [
+  { pattern: /\b(dinheiro|faturamento|lucro|vendas|pagamento|comissao|comissão|grana|investimento)\b/i, emoji: "💰" },
+  { pattern: /\b(foguete|crescimento|crescer|escalar|escala|avancar|avançar|rapido|rápido|decolar)\b/i, emoji: "🚀" },
+  { pattern: /\b(atencao|atenção|cuidado|alerta|perigo|erro|falha|aviso)\b/i, emoji: "⚠️" },
+  { pattern: /\b(ideia|sacada|dica|insight|pensar|criatividade|visao|visão)\b/i, emoji: "💡" },
+  { pattern: /\b(meta|foco|objetivo|alvo|estrategia|estratégia|resultado)\b/i, emoji: "🎯" },
+  { pattern: /\b(fogo|viral|incrivel|incrível|demais|show|top|sucesso)\b/i, emoji: "🔥" },
+  { pattern: /\b(codigo|código|programar|tecnologia|software|sistema|ia|computador)\b/i, emoji: "⚡" },
+  { pattern: /\b(tempo|rapido|rápido|hora|segundo|cronometro|cronômetro|prazo)\b/i, emoji: "⏱️" },
+];
+
+function injectContextualEmojis(text: string): string {
+  let enriched = text;
+  for (const item of CONTEXTUAL_EMOJIS) {
+    if (item.pattern.test(enriched) && !enriched.includes(item.emoji)) {
+      enriched = `${enriched} ${item.emoji}`;
+      break;
+    }
+  }
+  return enriched;
+}
+
 type DragMode = "move" | "resize-left" | "resize-right";
 type DragState = {
   eventId: string;
@@ -381,6 +417,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     style: "balanced",
     motionPace: "natural" as IntelligentMotionPace,
     captionsEnabled: true,
+    captionPreset: "hormozi" as "hormozi" | "karaoke" | "clean" | "classic",
+    captionEmojis: true,
     reuseCourseTheme: true,
     musicPath: "",
     musicDb: "-38",
@@ -399,6 +437,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverPosPercent, setHoverPosPercent] = useState<number | null>(null);
+  const [showChaptersModal, setShowChaptersModal] = useState(false);
+  const [chaptersCopied, setChaptersCopied] = useState(false);
   const dragStateRef = useRef<DragState | null>(null);
 
   const refreshSpeechModels = useCallback(async () => {
@@ -633,6 +675,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       style: form.style,
       motionPace: form.motionPace,
       captionsEnabled: form.captionsEnabled,
+      captionPreset: form.captionPreset,
+      captionEmojis: form.captionEmojis,
       reuseCourseTheme: form.reuseCourseTheme,
       musicPath: form.musicPath,
       musicDb: Number(form.musicDb),
@@ -1359,6 +1403,73 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (event.kind === "outro") return duration + 4;
     return (analysis ? editedVideoTime(analysis.events, rawDuration, sourceTime) : sourceTime) + 4;
   }
+
+  const currentActiveCaption = useMemo(() => {
+    if (!captionsEnabled || !analysis?.captions?.length) return null;
+    return analysis.captions.find((c, idx) => {
+      const rev = review.captions.find((r) => r.index === idx);
+      if (rev?.enabled === false) return false;
+      const st = rev?.start ?? c.start;
+      const en = rev?.end ?? c.end;
+      return playheadTime >= st && playheadTime <= en;
+    });
+  }, [analysis?.captions, captionsEnabled, playheadTime, review.captions]);
+
+  type VideoChapter = {
+    id: string;
+    time: number;
+    title: string;
+    kind: string;
+  };
+
+  const chapterList = useMemo<VideoChapter[]>(() => {
+    const list: VideoChapter[] = [];
+    list.push({
+      id: "ch-intro",
+      time: 0,
+      title: form.lessonName ? `Introdução: ${form.lessonName}` : "Introdução",
+      kind: "intro",
+    });
+
+    if (analysis?.pedagogy?.items) {
+      for (const item of analysis.pedagogy.items) {
+        if (item.start > 2 && item.title && !list.some((c) => Math.abs(c.time - item.start) < 3)) {
+          list.push({
+            id: item.id || `pedagogy-${item.start}`,
+            time: item.start,
+            title: item.title,
+            kind: item.kind || "topic",
+          });
+        }
+      }
+    }
+
+    if (analysis?.events) {
+      for (const evt of analysis.events) {
+        if (
+          ["impact-text", "outro"].includes(evt.kind) &&
+          evt.start > 2 &&
+          evt.label &&
+          !list.some((c) => Math.abs(c.time - evt.start) < 4)
+        ) {
+          list.push({
+            id: evt.id,
+            time: evt.start,
+            title: evt.kind === "outro" ? "Encerramento e Próximos Passos" : evt.label,
+            kind: evt.kind,
+          });
+        }
+      }
+    }
+
+    return list.sort((a, b) => a.time - b.time);
+  }, [analysis?.events, analysis?.pedagogy?.items, form.lessonName]);
+
+  const formattedChaptersText = useMemo(() => {
+    return chapterList
+      .map((ch) => `${clock(ch.time)} - ${ch.title}`)
+      .join("\n");
+  }, [chapterList]);
 
   const isScrubbingRef = useRef(false);
 
@@ -2611,6 +2722,46 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </span>
                 </label>
 
+                {form.captionsEnabled && (
+                  <div className="grid grid-cols-2 gap-2 pt-1 pl-2 pb-1 border-l-2 border-sky-500/30">
+                    <label className="space-y-1 font-medium text-[#8B92A1] text-[10px]">
+                      Estilo das Legendas
+                      <select
+                        className={fieldClass}
+                        value={form.captionPreset}
+                        onChange={(e) =>
+                          setForm((current) => ({
+                            ...current,
+                            captionPreset: e.target.value as "hormozi" | "karaoke" | "clean" | "classic",
+                          }))
+                        }
+                      >
+                        <option value="hormozi">Hormozi (Punchy & Viral)</option>
+                        <option value="karaoke">Karaokê (Sync Dinâmico)</option>
+                        <option value="clean">Clean Minimalista</option>
+                        <option value="classic">Clássico Educacional</option>
+                      </select>
+                    </label>
+
+                    <label className="flex cursor-pointer items-center gap-2 pt-4 text-[#D5D8E0]">
+                      <input
+                        type="checkbox"
+                        checked={form.captionEmojis}
+                        onChange={(e) =>
+                          setForm((current) => ({
+                            ...current,
+                            captionEmojis: e.target.checked,
+                          }))
+                        }
+                        className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                      />
+                      <span className="text-[10px] font-bold text-zinc-200">
+                        Emojis IA
+                      </span>
+                    </label>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <label className="space-y-1.5 font-medium text-[#8B92A1]">
                     Música opcional
@@ -2797,6 +2948,45 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
+                {/* Live Dynamic Caption Overlay */}
+                {captionsEnabled && currentActiveCaption && (
+                  <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-center z-10">
+                    {form.captionPreset === "hormozi" ? (
+                      <div className="rounded bg-black/90 px-3.5 py-1.5 text-center shadow-[0_4px_20px_rgba(0,0,0,0.85)] border border-amber-400/40 max-w-[90%] transform scale-100 animate-in fade-in zoom-in-95 duration-100">
+                        <span className="font-extrabold font-mono uppercase text-sm sm:text-base tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+                          {form.captionEmojis
+                            ? injectContextualEmojis(currentActiveCaption.text).toUpperCase()
+                            : currentActiveCaption.text.toUpperCase()}
+                        </span>
+                      </div>
+                    ) : form.captionPreset === "karaoke" ? (
+                      <div className="rounded-md bg-black/80 px-3 py-1 text-center shadow-lg border border-purple-500/40 max-w-[85%]">
+                        <span className="font-bold text-xs sm:text-sm text-purple-200">
+                          {form.captionEmojis
+                            ? injectContextualEmojis(currentActiveCaption.text)
+                            : currentActiveCaption.text}
+                        </span>
+                      </div>
+                    ) : form.captionPreset === "clean" ? (
+                      <div className="rounded-full bg-zinc-950/85 backdrop-blur-sm px-3.5 py-1 text-center shadow border border-white/15 max-w-[80%]">
+                        <span className="font-medium text-xs text-zinc-100">
+                          {form.captionEmojis
+                            ? injectContextualEmojis(currentActiveCaption.text)
+                            : currentActiveCaption.text}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="rounded bg-black/65 px-3 py-1 text-center max-w-[85%]">
+                        <span className="font-medium text-xs text-white drop-shadow">
+                          {form.captionEmojis
+                            ? injectContextualEmojis(currentActiveCaption.text)
+                            : currentActiveCaption.text}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {playerError && (
                   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 p-6 text-center">
                     <div>
@@ -2964,6 +3154,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     Adicionar Evento
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setShowChaptersModal(true)}
+                    className="flex items-center gap-1 rounded border border-amber-500/40 bg-amber-950/20 px-2 py-0.5 text-[10px] font-bold text-amber-200 transition-all hover:bg-amber-900/40"
+                    title="Abrir sumário e marcadores de capítulos para YouTube/LMS"
+                  >
+                    <BookOpen size={12} className="text-amber-400" />
+                    Sumário ({chapterList.length})
+                  </button>
+
                   <div className="w-px h-3.5 bg-white/10 mx-1" />
 
                   {/* Zoom Controls */}
@@ -3088,6 +3288,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <div
                   onMouseDown={handleTimelineMouseDown}
                   onClick={handleTimelineClick}
+                  onMouseMove={(e) => {
+                    if (!timelineTrackRef.current) return;
+                    const rect = timelineTrackRef.current.getBoundingClientRect();
+                    if (rect.width <= 0) return;
+                    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                    const ratio = clickX / rect.width;
+                    const time = Math.max(0, Math.min(timelineDuration, ratio * timelineDuration));
+                    setHoverTime(time);
+                    setHoverPosPercent(ratio * 100);
+                  }}
+                  onMouseLeave={() => {
+                    setHoverTime(null);
+                    setHoverPosPercent(null);
+                  }}
                   className="min-h-full min-w-full flex flex-col cursor-crosshair select-none pb-2"
                   style={{ width: `${100 * timelineScale}%` }}
                 >
@@ -3150,6 +3364,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                         >
                           <div className="absolute -top-3.5 -translate-x-1/2 rounded bg-amber-500 px-1 py-0.5 text-[8px] font-mono font-bold text-black shadow">
                             🧲 {clock(snapGuideTime)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hover Scrubbing Ghost Indicator & Tooltip */}
+                      {hoverTime !== null && hoverPosPercent !== null && !isScrubbingRef.current && (
+                        <div
+                          className="pointer-events-none absolute bottom-0 top-0 z-35 w-px border-r border-dashed border-white/40"
+                          style={{ left: `${Math.min(100, Math.max(0, hoverPosPercent))}%` }}
+                        >
+                          <div className="absolute -top-9 -translate-x-1/2 rounded bg-zinc-900/95 px-2 py-0.5 text-[8px] font-mono text-white shadow-xl border border-white/20 flex flex-col items-center gap-0.5 whitespace-nowrap backdrop-blur-sm z-50">
+                            <span className="font-bold text-amber-300">
+                              ⏱️ {clock(hoverTime)}
+                            </span>
                           </div>
                         </div>
                       )}
@@ -4587,6 +4815,84 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   <Trash2 size={14} />
                 )}
                 Limpar e Redefinir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Sumário & Capítulos para YouTube/LMS */}
+      {showChaptersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-xl border border-white/10 bg-[#12151D] p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen size={18} className="text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Sumário & Capítulos da Aula</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChaptersModal(false)}
+                className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-400">
+              Timestamps gerados automaticamente pela análise pedagógica e estrutura da aula. Copie para a descrição do YouTube ou plataforma de alunos (Hotmart, Kiwify, LMS).
+            </p>
+
+            {/* Bloco de Código com Botão Copiar */}
+            <div className="relative rounded-lg bg-black/75 border border-white/10 p-3 font-mono text-xs text-emerald-300 max-h-48 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(formattedChaptersText);
+                  setChaptersCopied(true);
+                  setTimeout(() => setChaptersCopied(false), 2500);
+                }}
+                className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded bg-white/10 hover:bg-white/20 px-2 py-1 text-[10px] font-bold text-white transition shadow"
+              >
+                {chaptersCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                {chaptersCopied ? "Copiado!" : "Copiar Sumário"}
+              </button>
+              <pre className="whitespace-pre-wrap pr-24 leading-relaxed">{formattedChaptersText}</pre>
+            </div>
+
+            {/* Navegação Rápida de Capítulos */}
+            <div className="space-y-1.5 max-h-44 overflow-y-auto pt-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block">
+                Navegar pelos Capítulos ({chapterList.length}):
+              </span>
+              {chapterList.map((ch) => (
+                <div
+                  key={ch.id}
+                  onClick={() => {
+                    setPlayheadTime(ch.time);
+                    if (videoRef.current) videoRef.current.currentTime = ch.time;
+                    setShowChaptersModal(false);
+                  }}
+                  className="flex items-center justify-between rounded-md p-1.5 text-xs text-zinc-200 hover:bg-white/5 cursor-pointer transition border border-transparent hover:border-white/10"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] px-1.5 py-0.5 font-bold">
+                      {clock(ch.time)}
+                    </span>
+                    <span className="truncate text-zinc-100 font-medium">{ch.title}</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-2">Pular ➔</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => setShowChaptersModal(false)}
+                className="rounded bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition"
+              >
+                Fechar
               </button>
             </div>
           </div>

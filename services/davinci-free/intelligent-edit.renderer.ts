@@ -8,6 +8,7 @@ import ffmpegStaticPath from "ffmpeg-static";
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { createDavinciFreePlan } from "./davinci-free.service";
 import {
+  type IntelligentEditDesign,
   type IntelligentEditEvent,
   type IntelligentEditPlan,
 } from "./intelligent-edit.types";
@@ -190,6 +191,9 @@ function assHeader(plan: IntelligentEditPlan) {
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
+    `Style: CaptionHormozi,Arial Black,58,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,2,2,80,80,70,1`,
+    `Style: CaptionKaraoke,Segoe UI Black,56,${assColor(colors.primary)},&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
+    `Style: CaptionClean,Segoe UI Semibold,46,${assColor(colors.text)},&H000000FF,&H0018181B,&HA0000000,-1,0,0,0,100,100,0,0,1,1,0,2,100,100,55,1`,
     `Style: LowerThird,Segoe UI Semibold,40,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
     `Style: ImpactBox,Segoe UI,10,${assColor(colors.surface)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1`,
     `Style: ImpactIcon,Segoe UI Semibold,24,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,0,0,5,0,0,0,1`,
@@ -321,14 +325,95 @@ function impactLayouts(plan: IntelligentEditPlan): ImpactLayout[] {
   return layouts;
 }
 
+const CONTEXTUAL_EMOJIS: Array<{ pattern: RegExp; emoji: string }> = [
+  { pattern: /\b(dinheiro|faturamento|lucro|vendas|pagamento|comissao|comissão|grana|investimento)\b/i, emoji: "💰" },
+  { pattern: /\b(foguete|crescimento|crescer|escalar|escala|avancar|avançar|rapido|rápido|decolar)\b/i, emoji: "🚀" },
+  { pattern: /\b(atencao|atenção|cuidado|alerta|perigo|erro|falha|aviso)\b/i, emoji: "⚠️" },
+  { pattern: /\b(ideia|sacada|dica|insight|pensar|criatividade|visao|visão)\b/i, emoji: "💡" },
+  { pattern: /\b(meta|foco|objetivo|alvo|estrategia|estratégia|resultado)\b/i, emoji: "🎯" },
+  { pattern: /\b(fogo|viral|incrivel|incrível|demais|show|top|sucesso)\b/i, emoji: "🔥" },
+  { pattern: /\b(codigo|código|programar|tecnologia|software|sistema|ia|computador)\b/i, emoji: "⚡" },
+  { pattern: /\b(tempo|rapido|rápido|hora|segundo|cronometro|cronômetro|prazo)\b/i, emoji: "⏱️" },
+];
+
+function injectContextualEmojis(text: string): string {
+  let enriched = text;
+  for (const item of CONTEXTUAL_EMOJIS) {
+    if (item.pattern.test(enriched) && !enriched.includes(item.emoji)) {
+      enriched = `${enriched} ${item.emoji}`;
+      break;
+    }
+  }
+  return enriched;
+}
+
+function formatPresetCaption(
+  rawText: string,
+  start: number,
+  end: number,
+  preset: "hormozi" | "karaoke" | "clean" | "classic",
+  colors: IntelligentEditDesign["colors"],
+  useEmojis: boolean,
+): { styleName: string; formattedText: string } {
+  const text = useEmojis ? injectContextualEmojis(rawText) : rawText;
+
+  if (preset === "hormozi") {
+    const uppercaseText = text.toUpperCase();
+    const words = uppercaseText.split(/\s+/);
+    const highlighted = words.map((w, i) => {
+      if (i % 2 === 1 && w.length > 2) {
+        return `{\\1c${assColor(colors.secondary || "#FFE600")}&}${w}{\\1c&H00FFFFFF&}`;
+      }
+      return w;
+    }).join(" ");
+    return {
+      styleName: "CaptionHormozi",
+      formattedText: `{\\fscx106\\fscy106\\t(0,90,\\fscx100\\fscy100)}${assText(wrapCaption(highlighted))}`,
+    };
+  }
+
+  if (preset === "karaoke") {
+    const words = text.split(/\s+/);
+    const durationMs = Math.max(100, Math.round((end - start) * 1000));
+    const wordMs = Math.round(durationMs / Math.max(1, words.length));
+    const kTags = words.map((w) => `{\\k${Math.round(wordMs / 10)}}${w}`).join(" ");
+    return {
+      styleName: "CaptionKaraoke",
+      formattedText: assText(wrapCaption(kTags)),
+    };
+  }
+
+  if (preset === "clean") {
+    return {
+      styleName: "CaptionClean",
+      formattedText: assText(wrapCaption(text)),
+    };
+  }
+
+  return {
+    styleName: "Caption",
+    formattedText: assText(wrapCaption(text)),
+  };
+}
+
 function bodyAss(plan: IntelligentEditPlan) {
   const design = resolveIntelligentEditDesign(plan);
   const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const lines = [assHeader(plan)];
   if (design.captionsEnabled) {
+    const preset = design.captionPreset || "hormozi";
+    const useEmojis = design.captionEmojis !== false;
     for (const caption of plan.captions) {
+      const { styleName, formattedText } = formatPresetCaption(
+        caption.text,
+        caption.start,
+        caption.end,
+        preset,
+        design.colors,
+        useEmojis,
+      );
       lines.push(
-        `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},Caption,,0,0,0,,${assText(wrapCaption(caption.text))}`,
+        `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${styleName},,0,0,0,,${formattedText}`,
       );
     }
   }

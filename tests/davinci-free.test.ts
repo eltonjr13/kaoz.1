@@ -937,8 +937,14 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(renderer, /highpass=f=80/);
   assert.match(panel, /Auto-Ducking Inteligente/);
   assert.match(panel, /Studio Voice Enhancer/);
-  assert.match(panel, /getSnapPoints/);
   assert.match(panel, /snapGuideTime/);
+  assert.match(renderer, /CaptionHormozi/);
+  assert.match(renderer, /CaptionKaraoke/);
+  assert.match(renderer, /CaptionClean/);
+  assert.match(panel, /Estilo das Legendas/);
+  assert.match(panel, /Hormozi \(Punchy & Viral\)/);
+  assert.match(panel, /Sumário & Capítulos/);
+  assert.match(panel, /hoverTime/);
 });
 
 test("edição de vídeo possui área própria na navegação, fora das configurações", async () => {
