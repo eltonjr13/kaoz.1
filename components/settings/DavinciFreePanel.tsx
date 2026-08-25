@@ -2769,7 +2769,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     className="p-1 rounded hover:bg-white/10 hover:text-white transition-colors"
                     title="Ajustar Timeline (Atalho: Shift+Z ou 0)"
                   >
-                    <Maximize size={14} />
+                    <Maximize2 size={14} />
                   </button>
                   <span className="text-[10px] font-mono text-zinc-500">{(timelineScale * 100).toFixed(0)}%</span>
 
@@ -2791,7 +2791,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onClick={togglePlayPause}
                     disabled={!videoMediaSrc}
                     className="rounded p-1 transition-colors hover:bg-white/10 hover:text-emerald-400 disabled:opacity-30"
-                    title={isPlaying ? "Pausar (Espaço / K)" : "Reproduzir (Espaço / L)"}
+                    title={isPlaying ? "Pausar" : "Reproduzir"}
                   >
                     {isPlaying
                       ? <Pause size={14} className="fill-current text-emerald-400" />
