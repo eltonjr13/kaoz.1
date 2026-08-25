@@ -50,6 +50,7 @@ import {
   type ConsoleLogLevel,
 } from "@/components/video/video-editor-console";
 import { BUILD_VERSION } from "@/lib/app-version";
+import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import {
   supportsWebSpeechMedia,
   transcribeMediaWithWebSpeech,
@@ -256,6 +257,115 @@ const kindColorClass: Record<EditEvent["kind"], string> = {
   outro: "bg-[#171A21]/90 border-[#383D49] text-[#D5D8E0]",
   "lower-third": "bg-[#101217]/90 border-[#8B92A1] text-[#F4F5F7]",
   "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
+  media: {
+    durationSeconds: number;
+    width: number;
+    height: number;
+    fps: number;
+    hasAudio: boolean;
+    musicPath?: string;
+    musicDb: number;
+  };
+  transcript: Array<{ start: number; end: number; text: string }>;
+  transcription?: { engine: string; modelId?: string; backend?: string; deviceName?: string; language: string };
+  captions: Array<{ start: number; end: number; text: string }>;
+  events: EditEvent[];
+  cursorAnalysis: { status: string; message: string };
+  visual: { source: "agent-contact-sheet" | "safe-center-fallback"; sampledFrames: number };
+  semantic: { source: "agent" | "deterministic-fallback"; provider?: string; model?: string };
+  design?: {
+    palette: "kaoz" | "electric" | "premium" | "coral" | "course-theme";
+    captionsEnabled: boolean;
+    colors: Record<string, string>;
+  };
+  courseTheme?: {
+    id: string;
+    key: string;
+    label: string;
+    rationale: string;
+    tone: string;
+    reused: boolean;
+  };
+  artifacts: { previewPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
+};
+
+type BatchDiscovery = {
+  folderPath: string;
+  suggestedCourseName: string;
+  total: number;
+  videos: Array<{
+    index: number;
+    sourcePath: string;
+    relativePath: string;
+    moduleName: string;
+  }>;
+};
+
+type BatchJob = {
+  id: string;
+  version?: 1 | 2;
+  status: "queued" | "running" | "cancelled" | "completed" | "completed-with-errors";
+  source?: { type: "local" } | { type: "google-drive"; manifestId: string; rootFolderName: string };
+  folderPath: string;
+  courseName: string;
+  total: number;
+  completed: number;
+  failed: number;
+  outputFolderUrl?: string;
+  moduleIdentities?: Record<string, { title: string }>;
+  error?: string;
+  currentItemId?: string;
+  courseIdentity?: {
+    title: string;
+    eyebrow: string;
+    promise: string;
+    layout: "roadmap" | "framework" | "editorial";
+    source: "agent" | "deterministic-fallback";
+  };
+  items: Array<{
+    id: string;
+    index: number;
+    relativePath: string;
+    moduleName: string;
+    lessonName?: string;
+    moduleId?: string;
+    status: "pending" | "downloading" | "analyzing" | "rendering" | "uploading" | "completed" | "failed" | "cancelled";
+    previewPath?: string;
+    remoteOutputUrl?: string;
+    bytesTransferred?: number;
+    totalBytes?: number;
+    error?: string;
+  }>;
+};
+
+type Props = {
+  onStatusMessage: (message: { text: string; type: "success" | "error" | "info" }) => void;
+};
+
+const fieldClass =
+  "w-full rounded-[6px] border border-white/10 bg-[#0D0F14] px-2.5 py-1.5 text-xs text-[#F4F5F7] placeholder-[#5D6472] outline-none transition-colors hover:border-white/15 focus:border-[#7C6CF2]/70 focus:ring-1 focus:ring-[#7C6CF2]/20";
+const WEB_SPEECH_MODE = "__webspeech__";
+const CLOUD_API_MODE = "__cloud_api__";
+
+const kindLabel: Record<EditEvent["kind"], string> = {
+  intro: "Intro",
+  outro: "Encerramento",
+  "lower-third": "Lower third",
+  "impact-text": "Texto de impacto",
+  zoom: "Zoom",
+  cut: "Corte de plano",
+  remove: "Trecho removido",
+  cursor: "Cursor",
+  transition: "Transição",
+  "sound-effect": "SFX inteligente",
+  "meme-sfx": "Efeito Meme 🤡",
+};
+
+const kindColorClass: Record<EditEvent["kind"], string> = {
+  intro: "bg-emerald-950/90 border-emerald-500 text-emerald-300",
+  outro: "bg-[#171A21]/90 border-[#383D49] text-[#D5D8E0]",
+  "lower-third": "bg-[#101217]/90 border-[#8B92A1] text-[#F4F5F7]",
+  "impact-text": "bg-cyan-950/90 border-cyan-500 text-cyan-300",
   zoom: "bg-amber-950/90 border-amber-500 text-amber-300",
   cut: "bg-zinc-800 border-zinc-500 text-zinc-300",
   remove: "bg-red-950/90 border-red-500 text-red-200",
@@ -292,6 +402,7 @@ function waveformBarHeight(peak: number, maximumPercent: number) {
 }
 
 export function DavinciFreePanel({ onStatusMessage }: Props) {
+  const { registerActionHandler } = useShortcuts();
   const [applicationVersion, setApplicationVersion] = useState(BUILD_VERSION);
   const [status, setStatus] = useState<Status | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);

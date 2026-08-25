@@ -13,9 +13,33 @@ export type ShortcutActionId =
   | "chat.newChat"
   | "chat.focusPrompt"
   | "video.playPause"
+  | "video.shuttleReverse"
+  | "video.shuttlePause"
+  | "video.shuttleForward"
+  | "video.stepBackward"
+  | "video.stepForward"
+  | "video.stepBackwardSecond"
+  | "video.stepForwardSecond"
+  | "video.jumpStart"
+  | "video.jumpEnd"
+  | "video.prevCut"
+  | "video.nextCut"
   | "video.splitClip"
+  | "video.markIn"
+  | "video.markOut"
+  | "video.clearInOut"
+  | "video.trimStart"
+  | "video.trimEnd"
+  | "video.deleteSelected"
+  | "video.undoCut"
+  | "video.autoCutSilences"
+  | "video.addEvent"
   | "video.zoomIn"
-  | "video.zoomOut";
+  | "video.zoomOut"
+  | "video.fitTimeline"
+  | "video.toggleMute"
+  | "video.toggleFullscreen"
+  | "video.toggleCutPreview";
 
 export interface ShortcutDefinition {
   id: ShortcutActionId;
@@ -145,7 +169,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     allowInInput: false,
   },
 
-  // Vídeo
+  // Vídeo - Reprodução & Navegação
   {
     id: "video.playPause",
     label: "Reproduzir / Pausar",
@@ -156,14 +180,200 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     allowInInput: false,
   },
   {
-    id: "video.splitClip",
-    label: "Cortar / Dividir Clipe",
-    description: "Realizar corte na posição atual do cursor da timeline",
+    id: "video.shuttleReverse",
+    label: "Shuttle: Voltar / Reduzir",
+    description: "Retroceder ou reduzir a velocidade de reprodução",
     category: "video",
-    keys: ["s"],
-    displayKey: "S",
+    keys: ["j"],
+    displayKey: "J",
     allowInInput: false,
   },
+  {
+    id: "video.shuttlePause",
+    label: "Shuttle: Pausar",
+    description: "Pausar a reprodução do vídeo imediatamente",
+    category: "video",
+    keys: ["k"],
+    displayKey: "K",
+    allowInInput: false,
+  },
+  {
+    id: "video.shuttleForward",
+    label: "Shuttle: Avançar / Acelerar",
+    description: "Avançar ou acelerar a velocidade de reprodução",
+    category: "video",
+    keys: ["l"],
+    displayKey: "L",
+    allowInInput: false,
+  },
+  {
+    id: "video.stepBackward",
+    label: "Voltar 1 Frame",
+    description: "Recuar exatamente 1 quadro na agulha da timeline",
+    category: "video",
+    keys: ["arrowleft"],
+    displayKey: "←",
+    allowInInput: false,
+  },
+  {
+    id: "video.stepForward",
+    label: "Avançar 1 Frame",
+    description: "Avançar exatamente 1 quadro na agulha da timeline",
+    category: "video",
+    keys: ["arrowright"],
+    displayKey: "→",
+    allowInInput: false,
+  },
+  {
+    id: "video.stepBackwardSecond",
+    label: "Voltar 1 Segundo",
+    description: "Recuar 1 segundo na agulha da timeline",
+    category: "video",
+    keys: ["shift+arrowleft"],
+    displayKey: "Shift + ←",
+    allowInInput: false,
+  },
+  {
+    id: "video.stepForwardSecond",
+    label: "Avançar 1 Segundo",
+    description: "Avançar 1 segundo na agulha da timeline",
+    category: "video",
+    keys: ["shift+arrowright"],
+    displayKey: "Shift + →",
+    allowInInput: false,
+  },
+  {
+    id: "video.jumpStart",
+    label: "Ir para Início da Timeline",
+    description: "Mover a agulha para o frame inicial do vídeo (0:00)",
+    category: "video",
+    keys: ["home", "arrowup"],
+    displayKey: "Home / ↑",
+    allowInInput: false,
+  },
+  {
+    id: "video.jumpEnd",
+    label: "Ir para Fim da Timeline",
+    description: "Mover a agulha para o frame final do vídeo",
+    category: "video",
+    keys: ["end", "arrowdown"],
+    displayKey: "End / ↓",
+    allowInInput: false,
+  },
+  {
+    id: "video.prevCut",
+    label: "Corte / Clipe Anterior",
+    description: "Pular para o ponto de corte ou limite de clipe anterior",
+    category: "video",
+    keys: ["[", "a"],
+    displayKey: "[ / A",
+    allowInInput: false,
+  },
+  {
+    id: "video.nextCut",
+    label: "Próximo Corte / Clipe",
+    description: "Pular para o próximo ponto de corte ou limite de clipe",
+    category: "video",
+    keys: ["]", "d"],
+    displayKey: "] / D",
+    allowInInput: false,
+  },
+
+  // Vídeo - Corte & Edição
+  {
+    id: "video.splitClip",
+    label: "Cortar / Dividir Clipe (Razor)",
+    description: "Realizar corte na posição atual da agulha da timeline",
+    category: "video",
+    keys: ["s", "c"],
+    displayKey: "S / C",
+    allowInInput: false,
+  },
+  {
+    id: "video.markIn",
+    label: "Marcar Ponto de Entrada [In]",
+    description: "Definir o início do intervalo selecionado na agulha",
+    category: "video",
+    keys: ["i"],
+    displayKey: "I",
+    allowInInput: false,
+  },
+  {
+    id: "video.markOut",
+    label: "Marcar Ponto de Saída [Out]",
+    description: "Definir o fim do intervalo selecionado na agulha",
+    category: "video",
+    keys: ["o"],
+    displayKey: "O",
+    allowInInput: false,
+  },
+  {
+    id: "video.clearInOut",
+    label: "Limpar Pontos In / Out",
+    description: "Remover os marcadores de entrada e saída da timeline",
+    category: "video",
+    keys: ["alt+x", "x"],
+    displayKey: "Alt + X / X",
+    allowInInput: false,
+  },
+  {
+    id: "video.trimStart",
+    label: "Ripple Trim: Início até Agulha",
+    description: "Aparar do início do clipe ativo até a posição da agulha",
+    category: "video",
+    keys: ["q"],
+    displayKey: "Q",
+    allowInInput: false,
+  },
+  {
+    id: "video.trimEnd",
+    label: "Ripple Trim: Agulha até Fim",
+    description: "Aparar da posição da agulha até o fim do clipe ativo",
+    category: "video",
+    keys: ["w"],
+    displayKey: "W",
+    allowInInput: false,
+  },
+  {
+    id: "video.deleteSelected",
+    label: "Excluir Intervalo / Clipe Selecionado",
+    description: "Excluir o trecho entre In/Out ou o clipe selecionado",
+    category: "video",
+    keys: ["delete", "backspace"],
+    displayKey: "Del / Backspace",
+    allowInInput: false,
+  },
+  {
+    id: "video.undoCut",
+    label: "Desfazer Último Corte",
+    description: "Reverter a última ação de corte realizada na timeline",
+    category: "video",
+    keys: ["ctrl+z", "meta+z"],
+    displayKey: "Ctrl + Z",
+    macDisplayKey: "⌘Z",
+    allowInInput: false,
+  },
+  {
+    id: "video.autoCutSilences",
+    label: "Auto-Corte de Silêncios por IA",
+    description: "Abrir detecção e remoção inteligente de pausas e silêncios",
+    category: "video",
+    keys: ["ctrl+shift+s", "alt+s"],
+    displayKey: "Ctrl + Shift + S",
+    macDisplayKey: "⌘⇧S",
+    allowInInput: false,
+  },
+  {
+    id: "video.addEvent",
+    label: "Adicionar Evento / Marcador",
+    description: "Inserir evento de edição inteligente ou zoom na agulha",
+    category: "video",
+    keys: ["e", "n"],
+    displayKey: "E / N",
+    allowInInput: false,
+  },
+
+  // Vídeo - Timeline, Áudio & Visualização
   {
     id: "video.zoomIn",
     label: "Aumentar Zoom da Timeline",
@@ -180,6 +390,42 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     category: "video",
     keys: ["-"],
     displayKey: "-",
+    allowInInput: false,
+  },
+  {
+    id: "video.fitTimeline",
+    label: "Ajustar Zoom / Resetar Escala",
+    description: "Enquadrar a timeline inteira na largura da tela (100%)",
+    category: "video",
+    keys: ["shift+z", "0"],
+    displayKey: "Shift + Z / 0",
+    allowInInput: false,
+  },
+  {
+    id: "video.toggleMute",
+    label: "Silenciar / Ativar Áudio",
+    description: "Alternar o som do player de vídeo",
+    category: "video",
+    keys: ["m"],
+    displayKey: "M",
+    allowInInput: false,
+  },
+  {
+    id: "video.toggleFullscreen",
+    label: "Alternar Tela Cheia",
+    description: "Expandir o player de vídeo para modo tela cheia",
+    category: "video",
+    keys: ["f"],
+    displayKey: "F",
+    allowInInput: false,
+  },
+  {
+    id: "video.toggleCutPreview",
+    label: "Prévia com Pulo de Cortes",
+    description: "Alternar o pulo automático de trechos cortados na reprodução",
+    category: "video",
+    keys: ["\\", "p"],
+    displayKey: "\\ / P",
     allowInInput: false,
   },
 ];

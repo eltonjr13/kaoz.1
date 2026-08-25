@@ -17,6 +17,20 @@ import {
   HelpCircle,
   CornerDownLeft,
   X,
+  FastForward,
+  Rewind,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Volume2,
+  RotateCcw,
+  WandSparkles,
+  Bookmark,
+  ChevronsLeft,
+  ChevronsRight,
+  Trash2,
+  Maximize,
+  Radio,
 } from "lucide-react";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import { KbdBadge } from "./KbdBadge";
@@ -157,31 +171,334 @@ export function CommandPalette() {
         },
       },
 
-      // Video Actions
+      // Video Actions - Playback & Navigation
       {
         id: "video-play-pause",
         label: "Reproduzir / Pausar Vídeo",
-        description: "Alternar o player da timeline de vídeo",
+        description: "Alternar reprodução do vídeo na timeline",
         category: "Edição de Vídeo",
         icon: Play,
         displayKey: "Espaço",
-        keywords: "play pause reproduzir video player",
+        keywords: "play pause reproduzir video player espaco tocar parar",
         action: () => {
           closeCommandPalette();
           triggerAction("video.playPause");
         },
       },
       {
+        id: "video-shuttle-fwd",
+        label: "Shuttle: Avançar / Acelerar",
+        description: "Avançar ou acelerar a velocidade de reprodução (L)",
+        category: "Edição de Vídeo",
+        icon: FastForward,
+        displayKey: "L",
+        keywords: "shuttle avancar acelerar velocidade forward",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.shuttleForward");
+        },
+      },
+      {
+        id: "video-shuttle-rev",
+        label: "Shuttle: Voltar / Reduzir",
+        description: "Retroceder ou reduzir a velocidade de reprodução (J)",
+        category: "Edição de Vídeo",
+        icon: Rewind,
+        displayKey: "J",
+        keywords: "shuttle voltar retroceder reverse rewind velocidade",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.shuttleReverse");
+        },
+      },
+      {
+        id: "video-step-fwd",
+        label: "Avançar 1 Frame",
+        description: "Avançar exatamente 1 quadro na agulha da timeline",
+        category: "Edição de Vídeo",
+        icon: FastForward,
+        displayKey: "→",
+        keywords: "frame quadro avancar proximo frame step forward seta direita",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.stepForward");
+        },
+      },
+      {
+        id: "video-step-back",
+        label: "Voltar 1 Frame",
+        description: "Recuar exatamente 1 quadro na agulha da timeline",
+        category: "Edição de Vídeo",
+        icon: Rewind,
+        displayKey: "←",
+        keywords: "frame quadro voltar recuar anterior frame step backward seta esquerda",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.stepBackward");
+        },
+      },
+      {
+        id: "video-jump-start",
+        label: "Ir para Início da Timeline",
+        description: "Mover a agulha para o início absoluto do vídeo",
+        category: "Edição de Vídeo",
+        icon: ChevronsLeft,
+        displayKey: "Home / ↑",
+        keywords: "inicio comeco timeline primeiro frame home",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.jumpStart");
+        },
+      },
+      {
+        id: "video-jump-end",
+        label: "Ir para Fim da Timeline",
+        description: "Mover a agulha para o fim absoluto do vídeo",
+        category: "Edição de Vídeo",
+        icon: ChevronsRight,
+        displayKey: "End / ↓",
+        keywords: "fim final timeline ultimo frame end",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.jumpEnd");
+        },
+      },
+      {
+        id: "video-prev-cut",
+        label: "Corte / Clipe Anterior",
+        description: "Pular para o ponto de corte ou limite anterior",
+        category: "Edição de Vídeo",
+        icon: ChevronsLeft,
+        displayKey: "[ / A",
+        keywords: "pular corte anterior clipe transicao esquerda voltar corte",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.prevCut");
+        },
+      },
+      {
+        id: "video-next-cut",
+        label: "Próximo Corte / Clipe",
+        description: "Pular para o próximo ponto de corte ou limite",
+        category: "Edição de Vídeo",
+        icon: ChevronsRight,
+        displayKey: "] / D",
+        keywords: "pular corte proximo clipe transicao avancar corte",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.nextCut");
+        },
+      },
+
+      // Video Actions - Cutting & Editing
+      {
         id: "video-split",
-        label: "Cortar / Dividir Clipe",
-        description: "Dividir o clipe na agulha da timeline de vídeo",
+        label: "Cortar / Dividir Clipe (Razor)",
+        description: "Dividir o clipe ativo na posição atual da agulha",
         category: "Edição de Vídeo",
         icon: Scissors,
-        displayKey: "S",
-        keywords: "cortar split dividir clipe tesoura",
+        displayKey: "S / C",
+        keywords: "cortar split dividir clipe tesoura razor fatiar c s",
         action: () => {
           closeCommandPalette();
           triggerAction("video.splitClip");
+        },
+      },
+      {
+        id: "video-mark-in",
+        label: "Marcar Ponto de Entrada [In]",
+        description: "Definir início da área selecionada na timeline",
+        category: "Edição de Vídeo",
+        icon: Bookmark,
+        displayKey: "I",
+        keywords: "marcar in entrada ponto inicio selecao",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.markIn");
+        },
+      },
+      {
+        id: "video-mark-out",
+        label: "Marcar Ponto de Saída [Out]",
+        description: "Definir fim da área selecionada na timeline",
+        category: "Edição de Vídeo",
+        icon: Bookmark,
+        displayKey: "O",
+        keywords: "marcar out saida ponto fim selecao",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.markOut");
+        },
+      },
+      {
+        id: "video-clear-in-out",
+        label: "Limpar Pontos In / Out",
+        description: "Remover os marcadores de entrada e saída",
+        category: "Edição de Vídeo",
+        icon: X,
+        displayKey: "Alt + X / X",
+        keywords: "limpar in out desselecionar desmarcar pontos",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.clearInOut");
+        },
+      },
+      {
+        id: "video-trim-start",
+        label: "Ripple Trim: Início até Agulha",
+        description: "Aparar e remover do início do clipe até a agulha (Q)",
+        category: "Edição de Vídeo",
+        icon: Scissors,
+        displayKey: "Q",
+        keywords: "trim aparar inicio corte ripple q",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.trimStart");
+        },
+      },
+      {
+        id: "video-trim-end",
+        label: "Ripple Trim: Agulha até Fim",
+        description: "Aparar e remover da agulha até o fim do clipe (W)",
+        category: "Edição de Vídeo",
+        icon: Scissors,
+        displayKey: "W",
+        keywords: "trim aparar fim corte ripple w",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.trimEnd");
+        },
+      },
+      {
+        id: "video-delete-selected",
+        label: "Excluir Intervalo / Clipe Selecionado",
+        description: "Remover trecho In/Out ou o clipe atualmente selecionado",
+        category: "Edição de Vídeo",
+        icon: Trash2,
+        displayKey: "Del / Backspace",
+        keywords: "excluir deletar remover clipe selecao in out lixeira",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.deleteSelected");
+        },
+      },
+      {
+        id: "video-undo-cut",
+        label: "Desfazer Último Corte",
+        description: "Restaurar o último trecho cortado na timeline",
+        category: "Edição de Vídeo",
+        icon: RotateCcw,
+        displayKey: "Ctrl + Z",
+        keywords: "desfazer corte restaurar undo reverter ctrl z",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.undoCut");
+        },
+      },
+      {
+        id: "video-autocut-silences",
+        label: "Auto-Corte de Silêncios por IA",
+        description: "Abrir o detector inteligente de silêncios e pausas",
+        category: "Edição de Vídeo",
+        icon: WandSparkles,
+        displayKey: "Ctrl + Shift + S",
+        keywords: "silencio silêncios auto corte remover pausas voz ia transcricao",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.autoCutSilences");
+        },
+      },
+      {
+        id: "video-add-event",
+        label: "Adicionar Evento / Marcador",
+        description: "Inserir evento de edição ou zoom no ponto atual da agulha",
+        category: "Edição de Vídeo",
+        icon: Bookmark,
+        displayKey: "E / N",
+        keywords: "adicionar evento marcador zoom texto transicao efeito",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.addEvent");
+        },
+      },
+
+      // Video Actions - Timeline, Audio & View
+      {
+        id: "video-zoom-in",
+        label: "Aumentar Zoom da Timeline",
+        description: "Ampliar a escala de visualização das trilhas",
+        category: "Edição de Vídeo",
+        icon: ZoomIn,
+        displayKey: "+",
+        keywords: "zoom in aproximar ampliar escala timeline mais",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.zoomIn");
+        },
+      },
+      {
+        id: "video-zoom-out",
+        label: "Diminuir Zoom da Timeline",
+        description: "Reduzir a escala de visualização das trilhas",
+        category: "Edição de Vídeo",
+        icon: ZoomOut,
+        displayKey: "-",
+        keywords: "zoom out afastar reduzir escala timeline menos",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.zoomOut");
+        },
+      },
+      {
+        id: "video-fit-timeline",
+        label: "Ajustar Zoom / Resetar Escala",
+        description: "Enquadrar a timeline completa na largura da janela",
+        category: "Edição de Vídeo",
+        icon: Maximize,
+        displayKey: "Shift + Z / 0",
+        keywords: "fit timeline ajustar escala 100% resetar zoom enquadrar",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.fitTimeline");
+        },
+      },
+      {
+        id: "video-toggle-mute",
+        label: "Silenciar / Ativar Áudio",
+        description: "Alternar o som do player de vídeo",
+        category: "Edição de Vídeo",
+        icon: Volume2,
+        displayKey: "M",
+        keywords: "mute desmutar audio som volume silenciar som",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.toggleMute");
+        },
+      },
+      {
+        id: "video-toggle-fullscreen",
+        label: "Alternar Tela Cheia",
+        description: "Expandir o player de vídeo para modo tela cheia",
+        category: "Edição de Vídeo",
+        icon: Maximize2,
+        displayKey: "F",
+        keywords: "fullscreen tela cheia maximizar player f",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.toggleFullscreen");
+        },
+      },
+      {
+        id: "video-toggle-cut-preview",
+        label: "Prévia com Pulo de Cortes",
+        description: "Alternar se o player pula trechos cortados em tempo real",
+        category: "Edição de Vídeo",
+        icon: Radio,
+        displayKey: "\\ / P",
+        keywords: "previa pulo cortes live cut preview pular",
+        action: () => {
+          closeCommandPalette();
+          triggerAction("video.toggleCutPreview");
         },
       },
 
