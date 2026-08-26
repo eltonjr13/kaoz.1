@@ -89,6 +89,9 @@ export interface SpeechTranscriptionOptions {
 export interface PythonSpeechResponse {
   text?: unknown;
   error?: unknown;
+  words?: unknown;
+  segments?: unknown;
+  timingPrecision?: unknown;
 }
 
 export interface SpeechSettings {

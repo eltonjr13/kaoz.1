@@ -8,6 +8,7 @@ import { getLocalDataDir } from "@/lib/runtime-paths";
 import { getSpeechModelDefinition } from "./speech-model.catalog";
 import { getSpeechModelPath, isSpeechModelInstalled } from "./speech-model.service";
 import type { SpeechDevicePreference, SpeechHardwareStatus, SpeechTranscriptionResult } from "./speech.types";
+import { normalizeSpeechTiming } from "./speech-timing";
 
 interface WhisperServerState {
   process: ChildProcessWithoutNullStreams | null;
@@ -209,6 +210,7 @@ async function requestTranscription(audio: File): Promise<SpeechTranscriptionRes
       modelId: state.modelId || undefined,
       backend: state.backend,
       deviceName: state.deviceName,
+      ...normalizeSpeechTiming(payload),
     };
   } finally {
     await normalized.cleanup();

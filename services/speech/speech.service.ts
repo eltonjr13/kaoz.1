@@ -17,6 +17,7 @@ import { ensurePythonSpeechServer, getParakeetStatusUrl, getPythonTranscribeUrl 
 import { readSpeechSettings, writeSpeechSettings } from "./speech.settings";
 import { getSpeechModelDefinition, PARAKEET_MODEL_ID } from "./speech-model.catalog";
 import { transcribeWithWhisperCpp } from "./speech-whisper-cpp-runtime";
+import { normalizeSpeechTiming } from "./speech-timing";
 
 export { resolveSpeechProvider, speechRuntimeEnvironment } from "./speech-provider-resolution";
 
@@ -52,8 +53,11 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
       file: audio,
       model: "whisper-1",
       language: "pt",
+      response_format: "verbose_json",
+      timestamp_granularities: ["word", "segment"],
     });
-    return { text: result.text || "", engine: "cloud", backend: "cloud" };
+    const timing = normalizeSpeechTiming(result);
+    return { text: result.text || "", engine: "cloud", backend: "cloud", ...timing };
   }
 
   const geminiConfig = await getApiProviderConfig("gemini");
@@ -70,7 +74,7 @@ async function transcribeWithConfiguredCloud(audio: File): Promise<SpeechTranscr
         ],
       }],
     });
-    return { text: result.text?.trim() || "", engine: "cloud", backend: "cloud" };
+    return { text: result.text?.trim() || "", engine: "cloud", backend: "cloud", timingPrecision: "approximate" };
   }
 
   return null;
@@ -123,6 +127,7 @@ async function pythonTranscription(audio: File, provider: SpeechProviderName): P
     engine: provider === "parakeet" ? "parakeet" : "cloud",
     modelId: provider === "parakeet" ? PARAKEET_MODEL_ID : undefined,
     backend: provider === "parakeet" ? "parakeet" : "cpu",
+    ...normalizeSpeechTiming(payload),
   };
 }
 
