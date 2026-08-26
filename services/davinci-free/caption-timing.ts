@@ -1,5 +1,6 @@
 import type {
   IntelligentCaption,
+  IntelligentEditorialCaptionOverride,
   IntelligentTimedWord,
   IntelligentTimingPrecision,
   TimedTranscriptSegment,
@@ -22,11 +23,14 @@ function intersectingIntervals(start: number, end: number, intervals: SpeechInte
   return matches.length ? matches : [{ start, end }];
 }
 
-function timeAtActiveOffset(intervals: SpeechInterval[], offset: number) {
+function timeAtActiveOffset(intervals: SpeechInterval[], offset: number, preferNext = false) {
   let remaining = Math.max(0, offset);
-  for (const interval of intervals) {
+  for (let index = 0; index < intervals.length; index += 1) {
+    const interval = intervals[index];
     const duration = interval.end - interval.start;
-    if (remaining <= duration) return interval.start + remaining;
+    if (remaining < duration || (!preferNext && remaining === duration) || index === intervals.length - 1) {
+      return interval.start + Math.min(remaining, duration);
+    }
     remaining -= duration;
   }
   return intervals.at(-1)?.end || 0;
@@ -46,9 +50,11 @@ export function approximateTimedWords(
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   let consumed = 0;
   return tokens.map((token, index) => {
-    const wordStart = timeAtActiveOffset(active, (consumed / totalWeight) * activeDuration);
+    const wordStart = timeAtActiveOffset(active, (consumed / totalWeight) * activeDuration, true);
     consumed += weights[index];
-    const wordEnd = timeAtActiveOffset(active, (consumed / totalWeight) * activeDuration);
+    const allocatedEnd = timeAtActiveOffset(active, (consumed / totalWeight) * activeDuration);
+    const containingInterval = active.find((interval) => wordStart >= interval.start && wordStart < interval.end);
+    const wordEnd = containingInterval ? Math.min(containingInterval.end, allocatedEnd) : allocatedEnd;
     return {
       start: wordStart,
       end: Math.max(wordStart + 0.04, Math.min(end, wordEnd)),
@@ -129,4 +135,67 @@ export function transcriptTimingPrecision(segments: TimedTranscriptSegment[]): I
   return segments.length > 0 && segments.every((segment) => segment.timingPrecision === "precise" && segment.words?.length)
     ? "precise"
     : "approximate";
+}
+
+function normalizedTokens(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+}
+
+function textSimilarity(left: string, right: string) {
+  const leftTokens = normalizedTokens(left);
+  const rightTokens = normalizedTokens(right);
+  if (!leftTokens.length || !rightTokens.length) return 0;
+  const remaining = [...rightTokens];
+  let matches = 0;
+  for (const token of leftTokens) {
+    const index = remaining.indexOf(token);
+    if (index >= 0) {
+      matches += 1;
+      remaining.splice(index, 1);
+    }
+  }
+  return (2 * matches) / (leftTokens.length + rightTokens.length);
+}
+
+function temporalIou(left: IntelligentCaption, right: IntelligentCaption) {
+  const intersection = Math.max(0, Math.min(left.end, right.end) - Math.max(left.start, right.start));
+  const union = Math.max(left.end, right.end) - Math.min(left.start, right.start);
+  return union > 0 ? intersection / union : 0;
+}
+
+export function remapCaptionOverrides(
+  oldCaptions: IntelligentCaption[],
+  newCaptions: IntelligentCaption[],
+  overrides: IntelligentEditorialCaptionOverride[],
+) {
+  const used = new Set<number>();
+  const mapped: IntelligentEditorialCaptionOverride[] = [];
+  let unmatched = 0;
+  for (const override of [...overrides].sort((left, right) => left.index - right.index)) {
+    const original = oldCaptions[override.index];
+    if (!original) {
+      unmatched += 1;
+      continue;
+    }
+    const source = { ...original, text: override.text || original.text };
+    const candidate = newCaptions
+      .map((caption, index) => ({
+        index,
+        score: textSimilarity(source.text, caption.text) * 0.65 + temporalIou(source, caption) * 0.35,
+      }))
+      .filter((item) => !used.has(item.index))
+      .sort((left, right) => right.score - left.score)[0];
+    if (!candidate || candidate.score < 0.6) {
+      unmatched += 1;
+      continue;
+    }
+    used.add(candidate.index);
+    mapped.push({
+      index: candidate.index,
+      ...(typeof override.enabled === "boolean" ? { enabled: override.enabled } : {}),
+      ...(override.text ? { text: override.text } : {}),
+    });
+  }
+  return { overrides: mapped.sort((left, right) => left.index - right.index), unmatched };
 }

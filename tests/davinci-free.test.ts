@@ -755,7 +755,7 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(analysis, /relativos somente ao painel indicado/);
   assert.match(analysis, /stabilizeSubjectAnchor/);
   assert.match(analysis, /kind:\s*"cut"/);
-  assert.match(analysis, /analysisVersion:\s*11/);
+  assert.match(analysis, /analysisVersion:\s*12/);
   assert.match(analysis, /analyzePedagogicalTranscript/);
   assert.match(analysis, /pedagogical-analysis\.json/);
   assert.match(analysis, /transcript\.txt/);
@@ -859,7 +859,7 @@ test("SFX imersivos usam os nove áudios reais e decisões semânticas da IA", a
   assert.match(analysis, /"soundEffects"/);
   assert.match(analysis, /nunca use som ambiente/);
   assert.match(analysis, /kind: "sound-effect"/);
-  assert.match(analysis, /analysisVersion: 11/);
+  assert.match(analysis, /analysisVersion: 12/);
   assert.match(analysis, /sfxEnabled: input\.sfxEnabled/);
   assert.match(analysis, /sfxPack: input\.sfxPack/);
   assert.match(renderer, /event\.soundEffect/);
