@@ -2417,14 +2417,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {activeMode === "single" && (
         <div className="grid flex-none items-stretch gap-0 border-t border-[#383D49]/35 bg-[#090A0D] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
           {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className={`order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#101217] p-4 lg:order-1 lg:h-full lg:border-r lg:border-t-0 ${leftPanelCollapsed ? "lg:col-span-1 lg:p-2" : "lg:col-span-3"}`}>
-            <div className={`flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${leftPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
+          <aside className={`order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidd            <div className={`flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${leftPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
               <div className={leftPanelCollapsed ? "lg:hidden" : ""}>
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
                   <Folder size={14} />
-                  Configuração da edição
+                  <span>Configuração da edição</span>
+                  <InfoTooltip text="Identidade, ritmo e tratamento de áudio da aula." placement="bottom" />
                 </h2>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#8B92A1]">Identidade, ritmo e tratamento de áudio da aula.</p>
               </div>
               <button
                 type="button"
@@ -2542,7 +2541,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </label>
 
                 <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
-                  Ritmo das animações
+                  <span className="inline-flex items-center gap-1.5">
+                    Ritmo das animações
+                    <InfoTooltip text="Controla easing, duração, intervalo entre efeitos e sincronização dos SFX." />
+                  </span>
                   <select
                     className={fieldClass}
                     value={review.motionPace || form.motionPace}
@@ -2552,13 +2554,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="natural">Natural — ritmo equilibrado</option>
                     <option value="energetic">Energético — ágil, sem cortes bruscos</option>
                   </select>
-                  <span className="block text-[10px] font-normal leading-relaxed text-[#8B92A1]">
-                    Controla easing, duração, intervalo entre efeitos e sincronização dos SFX.
-                  </span>
                 </label>
 
                 <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
-                  Resolução de saída
+                  <span className="inline-flex items-center gap-1.5">
+                    Resolução de saída
+                    <InfoTooltip text="Full HD reduz vídeos 4K para até 1920×1080 (ou 1080×1920 em retrato), sem ampliar arquivos menores." />
+                  </span>
                   <select
                     className={fieldClass}
                     value={form.outputResolution}
@@ -2570,13 +2572,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="full-hd">Full HD (recomendado)</option>
                     <option value="source">Manter resolução original</option>
                   </select>
-                  <span className="block text-[10px] font-normal leading-tight text-zinc-500">
-                    Full HD reduz vídeos 4K para até 1920×1080 (ou 1080×1920 em retrato), sem ampliar arquivos menores.
-                  </span>
                 </label>
 
                 <label className="block space-y-1.5 font-semibold text-[#D5D8E0]">
-                  Codificação de vídeo
+                  <span className="inline-flex items-center gap-1.5">
+                    Codificação de vídeo
+                    <InfoTooltip text="O modo automático usa AMD AMF e retorna para CPU se a aceleração não estiver disponível." />
+                  </span>
                   <select
                     className={fieldClass}
                     value={form.videoEncoder}
@@ -2588,29 +2590,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <option value="auto">GPU AMD automática (rápida)</option>
                     <option value="cpu">CPU libx264 (compatibilidade)</option>
                   </select>
-                  <span className="block text-[10px] font-normal leading-tight text-zinc-500">
-                    O modo automático usa AMD AMF e retorna para CPU se a aceleração não estiver disponível.
-                  </span>
                 </label>
 
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <input
-                    type="checkbox"
-                    checked={form.reuseCourseTheme}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        reuseCourseTheme: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
-                  />
-                  <span>
+                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.reuseCourseTheme}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          reuseCourseTheme: event.target.checked,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
+                    />
                     <strong className="block text-zinc-100 font-bold text-[11px]">Manter identidade do curso</strong>
-                    <span className="text-[10px] text-zinc-400 leading-tight block">
-                      Reutiliza o tema visual nas próximas aulas.
-                    </span>
-                  </span>
+                  </div>
+                  <InfoTooltip text="Reutiliza o tema visual nas próximas aulas." />
                 </label>
               </div>
 
@@ -2638,24 +2635,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     </select>
                   </label>
                   {form.transcriptionModelId === WEB_SPEECH_MODE ? (
-                    <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
-                      <Subtitles size={14} className="mt-0.5 shrink-0 text-sky-300" />
-                      <div>
-                        <strong className="block text-[11px] text-zinc-100">Web Speech sem chave de API</strong>
-                        <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
-                          O Chrome reconhece a faixa do vídeo em tempo real. Mantenha a página aberta até concluir.
-                        </p>
+                    <div className="flex items-center justify-between rounded-[6px] bg-[#171A21] px-2.5 py-2 text-[#D5D8E0]">
+                      <div className="flex items-center gap-2">
+                        <Subtitles size={14} className="shrink-0 text-sky-300" />
+                        <strong className="text-[11px] text-zinc-100">Web Speech sem chave de API</strong>
                       </div>
+                      <InfoTooltip text="O Chrome reconhece a faixa do vídeo em tempo real. Mantenha a página aberta até concluir." />
                     </div>
                   ) : form.transcriptionModelId === CLOUD_API_MODE ? (
-                    <div className="flex items-start gap-2 rounded-[6px] bg-[#171A21] p-2.5 text-[#D5D8E0]">
-                      <Subtitles size={14} className="mt-0.5 shrink-0 text-amber-300" />
-                      <div>
-                        <strong className="block text-[11px] text-zinc-100">API selecionada explicitamente</strong>
-                        <p className="mt-0.5 text-[10px] leading-relaxed text-[#8B92A1]">
-                          Usa OpenAI ou Gemini configurada. Este é o único modo que chama uma API de transcrição.
-                        </p>
+                    <div className="flex items-center justify-between rounded-[6px] bg-[#171A21] px-2.5 py-2 text-[#D5D8E0]">
+                      <div className="flex items-center gap-2">
+                        <Subtitles size={14} className="shrink-0 text-amber-300" />
+                        <strong className="text-[11px] text-zinc-100">API configurada (OpenAI / Gemini)</strong>
                       </div>
+                      <InfoTooltip text="Usa OpenAI ou Gemini configurada. Este é o único modo que chama uma API de transcrição." />
                     </div>
                   ) : (
                     <>
@@ -2703,24 +2696,22 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   )}
                 </div>
 
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <input
-                    type="checkbox"
-                    checked={form.captionsEnabled}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        captionsEnabled: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
-                  />
-                  <span>
+                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.captionsEnabled}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          captionsEnabled: event.target.checked,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
+                    />
                     <strong className="block text-zinc-100 font-bold text-[11px]">Incluir legendas no vídeo</strong>
-                    <span className="text-[10px] text-zinc-400 leading-tight block">
-                      Transcrição analisada mesmo com legendas desativadas.
-                    </span>
-                  </span>
+                  </div>
+                  <InfoTooltip text="Transcrição analisada mesmo com legendas desativadas." />
                 </label>
 
                 {form.captionsEnabled && (
@@ -2775,65 +2766,59 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Auto-Ducking Inteligente */}
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <input
-                    type="checkbox"
-                    checked={form.autoDucking}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        autoDucking: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#7C6CF2]"
-                  />
-                  <span>
+                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.autoDucking}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          autoDucking: event.target.checked,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                    />
                     <strong className="block text-zinc-100 font-bold text-[11px]">Auto-Ducking Inteligente (Sidechain)</strong>
-                    <span className="text-[10px] text-zinc-400 leading-tight block">
-                      Abaixa a trilha de música automaticamente (-16dB) durante a fala e sobe nas pausas.
-                    </span>
-                  </span>
+                  </div>
+                  <InfoTooltip text="Abaixa a trilha de música automaticamente (-16dB) durante a fala e sobe nas pausas." />
                 </label>
 
                 {/* Studio Voice Enhancer */}
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <input
-                    type="checkbox"
-                    checked={form.voiceEnhance}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        voiceEnhance: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#7C6CF2]"
-                  />
-                  <span>
+                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.voiceEnhance}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          voiceEnhance: event.target.checked,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                    />
                     <strong className="block text-zinc-100 font-bold text-[11px]">Studio Voice Enhancer</strong>
-                    <span className="text-[10px] text-zinc-400 leading-tight block">
-                      High-Pass 80Hz, Noise Gate anti-ruído de fundo e compressor de voz broadcast.
-                    </span>
-                  </span>
+                  </div>
+                  <InfoTooltip text="High-Pass 80Hz, Noise Gate anti-ruído de fundo e compressor de voz broadcast." />
                 </label>
 
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <input
-                    type="checkbox"
-                    checked={form.sfxEnabled}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        sfxEnabled: event.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 h-3.5 w-3.5 rounded accent-[#383D49]"
-                  />
-                  <span>
+                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.sfxEnabled}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          sfxEnabled: event.target.checked,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
+                    />
                     <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
-                    <span className="text-[10px] text-zinc-400 leading-tight block">
-                      A IA escolhe entre 9 sons reais conforme fala, ações, capítulos, erros e conclusões.
-                    </span>
-                  </span>
+                  </div>
+                  <InfoTooltip text="A IA escolhe entre 9 sons reais conforme fala, ações, capítulos, erros e conclusões." />
                 </label>
 
                 {form.sfxEnabled && (
@@ -2860,19 +2845,21 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             </div>
 
             <div className={`border-t border-[#383D49]/35 pt-4 ${leftPanelCollapsed ? "lg:hidden" : ""}`}>
-            <button
-              disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
-              onClick={analyze}
-              className="kaoz-signal-action flex w-full items-center justify-center gap-2 bg-[#7C6CF2] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:pointer-events-none disabled:bg-white/5 disabled:text-zinc-500"
-            >
-              {busy === "analyze" ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <WandSparkles size={15} />
-              )}
-              Analisar áudio e planejar edição
-            </button>
-            <p className="mt-2 text-center text-[10px] text-[#8B92A1]">Analisa áudio, roteiro e identidade visual antes de gerar a prévia.</p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={!!busy || !form.sourcePath || !form.courseName || !form.moduleName || !form.lessonNumber || !form.lessonName}
+                  onClick={analyze}
+                  className="kaoz-signal-action flex flex-1 items-center justify-center gap-2 bg-[#7C6CF2] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:pointer-events-none disabled:bg-white/5 disabled:text-zinc-500"
+                >
+                  {busy === "analyze" ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <WandSparkles size={15} />
+                  )}
+                  Analisar áudio e planejar edição
+                </button>
+                <InfoTooltip text="Analisa áudio, roteiro e identidade visual antes de gerar a prévia." />
+              </div>
             </div>
           </aside>
 
@@ -4144,17 +4131,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 <ListVideo size={18} />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Editar curso inteiro em lote</h3>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>Editar curso inteiro em lote</span>
+                  <InfoTooltip text="Analisa todas as aulas primeiro, identifica o tema e a progressão do módulo e só então gera cada prévia com a mesma identidade. Nenhuma aula é enviada automaticamente ao Resolve." />
+                </h3>
                 <p className="text-xs text-[#8B92A1] font-medium">Pipeline Automatizado de Aulas</p>
               </div>
             </div>
-            <p className="mt-3 text-xs leading-relaxed text-zinc-400">
-              Analisa todas as aulas primeiro, identifica o tema e a progressão do módulo e só então gera cada prévia com a mesma identidade. Nenhuma aula é enviada automaticamente ao Resolve.
-            </p>
           </div>
 
           <label className="block space-y-1 text-xs font-semibold text-zinc-300">
-            Resolução de saída do lote
+            <span className="inline-flex items-center gap-1.5">
+              Resolução de saída do lote
+              <InfoTooltip text="Full HD reduz vídeos 4K para até 1920×1080 (ou 1080×1920 em retrato), sem ampliar arquivos menores." />
+            </span>
             <select
               className={fieldClass}
               value={form.outputResolution}
@@ -4169,7 +4159,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
           </label>
 
           <label className="block space-y-1 text-xs font-semibold text-zinc-300">
-            Codificação do lote
+            <span className="inline-flex items-center gap-1.5">
+              Codificação do lote
+              <InfoTooltip text="O modo automático usa AMD AMF e retorna para CPU se a aceleração não estiver disponível." />
+            </span>
             <select
               className={fieldClass}
               value={form.videoEncoder}

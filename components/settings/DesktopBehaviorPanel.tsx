@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppWindow, Loader2 } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 export function DesktopBehaviorPanel() {
   const bridge = typeof window === "undefined" ? undefined : window.kaoz1Desktop;
@@ -24,9 +25,7 @@ export function DesktopBehaviorPanel() {
     setCloseToTray(next);
     setSaving(true);
     try {
-      const saved = await bridge.setCloseToTray(next);
-      if (saved) setCloseToTray(saved.closeToTray);
-      else setCloseToTray(!next);
+      await bridge.setDesktopPreferences({ closeToTray: next });
     } catch {
       setCloseToTray(!next);
     } finally {
@@ -42,10 +41,11 @@ export function DesktopBehaviorPanel() {
             <AppWindow size={18} />
           </div>
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-200">Comportamento do aplicativo</h2>
-            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-zinc-500">
-              Ao fechar a janela, mantenha o Kaoz.1 e seus conectores funcionando em segundo plano nos ícones ocultos do Windows.
-            </p>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-200 flex items-center gap-2">
+              <span>Comportamento do aplicativo</span>
+              <InfoTooltip text="Ao fechar a janela, mantenha o Kaoz.1 e seus conectores funcionando em segundo plano nos ícones ocultos do Windows." />
+            </h2>
+            <p className="mt-0.5 text-[11px] text-zinc-500">Execução em segundo plano e minimização para a bandeja</p>
           </div>
         </div>
 

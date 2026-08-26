@@ -1,4 +1,5 @@
 import { Play, Save, CheckCircle, Volume2, Settings2, MoreVertical, ChevronUp, Loader2 } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { TTSProviderName, TTSConfig } from "@/services/tts/tts.types";
 import type { FishAudioExpressionLevel } from "@/lib/ai/agent-voice";
 
@@ -210,7 +211,10 @@ export function TTSProviderCard({
                   />
                 </label>
                 <label className="space-y-1.5 block md:col-span-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Expressividade da personalidade</span>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    <span>Expressividade da personalidade</span>
+                    <InfoTooltip text="Controla emoção, pausas e risadas na fala; não altera o texto exibido no chat." />
+                  </span>
                   <select
                     value={fishAudioExpressionLevel}
                     onChange={(event) => onFishAudioExpressionLevelChange(event.target.value as FishAudioExpressionLevel)}
@@ -221,7 +225,6 @@ export function TTSProviderCard({
                     <option value="natural" className="bg-zinc-900 text-zinc-200">Natural (recomendado)</option>
                     <option value="expressive" className="bg-zinc-900 text-zinc-200">Alta</option>
                   </select>
-                  <p className="text-[10px] leading-relaxed text-zinc-500">Controla emoção, pausas e risadas na fala; não altera o texto exibido no chat.</p>
                 </label>
               </>
             )}

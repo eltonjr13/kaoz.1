@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, ExternalLink, Loader2, LogOut, Save, ShieldCheck, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { GoogleDriveConnectionStatus } from "@/services/google-drive/google-drive.types";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
@@ -170,8 +171,11 @@ export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: 
         <div className="flex gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#4285F4]"><Cloud size={22} /></span>
           <div>
-            <h3 className="text-sm font-bold text-zinc-100">Google Drive</h3>
-            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-zinc-400">Importe vídeos escolhidos por você, renderize localmente e envie o resultado para uma pasta do Drive.</p>
+            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+              <span>Google Drive</span>
+              <InfoTooltip text="Importe vídeos escolhidos por você, renderize localmente e envie o resultado para uma pasta do Drive. Usa drive.file para criar resultados e drive.readonly para descobrir a estrutura dos cursos." />
+            </h3>
+            <p className="mt-0.5 text-[11px] text-zinc-400">Integração na nuvem para aulas e lotes</p>
           </div>
         </div>
         <DriveStatusBadge status={status} />
@@ -216,8 +220,6 @@ export function GoogleDriveSettingsCard({ onStatusMessage }: { onStatusMessage: 
           </div>
         )}
       </div>
-
-      <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">O Kaoz.1 usa <code className="text-zinc-300">drive.file</code> para criar resultados e <code className="text-zinc-300">drive.readonly</code> para descobrir a estrutura dos cursos selecionados.</p>
     </section>
   );
 }
