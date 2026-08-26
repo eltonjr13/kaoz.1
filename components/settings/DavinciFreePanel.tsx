@@ -163,7 +163,14 @@ type Analysis = {
     musicDb: number;
   };
   transcript: Array<{ start: number; end: number; text: string }>;
-  transcription?: { engine: string; modelId?: string; backend?: string; deviceName?: string; language: string };
+  transcription?: {
+    engine: string;
+    modelId?: string;
+    backend?: string;
+    deviceName?: string;
+    language: string;
+    timingPrecision?: "precise" | "approximate";
+  };
   captions: Array<{ start: number; end: number; text: string }>;
   events: EditEvent[];
   cursorAnalysis: { status: string; message: string };
@@ -515,8 +522,10 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [onStatusMessage, refresh, refreshProgress]);
 
   useEffect(() => {
-    if (busy !== "analyze" && status?.analysisStatus?.status !== "running") return;
-    if (status?.analysisStatus?.status === "running") setBusy("analyze");
+    if (!["analyze", "resync-captions"].includes(busy || "") && status?.analysisStatus?.status !== "running") return;
+    if (status?.analysisStatus?.status === "running") {
+      setBusy((current) => current === "resync-captions" ? current : "analyze");
+    }
     const timer = window.setInterval(() => {
       refreshProgress().catch(() => undefined);
     }, 750);
@@ -546,7 +555,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   useEffect(() => {
     if (status?.analysisStatus?.status !== "running") {
-      setBusy((current) => current === "analyze" ? null : current);
+      setBusy((current) => current === "analyze" || current === "resync-captions" ? null : current);
     }
   }, [status?.analysisStatus?.status]);
 
@@ -716,6 +725,49 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     } else {
       addLog("error", "Análise não pôde ser concluída.");
     }
+  }
+
+  async function resyncCaptions() {
+    if (!analysis || !hasReadySpeechModel()) return;
+    const transcriptionMode = selectedTranscriptionMode();
+    let transcriptionSegments: WebSpeechMediaSegment[] | undefined;
+    if (transcriptionMode === "webspeech") {
+      const browserSegments = await transcribeSelectedVideoInBrowser();
+      if (!browserSegments) return;
+      transcriptionSegments = browserSegments;
+    }
+    addLog("info", "Resincronizando legendas com a voz...", `Plano: ${analysis.id}`);
+    const result = await action("resync-captions", {
+      requestId: `caption-resync-${crypto.randomUUID()}`,
+      planId: analysis.id,
+      useAgent: true,
+      transcriptionMode,
+      transcriptionSegments,
+      transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
+      transcriptionDevice: transcriptionMode === "local" ? form.transcriptionDevice : undefined,
+    });
+    if (!result?.id) return;
+    const response = await fetch("/api/davinci-free?analysis=1", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.analysis) {
+      onStatusMessage({ text: data.error || "Legendas salvas, mas não foi possível recarregar o plano.", type: "error" });
+      return;
+    }
+    setAnalysis(data.analysis as Analysis);
+    setReview((data.editorialReview as EditorialReview | null) || { events: [], captions: [] });
+    setPreviewStale(true);
+    const approximate = result.timingPrecision === "approximate";
+    addLog(
+      "success",
+      approximate ? "Legendas resincronizadas com precisão aproximada." : "Legendas resincronizadas com timestamps precisos.",
+      `${result.remappedCaptionOverrides || 0} ajuste(s) preservado(s); ${result.unmatchedCaptionOverrides || 0} sem correspondência.`,
+    );
+    onStatusMessage({
+      text: approximate
+        ? "Legendas resincronizadas por voz e pausas. Para precisão fina no web, use uma API com timestamps."
+        : "Legendas resincronizadas com os timestamps reais da fala. Renderize quando quiser atualizar a prévia.",
+      type: "success",
+    });
   }
 
   async function prepareAnalyzedVideo(result: Analysis) {
@@ -1336,14 +1388,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
       ? { ...status.renderStatus, label: "Renderizando" }
       : { progress: 1, stage: "Iniciando renderização...", label: "Renderizando" }
-    : busy === "analyze"
+    : busy === "analyze" || busy === "resync-captions"
       ? status?.analysisStatus?.status === "running"
         ? {
             progress: status.analysisStatus.progress ?? 1,
-            stage: status.analysisStatus.stage ?? "Analisando e planejando edição...",
-            label: "Analisando",
+            stage: status.analysisStatus.stage ?? (busy === "resync-captions" ? "Resincronizando legendas..." : "Analisando e planejando edição..."),
+            label: busy === "resync-captions" ? "Resincronizando" : "Analisando",
           }
-        : { progress: 1, stage: "Iniciando análise e planejamento...", label: "Analisando" }
+        : {
+            progress: 1,
+            stage: busy === "resync-captions" ? "Iniciando resincronização..." : "Iniciando análise e planejamento...",
+            label: busy === "resync-captions" ? "Resincronizando" : "Analisando",
+          }
       : null;
   const waveformPointCount = Math.min(720, Math.round(360 * timelineScale));
 
@@ -4025,6 +4081,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
               {/* Captions Section */}
               <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-bold text-zinc-200">Sincronização da fala</p>
+                    <p className={`text-[9px] ${analysis?.transcription?.timingPrecision === "precise" ? "text-emerald-300" : "text-amber-300"}`}>
+                      {analysis?.transcription?.timingPrecision === "precise" ? "Timestamps precisos" : "Sincronização aproximada"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!!busy || !analysis}
+                    onClick={() => void resyncCaptions()}
+                    className="inline-flex items-center gap-1 rounded-[6px] bg-[#242832] px-2 py-1.5 text-[9px] font-bold text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
+                    title="Refaz somente a transcrição e os tempos, sem renderizar"
+                  >
+                    {busy === "resync-captions" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                    Resincronizar legendas
+                  </button>
+                </div>
                 <ToggleSwitch
                   checked={captionsEnabled}
                   onChange={(val) => updateCaptionsEnabled(val)}
