@@ -503,6 +503,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     transcriptionDevice: "auto" as "auto" | "vulkan" | "cpu",
     transcriptionAllowCloudFallback: false,
   });
+  const [captionPresetPickerOpen, setCaptionPresetPickerOpen] = useState(false);
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
@@ -2812,28 +2813,58 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {form.captionsEnabled && (
                   <fieldset className="space-y-2 border-l-2 border-sky-500/30 py-1 pl-2">
                     <legend className="font-medium text-[#8B92A1] text-[10px]">Estilo das Legendas</legend>
-                    <div className="grid grid-cols-2 gap-2" aria-label="Prévia dos estilos de legenda">
-                      {CAPTION_PRESET_OPTIONS.map((option) => {
-                        const selected = form.captionPreset === option.value;
-                        return (
+                    {(() => {
+                      const selectedOption = CAPTION_PRESET_OPTIONS.find((option) => option.value === form.captionPreset) || CAPTION_PRESET_OPTIONS[0];
+                      return (
+                        <>
                           <button
-                            key={option.value}
                             type="button"
-                            aria-pressed={selected}
-                            onClick={() => setForm((current) => ({ ...current, captionPreset: option.value }))}
-                            className={`group overflow-hidden rounded-md border text-left transition ${selected ? "border-sky-400 bg-sky-500/10 ring-1 ring-sky-400/30" : "border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.04]"}`}
+                            aria-expanded={captionPresetPickerOpen}
+                            aria-controls="caption-preset-options"
+                            onClick={() => setCaptionPresetPickerOpen((open) => !open)}
+                            className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-black/20 p-2 text-left transition hover:border-white/25 hover:bg-white/[0.04]"
                           >
-                            <span className="flex min-h-14 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_70%)] px-2 py-2">
-                              <CaptionPresetPreview preset={option.value} text="Sua ideia em destaque" compact />
+                            <span className="flex h-10 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-black/30 px-1">
+                              <CaptionPresetPreview preset={selectedOption.value} text="Sua ideia em destaque" compact />
                             </span>
-                            <span className="flex items-center justify-between gap-1 border-t border-white/[0.06] px-2 py-1.5">
-                              <span className={`text-[9px] font-bold ${selected ? "text-sky-200" : "text-[#D5D8E0]"}`}>{option.label}</span>
-                              <span className="truncate text-[8px] text-[#6F7685]">{option.description}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[10px] font-bold text-[#D5D8E0]">{selectedOption.label}</span>
+                              <span className="block truncate text-[9px] text-[#6F7685]">{selectedOption.description}</span>
                             </span>
+                            <span className="text-[9px] font-semibold text-sky-300">{captionPresetPickerOpen ? "Fechar" : "Trocar"}</span>
+                            <ChevronRight size={13} className={`text-[#8B92A1] transition-transform ${captionPresetPickerOpen ? "rotate-90" : ""}`} />
                           </button>
-                        );
-                      })}
-                    </div>
+
+                          {captionPresetPickerOpen && (
+                            <div id="caption-preset-options" className="grid grid-cols-2 gap-2" aria-label="Prévia dos estilos de legenda">
+                              {CAPTION_PRESET_OPTIONS.map((option) => {
+                                const selected = form.captionPreset === option.value;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => {
+                                      setForm((current) => ({ ...current, captionPreset: option.value }));
+                                      setCaptionPresetPickerOpen(false);
+                                    }}
+                                    className={`group overflow-hidden rounded-md border text-left transition ${selected ? "border-sky-400 bg-sky-500/10 ring-1 ring-sky-400/30" : "border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.04]"}`}
+                                  >
+                                    <span className="flex min-h-14 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_70%)] px-2 py-2">
+                                      <CaptionPresetPreview preset={option.value} text="Sua ideia em destaque" compact />
+                                    </span>
+                                    <span className="flex items-center justify-between gap-1 border-t border-white/[0.06] px-2 py-1.5">
+                                      <span className={`text-[9px] font-bold ${selected ? "text-sky-200" : "text-[#D5D8E0]"}`}>{option.label}</span>
+                                      <span className="truncate text-[8px] text-[#6F7685]">{option.description}</span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="pt-0.5">
                       <ToggleSwitch
                         checked={form.captionEmojis}

@@ -949,6 +949,9 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /Estilo das Legendas/);
   assert.match(panel, /Prévia dos estilos de legenda/);
   assert.match(panel, /CAPTION_PRESET_OPTIONS\.map/);
+  assert.match(panel, /captionPresetPickerOpen/);
+  assert.match(panel, /aria-expanded=\{captionPresetPickerOpen\}/);
+  assert.match(panel, /setCaptionPresetPickerOpen\(false\)/);
   assert.match(panel, /Neon Tech/);
   assert.match(panel, /Caixa/);
   assert.match(panel, /Contorno/);
