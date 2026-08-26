@@ -437,7 +437,7 @@ function formatPresetCaption(
     const formattedText = words.map((word, index) => {
       const safeWord = assText(word);
       if (index !== highlightedIndex) return safeWord;
-      return `{\\1c${assColor(colors.secondary || "#FFE600")}\\fscx108\\fscy108&}${safeWord}{\\1c&H00FFFFFF&\\fscx100\\fscy100}`;
+      return `{\\1c${assColor(colors.secondary || "#FFE600")}\\fscx108\\fscy108}${safeWord}{\\1c&H00FFFFFF&\\fscx100\\fscy100}`;
     }).join(" ");
     return {
       styleName: "CaptionHighlight",

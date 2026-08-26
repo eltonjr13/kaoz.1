@@ -164,7 +164,7 @@ function CaptionPresetPreview({
   );
 
   if (preset === "hormozi") {
-    return <span className={`rounded bg-black/95 px-2 py-1 text-center font-black uppercase tracking-wide text-white shadow-lg ${size}`}><span className="text-amber-300">SUA IDEIA</span>{" "}{words.slice(2).join(" ") || "EM DESTAQUE"}</span>;
+    return <span className={`rounded bg-black/95 px-2 py-1 text-center font-black uppercase tracking-wide text-white shadow-lg ${size}`}>{words.map((word, index) => <span key={`${word}-${index}`} className={index < 2 ? "text-amber-300" : undefined}>{index > 0 ? " " : ""}{word}</span>)}</span>;
   }
   if (preset === "karaoke") {
     return <span className={`rounded-md border border-violet-400/40 bg-black/85 px-2 py-1 text-center font-extrabold text-violet-100 shadow-lg ${size}`}><span className="text-violet-400">{words[0]}</span>{" "}{words.slice(1).join(" ")}</span>;
