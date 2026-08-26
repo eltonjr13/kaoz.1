@@ -46,6 +46,7 @@ import {
   BookOpen,
   Bookmark,
 } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
 import {
   VideoEditorConsole,
