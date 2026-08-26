@@ -53,9 +53,26 @@ test("segmenta timestamps precisos por pausas, pontuação e no máximo sete pal
   const captions = captionsFromTranscript(transcript, 3);
   assert.equal(captions.length, 2);
   assert.ok(captions.every((caption) => caption.words!.length <= 7));
-  assert.ok(captions[0].start <= words[0].start && words[0].start - captions[0].start <= 0.081);
+  assert.ok(captions[0].start <= words[0].start && words[0].start - captions[0].start <= 0.181);
   assert.ok(captions[0].end <= captions[1].start);
+  assert.ok(captions[1].start < words[3].start);
+  assert.ok(words[3].start - captions[1].start <= 0.181);
   assert.equal(transcriptTimingPrecision(transcript), "precise");
+});
+
+test("antecipa a troca entre blocos contínuos sem criar sobreposição", () => {
+  const words = [
+    [0.2, 0.5, "Uma"], [0.5, 0.8, "frase"], [0.8, 1.1, "termina."],
+    [1.1, 1.4, "Outra"], [1.4, 1.7, "começa"], [1.7, 2, "agora"],
+  ].map(([start, end, text]) => ({ start: Number(start), end: Number(end), text: String(text) }));
+  const captions = captionsFromTranscript([{
+    start: 0.2, end: 2, text: words.map((word) => word.text).join(" "), source: "local-asr",
+    words, timingPrecision: "precise",
+  }], 2.2);
+  assert.equal(captions.length, 2);
+  assert.ok(captions[1].start < words[3].start);
+  assert.ok(words[3].start - captions[1].start <= 0.141);
+  assert.equal(captions[0].end, captions[1].start);
 });
 
 test("fallback web distribui 62 segundos somente pelas regiões com voz", () => {

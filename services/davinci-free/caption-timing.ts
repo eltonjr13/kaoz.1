@@ -8,6 +8,10 @@ import type {
 
 export type SpeechInterval = { start: number; end: number };
 
+const CAPTION_ENTRY_LEAD_SECONDS = 0.18;
+const CAPTION_MINIMUM_TRANSITION_LEAD_SECONDS = 0.1;
+const CAPTION_TRANSITION_LEAD_SECONDS = 0.14;
+
 function cleanWord(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -93,10 +97,17 @@ function shouldBreak(words: IntelligentTimedWord[], next?: IntelligentTimedWord)
 function captionFromWords(words: IntelligentTimedWord[], previousEnd: number, nextStart: number | undefined) {
   const first = words[0];
   const last = words.at(-1)!;
-  const desiredStart = Math.max(0, first.start - 0.08);
+  const desiredStart = Math.max(0, first.start - CAPTION_ENTRY_LEAD_SECONDS);
   const desiredEnd = last.end + 0.12;
   const start = Math.max(previousEnd, desiredStart);
-  const endLimit = nextStart === undefined ? desiredEnd : Math.max(last.end, nextStart - 0.02);
+  const lastWordDuration = Math.max(0.04, last.end - last.start);
+  const transitionLead = Math.min(
+    CAPTION_TRANSITION_LEAD_SECONDS,
+    Math.max(CAPTION_MINIMUM_TRANSITION_LEAD_SECONDS, lastWordDuration * 0.35),
+  );
+  const endLimit = nextStart === undefined
+    ? desiredEnd
+    : Math.max(last.start + 0.04, nextStart - transitionLead);
   return {
     start,
     end: Math.max(start + 0.1, Math.min(desiredEnd, endLimit)),
