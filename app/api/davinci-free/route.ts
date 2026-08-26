@@ -18,6 +18,7 @@ const TOOL_BY_ACTION = {
   "prepare-voice": "davinci-free:prepare-voice",
   "prepare-plan": "davinci-free:prepare-edit-plan",
   analyze: "davinci-free:analyze-intelligent",
+  "resync-captions": "davinci-free:resync-captions",
   "get-analysis": "davinci-free:get-intelligent-plan",
   "save-editorial-review": "davinci-free:save-editorial-review",
   "reset-editorial-review": "davinci-free:reset-editorial-review",
@@ -58,6 +59,7 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
       signal: AbortSignal.timeout(
         [
           "analyze",
+          "resync-captions",
           "render-preview",
           "choose-folder",
           "start-batch",

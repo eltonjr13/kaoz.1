@@ -34,6 +34,7 @@ import {
   retryCourseBatch,
   startCourseBatch,
 } from "../../davinci-free/course-batch.service";
+import { resyncIntelligentCaptions } from "../../davinci-free/caption-resync";
 
 export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:get-status": async () => ({
@@ -50,6 +51,9 @@ export const contentHandlers: Record<string, ToolHandler> = {
   }),
   "davinci-free:analyze-intelligent": async (args) => ({
     output: await analyzeIntelligentEdit(args),
+  }),
+  "davinci-free:resync-captions": async (args) => ({
+    output: await resyncIntelligentCaptions(args),
   }),
   "davinci-free:get-intelligent-plan": async (args) => ({
     output: await readIntelligentEditPlan(

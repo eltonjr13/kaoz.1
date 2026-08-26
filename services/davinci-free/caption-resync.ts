@@ -114,9 +114,10 @@ async function transactionalWrite(entries: PendingWrite[]) {
   }));
   for (const entry of prepared) await writeFile(entry.temporary, entry.content, "utf8");
   const committed: typeof prepared = [];
+  const backedUp: typeof prepared = [];
   try {
     for (const entry of prepared) {
-      await rename(entry.target, entry.backup).catch(() => undefined);
+      await rename(entry.target, entry.backup).then(() => backedUp.push(entry)).catch(() => undefined);
       await rename(entry.temporary, entry.target);
       committed.push(entry);
     }
@@ -124,6 +125,8 @@ async function transactionalWrite(entries: PendingWrite[]) {
   } catch (error) {
     for (const entry of committed.reverse()) {
       await rm(entry.target, { force: true }).catch(() => undefined);
+    }
+    for (const entry of backedUp.reverse()) {
       await rename(entry.backup, entry.target).catch(() => undefined);
     }
     throw error;
