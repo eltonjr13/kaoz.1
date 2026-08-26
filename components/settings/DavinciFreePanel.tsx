@@ -2416,8 +2416,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       {/* Visão de Aula Única (Workstation 3-Pane) */}
       {activeMode === "single" && (
         <div className="grid flex-none items-stretch gap-0 border-t border-[#383D49]/35 bg-[#090A0D] lg:h-[980px] lg:grid-cols-12 lg:overflow-hidden 2xl:h-[calc(100dvh-9.5rem)] 2xl:min-h-[1100px]">
-          {/* PAINEL ESQUERDO: SideNavBar / Project Config */}
-          <aside className={`order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidd            <div className={`flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${leftPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
+          <aside className={`order-2 flex min-h-0 min-w-0 flex-col space-y-4 overflow-hidden border-t border-white/[0.07] bg-[#101217] p-4 lg:order-1 lg:h-full lg:border-r lg:border-t-0 ${leftPanelCollapsed ? "lg:col-span-1 lg:p-2" : "lg:col-span-3"}`}>
+            <div className={`flex items-start justify-between gap-2 border-b border-white/[0.07] pb-3 ${leftPanelCollapsed ? "lg:border-b-0 lg:pb-0" : ""}`}>
               <div className={leftPanelCollapsed ? "lg:hidden" : ""}>
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-[#F4F5F7]">
                   <Folder size={14} />

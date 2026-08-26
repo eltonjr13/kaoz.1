@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle, Download, Loader2, RefreshCw, RotateCw } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 type UpdateStatus = Kaoz1UpdateStatus;
 
@@ -111,10 +112,11 @@ export function AppUpdatesPanel() {
 
       <div className="mt-5 flex items-center justify-between gap-5 border-t border-white/[0.05] pt-4">
         <div>
-          <p className="text-[11px] font-semibold text-zinc-300">Baixar atualizações automaticamente</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">
-            Verifica ao iniciar e deixa a nova versão pronta. Você escolhe quando reiniciar e atualizar.
+          <p className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
+            <span>Baixar atualizações automaticamente</span>
+            <InfoTooltip text="Verifica ao iniciar e deixa a nova versão pronta. Você escolhe quando reiniciar e atualizar." />
           </p>
+          <p className="mt-0.5 text-[10px] text-zinc-500">Download silencioso em segundo plano</p>
         </div>
         <button
           type="button"
