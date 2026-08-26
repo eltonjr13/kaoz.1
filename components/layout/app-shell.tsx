@@ -55,11 +55,13 @@ export function AppShell({
 
   const sidebar = (
     <aside
-      className={`flex h-full w-[248px] shrink-0 flex-col bg-[var(--bg)] px-3 py-5 text-[var(--text)] transition-[width] duration-200 ease-out ${
+      className={`flex h-full w-[260px] shrink-0 flex-col bg-[var(--bg)] px-3 py-5 text-[var(--text)] transition-[width] duration-200 ease-out ${
         sidebarCollapsed ? "md:w-[76px]" : "md:w-[248px]"
       }`}
       style={{
         borderRight: "1px solid var(--line)",
+        paddingTop: "calc(1.25rem + var(--sat))",
+        paddingBottom: "calc(1.25rem + var(--sab))",
       }}
     >
       {/* Logo */}
@@ -198,6 +200,7 @@ export function AppShell({
       <div
         className="kaoz1-mobile-nav fixed inset-x-0 top-0 z-50 flex items-center justify-between px-4 py-3 md:hidden"
         style={{
+          paddingTop: "calc(0.75rem + var(--sat))",
           borderBottom: "1px solid var(--line)",
           background: "color-mix(in srgb, var(--bg) 90%, transparent)",
           backdropFilter: "blur(16px)",
@@ -213,26 +216,26 @@ export function AppShell({
           <button
             type="button"
             onClick={openCommandPalette}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text)] transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text)] transition-colors active:scale-95"
             style={{
               border: "1px solid var(--line)",
               background: "var(--panel)",
             }}
             aria-label="Abrir Comandos"
           >
-            <Search size={15} />
+            <Search size={16} />
           </button>
           <button
             type="button"
             onClick={() => setSidebarOpen((value) => !value)}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text)] transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text)] transition-colors active:scale-95"
             style={{
               border: "1px solid var(--line)",
               background: "var(--panel)",
             }}
             aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"}
           >
-            {sidebarOpen ? <X size={16} /> : <Menu size={16} />}
+            {sidebarOpen ? <X size={17} /> : <Menu size={17} />}
           </button>
         </div>
       </div>
@@ -242,7 +245,7 @@ export function AppShell({
         <button
           type="button"
           className="kaoz1-mobile-menu-overlay fixed inset-0 z-40 md:hidden"
-          style={{ background: "rgba(0,0,0,0.65)" }}
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
           aria-label="Fechar menu"
           onClick={() => setSidebarOpen(false)}
         />
@@ -258,7 +261,7 @@ export function AppShell({
       </div>
 
       <main
-        className={`h-full min-h-0 flex-1 overflow-hidden flex flex-col pt-14 transition-[margin] duration-200 ease-out md:pt-0 ${
+        className={`h-full min-h-0 flex-1 overflow-hidden flex flex-col pt-[calc(3.5rem+var(--sat))] pb-[var(--sab)] transition-[margin] duration-200 ease-out md:pt-0 md:pb-0 ${
           sidebarCollapsed ? "md:ml-[76px]" : "md:ml-[248px]"
         }`}
       >
