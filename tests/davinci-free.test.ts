@@ -905,6 +905,7 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /aria-pressed=\{captionsEnabled\}/);
   assert.match(panel, /updateCaptionsEnabled\(!captionsEnabled\)/);
   assert.match(panel, /timeline-caption-/);
+  assert.match(panel, /activeMediaAsset === "source" && captionsEnabled && currentActiveCaption/);
   assert.match(panel, /editedVideoTime\(analysis\.events, rawDuration, sourceStart\) \+ 4/);
   assert.match(panel, /justify-start gap-0\.5 pl-2 font-mono text-\[9px\]/);
   assert.match(panel, /Restaurar automático/);

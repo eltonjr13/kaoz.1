@@ -2931,7 +2931,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 )}
 
                 {/* Live Dynamic Caption Overlay */}
-                {captionsEnabled && currentActiveCaption && (
+                {activeMediaAsset === "source" && captionsEnabled && currentActiveCaption && (
                   <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-center z-10">
                     {form.captionPreset === "hormozi" ? (
                       <div className="rounded bg-black/90 px-3.5 py-1.5 text-center shadow-[0_4px_20px_rgba(0,0,0,0.85)] border border-amber-400/40 max-w-[90%] transform scale-100 animate-in fade-in zoom-in-95 duration-100">
