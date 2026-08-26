@@ -16,6 +16,7 @@ import {
 import {
   INTELLIGENT_EDIT_PLAN_VERSION,
   type IntelligentCaption,
+  type IntelligentCaptionPreset,
   type IntelligentCourseIdentity,
   type IntelligentEditAnalysisInput,
   type IntelligentEditEvent,
@@ -1239,9 +1240,9 @@ export async function analyzeIntelligentEdit(
         : "subtle") as IntelligentEditStyle,
     ),
     captionsEnabled: rawInput.captionsEnabled !== false,
-    captionPreset: (["hormozi", "karaoke", "clean", "classic"].includes(String(rawInput.captionPreset))
+    captionPreset: (["hormozi", "karaoke", "clean", "classic", "neon", "boxed", "outline", "highlight"].includes(String(rawInput.captionPreset))
       ? rawInput.captionPreset
-      : "hormozi") as "hormozi" | "karaoke" | "clean" | "classic",
+      : "hormozi") as IntelligentCaptionPreset,
     captionEmojis: rawInput.captionEmojis !== false,
     reuseCourseTheme: rawInput.reuseCourseTheme !== false,
     musicPath: await localFile(rawInput.musicPath, "Música", AUDIO_EXTENSIONS),

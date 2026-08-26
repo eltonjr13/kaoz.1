@@ -942,8 +942,17 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(renderer, /CaptionHormozi/);
   assert.match(renderer, /CaptionKaraoke/);
   assert.match(renderer, /CaptionClean/);
+  assert.match(renderer, /CaptionNeon/);
+  assert.match(renderer, /CaptionBoxed/);
+  assert.match(renderer, /CaptionOutline/);
+  assert.match(renderer, /CaptionHighlight/);
   assert.match(panel, /Estilo das Legendas/);
-  assert.match(panel, /Hormozi \(Punchy & Viral\)/);
+  assert.match(panel, /Prévia dos estilos de legenda/);
+  assert.match(panel, /CAPTION_PRESET_OPTIONS\.map/);
+  assert.match(panel, /Neon Tech/);
+  assert.match(panel, /Caixa/);
+  assert.match(panel, /Contorno/);
+  assert.match(panel, /Destaque/);
   assert.match(panel, /Sumário & Capítulos/);
   assert.match(panel, /hoverTime/);
 });

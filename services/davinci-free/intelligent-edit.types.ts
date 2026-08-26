@@ -30,7 +30,15 @@ export type IntelligentCourseThemeKey =
   | "technology"
   | "creative";
 
-export type IntelligentCaptionPreset = "hormozi" | "karaoke" | "clean" | "classic";
+export type IntelligentCaptionPreset =
+  | "hormozi"
+  | "karaoke"
+  | "clean"
+  | "classic"
+  | "neon"
+  | "boxed"
+  | "outline"
+  | "highlight";
 
 export interface IntelligentEditDesign {
   palette: IntelligentEditPalette;

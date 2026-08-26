@@ -195,6 +195,10 @@ function assHeader(plan: IntelligentEditPlan) {
     `Style: CaptionHormozi,Arial Black,58,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,2,2,80,80,70,1`,
     `Style: CaptionKaraoke,Segoe UI Black,56,${assColor(colors.primary)},&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
     `Style: CaptionClean,Segoe UI Semibold,46,${assColor(colors.text)},&H000000FF,&H0018181B,&HA0000000,-1,0,0,0,100,100,0,0,1,1,0,2,100,100,55,1`,
+    `Style: CaptionNeon,Arial Black,54,&H00FFF4D8,&H00FFFFFF,&H00FF6430,&H780D0712,-1,0,0,0,100,100,1,0,1,3,2,2,80,80,66,1`,
+    `Style: CaptionBoxed,Arial Black,52,&H00111111,&H00FFFFFF,&H00000000,${assColor(colors.secondary || "#FFE600")},-1,0,0,0,100,100,0,0,3,1,0,2,88,88,66,1`,
+    `Style: CaptionOutline,Arial Black,55,&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,6,1,2,82,82,64,1`,
+    `Style: CaptionHighlight,Segoe UI Black,54,&H00FFFFFF,&H00FFFFFF,&H00111111,&H78000000,-1,0,0,0,100,100,0,0,1,4,1,2,82,82,66,1`,
     `Style: LowerThird,Segoe UI Semibold,40,${assColor(colors.text)},&H000000FF,${assColor(colors.background, "20")},${assColor(colors.surface, "35")},-1,0,0,0,100,100,0,0,1,2,1,1,70,70,105,1`,
     `Style: ImpactBox,Segoe UI,10,${assColor(colors.surface)},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1`,
     `Style: ImpactIcon,Segoe UI Semibold,24,${assColor(colors.primary)},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,0,0,5,0,0,0,1`,
@@ -352,7 +356,7 @@ function formatPresetCaption(
   rawText: string,
   start: number,
   end: number,
-  preset: "hormozi" | "karaoke" | "clean" | "classic",
+  preset: IntelligentEditDesign["captionPreset"],
   colors: IntelligentEditDesign["colors"],
   useEmojis: boolean,
   timedWords?: IntelligentCaption["words"],
@@ -400,6 +404,44 @@ function formatPresetCaption(
     return {
       styleName: "CaptionClean",
       formattedText: assText(wrapCaption(text)),
+    };
+  }
+
+  if (preset === "neon") {
+    return {
+      styleName: "CaptionNeon",
+      formattedText: `{\\blur1\\fscx104\\fscy104\\t(0,120,\\fscx100\\fscy100)}${assText(wrapCaption(text.toUpperCase()))}`,
+    };
+  }
+
+  if (preset === "boxed") {
+    return {
+      styleName: "CaptionBoxed",
+      formattedText: `{\\fsp1}${assText(wrapCaption(text.toUpperCase()))}`,
+    };
+  }
+
+  if (preset === "outline") {
+    return {
+      styleName: "CaptionOutline",
+      formattedText: assText(wrapCaption(text.toUpperCase())),
+    };
+  }
+
+  if (preset === "highlight") {
+    const words = text.split(/\s+/).filter(Boolean);
+    const highlightedIndex = words.reduce(
+      (best, word, index) => word.length > (words[best]?.length || 0) ? index : best,
+      0,
+    );
+    const formattedText = words.map((word, index) => {
+      const safeWord = assText(word);
+      if (index !== highlightedIndex) return safeWord;
+      return `{\\1c${assColor(colors.secondary || "#FFE600")}\\fscx108\\fscy108&}${safeWord}{\\1c&H00FFFFFF&\\fscx100\\fscy100}`;
+    }).join(" ");
+    return {
+      styleName: "CaptionHighlight",
+      formattedText,
     };
   }
 

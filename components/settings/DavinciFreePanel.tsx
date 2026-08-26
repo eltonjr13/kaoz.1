@@ -73,6 +73,7 @@ import {
   type VideoCutRange,
 } from "@/services/davinci-free/video-cuts";
 import type {
+  IntelligentCaptionPreset,
   IntelligentEditEvent,
   IntelligentMotionPace,
   IntelligentSoundEffect,
@@ -130,6 +131,65 @@ const EMPTY_STATUS: Status = {
   latestResult: null,
   instructions: [],
 };
+
+const CAPTION_PRESET_OPTIONS: Array<{
+  value: IntelligentCaptionPreset;
+  label: string;
+  description: string;
+}> = [
+  { value: "hormozi", label: "Viral", description: "Alto impacto" },
+  { value: "karaoke", label: "Karaokê", description: "Palavra por palavra" },
+  { value: "clean", label: "Clean", description: "Leve e discreta" },
+  { value: "classic", label: "Clássica", description: "Educacional" },
+  { value: "neon", label: "Neon Tech", description: "Brilho futurista" },
+  { value: "boxed", label: "Caixa", description: "Editorial forte" },
+  { value: "outline", label: "Contorno", description: "Limpa sem fundo" },
+  { value: "highlight", label: "Destaque", description: "Ênfase inteligente" },
+];
+
+function CaptionPresetPreview({
+  preset,
+  text,
+  compact = false,
+}: {
+  preset: IntelligentCaptionPreset;
+  text: string;
+  compact?: boolean;
+}) {
+  const size = compact ? "text-[9px] leading-[1.15]" : "text-xs sm:text-sm leading-tight";
+  const words = text.split(/\s+/).filter(Boolean);
+  const highlightedIndex = words.reduce(
+    (best, word, index) => word.length > (words[best]?.length || 0) ? index : best,
+    0,
+  );
+
+  if (preset === "hormozi") {
+    return <span className={`rounded bg-black/95 px-2 py-1 text-center font-black uppercase tracking-wide text-white shadow-lg ${size}`}><span className="text-amber-300">SUA IDEIA</span>{" "}{words.slice(2).join(" ") || "EM DESTAQUE"}</span>;
+  }
+  if (preset === "karaoke") {
+    return <span className={`rounded-md border border-violet-400/40 bg-black/85 px-2 py-1 text-center font-extrabold text-violet-100 shadow-lg ${size}`}><span className="text-violet-400">{words[0]}</span>{" "}{words.slice(1).join(" ")}</span>;
+  }
+  if (preset === "clean") {
+    return <span className={`rounded-full border border-white/15 bg-zinc-950/80 px-2.5 py-1 text-center font-medium text-zinc-100 shadow ${size}`}>{text}</span>;
+  }
+  if (preset === "classic") {
+    return <span className={`border-b-2 border-white/70 bg-black/65 px-2.5 py-1 text-center font-semibold text-white drop-shadow ${size}`}>{text}</span>;
+  }
+  if (preset === "neon") {
+    return <span className={`rounded border border-cyan-300/70 bg-[#100719]/90 px-2 py-1 text-center font-black uppercase tracking-wider text-cyan-50 shadow-[0_0_14px_rgba(34,211,238,0.5)] [text-shadow:0_0_8px_#22d3ee] ${size}`}>{text}</span>;
+  }
+  if (preset === "boxed") {
+    return <span className={`bg-amber-300 px-2 py-1 text-center font-black uppercase tracking-wide text-zinc-950 shadow-[3px_3px_0_rgba(0,0,0,0.9)] ${size}`}>{text}</span>;
+  }
+  if (preset === "outline") {
+    return <span className={`text-center font-black uppercase tracking-wide text-white [text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000,0_2px_4px_#000] ${size}`}>{text}</span>;
+  }
+  return (
+    <span className={`rounded-md bg-black/75 px-2 py-1 text-center font-extrabold text-white shadow-lg ${size}`}>
+      {words.map((word, index) => <span key={`${word}-${index}`} className={index === highlightedIndex ? "text-amber-300" : undefined}>{index > 0 ? " " : ""}{word}</span>)}
+    </span>
+  );
+}
 
 function mergeProgressStatus(current: Status | null, progress: ProgressStatus): Status {
   return { ...(current ?? EMPTY_STATUS), ...progress };
@@ -426,7 +486,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     style: "balanced",
     motionPace: "natural" as IntelligentMotionPace,
     captionsEnabled: true,
-    captionPreset: "hormozi" as "hormozi" | "karaoke" | "clean" | "classic",
+    captionPreset: "hormozi" as IntelligentCaptionPreset,
     captionEmojis: true,
     reuseCourseTheme: true,
     musicPath: "",
@@ -2750,34 +2810,38 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 />
 
                 {form.captionsEnabled && (
-                  <div className="grid grid-cols-2 gap-2 pt-1 pl-2 pb-1 border-l-2 border-sky-500/30 items-end">
-                    <label className="space-y-1 font-medium text-[#8B92A1] text-[10px]">
-                      Estilo das Legendas
-                      <select
-                        className={fieldClass}
-                        value={form.captionPreset}
-                        onChange={(e) =>
-                          setForm((current) => ({
-                            ...current,
-                            captionPreset: e.target.value as "hormozi" | "karaoke" | "clean" | "classic",
-                          }))
-                        }
-                      >
-                        <option value="hormozi">Hormozi (Punchy & Viral)</option>
-                        <option value="karaoke">Karaokê (Sync Dinâmico)</option>
-                        <option value="clean">Clean Minimalista</option>
-                        <option value="classic">Clássico Educacional</option>
-                      </select>
-                    </label>
-
-                    <div className="pb-0.5">
+                  <fieldset className="space-y-2 border-l-2 border-sky-500/30 py-1 pl-2">
+                    <legend className="font-medium text-[#8B92A1] text-[10px]">Estilo das Legendas</legend>
+                    <div className="grid grid-cols-2 gap-2" aria-label="Prévia dos estilos de legenda">
+                      {CAPTION_PRESET_OPTIONS.map((option) => {
+                        const selected = form.captionPreset === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setForm((current) => ({ ...current, captionPreset: option.value }))}
+                            className={`group overflow-hidden rounded-md border text-left transition ${selected ? "border-sky-400 bg-sky-500/10 ring-1 ring-sky-400/30" : "border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.04]"}`}
+                          >
+                            <span className="flex min-h-14 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_70%)] px-2 py-2">
+                              <CaptionPresetPreview preset={option.value} text="Sua ideia em destaque" compact />
+                            </span>
+                            <span className="flex items-center justify-between gap-1 border-t border-white/[0.06] px-2 py-1.5">
+                              <span className={`text-[9px] font-bold ${selected ? "text-sky-200" : "text-[#D5D8E0]"}`}>{option.label}</span>
+                              <span className="truncate text-[8px] text-[#6F7685]">{option.description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="pt-0.5">
                       <ToggleSwitch
                         checked={form.captionEmojis}
                         onChange={(val) => setForm((current) => ({ ...current, captionEmojis: val }))}
                         label="Emojis IA"
                       />
                     </div>
-                  </div>
+                  </fieldset>
                 )}
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
@@ -2933,39 +2997,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {/* Live Dynamic Caption Overlay */}
                 {activeMediaAsset === "source" && captionsEnabled && currentActiveCaption && (
                   <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-center z-10">
-                    {form.captionPreset === "hormozi" ? (
-                      <div className="rounded bg-black/90 px-3.5 py-1.5 text-center shadow-[0_4px_20px_rgba(0,0,0,0.85)] border border-amber-400/40 max-w-[90%] transform scale-100 animate-in fade-in zoom-in-95 duration-100">
-                        <span className="font-extrabold font-mono uppercase text-sm sm:text-base tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
-                          {form.captionEmojis
-                            ? injectContextualEmojis(currentActiveCaption.text).toUpperCase()
-                            : currentActiveCaption.text.toUpperCase()}
-                        </span>
-                      </div>
-                    ) : form.captionPreset === "karaoke" ? (
-                      <div className="rounded-md bg-black/80 px-3 py-1 text-center shadow-lg border border-purple-500/40 max-w-[85%]">
-                        <span className="font-bold text-xs sm:text-sm text-purple-200">
-                          {form.captionEmojis
-                            ? injectContextualEmojis(currentActiveCaption.text)
-                            : currentActiveCaption.text}
-                        </span>
-                      </div>
-                    ) : form.captionPreset === "clean" ? (
-                      <div className="rounded-full bg-zinc-950/85 backdrop-blur-sm px-3.5 py-1 text-center shadow border border-white/15 max-w-[80%]">
-                        <span className="font-medium text-xs text-zinc-100">
-                          {form.captionEmojis
-                            ? injectContextualEmojis(currentActiveCaption.text)
-                            : currentActiveCaption.text}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="rounded bg-black/65 px-3 py-1 text-center max-w-[85%]">
-                        <span className="font-medium text-xs text-white drop-shadow">
-                          {form.captionEmojis
-                            ? injectContextualEmojis(currentActiveCaption.text)
-                            : currentActiveCaption.text}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex max-w-[90%] animate-in justify-center fade-in zoom-in-95 duration-100">
+                      <CaptionPresetPreview
+                        preset={form.captionPreset}
+                        text={form.captionEmojis ? injectContextualEmojis(currentActiveCaption.text) : currentActiveCaption.text}
+                      />
+                    </div>
                   </div>
                 )}
 
