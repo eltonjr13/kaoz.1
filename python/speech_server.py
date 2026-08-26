@@ -95,8 +95,37 @@ def transcribe_audio(audio_path):
         condition_on_previous_text=CONDITION_ON_PREVIOUS_TEXT,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
+        word_timestamps=True,
     )
-    return " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+    segment_items = []
+    word_items = []
+    for segment in segments:
+        text = segment.text.strip()
+        if not text:
+            continue
+        words = [
+            {
+                "start": float(word.start),
+                "end": float(word.end),
+                "text": word.word.strip(),
+                **({"confidence": float(word.probability)} if word.probability is not None else {}),
+            }
+            for word in (segment.words or [])
+            if word.word.strip() and word.end > word.start
+        ]
+        word_items.extend(words)
+        segment_items.append({
+            "start": float(segment.start),
+            "end": float(segment.end),
+            "text": text,
+            "words": words,
+        })
+    return {
+        "text": " ".join(item["text"] for item in segment_items).strip(),
+        "segments": segment_items,
+        "words": word_items,
+        "timingPrecision": "precise" if word_items else "approximate",
+    }
 
 
 class SpeechHandler(BaseHTTPRequestHandler):
@@ -141,11 +170,11 @@ class SpeechHandler(BaseHTTPRequestHandler):
                 temp_path = Path(temp_file.name)
 
             try:
-                text = transcribe_audio(temp_path)
+                transcription = transcribe_audio(temp_path)
             finally:
                 temp_path.unlink(missing_ok=True)
 
-            self._send_json(200, {"text": text})
+            self._send_json(200, transcription)
         except Exception as error:
             self._send_json(500, {"error": str(error)})
 

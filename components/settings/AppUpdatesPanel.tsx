@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle, Download, Loader2, RefreshCw, RotateCw } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
 
 type UpdateStatus = Kaoz1UpdateStatus;
 
@@ -118,19 +119,16 @@ export function AppUpdatesPanel() {
           </p>
           <p className="mt-0.5 text-[10px] text-zinc-500">Download silencioso em segundo plano</p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autoDownloadUpdates}
-          aria-label="Baixar atualizações automaticamente"
-          onClick={() => void toggleAutoDownloadUpdates()}
-          disabled={!bridge || savingPreference}
-          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${autoDownloadUpdates ? "bg-emerald-500" : "bg-zinc-700"}`}
-        >
-          <span className={`absolute top-1 flex size-4 items-center justify-center rounded-full bg-white shadow transition-transform ${autoDownloadUpdates ? "translate-x-6" : "translate-x-1"}`}>
-            {savingPreference && <Loader2 size={10} className="animate-spin text-zinc-700" />}
-          </span>
-        </button>
+        <div className="flex items-center gap-2">
+          {savingPreference && <Loader2 size={12} className="animate-spin text-zinc-500" />}
+          <ToggleSwitch
+            checked={autoDownloadUpdates}
+            onChange={() => void toggleAutoDownloadUpdates()}
+            disabled={!bridge || savingPreference}
+            size="md"
+            ariaLabel="Baixar atualizações automaticamente"
+          />
+        </div>
       </div>
 
       {(status.state === "not-available" || status.state === "downloaded" || hasError) && (

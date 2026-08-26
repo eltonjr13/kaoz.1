@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Bot, CheckCircle2, Clock3, Link2, Loader2, MessageCircle, PlugZap, Save, Send, ShieldCheck, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import type { ConnectorAccount, ConnectorDefinition, ConnectorHistoryEntry, ConnectorInboundHistoryEntry, ConnectorProvider, DiscordGatewayRuntimeStatus, TelegramPollingRuntimeStatus } from "@/services/connectors/connector.types";
 import { isConnectorInboundEnabled } from "@/services/connectors/connector.catalog";
 import { GoogleDriveSettingsCard } from "@/components/settings/GoogleDriveSettingsCard";
@@ -383,17 +384,16 @@ function DiscordInboundSettings({ config, status, onChange }: { config: Record<s
   const inboundEnabled = isConnectorInboundEnabled("discord", config);
   return <div className="space-y-3 rounded-xl border border-indigo-500/15 bg-indigo-500/[0.035] p-3.5">
     <div className="flex items-center justify-between gap-3">
-      <div>
-        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-          <Bot size={12} />
-          <span>Bot bidirecional</span>
-          <InfoTooltip text="Responde somente quando for mencionado em canais permitidos. Use IDs copiados com o Modo desenvolvedor do Discord." />
-        </p>
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+        <Bot size={12} />
+        <span>Bot bidirecional</span>
+        <InfoTooltip text="Responde somente quando for mencionado em canais permitidos. Use IDs copiados com o Modo desenvolvedor do Discord." />
       </div>
-      <label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300">
-        <input type="checkbox" checked={inboundEnabled} onChange={(event) => update("inboundEnabled", String(event.target.checked))} />
-        Bidirecional
-      </label>
+      <ToggleSwitch
+        checked={inboundEnabled}
+        onChange={(val) => update("inboundEnabled", String(val))}
+        ariaLabel="Bot bidirecional Discord"
+      />
     </div>
     {inboundEnabled && <>
       <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Gateway: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>
@@ -411,17 +411,16 @@ function TelegramInboundSettings({ config, status, onChange }: { config: Record<
   const inboundEnabled = isConnectorInboundEnabled("telegram", config);
   return <div className="space-y-3 rounded-xl border border-sky-500/15 bg-sky-500/[0.035] p-3.5">
     <div className="flex items-center justify-between gap-3">
-      <div>
-        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-          <Bot size={12} />
-          <span>Bot bidirecional</span>
-          <InfoTooltip text="Responde no chat configurado usando polling seguro, sem webhook público. Para conversar em privado, configure o ID daquele chat como destino e envie primeiro /start ao bot." />
-        </p>
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
+        <Bot size={12} />
+        <span>Bot bidirecional</span>
+        <InfoTooltip text="Responde no chat configurado usando polling seguro, sem webhook público. Para conversar em privado, configure o ID daquele chat como destino e envie primeiro /start ao bot." />
       </div>
-      <label className="flex cursor-pointer items-center gap-2 text-[10px] text-zinc-300">
-        <input type="checkbox" checked={inboundEnabled} onChange={(event) => update("inboundEnabled", String(event.target.checked))} />
-        Bidirecional
-      </label>
+      <ToggleSwitch
+        checked={inboundEnabled}
+        onChange={(val) => update("inboundEnabled", String(val))}
+        ariaLabel="Bot bidirecional Telegram"
+      />
     </div>
     {inboundEnabled && <>
       <div className={`rounded-lg border px-2.5 py-2 text-[10px] ${statusColor}`}>Polling: {status.state}{status.lastError ? ` — ${status.lastError}` : ""}</div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppWindow, Loader2 } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
 
 export function DesktopBehaviorPanel() {
   const bridge = typeof window === "undefined" ? undefined : window.kaoz1Desktop;
@@ -51,19 +52,16 @@ export function DesktopBehaviorPanel() {
           </div>
         </div>
 
-        <button
-          type="button"
-          role="switch"
-          aria-checked={closeToTray}
-          aria-label="Fechar para os ícones ocultos"
-          onClick={() => void toggleCloseToTray()}
-          disabled={!bridge || loading || saving}
-          className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${closeToTray ? "bg-emerald-500" : "bg-zinc-700"}`}
-        >
-          <span className={`absolute top-1 flex size-4 items-center justify-center rounded-full bg-white shadow transition-transform ${closeToTray ? "translate-x-6" : "translate-x-1"}`}>
-            {(loading || saving) && <Loader2 size={10} className="animate-spin text-zinc-700" />}
-          </span>
-        </button>
+        <div className="flex items-center gap-2 pt-1">
+          {saving && <Loader2 size={12} className="animate-spin text-zinc-500" />}
+          <ToggleSwitch
+            checked={closeToTray}
+            onChange={() => void toggleCloseToTray()}
+            disabled={!bridge || loading || saving}
+            size="md"
+            ariaLabel="Fechar para os ícones ocultos"
+          />
+        </div>
       </div>
 
       <div className="mt-5 border-t border-white/[0.05] pt-4 text-[10px] text-zinc-500">

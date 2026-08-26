@@ -43,7 +43,7 @@ def load_model():
         from onnx_asr.loader import Manager
 
         manager = Manager()
-        model = manager.create_asr("nemo-parakeet-tdt-0.6b-v3", local_dir=str(MODEL_DIR), quantization="int8", offline=False)
+        model = manager.create_asr("nemo-parakeet-tdt-0.6b-v3", local_dir=str(MODEL_DIR), quantization="int8", offline=False).with_timestamps()
         with LOCK:
             MODEL = model
             STATE.update(state="ready", message="Parakeet local pronto para transcrever offline.")
@@ -95,7 +95,36 @@ def transcribe_audio(audio_path):
         raise RuntimeError(f"Nao foi possivel converter o audio para transcricao: {result.stderr[-500:]}")
     try:
         waveform, sample_rate = sf.read(str(wav_path), dtype="float32")
-        return str(MODEL.recognize(waveform, sample_rate=sample_rate, channel="mean")).strip()
+        result = MODEL.recognize(waveform, sample_rate=sample_rate, channel="mean")
+        text = str(getattr(result, "text", result)).strip()
+        tokens = list(getattr(result, "tokens", None) or [])
+        timestamps = list(getattr(result, "timestamps", None) or [])
+        duration = len(waveform) / max(1, sample_rate)
+        words = []
+        active_text = ""
+        active_start = None
+        active_end = None
+        for index, token in enumerate(tokens):
+            token_text = str(token)
+            token_start = float(timestamps[index]) if index < len(timestamps) else None
+            token_end = float(timestamps[index + 1]) if index + 1 < len(timestamps) else duration
+            starts_word = token_text.startswith(" ") and active_text.strip()
+            if starts_word:
+                words.append({"start": active_start, "end": active_end, "text": active_text.strip()})
+                active_text = ""
+                active_start = None
+            if active_start is None:
+                active_start = token_start if token_start is not None else (words[-1]["end"] if words else 0.0)
+            active_text += token_text
+            active_end = max(active_start + 0.04, token_end)
+        if active_text.strip() and active_start is not None:
+            words.append({"start": active_start, "end": active_end, "text": active_text.strip()})
+        return {
+            "text": text,
+            "segments": [{"start": 0.0, "end": duration, "text": text, "words": words}] if text else [],
+            "words": words,
+            "timingPrecision": "precise" if words else "approximate",
+        }
     finally:
         wav_path.unlink(missing_ok=True)
 
@@ -138,7 +167,7 @@ class SpeechHandler(BaseHTTPRequestHandler):
                 temp_file.write(audio_bytes)
                 temp_path = Path(temp_file.name)
             try:
-                self.send_json(200, {"text": transcribe_audio(temp_path)})
+                self.send_json(200, transcribe_audio(temp_path))
             finally:
                 temp_path.unlink(missing_ok=True)
         except Exception as error:

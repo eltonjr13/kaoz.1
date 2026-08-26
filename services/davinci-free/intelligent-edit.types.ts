@@ -1,4 +1,4 @@
-export const INTELLIGENT_EDIT_PLAN_VERSION = 2 as const;
+export const INTELLIGENT_EDIT_PLAN_VERSION = 3 as const;
 export const INTELLIGENT_PEDAGOGICAL_ANALYSIS_VERSION = 2 as const;
 
 export type IntelligentEditStyle = "subtle" | "balanced" | "dynamic" | "meme";
@@ -78,6 +78,17 @@ export interface TimedTranscriptSegment {
   end: number;
   text: string;
   source: "local-asr" | "webspeech";
+  words?: IntelligentTimedWord[];
+  timingPrecision?: IntelligentTimingPrecision;
+}
+
+export type IntelligentTimingPrecision = "precise" | "approximate";
+
+export interface IntelligentTimedWord {
+  start: number;
+  end: number;
+  text: string;
+  confidence?: number;
 }
 
 export type IntelligentPedagogicalItemKind =
@@ -132,6 +143,7 @@ export interface IntelligentCaption {
   start: number;
   end: number;
   text: string;
+  words?: IntelligentTimedWord[];
 }
 
 export interface IntelligentEditEvent {
@@ -281,6 +293,7 @@ export interface IntelligentEditPlan {
     backend?: "web" | "cloud" | "vulkan" | "cpu" | "parakeet";
     deviceName?: string;
     language: "pt";
+    timingPrecision?: IntelligentTimingPrecision;
   };
   pedagogy: IntelligentPedagogicalAnalysis;
   captions: IntelligentCaption[];

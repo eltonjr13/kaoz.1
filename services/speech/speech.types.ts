@@ -58,6 +58,25 @@ export interface SpeechTranscriptionResult {
   modelId?: string;
   backend?: SpeechExecutionBackend;
   deviceName?: string;
+  words?: SpeechTimedWord[];
+  segments?: SpeechTimedSegment[];
+  timingPrecision?: SpeechTimingPrecision;
+}
+
+export type SpeechTimingPrecision = "precise" | "approximate";
+
+export interface SpeechTimedWord {
+  start: number;
+  end: number;
+  text: string;
+  confidence?: number;
+}
+
+export interface SpeechTimedSegment {
+  start: number;
+  end: number;
+  text: string;
+  words?: SpeechTimedWord[];
 }
 
 export interface SpeechTranscriptionOptions {

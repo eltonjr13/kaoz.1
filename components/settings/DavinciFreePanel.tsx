@@ -47,6 +47,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { GoogleDriveVideoControls, pickGoogleDriveFolder } from "@/components/video/GoogleDriveVideoControls";
 import {
   VideoEditorConsole,
@@ -2592,23 +2593,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </select>
                 </label>
 
-                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.reuseCourseTheme}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          reuseCourseTheme: event.target.checked,
-                        }))
-                      }
-                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
-                    />
-                    <strong className="block text-zinc-100 font-bold text-[11px]">Manter identidade do curso</strong>
-                  </div>
-                  <InfoTooltip text="Reutiliza o tema visual nas próximas aulas." />
-                </label>
+                <ToggleSwitch
+                  checked={form.reuseCourseTheme}
+                  onChange={(val) => setForm((current) => ({ ...current, reuseCourseTheme: val }))}
+                  label="Manter identidade do curso"
+                  tooltip="Reutiliza o tema visual nas próximas aulas."
+                />
               </div>
 
               {/* Audio & Captions */}
@@ -2696,26 +2686,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   )}
                 </div>
 
-                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.captionsEnabled}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          captionsEnabled: event.target.checked,
-                        }))
-                      }
-                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
-                    />
-                    <strong className="block text-zinc-100 font-bold text-[11px]">Incluir legendas no vídeo</strong>
-                  </div>
-                  <InfoTooltip text="Transcrição analisada mesmo com legendas desativadas." />
-                </label>
+                <ToggleSwitch
+                  checked={form.captionsEnabled}
+                  onChange={(val) => setForm((current) => ({ ...current, captionsEnabled: val }))}
+                  label="Incluir legendas no vídeo"
+                  tooltip="Transcrição analisada mesmo com legendas desativadas."
+                />
 
                 {form.captionsEnabled && (
-                  <div className="grid grid-cols-2 gap-2 pt-1 pl-2 pb-1 border-l-2 border-sky-500/30">
+                  <div className="grid grid-cols-2 gap-2 pt-1 pl-2 pb-1 border-l-2 border-sky-500/30 items-end">
                     <label className="space-y-1 font-medium text-[#8B92A1] text-[10px]">
                       Estilo das Legendas
                       <select
@@ -2735,22 +2714,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       </select>
                     </label>
 
-                    <label className="flex cursor-pointer items-center gap-2 pt-4 text-[#D5D8E0]">
-                      <input
-                        type="checkbox"
+                    <div className="pb-0.5">
+                      <ToggleSwitch
                         checked={form.captionEmojis}
-                        onChange={(e) =>
-                          setForm((current) => ({
-                            ...current,
-                            captionEmojis: e.target.checked,
-                          }))
-                        }
-                        className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
+                        onChange={(val) => setForm((current) => ({ ...current, captionEmojis: val }))}
+                        label="Emojis IA"
                       />
-                      <span className="text-[10px] font-bold text-zinc-200">
-                        Emojis IA
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 )}
 
@@ -2766,60 +2736,28 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 </div>
 
                 {/* Auto-Ducking Inteligente */}
-                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.autoDucking}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          autoDucking: event.target.checked,
-                        }))
-                      }
-                      className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
-                    />
-                    <strong className="block text-zinc-100 font-bold text-[11px]">Auto-Ducking Inteligente (Sidechain)</strong>
-                  </div>
-                  <InfoTooltip text="Abaixa a trilha de música automaticamente (-16dB) durante a fala e sobe nas pausas." />
-                </label>
+                <ToggleSwitch
+                  checked={form.autoDucking}
+                  onChange={(val) => setForm((current) => ({ ...current, autoDucking: val }))}
+                  label="Auto-Ducking Inteligente (Sidechain)"
+                  tooltip="Abaixa a trilha de música automaticamente (-16dB) durante a fala e sobe nas pausas."
+                />
 
                 {/* Studio Voice Enhancer */}
-                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.voiceEnhance}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          voiceEnhance: event.target.checked,
-                        }))
-                      }
-                      className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
-                    />
-                    <strong className="block text-zinc-100 font-bold text-[11px]">Studio Voice Enhancer</strong>
-                  </div>
-                  <InfoTooltip text="High-Pass 80Hz, Noise Gate anti-ruído de fundo e compressor de voz broadcast." />
-                </label>
+                <ToggleSwitch
+                  checked={form.voiceEnhance}
+                  onChange={(val) => setForm((current) => ({ ...current, voiceEnhance: val }))}
+                  label="Studio Voice Enhancer"
+                  tooltip="High-Pass 80Hz, Noise Gate anti-ruído de fundo e compressor de voz broadcast."
+                />
 
-                <label className="flex cursor-pointer items-center justify-between gap-2.5 rounded-[6px] p-2 text-[#D5D8E0] transition-colors hover:bg-white/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.sfxEnabled}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          sfxEnabled: event.target.checked,
-                        }))
-                      }
-                      className="h-3.5 w-3.5 rounded accent-[#383D49]"
-                    />
-                    <strong className="block text-zinc-100 font-bold text-[11px]">Efeitos sonoros imersivos (SFX)</strong>
-                  </div>
-                  <InfoTooltip text="A IA escolhe entre 9 sons reais conforme fala, ações, capítulos, erros e conclusões." />
-                </label>
+                {/* SFX */}
+                <ToggleSwitch
+                  checked={form.sfxEnabled}
+                  onChange={(val) => setForm((current) => ({ ...current, sfxEnabled: val }))}
+                  label="Efeitos sonoros imersivos (SFX)"
+                  tooltip="A IA escolhe entre 9 sons reais conforme fala, ações, capítulos, erros e conclusões."
+                />
 
                 {form.sfxEnabled && (
                   <div className="grid grid-cols-2 gap-2 pt-1">
@@ -4087,15 +4025,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
               {/* Captions Section */}
               <div className="space-y-2 pt-2 border-t border-white/10">
-                <label className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={captionsEnabled}
-                    onChange={(input) => updateCaptionsEnabled(input.target.checked)}
-                    className="h-3.5 w-3.5 rounded accent-[#7C6CF2]"
-                  />
-                  Exibir legendas
-                </label>
+                <ToggleSwitch
+                  checked={captionsEnabled}
+                  onChange={(val) => updateCaptionsEnabled(val)}
+                  label="Exibir legendas"
+                  className="px-0 py-1"
+                />
                 {analysis?.captions.slice(0, 5).map((caption, index) => {
                   const change = captionReview(index);
                   const enabled = change.enabled !== false;
