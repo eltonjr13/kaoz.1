@@ -8,6 +8,7 @@ import ffmpegStaticPath from "ffmpeg-static";
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { createDavinciFreePlan } from "./davinci-free.service";
 import {
+  type IntelligentCaption,
   type IntelligentEditDesign,
   type IntelligentEditEvent,
   type IntelligentEditPlan,
@@ -354,6 +355,7 @@ function formatPresetCaption(
   preset: "hormozi" | "karaoke" | "clean" | "classic",
   colors: IntelligentEditDesign["colors"],
   useEmojis: boolean,
+  timedWords?: IntelligentCaption["words"],
 ): { styleName: string; formattedText: string } {
   const text = useEmojis ? injectContextualEmojis(rawText) : rawText;
 
@@ -373,13 +375,24 @@ function formatPresetCaption(
   }
 
   if (preset === "karaoke") {
-    const words = text.split(/\s+/);
-    const durationMs = Math.max(100, Math.round((end - start) * 1000));
-    const wordMs = Math.round(durationMs / Math.max(1, words.length));
-    const kTags = words.map((w) => `{\\k${Math.round(wordMs / 10)}}${w}`).join(" ");
+    const sourceWords = timedWords?.length
+      ? timedWords.map((word) => ({ ...word, text: word.text.trim() })).filter((word) => word.text)
+      : text.split(/\s+/).map((word, index, words) => ({
+          text: word,
+          start: start + ((end - start) * index) / words.length,
+          end: start + ((end - start) * (index + 1)) / words.length,
+        }));
+    const initialDelay = Math.max(0, Math.round(((sourceWords[0]?.start || start) - start) * 100));
+    const middle = Math.ceil(sourceWords.length / 2);
+    const kTags = sourceWords.map((word, index) => {
+      const nextStart = sourceWords[index + 1]?.start ?? Math.min(end, word.end);
+      const durationCs = Math.max(4, Math.round((nextStart - word.start) * 100));
+      const separator = index === middle ? "\\N" : index > 0 ? " " : "";
+      return `${separator}{\\k${durationCs}}${assText(word.text)}`;
+    }).join("");
     return {
       styleName: "CaptionKaraoke",
-      formattedText: assText(wrapCaption(kTags)),
+      formattedText: `${initialDelay ? `{\\k${initialDelay}}` : ""}${kTags}`,
     };
   }
 
@@ -411,6 +424,7 @@ function bodyAss(plan: IntelligentEditPlan) {
         preset,
         design.colors,
         useEmojis,
+        caption.words,
       );
       lines.push(
         `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${styleName},,0,0,0,,${formattedText}`,

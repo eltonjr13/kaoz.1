@@ -50,6 +50,12 @@ import {
   analyzePedagogicalTranscript,
   pedagogicalAnalysisDigest,
 } from "./pedagogical-analysis";
+import {
+  approximateTimedWords,
+  captionsFromTranscript,
+  transcriptTimingPrecision,
+  type SpeechInterval,
+} from "./caption-timing";
 
 const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
 const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
@@ -68,7 +74,7 @@ export type IntelligentAnalysisStatus = {
   error?: string;
 };
 
-async function writeAnalysisStatus(status: IntelligentAnalysisStatus) {
+export async function writeAnalysisStatus(status: IntelligentAnalysisStatus) {
   await mkdir(ROOT, { recursive: true });
   await writeFile(ANALYSIS_STATUS_PATH, `${JSON.stringify(status, null, 2)}\n`, "utf8");
 }
@@ -278,7 +284,7 @@ async function sha256(filePath: string) {
   });
 }
 
-async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
+async function detectSpeechIntervals(sourcePath: string, durationSeconds: number) {
   const timeoutMs = Math.min(
     120 * 60_000,
     Math.max(300_000, Math.ceil(durationSeconds * 1_000)),
@@ -298,9 +304,21 @@ async function detectSilenceEnds(sourcePath: string, durationSeconds: number) {
     ],
     { acceptNonZero: true, timeoutMs },
   );
-  return [...result.stderr.matchAll(/silence_end:\s*([\d.]+)/g)]
-    .map((match) => Number(match[1]))
-    .filter(Number.isFinite);
+  const events = [...result.stderr.matchAll(/silence_(start|end):\s*([\d.]+)/g)]
+    .map((match) => ({ kind: match[1], time: Number(match[2]) }))
+    .filter((event) => Number.isFinite(event.time))
+    .sort((left, right) => left.time - right.time);
+  const intervals: SpeechInterval[] = [];
+  let speechStart = 0;
+  for (const event of events) {
+    if (event.kind === "start" && event.time > speechStart) {
+      intervals.push({ start: speechStart, end: Math.min(durationSeconds, event.time) });
+    } else if (event.kind === "end") {
+      speechStart = Math.max(speechStart, event.time);
+    }
+  }
+  if (speechStart < durationSeconds) intervals.push({ start: speechStart, end: durationSeconds });
+  return intervals.filter((interval) => interval.end - interval.start >= 0.04);
 }
 
 export function buildAudioChunks(duration: number, silenceEnds: number[]) {
@@ -327,10 +345,11 @@ async function transcribeChunks(
   chunks: Array<{ start: number; end: number }>,
   runtime: SpeechRuntimeEnvironment,
   options: SpeechTranscriptionOptions,
+  speechIntervals: SpeechInterval[],
   onProgress?: (completed: number, total: number) => void,
 ) {
   const speech = getSpeechService();
-  const rawResults: Array<{ index: number; start: number; end: number; text: string }> = [];
+  const rawResults: Array<{ index: number; segments: TimedTranscriptSegment[] }> = [];
   let metadata: SpeechTranscriptionResult | undefined;
   const CONCURRENCY = 1;
 
@@ -367,15 +386,35 @@ async function transcribeChunks(
             options,
           );
           metadata ||= result;
-          const text = result.text.trim();
-          if (text) {
-            rawResults.push({
-              index: chunkIndex,
-              start: chunk.start,
-              end: chunk.end,
-              text,
+          const relativeSegments = result.segments?.length
+            ? result.segments
+            : result.text.trim()
+              ? [{ start: 0, end: chunk.end - chunk.start, text: result.text.trim(), words: result.words }]
+              : [];
+          const segments = relativeSegments.flatMap((segment) => {
+            const start = Math.max(chunk.start, Math.min(chunk.end, chunk.start + segment.start));
+            const end = Math.max(start, Math.min(chunk.end, chunk.start + segment.end));
+            if (!segment.text.trim() || end <= start) return [];
+            const timedWords = (segment.words || []).flatMap((word) => {
+              const wordStart = Math.max(start, Math.min(end, chunk.start + word.start));
+              const wordEnd = Math.max(wordStart, Math.min(end, chunk.start + word.end));
+              return word.text.trim() && wordEnd > wordStart
+                ? [{ ...word, text: word.text.trim(), start: wordStart, end: wordEnd }]
+                : [];
             });
-          }
+            const precise = result.timingPrecision === "precise" && timedWords.length > 0;
+            return [{
+              start,
+              end,
+              text: segment.text.trim(),
+              source: "local-asr" as const,
+              words: precise
+                ? timedWords
+                : approximateTimedWords(segment.text, start, end, speechIntervals),
+              timingPrecision: precise ? "precise" as const : "approximate" as const,
+            }];
+          });
+          if (segments.length) rawResults.push({ index: chunkIndex, segments });
         } catch (error) {
           console.warn(`[transcribeChunks] Aviso no trecho ${chunkIndex + 1}/${chunks.length}:`, error);
         }
@@ -385,12 +424,7 @@ async function transcribeChunks(
   }
 
   rawResults.sort((a, b) => a.index - b.index);
-  const segments: TimedTranscriptSegment[] = rawResults.map((item) => ({
-    start: item.start,
-    end: item.end,
-    text: item.text,
-    source: "local-asr",
-  }));
+  const segments = rawResults.flatMap((item) => item.segments);
 
   if (segments.length === 0) {
     throw new Error("A transcrição não retornou texto utilizável.");
@@ -403,29 +437,15 @@ async function transcribeChunks(
       backend: metadata?.backend,
       deviceName: metadata?.deviceName,
       language: "pt" as const,
+      timingPrecision: transcriptTimingPrecision(segments),
     },
+    speechIntervals,
   };
-}
-
-function wordsToCaptions(segments: TimedTranscriptSegment[]): IntelligentCaption[] {
-  return segments.flatMap((segment) => {
-    const words = segment.text.split(/\s+/).filter(Boolean);
-    const groupSize = 8;
-    const groups: string[][] = [];
-    for (let index = 0; index < words.length; index += groupSize) {
-      groups.push(words.slice(index, index + groupSize));
-    }
-    const duration = Math.max(0.8, segment.end - segment.start);
-    return groups.map((group, index) => ({
-      start: segment.start + (duration * index) / groups.length,
-      end: segment.start + (duration * (index + 1)) / groups.length,
-      text: group.join(" "),
-    }));
-  });
 }
 
 function isReusableTranscript(candidate: IntelligentEditPlan | null, sourceHash: string, options: SpeechTranscriptionOptions): candidate is IntelligentEditPlan {
   if (!candidate || candidate.sourceHash !== sourceHash || candidate.transcript.length === 0) return false;
+  if (candidate.transcription?.timingPrecision !== "precise" || candidate.transcript.some((segment) => !segment.words?.length)) return false;
   if (options.mode === "cloud") return candidate.transcription?.backend === "cloud";
   return (candidate.transcription?.modelId || null) === (options.modelId || null);
 }
@@ -456,11 +476,12 @@ async function transcriptForAnalysis(
   options: SpeechTranscriptionOptions,
   onProgress?: (completed: number, total: number) => void,
 ) {
+  const speechIntervals = await detectSpeechIntervals(sourcePath, durationSeconds);
   const reusable = await findReusableTranscript(sourceHash, options);
-  if (reusable) return reusable;
-  const silenceEnds = await detectSilenceEnds(sourcePath, durationSeconds);
+  if (reusable) return { ...reusable, speechIntervals };
+  const silenceEnds = speechIntervals.slice(0, -1).map((interval) => interval.end);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
-  return transcribeChunks(sourcePath, directory, chunks, runtime, options, onProgress);
+  return transcribeChunks(sourcePath, directory, chunks, runtime, options, speechIntervals, onProgress);
 }
 
 function extractJsonObject(output: string): SemanticDecision | null {
@@ -1108,6 +1129,71 @@ function reviewedCaptions(
   });
 }
 
+export async function conservativelyReviewCaptions(
+  captions: IntelligentCaption[],
+  useAgent = true,
+) {
+  if (!useAgent || captions.length === 0) return { captions, reviewed: false };
+  const prompt = [
+    "Revise as legendas em português brasileiro.",
+    `Retorne SOMENTE um array JSON com exatamente ${captions.length} objetos.`,
+    "Preserve start e end exatamente. Corrija apenas capitalização, ortografia, pontuação e erros óbvios de reconhecimento.",
+    "Não remova repetições da fala, não reescreva frases e não invente palavras quando o sentido estiver incerto.",
+    JSON.stringify(captions.map(({ start, end, text }) => ({ start, end, text }))),
+  ].join("\n");
+  const response = await queryConfiguredAgentCli(prompt, { useExternalTools: false });
+  const reviewed = response ? extractJsonArray(response) : null;
+  if (reviewed?.length !== captions.length) return { captions, reviewed: false };
+  return {
+    captions: reviewedCaptions(captions, { reviewedCaptions: reviewed }, Number.MAX_SAFE_INTEGER),
+    reviewed: true,
+  };
+}
+
+export async function transcribeForCaptionResync(
+  plan: IntelligentEditPlan,
+  rawInput: Record<string, unknown>,
+  onProgress?: (completed: number, total: number) => void,
+) {
+  const mode = (["webspeech", "cloud", "local"].includes(String(rawInput.transcriptionMode))
+    ? rawInput.transcriptionMode
+    : "local") as "webspeech" | "cloud" | "local";
+  const runtime = speechRuntimeEnvironment(mode === "local" ? "desktop" : "web");
+  const speechIntervals = await detectSpeechIntervals(plan.sourcePath, plan.media.durationSeconds);
+  if (mode === "webspeech") {
+    const received = webSpeechTranscriptSegments(rawInput.transcriptionSegments);
+    const segments = fitTranscriptToMedia(received || [], plan.media.durationSeconds).map((segment) => ({
+      ...segment,
+      words: approximateTimedWords(segment.text, segment.start, segment.end, speechIntervals),
+      timingPrecision: "approximate" as const,
+    }));
+    if (!segments.length) throw new Error("A transcrição Web Speech não foi recebida para resincronizar as legendas.");
+    return {
+      segments,
+      speechIntervals,
+      transcription: {
+        engine: "webspeech" as const,
+        backend: "web" as const,
+        language: "pt" as const,
+        timingPrecision: "approximate" as const,
+      },
+    };
+  }
+  const modelId = typeof rawInput.transcriptionModelId === "string" ? rawInput.transcriptionModelId : undefined;
+  const device = (["auto", "vulkan", "cpu"].includes(String(rawInput.transcriptionDevice))
+    ? rawInput.transcriptionDevice
+    : "auto") as "auto" | "vulkan" | "cpu";
+  return transcriptForAnalysis(
+    plan.sourcePath,
+    plan.artifacts.directory,
+    plan.media.durationSeconds,
+    plan.sourceHash,
+    runtime,
+    { modelId, device, allowCloudFallback: false, mode: mode === "cloud" ? "cloud" : "configured" },
+    onProgress,
+  );
+}
+
 function formatSrtTime(seconds: number) {
   const milliseconds = Math.max(0, Math.round(seconds * 1000));
   const hours = Math.floor(milliseconds / 3_600_000);
@@ -1208,7 +1294,7 @@ export async function analyzeIntelligentEdit(
     .createHash("sha256")
     .update(JSON.stringify({
       sourceHash,
-      analysisVersion: 11,
+      analysisVersion: 12,
       courseName: input.courseName,
       moduleName: input.moduleName,
       lessonNumber: input.lessonNumber,
@@ -1262,10 +1348,23 @@ export async function analyzeIntelligentEdit(
   if (input.transcriptionMode === "webspeech" && !webSpeechSegments?.length) {
     throw new Error("A transcrição Web Speech não foi recebida do navegador.");
   }
+  const webSpeechIntervals = input.transcriptionMode === "webspeech"
+    ? await detectSpeechIntervals(input.sourcePath, media.durationSeconds)
+    : undefined;
   const transcriptionResult = input.transcriptionMode === "webspeech"
     ? {
-        segments: webSpeechSegments!,
-        transcription: { engine: "webspeech" as const, backend: "web" as const, language: "pt" as const },
+        segments: webSpeechSegments!.map((segment) => ({
+          ...segment,
+          words: approximateTimedWords(segment.text, segment.start, segment.end, webSpeechIntervals),
+          timingPrecision: "approximate" as const,
+        })),
+        transcription: {
+          engine: "webspeech" as const,
+          backend: "web" as const,
+          language: "pt" as const,
+          timingPrecision: "approximate" as const,
+        },
+        speechIntervals: webSpeechIntervals,
       }
     : await transcriptForAnalysis(
         input.sourcePath,
@@ -1289,7 +1388,11 @@ export async function analyzeIntelligentEdit(
   const transcript = transcriptionResult.segments;
   await analysisStatusWrite;
   await reportAnalysisProgress(60, "Mapeando objetivos, conceitos e estrutura pedagógica...");
-  const rawCaptions = wordsToCaptions(transcript);
+  const rawCaptions = captionsFromTranscript(
+    transcript,
+    media.durationSeconds,
+    transcriptionResult.speechIntervals,
+  );
   const pedagogy = await analyzePedagogicalTranscript({
     segments: transcript,
     courseName: input.courseName,
