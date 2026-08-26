@@ -25,7 +25,9 @@ export function DesktopBehaviorPanel() {
     setCloseToTray(next);
     setSaving(true);
     try {
-      await bridge.setDesktopPreferences({ closeToTray: next });
+      const saved = await bridge.setCloseToTray(next);
+      if (saved) setCloseToTray(saved.closeToTray);
+      else setCloseToTray(!next);
     } catch {
       setCloseToTray(!next);
     } finally {
