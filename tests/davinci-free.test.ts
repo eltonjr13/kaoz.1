@@ -63,6 +63,7 @@ import {
   defaultMotionPace,
   resolveMotionProfile,
 } from "../services/davinci-free/intelligent-edit.motion.ts";
+import { karaokeCaptionEvents } from "../services/davinci-free/intelligent-edit.renderer.ts";
 import type {
   IntelligentEditEvent,
   IntelligentPedagogicalItem,
@@ -82,6 +83,37 @@ test("presets de movimento mantêm ritmo legível em todos os estilos", () => {
   assert.ok(calm.transitionDuration >= 0.9);
   assert.ok(energetic.transitionDuration >= 0.65);
   assert.equal(calm.cardDuration, 4);
+});
+
+test("karaokê destaca somente a palavra ativa em cada intervalo real", () => {
+  const events = karaokeCaptionEvents(
+    {
+      start: 2,
+      end: 3.5,
+      text: "Uma ideia forte",
+      words: [
+        { text: "Uma", start: 2.1, end: 2.4 },
+        { text: "ideia", start: 2.4, end: 3 },
+        { text: "forte", start: 3, end: 3.4 },
+      ],
+    },
+    {
+      background: "#000000",
+      surface: "#111111",
+      primary: "#FFCC00",
+      secondary: "#8855FF",
+      text: "#FFFFFF",
+      muted: "#AAAAAA",
+    },
+    false,
+  );
+
+  assert.equal(events.length, 3);
+  assert.match(events[0], /0:00:02\.00,0:00:02\.40,CaptionKaraoke/);
+  assert.match(events[0], /\\blur0\.4\}Uma\{\\rCaptionKaraoke\} ideia forte$/);
+  assert.match(events[1], /Uma \{\\1c.*\\blur0\.4\}ideia\{\\rCaptionKaraoke\} forte$/);
+  assert.match(events[2], /Uma ideia \{\\1c.*\\blur0\.4\}forte\{\\rCaptionKaraoke\}$/);
+  assert.doesNotMatch(events.join("\n"), /\{\\k\d+/);
 });
 
 test("composição de movimento separa efeitos concorrentes sem perder eventos", () => {

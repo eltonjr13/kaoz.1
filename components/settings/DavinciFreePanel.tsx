@@ -151,10 +151,12 @@ function CaptionPresetPreview({
   preset,
   text,
   compact = false,
+  activeWordIndex,
 }: {
   preset: IntelligentCaptionPreset;
   text: string;
   compact?: boolean;
+  activeWordIndex?: number;
 }) {
   const size = compact ? "text-[9px] leading-[1.15]" : "text-xs sm:text-sm leading-tight";
   const words = text.split(/\s+/).filter(Boolean);
@@ -167,7 +169,8 @@ function CaptionPresetPreview({
     return <span className={`rounded bg-black/95 px-2 py-1 text-center font-black uppercase tracking-wide text-white shadow-lg ${size}`}>{words.map((word, index) => <span key={`${word}-${index}`} className={index < 2 ? "text-amber-300" : undefined}>{index > 0 ? " " : ""}{word}</span>)}</span>;
   }
   if (preset === "karaoke") {
-    return <span className={`rounded-md border border-violet-400/40 bg-black/85 px-2 py-1 text-center font-extrabold text-violet-100 shadow-lg ${size}`}><span className="text-violet-400">{words[0]}</span>{" "}{words.slice(1).join(" ")}</span>;
+    const currentWord = activeWordIndex ?? 0;
+    return <span className={`rounded-md border border-violet-400/40 bg-black/85 px-2 py-1 text-center font-extrabold text-white shadow-lg ${size}`}>{words.map((word, index) => <span key={`${word}-${index}`} className={index === currentWord ? "text-violet-400 [text-shadow:0_0_8px_rgba(167,139,250,0.8)]" : undefined}>{index > 0 ? " " : ""}{word}</span>)}</span>;
   }
   if (preset === "clean") {
     return <span className={`rounded-full border border-white/15 bg-zinc-950/80 px-2.5 py-1 text-center font-medium text-zinc-100 shadow ${size}`}>{text}</span>;
@@ -231,7 +234,12 @@ type Analysis = {
     language: string;
     timingPrecision?: "precise" | "approximate";
   };
-  captions: Array<{ start: number; end: number; text: string }>;
+  captions: Array<{
+    start: number;
+    end: number;
+    text: string;
+    words?: Array<{ start: number; end: number; text: string }>;
+  }>;
   events: EditEvent[];
   cursorAnalysis: { status: string; message: string };
   visual: { source: "agent-contact-sheet" | "safe-center-fallback"; sampledFrames: number };
@@ -1525,14 +1533,37 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const currentActiveCaption = useMemo(() => {
     if (!captionsEnabled || !analysis?.captions?.length) return null;
-    return analysis.captions.find((c, idx) => {
+    const index = analysis.captions.findIndex((c, idx) => {
       const rev = review.captions.find((r) => r.index === idx);
       if (rev?.enabled === false) return false;
       const st = rev?.start ?? c.start;
       const en = rev?.end ?? c.end;
       return playheadTime >= st && playheadTime <= en;
     });
+    if (index < 0) return null;
+    const caption = analysis.captions[index];
+    const change = review.captions.find((item) => item.index === index);
+    return {
+      ...caption,
+      start: change?.start ?? caption.start,
+      end: change?.end ?? caption.end,
+      text: change?.text ?? caption.text,
+    };
   }, [analysis?.captions, captionsEnabled, playheadTime, review.captions]);
+
+  const currentKaraokeWordIndex = useMemo(() => {
+    if (form.captionPreset !== "karaoke" || !currentActiveCaption) return undefined;
+    const words = currentActiveCaption.words?.filter((word) => word.end > word.start) || [];
+    if (words.length) {
+      const activeIndex = words.findIndex((word) => playheadTime >= word.start && playheadTime < word.end);
+      if (activeIndex >= 0) return activeIndex;
+      const nextIndex = words.findIndex((word) => playheadTime < word.start);
+      return nextIndex < 0 ? words.length - 1 : Math.max(0, nextIndex - 1);
+    }
+    const wordCount = currentActiveCaption.text.split(/\s+/).filter(Boolean).length;
+    const progress = (playheadTime - currentActiveCaption.start) / Math.max(0.04, currentActiveCaption.end - currentActiveCaption.start);
+    return Math.min(wordCount - 1, Math.max(0, Math.floor(progress * wordCount)));
+  }, [currentActiveCaption, form.captionPreset, playheadTime]);
 
   type VideoChapter = {
     id: string;
@@ -3032,6 +3063,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       <CaptionPresetPreview
                         preset={form.captionPreset}
                         text={form.captionEmojis ? injectContextualEmojis(currentActiveCaption.text) : currentActiveCaption.text}
+                        activeWordIndex={currentKaraokeWordIndex}
                       />
                     </div>
                   </div>

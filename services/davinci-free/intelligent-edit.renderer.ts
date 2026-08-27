@@ -193,7 +193,7 @@ function assHeader(plan: IntelligentEditPlan) {
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
     `Style: CaptionHormozi,Arial Black,58,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,2,2,80,80,70,1`,
-    `Style: CaptionKaraoke,Segoe UI Black,56,${assColor(colors.primary)},&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
+    `Style: CaptionKaraoke,Segoe UI Black,56,&H00FFFFFF,&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
     `Style: CaptionClean,Segoe UI Semibold,46,${assColor(colors.text)},&H000000FF,&H0018181B,&HA0000000,-1,0,0,0,100,100,0,0,1,1,0,2,100,100,55,1`,
     `Style: CaptionNeon,Arial Black,54,&H00FFF4D8,&H00FFFFFF,&H00FF6430,&H780D0712,-1,0,0,0,100,100,1,0,1,3,2,2,80,80,66,1`,
     `Style: CaptionBoxed,Arial Black,52,&H00111111,&H00FFFFFF,&H00000000,${assColor(colors.secondary || "#FFE600")},-1,0,0,0,100,100,0,0,3,1,0,2,88,88,66,1`,
@@ -352,14 +352,63 @@ function injectContextualEmojis(text: string): string {
   return enriched;
 }
 
+function karaokeCaptionWords(
+  caption: IntelligentCaption,
+  useEmojis: boolean,
+) {
+  const words = caption.text.split(/\s+/).filter(Boolean);
+  const enriched = useEmojis ? injectContextualEmojis(caption.text) : caption.text;
+  const suffix = enriched.slice(caption.text.length).trim();
+  if (suffix && words.length) words[words.length - 1] = `${words[words.length - 1]} ${suffix}`;
+  const duration = Math.max(0.04, caption.end - caption.start);
+  const preciseWords = caption.words?.filter(
+    (word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start,
+  );
+  return words.map((text, index) => ({
+    text,
+    start: preciseWords?.[index]?.start ?? caption.start + (duration * index) / words.length,
+    end: preciseWords?.[index]?.end ?? caption.start + (duration * (index + 1)) / words.length,
+  }));
+}
+
+function karaokeCaptionText(
+  words: Array<{ text: string }>,
+  activeIndex: number,
+  accent: string,
+) {
+  const shouldWrap = words.map((word) => word.text).join(" ").length > 42 && words.length >= 5;
+  const middle = shouldWrap ? Math.ceil(words.length / 2) : -1;
+  return words.map((word, index) => {
+    const separator = index === middle ? "\\N" : index > 0 ? " " : "";
+    const safeWord = assText(word.text);
+    if (index !== activeIndex) return `${separator}${safeWord}`;
+    return `${separator}{\\1c${assColor(accent)}\\bord6\\blur0.4}${safeWord}{\\rCaptionKaraoke}`;
+  }).join("");
+}
+
+export function karaokeCaptionEvents(
+  caption: IntelligentCaption,
+  colors: IntelligentEditDesign["colors"],
+  useEmojis: boolean,
+) {
+  const words = karaokeCaptionWords(caption, useEmojis);
+  return words.flatMap((word, index) => {
+    const start = index === 0
+      ? caption.start
+      : Math.max(caption.start, Math.min(caption.end, word.start));
+    const nextStart = words[index + 1]?.start ?? caption.end;
+    const end = Math.max(start, Math.min(caption.end, nextStart));
+    if (end <= start) return [];
+    const text = karaokeCaptionText(words, index, colors.primary);
+    return [`Dialogue: 0,${assTime(start)},${assTime(end)},CaptionKaraoke,,0,0,0,,${text}`];
+  });
+}
+
 function formatPresetCaption(
   rawText: string,
-  start: number,
-  end: number,
   preset: IntelligentEditDesign["captionPreset"],
   colors: IntelligentEditDesign["colors"],
   useEmojis: boolean,
-  timedWords?: IntelligentCaption["words"],
 ): { styleName: string; formattedText: string } {
   const text = useEmojis ? injectContextualEmojis(rawText) : rawText;
 
@@ -375,28 +424,6 @@ function formatPresetCaption(
     return {
       styleName: "CaptionHormozi",
       formattedText: `{\\fscx106\\fscy106\\t(0,90,\\fscx100\\fscy100)}${assText(wrapCaption(highlighted))}`,
-    };
-  }
-
-  if (preset === "karaoke") {
-    const sourceWords = timedWords?.length
-      ? timedWords.map((word) => ({ ...word, text: word.text.trim() })).filter((word) => word.text)
-      : text.split(/\s+/).map((word, index, words) => ({
-          text: word,
-          start: start + ((end - start) * index) / words.length,
-          end: start + ((end - start) * (index + 1)) / words.length,
-        }));
-    const initialDelay = Math.max(0, Math.round(((sourceWords[0]?.start || start) - start) * 100));
-    const middle = Math.ceil(sourceWords.length / 2);
-    const kTags = sourceWords.map((word, index) => {
-      const nextStart = sourceWords[index + 1]?.start ?? Math.min(end, word.end);
-      const durationCs = Math.max(4, Math.round((nextStart - word.start) * 100));
-      const separator = index === middle ? "\\N" : index > 0 ? " " : "";
-      return `${separator}{\\k${durationCs}}${assText(word.text)}`;
-    }).join("");
-    return {
-      styleName: "CaptionKaraoke",
-      formattedText: `${initialDelay ? `{\\k${initialDelay}}` : ""}${kTags}`,
     };
   }
 
@@ -459,14 +486,15 @@ function bodyAss(plan: IntelligentEditPlan) {
     const preset = design.captionPreset || "hormozi";
     const useEmojis = design.captionEmojis !== false;
     for (const caption of plan.captions) {
+      if (preset === "karaoke") {
+        lines.push(...karaokeCaptionEvents(caption, design.colors, useEmojis));
+        continue;
+      }
       const { styleName, formattedText } = formatPresetCaption(
         caption.text,
-        caption.start,
-        caption.end,
         preset,
         design.colors,
         useEmojis,
-        caption.words,
       );
       lines.push(
         `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${styleName},,0,0,0,,${formattedText}`,
