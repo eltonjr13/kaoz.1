@@ -820,6 +820,10 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(panel, /transcriptionModelId: transcriptionMode === "local" \? form\.transcriptionModelId : undefined/);
   assert.match(webSpeechMedia, /recognition\.start\(audioTrack\)/);
   assert.match(webSpeechMedia, /createMediaStreamDestination/);
+  assert.match(webSpeechMedia, /RECOGNITION_WINDOW_MS = 6_000/);
+  assert.match(webSpeechMedia, /recognition\.interimResults = true/);
+  assert.match(webSpeechMedia, /audio\.pause\(\);\s*recognition\.stop\(\)/);
+  assert.match(webSpeechMedia, /appendSegment\(recognitionStart, audio\.currentTime/);
   assert.match(webSpeechMedia, /O Web Speech terminou sem retornar texto/);
   assert.match(panel, /processingProgress/);
   assert.match(panel, /lg:col-span-6 lg:col-start-4/);

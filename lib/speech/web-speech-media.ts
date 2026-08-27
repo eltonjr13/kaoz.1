@@ -43,6 +43,9 @@ type WebSpeechWindow = typeof window & {
   webkitAudioContext?: typeof AudioContext;
 };
 
+const RECOGNITION_WINDOW_MS = 6_000;
+const RECOGNITION_RESTART_DELAY_MS = 40;
+
 function browserConstructors() {
   if (typeof window === "undefined") return null;
   const browserWindow = window as WebSpeechWindow;
@@ -95,10 +98,22 @@ export async function transcribeMediaWithWebSpeech(
   let finished = false;
   let lastSegmentEnd = 0;
   let restartTimer: number | undefined;
+  let windowTimer: number | undefined;
+  let pendingInterimText = "";
+
+  const appendSegment = (start: number, end: number, text: string) => {
+    const normalized = text.trim().replace(/\s+/g, " ");
+    const safeStart = Math.max(lastSegmentEnd, start);
+    const safeEnd = Math.max(safeStart + 0.04, end);
+    if (!normalized) return;
+    segments.push({ start: safeStart, end: safeEnd, text: normalized });
+    lastSegmentEnd = safeEnd;
+  };
 
   const cleanup = async () => {
     finished = true;
     if (restartTimer !== undefined) window.clearTimeout(restartTimer);
+    if (windowTimer !== undefined) window.clearTimeout(windowTimer);
     activeRecognition?.abort();
     activeRecognition = null;
     audio.pause();
@@ -119,34 +134,50 @@ export async function transcribeMediaWithWebSpeech(
       const startRecognition = () => {
         if (finished || audio.ended) return;
         const recognition = new constructors.Recognition();
+        const recognitionStart = audio.currentTime;
         activeRecognition = recognition;
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.lang = "pt-BR";
         recognition.onresult = (event) => {
           const finalTexts: string[] = [];
+          const interimTexts: string[] = [];
           for (let index = event.resultIndex; index < event.results.length; index += 1) {
             const result = event.results[index];
             const text = result[0]?.transcript?.trim();
             if (result.isFinal && text) finalTexts.push(text);
+            else if (text) interimTexts.push(text);
           }
-          if (!finalTexts.length) return;
-          const end = Math.max(lastSegmentEnd + 0.1, Math.min(audio.duration || audio.currentTime, audio.currentTime));
-          segments.push({ start: lastSegmentEnd, end, text: finalTexts.join(" ") });
-          lastSegmentEnd = end;
+          pendingInterimText = interimTexts.join(" ");
+          if (finalTexts.length) {
+            appendSegment(recognitionStart, audio.currentTime, finalTexts.join(" "));
+          }
         };
         recognition.onerror = (event) => {
           if (event.error === "no-speech" || event.error === "aborted") return;
           fail(new Error(errorMessage(event)));
         };
         recognition.onend = () => {
+          if (windowTimer !== undefined) window.clearTimeout(windowTimer);
+          windowTimer = undefined;
           if (activeRecognition === recognition) activeRecognition = null;
           if (!finished && !audio.ended) {
-            restartTimer = window.setTimeout(startRecognition, 120);
+            audio.pause();
+            if (pendingInterimText) {
+              appendSegment(recognitionStart, audio.currentTime, pendingInterimText);
+              pendingInterimText = "";
+            }
+            restartTimer = window.setTimeout(startRecognition, RECOGNITION_RESTART_DELAY_MS);
           }
         };
         try {
           recognition.start(audioTrack);
+          windowTimer = window.setTimeout(() => {
+            if (finished || activeRecognition !== recognition) return;
+            audio.pause();
+            recognition.stop();
+          }, RECOGNITION_WINDOW_MS);
+          void audio.play().catch(() => fail(new Error("O navegador bloqueou a reprodução necessária para transcrever o vídeo.")));
         } catch (error) {
           fail(error instanceof Error ? error : new Error(String(error)));
         }
@@ -158,6 +189,10 @@ export async function transcribeMediaWithWebSpeech(
       audio.addEventListener("error", () => fail(new Error("O navegador não conseguiu carregar o áudio do vídeo.")), { once: true });
       audio.addEventListener("ended", () => {
         if (finished) return;
+        if (pendingInterimText) {
+          appendSegment(lastSegmentEnd, audio.currentTime, pendingInterimText);
+          pendingInterimText = "";
+        }
         finished = true;
         activeRecognition?.stop();
         const textSegments = segments.filter((segment) => segment.text.trim());
@@ -170,7 +205,6 @@ export async function transcribeMediaWithWebSpeech(
 
       void audioContext.resume().catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
       startRecognition();
-      void audio.play().catch(() => fail(new Error("O navegador bloqueou a reprodução necessária para transcrever o vídeo.")));
     });
   } finally {
     await cleanup();
