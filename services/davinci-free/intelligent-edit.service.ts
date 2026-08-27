@@ -267,194 +267,6 @@ async function inspectMedia(sourcePath: string): Promise<MediaInfo> {
   return {
     durationSeconds:
       Number(durationMatch[1]) * 3600 +
-}
-
-export async function readIntelligentAnalysisStatus(): Promise<IntelligentAnalysisStatus | null> {
-  return readFile(ANALYSIS_STATUS_PATH, "utf8")
-    .then((raw) => JSON.parse(raw) as IntelligentAnalysisStatus)
-    .catch(() => null);
-}
-
-type MediaInfo = {
-  durationSeconds: number;
-  width: number;
-  height: number;
-  fps: number;
-  hasAudio: boolean;
-};
-
-type SemanticDecision = {
-  moduleTitle?: string;
-  courseTheme?: {
-    key?: string;
-    rationale?: string;
-    tone?: string;
-  };
-  introTitle?: string;
-  introSubtitle?: string;
-  outroTitle?: string;
-  outroSubtitle?: string;
-  lowerThirds?: Array<{ time: number; title: string; reason?: string }>;
-  emphasis?: Array<{ time: number; label?: string; reason?: string }>;
-  transitions?: Array<{ time: number; label?: string; reason?: string }>;
-  soundEffects?: Array<{
-    time: number;
-    type: IntelligentSoundEffect;
-    reason?: string;
-    intensity?: "low" | "medium" | "high";
-  }>;
-  onScreenText?: Array<{
-    time: number;
-    text: string;
-    variant?: IntelligentEditTextVariant;
-    reason?: string;
-  }>;
-  reviewedCaptions?: Array<{ start: number; end: number; text: string }>;
-};
-
-function ffmpegPath() {
-  const candidates = [
-    process.env.FFMPEG_PATH?.trim(),
-    ffmpegStaticPath,
-    path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg.exe"),
-  ].filter((value): value is string => Boolean(value));
-  return candidates.find((candidate) => existsSync(candidate)) || "ffmpeg";
-}
-
-function cleanText(value: unknown, fallback = "") {
-  return typeof value === "string" ? value.trim() : fallback;
-}
-
-function safeLabel(value: string, maximum = 100) {
-  return value
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maximum);
-}
-
-function googleDriveSourceOrigin(value: unknown): IntelligentEditAnalysisInput["sourceOrigin"] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const origin = value as Record<string, unknown>;
-  const fileId = cleanText(origin.fileId);
-  const name = safeLabel(cleanText(origin.name), 180);
-  const mimeType = cleanText(origin.mimeType).slice(0, 100);
-  if (origin.provider !== "google-drive" || !/^[a-zA-Z0-9_-]{10,}$/.test(fileId) || !name || !mimeType) return undefined;
-  const sizeBytes = Number(origin.sizeBytes);
-  return {
-    provider: "google-drive",
-    fileId,
-    name,
-    mimeType,
-    ...(Number.isSafeInteger(sizeBytes) && sizeBytes >= 0 ? { sizeBytes } : {}),
-    ...(typeof origin.parentId === "string" ? { parentId: origin.parentId.slice(0, 200) } : {}),
-    ...(typeof origin.webViewLink === "string" && origin.webViewLink.startsWith("https://drive.google.com/")
-      ? { webViewLink: origin.webViewLink.slice(0, 500) }
-      : {}),
-  };
-}
-
-function webSpeechTranscriptSegments(value: unknown): TimedTranscriptSegment[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const segments = value.slice(0, 2_000).flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-    const candidate = entry as Record<string, unknown>;
-    const start = Number(candidate.start);
-    const end = Number(candidate.end);
-    const text = cleanText(candidate.text).replace(/\s+/g, " ").slice(0, 2_000);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > 43_200 || !text) return [];
-    return [{ start, end, text, source: "webspeech" as const }];
-  });
-  return segments.length ? segments : undefined;
-}
-
-function fitTranscriptToMedia(segments: TimedTranscriptSegment[], durationSeconds: number) {
-  return segments.flatMap((segment) => {
-    const start = Math.min(durationSeconds, Math.max(0, segment.start));
-    const end = Math.min(durationSeconds, Math.max(start, segment.end));
-    return end > start ? [{ ...segment, start, end }] : [];
-  });
-}
-
-function requestId(value: unknown) {
-  const normalized = cleanText(value);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{7,79}$/.test(normalized)) {
-    throw new Error("requestId inválido.");
-  }
-  return normalized;
-}
-
-async function localFile(
-  value: unknown,
-  label: string,
-  extensions: ReadonlySet<string>,
-  required = false,
-) {
-  const raw = cleanText(value);
-  if (!raw) {
-    if (required) throw new Error(`${label} é obrigatório.`);
-    return undefined;
-  }
-  if (!path.win32.isAbsolute(raw) || raw.startsWith("\\\\")) {
-    throw new Error(`${label} deve usar um caminho local absoluto.`);
-  }
-  const resolved = path.win32.normalize(raw);
-  if (!extensions.has(path.extname(resolved).toLowerCase())) {
-    throw new Error(`${label} possui formato não permitido.`);
-  }
-  const info = await stat(resolved).catch(() => null);
-  if (!info?.isFile()) throw new Error(`${label} não foi encontrado.`);
-  return resolved;
-}
-
-function runProcess(
-  command: string,
-  args: string[],
-  options: { acceptNonZero?: boolean; timeoutMs?: number } = {},
-) {
-  return new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve, reject) => {
-    const child = spawn(command, args, { windowsHide: true });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    const timeout = setTimeout(() => {
-      child.kill();
-      reject(new Error(`Processo excedeu ${options.timeoutMs ?? 120_000} ms.`));
-    }, options.timeoutMs ?? 120_000);
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      const result = {
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        code,
-      };
-      if (code === 0 || options.acceptNonZero) resolve(result);
-      else reject(new Error(`FFmpeg falhou (${code}): ${result.stderr.slice(-800)}`));
-    });
-  });
-}
-
-async function inspectMedia(sourcePath: string): Promise<MediaInfo> {
-  const result = await runProcess(ffmpegPath(), ["-hide_banner", "-i", sourcePath], {
-    acceptNonZero: true,
-    timeoutMs: 30_000,
-  });
-  const output = result.stderr;
-  const durationMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-  const videoMatch = output.match(/Video:[^\r\n]*?(\d{2,5})x(\d{2,5})[^\r\n]*?(\d+(?:\.\d+)?)\s*fps/i);
-  const tbrMatch = output.match(/Video:[^\r\n]*?(\d{2,5})x(\d{2,5})[^\r\n]*?(\d+(?:\.\d+)?)\s*tbr/i);
-  if (!durationMatch || (!videoMatch && !tbrMatch)) {
-    throw new Error("Não foi possível identificar duração, resolução e FPS do vídeo.");
-  }
-  const match = videoMatch || tbrMatch!;
-  return {
-    durationSeconds:
-      Number(durationMatch[1]) * 3600 +
       Number(durationMatch[2]) * 60 +
       Number(durationMatch[3]),
     width: Number(match[1]),
@@ -472,62 +284,6 @@ async function sha256(filePath: string) {
     stream.on("data", (chunk) => hash.update(chunk));
     stream.on("end", () => resolve(hash.digest("hex")));
   });
-}
-
-export async function fastVideoFingerprint(filePath: string): Promise<string> {
-  const fileStat = await stat(filePath).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) return sha256(filePath);
-
-  if (fileStat.size < 4 * 1024 * 1024) {
-    return sha256(filePath);
-  }
-
-  const chunkSize = 64 * 1024;
-  const hash = crypto.createHash("sha256");
-  hash.update(`fast-fingerprint-v1:${fileStat.size}:${fileStat.mtimeMs}:`);
-
-  const fileHandle = await open(filePath, "r");
-  try {
-    const headBuf = Buffer.alloc(chunkSize);
-    const { bytesRead: headRead } = await fileHandle.read(headBuf, 0, chunkSize, 0);
-    hash.update(headBuf.subarray(0, headRead));
-
-    const midOffset = Math.max(0, Math.floor((fileStat.size - chunkSize) / 2));
-    const midBuf = Buffer.alloc(chunkSize);
-    const { bytesRead: midRead } = await fileHandle.read(midBuf, 0, chunkSize, midOffset);
-    hash.update(midBuf.subarray(0, midRead));
-
-    const tailOffset = Math.max(0, fileStat.size - chunkSize);
-    const tailBuf = Buffer.alloc(chunkSize);
-    const { bytesRead: tailRead } = await fileHandle.read(tailBuf, 0, chunkSize, tailOffset);
-    hash.update(tailBuf.subarray(0, tailRead));
-
-    return hash.digest("hex");
-  } finally {
-    await fileHandle.close();
-  }
-}
-
-async function extractMasterAudio(sourcePath: string, targetPath: string): Promise<string> {
-  if (existsSync(targetPath)) return targetPath;
-  await runProcess(
-    ffmpegPath(),
-    [
-      "-y",
-      "-i",
-      sourcePath,
-      "-vn",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      "-c:a",
-      "pcm_s16le",
-      targetPath,
-    ],
-    { timeoutMs: 180_000 },
-  );
-  return targetPath;
 }
 
 async function detectSpeechIntervals(sourcePath: string, durationSeconds: number) {
@@ -586,7 +342,7 @@ export function buildAudioChunks(duration: number, silenceEnds: number[]) {
 }
 
 async function transcribeChunks(
-  audioSourcePath: string,
+  sourcePath: string,
   directory: string,
   chunks: Array<{ start: number; end: number }>,
   runtime: SpeechRuntimeEnvironment,
@@ -597,8 +353,7 @@ async function transcribeChunks(
   const speech = getSpeechService();
   const rawResults: Array<{ index: number; segments: TimedTranscriptSegment[] }> = [];
   let metadata: SpeechTranscriptionResult | undefined;
-  const CONCURRENCY = 3;
-  const isWavSource = audioSourcePath.toLowerCase().endsWith(".wav");
+  const CONCURRENCY = 1;
 
   for (let index = 0; index < chunks.length; index += CONCURRENCY) {
     const batch = chunks.slice(index, index + CONCURRENCY);
@@ -607,35 +362,25 @@ async function transcribeChunks(
         const chunkIndex = index + batchOffset;
         const output = path.join(directory, `speech-${String(chunkIndex + 1).padStart(4, "0")}.wav`);
         try {
-          const ffmpegArgs = isWavSource
-            ? [
-                "-y",
-                "-ss",
-                chunk.start.toFixed(3),
-                "-t",
-                (chunk.end - chunk.start).toFixed(3),
-                "-i",
-                audioSourcePath,
-                "-c:a",
-                "copy",
-                output,
-              ]
-            : [
-                "-y",
-                "-ss",
-                chunk.start.toFixed(3),
-                "-t",
-                (chunk.end - chunk.start).toFixed(3),
-                "-i",
-                audioSourcePath,
-                "-vn",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                output,
-              ];
-          await runProcess(ffmpegPath(), ffmpegArgs, { timeoutMs: 60_000 });
+          await runProcess(
+            ffmpegPath(),
+            [
+              "-y",
+              "-ss",
+              chunk.start.toFixed(3),
+              "-t",
+              (chunk.end - chunk.start).toFixed(3),
+              "-i",
+              sourcePath,
+              "-vn",
+              "-ar",
+              "16000",
+              "-ac",
+              "1",
+              output,
+            ],
+            { timeoutMs: 120_000 },
+          );
           const bytes = await readFile(output);
           const result = await speech.transcribe(
             new File([bytes], path.basename(output), { type: "audio/wav" }),
@@ -707,44 +452,7 @@ function isReusableTranscript(candidate: IntelligentEditPlan | null, sourceHash:
   return (candidate.transcription?.modelId || null) === (options.modelId || null);
 }
 
-async function saveTranscriptCache(record: {
-  sourceHash: string;
-  segments: TimedTranscriptSegment[];
-  transcription?: IntelligentEditPlan["transcription"];
-  speechIntervals?: SpeechInterval[];
-}) {
-  try {
-    await mkdir(TRANSCRIPTS_DIR, { recursive: true });
-    const cachePath = path.join(TRANSCRIPTS_DIR, `${record.sourceHash}.json`);
-    await writeFile(cachePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
-  } catch (error) {
-    console.warn("[saveTranscriptCache] Não foi possível gravar o cache de transcrição:", error);
-  }
-}
-
 async function findReusableTranscript(sourceHash: string, options: SpeechTranscriptionOptions) {
-  const dedicatedCachePath = path.join(TRANSCRIPTS_DIR, `${sourceHash}.json`);
-  const dedicated = await readFile(dedicatedCachePath, "utf8")
-    .then((raw) => JSON.parse(raw) as {
-      segments?: TimedTranscriptSegment[];
-      transcription?: IntelligentEditPlan["transcription"];
-      speechIntervals?: SpeechInterval[];
-    })
-    .catch(() => null);
-  if (dedicated?.segments?.length && dedicated.transcription) {
-    const candidateMatches =
-      options.mode === "cloud"
-        ? dedicated.transcription.backend === "cloud"
-        : (dedicated.transcription.modelId || null) === (options.modelId || null);
-    if (candidateMatches && dedicated.transcription.timingPrecision === "precise" && dedicated.segments.every((s) => s.words?.length)) {
-      return {
-        segments: dedicated.segments,
-        transcription: dedicated.transcription,
-        speechIntervals: dedicated.speechIntervals,
-      };
-    }
-  }
-
   const entries = await readdir(ROOT, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     if (!entry.isDirectory() || !/^[a-f0-9]{16}$/.test(entry.name)) continue;
@@ -770,24 +478,17 @@ async function transcriptForAnalysis(
   options: SpeechTranscriptionOptions,
   onProgress?: (completed: number, total: number) => void,
 ) {
+  const speechIntervals = await detectSpeechIntervals(sourcePath, durationSeconds);
   const reusable = await findReusableTranscript(sourceHash, options);
-  if (reusable) {
-    const speechIntervals = reusable.speechIntervals || (await detectSpeechIntervals(sourcePath, durationSeconds));
-    return { ...reusable, speechIntervals };
-  }
-
-  const masterAudioPath = path.join(directory, "master-speech-16k.wav");
-  let audioTrackPath = sourcePath;
-  try {
-    audioTrackPath = await extractMasterAudio(sourcePath, masterAudioPath);
-  } catch (error) {
-    console.warn("[transcriptForAnalysis] Falha ao extrair áudio master, usando fonte original:", error);
-    audioTrackPath = sourcePath;
-  }
-
-  const speechIntervals = await detectSpeechIntervals(audioTrackPath, durationSeconds);
+  if (reusable) return { ...reusable, speechIntervals };
   const silenceEnds = speechIntervals.slice(0, -1).map((interval) => interval.end);
   const chunks = buildAudioChunks(durationSeconds, silenceEnds);
+  return transcribeChunks(sourcePath, directory, chunks, runtime, options, speechIntervals, onProgress);
+}
+
+function extractJsonObject(output: string): SemanticDecision | null {
+  const fenced = output.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const candidate = fenced || output.slice(output.indexOf("{"), output.lastIndexOf("}") + 1);
   if (!candidate.trim()) return null;
   try {
     return JSON.parse(candidate) as SemanticDecision;
