@@ -57,6 +57,14 @@ import {
   transcriptTimingPrecision,
   type SpeechInterval,
 } from "./caption-timing";
+
+const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
+const TRANSCRIPTS_DIR = path.join(ROOT, "transcripts");
+const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
+const ANALYSIS_STATUS_PATH = path.join(ROOT, "analysis-status.json");
+const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".aac", ".m4a", ".flac"]);
+
+export type IntelligentAnalysisStatus = {
   status: "running" | "completed" | "failed";
   requestId: string;
   sourcePath: string;
