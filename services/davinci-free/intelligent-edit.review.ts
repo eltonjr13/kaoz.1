@@ -256,6 +256,13 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
     pedagogy,
   };
   if (typeof raw.captionsEnabled === "boolean") review.captionsEnabled = raw.captionsEnabled;
+  if (["hormozi", "karaoke", "clean", "classic", "neon", "boxed", "outline", "highlight"].includes(String(raw.captionPreset))) {
+    review.captionPreset = raw.captionPreset as IntelligentEditorialReview["captionPreset"];
+  }
+  if (typeof raw.captionEmojis === "boolean") review.captionEmojis = raw.captionEmojis;
+  if (["bottom", "center", "top"].includes(String(raw.captionPosition))) {
+    review.captionPosition = raw.captionPosition as IntelligentEditorialReview["captionPosition"];
+  }
   if (["calm", "natural", "energetic"].includes(String(raw.motionPace))) {
     review.motionPace = normalizeMotionPace(raw.motionPace, plan.style);
   }
@@ -319,13 +326,22 @@ export function applyEditorialReview(plan: IntelligentEditPlan, review: Intellig
       }
     : undefined;
   const captionsEnabled = review.captionsEnabled ?? (plan.design?.captionsEnabled !== false);
+  const captionPreset = review.captionPreset ?? plan.design?.captionPreset;
+  const captionEmojis = review.captionEmojis ?? plan.design?.captionEmojis;
+  const captionPosition = review.captionPosition ?? plan.design?.captionPosition;
   return {
     ...plan,
     motion: { pace: motionPace },
     events: reviewedEvents,
     captions: reviewedCaptions,
     ...(reviewedPedagogy ? { pedagogy: reviewedPedagogy } : {}),
-    design: plan.design ? { ...plan.design, captionsEnabled } : plan.design,
+    design: plan.design ? {
+      ...plan.design,
+      captionsEnabled,
+      captionPreset,
+      captionEmojis,
+      captionPosition,
+    } : plan.design,
     artifacts: review.previewPath ? { ...plan.artifacts, previewPath: review.previewPath } : plan.artifacts,
     editorial: {
       version: 1,

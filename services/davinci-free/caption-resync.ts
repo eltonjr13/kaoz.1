@@ -61,7 +61,7 @@ function nextPlanFor(
     transcription,
     captions,
     semantic: { ...plan.semantic, captionReview: reviewed ? "agent" : "asr-only" },
-    artifacts: { ...plan.artifacts, previewPath: undefined },
+    artifacts: { ...plan.artifacts, finalPath: undefined },
   };
 }
 
@@ -122,7 +122,6 @@ export async function resyncIntelligentCaptions(rawInput: Record<string, unknown
       ...oldReview,
       updatedAt: new Date().toISOString(),
       captions: remapped.overrides,
-      previewPath: undefined,
     };
     const writes = await persistenceWrites(plan, nextPlan, nextReview);
     await writeAnalysisStatus({
@@ -139,7 +138,8 @@ export async function resyncIntelligentCaptions(rawInput: Record<string, unknown
       timingPrecision: nextPlan.transcription?.timingPrecision ?? "approximate",
       remappedCaptionOverrides: remapped.overrides.length,
       unmatchedCaptionOverrides: remapped.unmatched,
-      previewInvalidated: true,
+      previewInvalidated: false,
+      finalInvalidated: true,
     };
   } catch (error) {
     await writeAnalysisStatus({

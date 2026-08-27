@@ -61,6 +61,7 @@ async function execute(action: Action, arguments_: Record<string, unknown>) {
           "analyze",
           "resync-captions",
           "render-preview",
+          "approve-intelligent",
           "choose-folder",
           "start-batch",
           "resume-batch",

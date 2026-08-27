@@ -32,6 +32,7 @@ import {
   editedVideoTime,
   findActiveClipAtTime,
   nextPlayheadAfterCuts,
+  sourceVideoTime,
   videoActiveClips,
   videoCutRanges,
   videoCutSelectExpression,
@@ -366,6 +367,16 @@ test("cortes manuais unem intervalos e recalculam duração e tempo editado", ()
   assert.equal(previewDuration, 13.5);
   // Event at 8s in source time occurs at 3.5s in edited body + 4s intro = 7.5s in preview video
   assert.equal(editedVideoTime([...events], 10, 8) + 4, 7.5);
+});
+
+test("tempo da prévia limpa volta ao timestamp original para sincronizar a legenda ao vivo", () => {
+  const events: IntelligentEditEvent[] = [
+    { id: "remove-1", kind: "remove", start: 4, duration: 2, label: "Corte", reason: "teste" },
+    { id: "remove-2", kind: "remove", start: 10, duration: 1, label: "Corte", reason: "teste" },
+  ];
+  assert.equal(sourceVideoTime(events, 20, editedVideoTime(events, 20, 3)), 3);
+  assert.equal(sourceVideoTime(events, 20, editedVideoTime(events, 20, 8)), 8);
+  assert.equal(sourceVideoTime(events, 20, editedVideoTime(events, 20, 15)), 15);
 });
 
 test("fatiamento em clipes ativos, detecção de silêncio e pulo de corte em tempo real", () => {
@@ -928,7 +939,14 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /aria-pressed=\{captionsEnabled\}/);
   assert.match(panel, /updateCaptionsEnabled\(!captionsEnabled\)/);
   assert.match(panel, /timeline-caption-/);
-  assert.match(panel, /activeMediaAsset === "source" && captionsEnabled && currentActiveCaption/);
+  assert.match(panel, /activeMediaAsset === "source" \|\| hasLiveCaptionPreview/);
+  assert.match(panel, /sourceVideoTime\(analysis\.events, analysis\.media\.durationSeconds, bodyTime\)/);
+  assert.match(panel, /renderMode: "live-preview"/);
+  assert.match(panel, /Alterações salvas automaticamente/);
+  assert.match(renderer, /renderMode === "live-preview"/);
+  assert.match(renderer, /live-preview-v1\.mp4/);
+  assert.match(renderer, /renderMode: "final"/);
+  assert.match(review, /review\.captionPreset/);
   assert.match(panel, /editedVideoTime\(analysis\.events, rawDuration, sourceStart\) \+ 4/);
   assert.match(panel, /justify-start gap-0\.5 pl-2 font-mono text-\[9px\]/);
   assert.match(panel, /Restaurar automático/);

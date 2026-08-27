@@ -47,6 +47,18 @@ export function editedVideoTime(events: IntelligentEditEvent[], duration: number
   return Math.max(0, time - removed);
 }
 
+export function sourceVideoTime(events: IntelligentEditEvent[], duration: number, editedTime: number) {
+  const target = Math.max(0, Math.min(editedVideoDuration(events, duration), editedTime));
+  let elapsed = 0;
+  for (const clip of videoActiveClips(events, duration)) {
+    if (target <= elapsed + clip.duration) {
+      return Math.min(clip.end, clip.start + target - elapsed);
+    }
+    elapsed += clip.duration;
+  }
+  return duration;
+}
+
 export function videoCutSelectExpression(events: IntelligentEditEvent[], duration: number) {
   const ranges = videoCutRanges(events, duration);
   if (!ranges.length) return null;
@@ -182,4 +194,3 @@ export function nextPlayheadAfterCuts(
   }
   return { jumped: false, newTime: sourceTime };
 }
-

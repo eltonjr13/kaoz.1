@@ -1033,6 +1033,7 @@ export async function renderIntelligentEdit(
   };
   await writeRenderStatus(renderStatus);
   const outputResolution = normalizeVideoOutputResolution(rawInput.outputResolution);
+  const renderMode = rawInput.renderMode === "live-preview" ? "live-preview" : "final";
   const outputDimensions = resolveVideoOutputDimensions(
     plan.media.width,
     plan.media.height,
@@ -1041,20 +1042,25 @@ export async function renderIntelligentEdit(
   const renderPlan: IntelligentEditPlan = {
     ...plan,
     media: { ...plan.media, ...outputDimensions },
+    design: plan.design ? {
+      ...plan.design,
+      captionsEnabled: renderMode === "final" && plan.design.captionsEnabled !== false,
+    } : plan.design,
   };
   const requestedEncoder = normalizeVideoEncoderPreference(rawInput.videoEncoder);
   let encoder = await selectVideoEncoder(requestedEncoder);
   let encoderFallback = false;
   const directory = plan.artifacts.directory;
-  const bodyAssPath = path.join(directory, "body.ass");
-  const introAssPath = path.join(directory, "intro.ass");
-  const outroAssPath = path.join(directory, "outro.ass");
-  const introPath = path.join(directory, "intro.mp4");
-  const bodyPath = path.join(directory, "body-edited.mp4");
-  const outroPath = path.join(directory, "outro.mp4");
-  const concatPath = path.join(directory, "preview-concat.txt");
-  const joinedPath = path.join(directory, "preview-joined.mp4");
-  const previewPath = path.join(directory, "preview-v4.mp4");
+  const prefix = renderMode === "live-preview" ? "live-preview" : "final";
+  const bodyAssPath = path.join(directory, `${prefix}-body.ass`);
+  const introAssPath = path.join(directory, `${prefix}-intro.ass`);
+  const outroAssPath = path.join(directory, `${prefix}-outro.ass`);
+  const introPath = path.join(directory, `${prefix}-intro.mp4`);
+  const bodyPath = path.join(directory, `${prefix}-body.mp4`);
+  const outroPath = path.join(directory, `${prefix}-outro.mp4`);
+  const concatPath = path.join(directory, `${prefix}-concat.txt`);
+  const joinedPath = path.join(directory, `${prefix}-joined.mp4`);
+  const previewPath = path.join(directory, renderMode === "live-preview" ? "live-preview-v1.mp4" : "preview-v4.mp4");
   await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
   await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(renderPlan, "outro"), "utf8");
@@ -1090,9 +1096,11 @@ export async function renderIntelligentEdit(
   await mixFinalAudio(renderPlan, joinedPath, previewPath);
   const updated: IntelligentEditPlan = {
     ...plan,
-    artifacts: { ...plan.artifacts, previewPath },
+    artifacts: renderMode === "live-preview"
+      ? { ...plan.artifacts, previewPath }
+      : { ...plan.artifacts, finalPath: previewPath },
   };
-  await recordEditorialPreview(plan, previewPath);
+  if (renderMode === "live-preview") await recordEditorialPreview(plan, previewPath);
   await statusWrite;
   renderStatus.status = "completed";
   renderStatus.progress = 100;
@@ -1103,6 +1111,8 @@ export async function renderIntelligentEdit(
     planId: plan.id,
     plan: updated,
     previewPath,
+    finalPath: renderMode === "final" ? previewPath : undefined,
+    renderMode,
     outputResolution: {
       mode: outputResolution,
       ...outputDimensions,
@@ -1122,7 +1132,8 @@ export async function renderIntelligentEdit(
       cuts: plan.events.filter((item) => item.kind === "cut" || item.kind === "remove").length,
       cursorHighlights: plan.events.filter((item) => item.kind === "cursor").length,
       transitions: plan.events.filter((item) => item.kind === "transition").length + 2,
-      captions: resolveIntelligentEditDesign(plan).captionsEnabled ? plan.captions.length : 0,
+      captions: renderMode === "final" && resolveIntelligentEditDesign(plan).captionsEnabled ? plan.captions.length : 0,
+      liveCaptionOverlay: renderMode === "live-preview" && resolveIntelligentEditDesign(plan).captionsEnabled,
       palette: resolveIntelligentEditDesign(plan).palette,
       courseTheme: plan.courseTheme?.label,
       courseThemeReused: plan.courseTheme?.reused,
@@ -1143,21 +1154,28 @@ export async function approveIntelligentEdit(
     throw new Error("Renderize a prévia antes de enviá-la ao Resolve.");
   }
   await readFile(plan.artifacts.previewPath);
+  const rendered = await renderIntelligentEdit({
+    ...rawInput,
+    planId: plan.id,
+    renderMode: "final",
+  });
+  const finalPath = rendered.finalPath || rendered.previewPath;
+  await readFile(finalPath);
   return createDavinciFreePlan({
     requestId:
       typeof rawInput.requestId === "string"
         ? rawInput.requestId
         : `intelligent-${crypto.randomUUID()}`,
     timelineName: `${plan.moduleName} - edição inteligente`,
-    mainPath: plan.artifacts.previewPath,
+    mainPath: finalPath,
     fps: plan.media.fps,
     colorCorrection: false,
     markers: [
       {
         seconds: 0,
         kind: "review",
-        name: "PRÉVIA INTELIGENTE RENDERIZADA",
-        note: `Plano ${plan.id}; efeitos dinâmicos já incorporados no vídeo.`,
+        name: "EDIÇÃO INTELIGENTE FINALIZADA",
+        note: `Plano ${plan.id}; efeitos e legendas atuais incorporados no vídeo.`,
         durationSeconds: 1,
       },
     ],

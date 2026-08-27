@@ -67,6 +67,7 @@ import {
   editedVideoTime,
   findActiveClipAtTime,
   nextPlayheadAfterCuts,
+  sourceVideoTime,
   videoActiveClips,
   videoCutRanges,
   type VideoActiveClip,
@@ -203,10 +204,14 @@ type EditEvent = IntelligentEditEvent;
 
 type EditorialReview = {
   captionsEnabled?: boolean;
+  captionPreset?: IntelligentCaptionPreset;
+  captionEmojis?: boolean;
+  captionPosition?: "bottom" | "center" | "top";
   motionPace?: IntelligentMotionPace;
   events: Array<Partial<EditEvent> & { id: string; enabled?: boolean }>;
   addedEvents?: EditEvent[];
   captions: Array<{ index: number; enabled?: boolean; start?: number; end?: number; text?: string }>;
+  previewPath?: string;
 };
 
 type Analysis = {
@@ -248,6 +253,9 @@ type Analysis = {
   design?: {
     palette: "kaoz" | "electric" | "premium" | "coral" | "course-theme";
     captionsEnabled: boolean;
+    captionPreset?: IntelligentCaptionPreset;
+    captionEmojis?: boolean;
+    captionPosition?: "bottom" | "center" | "top";
     colors: Record<string, string>;
   };
   courseTheme?: {
@@ -269,7 +277,7 @@ type Analysis = {
       editorialSuggestion?: string;
     }>;
   };
-  artifacts: { previewPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
+  artifacts: { previewPath?: string; finalPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
 };
 
 type BatchDiscovery = {
@@ -447,6 +455,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [musicWaveform, setMusicWaveform] = useState<number[]>([]);
   const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
   const [previewStale, setPreviewStale] = useState<boolean>(false);
+  const [captionSaveState, setCaptionSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pendingSourceCuts, setPendingSourceCuts] = useState<EditEvent[]>([]);
   const [cutStartTime, setCutStartTime] = useState<number | null>(null);
   const [inPoint, setInPoint] = useState<number | null>(null);
@@ -521,6 +530,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [showChaptersModal, setShowChaptersModal] = useState(false);
   const [chaptersCopied, setChaptersCopied] = useState(false);
   const dragStateRef = useRef<DragState | null>(null);
+  const savedReviewRef = useRef<{ planId: string; snapshot: string } | null>(null);
 
   const refreshSpeechModels = useCallback(async () => {
     const response = await fetch("/api/speech/models", { cache: "no-store" });
@@ -617,11 +627,41 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         setForm((current) => ({
           ...current,
           motionPace: loadedReview.motionPace || loadedAnalysis.motion?.pace || current.motionPace,
+          captionsEnabled: loadedReview.captionsEnabled ?? loadedAnalysis.design?.captionsEnabled ?? current.captionsEnabled,
+          captionPreset: loadedReview.captionPreset || loadedAnalysis.design?.captionPreset || current.captionPreset,
+          captionEmojis: loadedReview.captionEmojis ?? loadedAnalysis.design?.captionEmojis ?? current.captionEmojis,
         }));
         setPreviewStale(false);
       })
       .catch(() => undefined);
   }, [analysis, status?.analysisStatus?.status]);
+
+  useEffect(() => {
+    if (!analysis) return;
+    const snapshot = JSON.stringify(review);
+    if (savedReviewRef.current?.planId !== analysis.id) {
+      savedReviewRef.current = { planId: analysis.id, snapshot };
+      setCaptionSaveState("saved");
+      return;
+    }
+    if (savedReviewRef.current.snapshot === snapshot) return;
+    setCaptionSaveState("saving");
+    const timer = window.setTimeout(() => {
+      fetch("/api/davinci-free", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "save-editorial-review", planId: analysis.id, review }),
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Falha ao salvar as legendas.");
+          savedReviewRef.current = { planId: analysis.id, snapshot };
+          setCaptionSaveState("saved");
+        })
+        .catch(() => setCaptionSaveState("error"));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [analysis, review]);
 
   useEffect(() => {
     if (status?.analysisStatus?.status !== "running") {
@@ -630,8 +670,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [status?.analysisStatus?.status]);
 
   useEffect(() => {
-    if (busy !== "render-preview" && status?.renderStatus?.status !== "running") return;
-    if (status?.renderStatus?.status === "running") setBusy("render-preview");
+    const renderBusy = busy === "render-preview" || busy === "approve-intelligent";
+    if (!renderBusy && status?.renderStatus?.status !== "running") return;
+    if (status?.renderStatus?.status === "running") {
+      setBusy((current) => current === "approve-intelligent" ? current : "render-preview");
+    }
     const timer = window.setInterval(() => {
       refreshProgress().catch(() => undefined);
     }, 750);
@@ -640,7 +683,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   useEffect(() => {
     if (status?.renderStatus?.status !== "running") {
-      setBusy((current) => current === "render-preview" ? null : current);
+      setBusy((current) => current === "render-preview" || current === "approve-intelligent" ? null : current);
     }
   }, [status?.renderStatus?.status]);
 
@@ -825,7 +868,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
     setAnalysis(data.analysis as Analysis);
     setReview((data.editorialReview as EditorialReview | null) || { events: [], captions: [] });
-    setPreviewStale(true);
     const approximate = result.timingPrecision === "approximate";
     addLog(
       "success",
@@ -843,6 +885,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   async function prepareAnalyzedVideo(result: Analysis) {
     const draftReview: EditorialReview = {
       motionPace: form.motionPace,
+      captionsEnabled: form.captionsEnabled,
+      captionPreset: form.captionPreset,
+      captionEmojis: form.captionEmojis,
       events: [],
       captions: [],
       ...(pendingSourceCuts.length ? { addedEvents: pendingSourceCuts } : {}),
@@ -988,15 +1033,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!analysis) return;
     setBusy("render-preview");
     try {
-      addLog("info", "Salvando revisão e iniciando renderização de vídeo FFmpeg...", `Plano ID: ${analysis.id}`);
+      addLog("info", "Salvando revisão e gerando a prévia-base sem legendas...", `Plano ID: ${analysis.id}`);
       const saved = await action("save-editorial-review", { planId: analysis.id, review });
       if (!saved) {
         addLog("error", "Falha ao salvar a revisão editorial.");
         return;
       }
-      addLog("ffmpeg", "Executando codificação H.264 / AAC com legendas dinamicas e cartões de introdução...");
+      addLog("ffmpeg", "Executando codificação H.264 / AAC; as legendas continuarão como camada ao vivo...");
       const result = await action("render-preview", {
         planId: analysis.id,
+        renderMode: "live-preview",
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
         transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
@@ -1006,16 +1052,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       });
       if (result?.plan) {
         setAnalysis(result.plan as Analysis);
+        setReview((current) => ({ ...current, previewPath: String(result.previewPath) }));
         setPlayheadTime(0);
         setPlayerDuration(Number(result.durationSeconds) || 0);
         setPreviewStale(false);
         addLog(
           "success",
-          "Vídeo renderizado e pronto para reprodução!",
+          "Prévia-base renderizada e pronta para edição instantânea!",
           `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)} | Encoder: ${String(result.videoEncoder?.used)}`,
         );
         onStatusMessage({
-          text: `Prévia renderizada em ${String(result.previewPath)}`,
+          text: "Prévia limpa pronta. Mudanças nas legendas agora aparecem sem nova renderização.",
           type: "success",
         });
       } else {
@@ -1071,7 +1118,6 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function updateCaption(index: number, patch: Partial<EditorialReview["captions"][number]>) {
-    setPreviewStale(true);
     setReview((current) => ({
       ...current,
       captions: [...current.captions.filter((item) => item.index !== index), { ...captionReview(index), ...patch, index }],
@@ -1079,8 +1125,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }
 
   function updateCaptionsEnabled(enabled: boolean) {
-    setPreviewStale(true);
+    setForm((current) => ({ ...current, captionsEnabled: enabled }));
     setReview((current) => ({ ...current, captionsEnabled: enabled }));
+  }
+
+  function updateCaptionPreset(captionPreset: IntelligentCaptionPreset) {
+    setForm((current) => ({ ...current, captionPreset }));
+    setReview((current) => ({ ...current, captionPreset }));
+    setCaptionPresetPickerOpen(false);
+  }
+
+  function updateCaptionEmojis(captionEmojis: boolean) {
+    setForm((current) => ({ ...current, captionEmojis }));
+    if (analysis) setReview((current) => ({ ...current, captionEmojis }));
   }
 
   function updateMotionPace(motionPace: IntelligentMotionPace) {
@@ -1113,13 +1170,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function approve() {
     if (!analysis) return;
+    const saved = await action("save-editorial-review", { planId: analysis.id, review });
+    if (!saved) return;
     const result = await action("approve-intelligent", {
       requestId: `approved-${crypto.randomUUID()}`,
       planId: analysis.id,
+      outputResolution: form.outputResolution,
+      videoEncoder: form.videoEncoder,
     });
     if (result?.requestId) {
       onStatusMessage({
-        text: "Prévia aprovada. Agora execute o script Kaoz.1 dentro do Resolve.",
+        text: "Vídeo final com as legendas atuais preparado. Agora execute o script Kaoz.1 dentro do Resolve.",
         type: "success",
       });
     }
@@ -1381,6 +1442,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis]);
 
   const activeMediaAsset = analysis?.artifacts.previewPath ? "preview" : "source";
+  const hasLiveCaptionPreview = analysis?.artifacts.previewPath?.replaceAll("\\", "/").endsWith("/live-preview-v1.mp4") === true;
   const timelineDuration = useMemo(() => {
     if (playerDuration > 0) return playerDuration;
     if (analysis?.media.durationSeconds) {
@@ -1453,11 +1515,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     return analysis?.events || pendingSourceCuts;
   }, [activeMediaAsset, analysis?.events, pendingSourceCuts]);
   const captionsEnabled = review.captionsEnabled ?? (analysis?.design?.captionsEnabled !== false);
+  const captionPosition = review.captionPosition ?? analysis?.design?.captionPosition ?? "bottom";
 
-  const processingProgress = busy === "render-preview"
+  const processingProgress = busy === "render-preview" || busy === "approve-intelligent"
     ? status?.renderStatus?.status === "running" && status.renderStatus.planId === analysis?.id
-      ? { ...status.renderStatus, label: "Renderizando" }
-      : { progress: 1, stage: "Iniciando renderização...", label: "Renderizando" }
+      ? { ...status.renderStatus, label: busy === "approve-intelligent" ? "Finalizando" : "Renderizando" }
+      : { progress: 1, stage: "Iniciando renderização...", label: busy === "approve-intelligent" ? "Finalizando" : "Renderizando" }
     : busy === "analyze" || busy === "resync-captions"
       ? status?.analysisStatus?.status === "running"
         ? {
@@ -1532,6 +1595,14 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     return (analysis ? editedVideoTime(analysis.events, rawDuration, sourceTime) : sourceTime) + 4;
   }
 
+  const captionPlaybackTime = useMemo(() => {
+    if (activeMediaAsset !== "preview" || !analysis) return playheadTime;
+    const editedDuration = editedVideoDuration(analysis.events, analysis.media.durationSeconds);
+    const bodyTime = playheadTime - 4;
+    if (bodyTime < 0 || bodyTime > editedDuration) return -1;
+    return sourceVideoTime(analysis.events, analysis.media.durationSeconds, bodyTime);
+  }, [activeMediaAsset, analysis, playheadTime]);
+
   const currentActiveCaption = useMemo(() => {
     if (!captionsEnabled || !analysis?.captions?.length) return null;
     const index = analysis.captions.findIndex((c, idx) => {
@@ -1539,7 +1610,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       if (rev?.enabled === false) return false;
       const st = rev?.start ?? c.start;
       const en = rev?.end ?? c.end;
-      return playheadTime >= st && playheadTime <= en;
+      return captionPlaybackTime >= st && captionPlaybackTime <= en;
     });
     if (index < 0) return null;
     const caption = analysis.captions[index];
@@ -1550,12 +1621,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       end: change?.end ?? caption.end,
       text: change?.text ?? caption.text,
     };
-  }, [analysis?.captions, captionsEnabled, playheadTime, review.captions]);
+  }, [analysis?.captions, captionPlaybackTime, captionsEnabled, review.captions]);
 
   const currentKaraokeWordIndex = useMemo(() => {
     if (form.captionPreset !== "karaoke" || !currentActiveCaption) return undefined;
-    return activeKaraokeWordIndex(currentActiveCaption, playheadTime);
-  }, [currentActiveCaption, form.captionPreset, playheadTime]);
+    return activeKaraokeWordIndex(currentActiveCaption, captionPlaybackTime);
+  }, [captionPlaybackTime, currentActiveCaption, form.captionPreset]);
 
   type VideoChapter = {
     id: string;
@@ -2828,7 +2899,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
                 <ToggleSwitch
                   checked={form.captionsEnabled}
-                  onChange={(val) => setForm((current) => ({ ...current, captionsEnabled: val }))}
+                  onChange={(val) => analysis ? updateCaptionsEnabled(val) : setForm((current) => ({ ...current, captionsEnabled: val }))}
                   label="Incluir legendas no vídeo"
                   tooltip="Transcrição analisada mesmo com legendas desativadas."
                 />
@@ -2868,8 +2939,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                                     type="button"
                                     aria-pressed={selected}
                                     onClick={() => {
-                                      setForm((current) => ({ ...current, captionPreset: option.value }));
-                                      setCaptionPresetPickerOpen(false);
+                                      updateCaptionPreset(option.value);
                                     }}
                                     className={`group overflow-hidden rounded-md border text-left transition ${selected ? "border-sky-400 bg-sky-500/10 ring-1 ring-sky-400/30" : "border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.04]"}`}
                                   >
@@ -2891,7 +2961,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     <div className="pt-0.5">
                       <ToggleSwitch
                         checked={form.captionEmojis}
-                        onChange={(val) => setForm((current) => ({ ...current, captionEmojis: val }))}
+                        onChange={updateCaptionEmojis}
                         label="Emojis IA"
                       />
                     </div>
@@ -3038,7 +3108,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {videoMediaSrc && (
                   <div className="absolute left-3 top-3 flex items-center gap-2">
                     <span className="rounded-md border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-200">
-                      {activeMediaAsset === "preview" ? "Prévia renderizada" : "Vídeo carregado"}
+                      {activeMediaAsset === "preview" ? hasLiveCaptionPreview ? "Prévia dinâmica" : "Prévia renderizada" : "Vídeo carregado"}
                     </span>
                     {previewStale && activeMediaAsset === "preview" && (
                       <span className="rounded-md border border-amber-500/40 bg-amber-950/80 px-2 py-1 text-[9px] font-bold text-amber-200">
@@ -3049,8 +3119,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 )}
 
                 {/* Live Dynamic Caption Overlay */}
-                {activeMediaAsset === "source" && captionsEnabled && currentActiveCaption && (
-                  <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-center z-10">
+                {(activeMediaAsset === "source" || hasLiveCaptionPreview) && captionsEnabled && currentActiveCaption && (
+                  <div className={`pointer-events-none absolute inset-x-4 z-10 flex justify-center ${captionPosition === "top" ? "top-4" : captionPosition === "center" ? "top-1/2 -translate-y-1/2" : "bottom-4"}`}>
                     <div className="flex max-w-[90%] animate-in justify-center fade-in zoom-in-95 duration-100">
                       <CaptionPresetPreview
                         preset={form.captionPreset}
@@ -3680,7 +3750,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                             updateCaptionsEnabled(!captionsEnabled);
                           }}
                           className="flex h-full items-center justify-start gap-0.5 pl-2 font-mono text-[9px] font-bold text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-100"
-                          title={captionsEnabled ? "Desativar legendas no próximo render" : "Ativar legendas no próximo render"}
+                          title={captionsEnabled ? "Ocultar legendas imediatamente" : "Exibir legendas imediatamente"}
                         >
                           SUB
                           {captionsEnabled ? <Eye size={9} /> : <EyeOff size={9} />}
@@ -4197,6 +4267,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   label="Exibir legendas"
                   className="px-0 py-1"
                 />
+                <p className={`text-[9px] ${captionSaveState === "error" ? "text-red-300" : captionSaveState === "saving" ? "text-amber-300" : "text-emerald-300"}`}>
+                  {captionSaveState === "saving" ? "Salvando alterações..." : captionSaveState === "error" ? "Não foi possível salvar automaticamente" : "Alterações salvas automaticamente"}
+                </p>
                 {analysis?.captions.slice(0, 5).map((caption, index) => {
                   const change = captionReview(index);
                   const enabled = change.enabled !== false;
@@ -5018,7 +5091,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             ) : (
               <Film size={14} />
             )}
-            {analysis?.artifacts.previewPath ? "Renderizar novamente" : "Renderizar vídeo"}
+            {analysis?.artifacts.previewPath ? "Atualizar prévia-base" : "Gerar prévia-base"}
           </button>
 
           <button
@@ -5026,8 +5099,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             onClick={approve}
             className="kaoz-signal-action flex items-center gap-2 bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:opacity-40"
           >
-            <CheckCircle size={15} />
-            Preparar para o DaVinci (opcional)
+            {busy === "approve-intelligent" ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+            Finalizar para o DaVinci (opcional)
           </button>
         </div>
       </footer>

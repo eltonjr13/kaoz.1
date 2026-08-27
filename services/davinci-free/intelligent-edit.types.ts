@@ -231,6 +231,7 @@ export interface IntelligentEditorialReview {
   captionsEnabled?: boolean;
   captionPreset?: IntelligentCaptionPreset;
   captionEmojis?: boolean;
+  captionPosition?: "bottom" | "center" | "top";
   motionPace?: IntelligentMotionPace;
   events: IntelligentEditorialEventOverride[];
   addedEvents?: IntelligentEditEvent[];
@@ -347,6 +348,7 @@ export interface IntelligentEditPlan {
     captionsPath: string;
     planPath: string;
     previewPath?: string;
+    finalPath?: string;
   };
 }
 
