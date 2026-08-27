@@ -213,7 +213,7 @@ async function requestTranscription(audio: File): Promise<SpeechTranscriptionRes
   }
   try {
     const form = new FormData();
-    form.set("file", new Blob([bytes], { type: "audio/wav" }), "speech.wav");
+    form.set("file", new Blob([new Uint8Array(bytes)], { type: "audio/wav" }), "speech.wav");
     form.set("response_format", "verbose_json");
     form.set("language", "pt");
     const response = await fetch(`http://127.0.0.1:${state.port}/inference`, {

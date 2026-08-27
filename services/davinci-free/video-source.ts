@@ -1,7 +1,53 @@
+import crypto from "node:crypto";
 import path from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { open, readdir, stat } from "node:fs/promises";
 
 export const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mxf", ".avi", ".mkv", ".webm"]);
+
+export async function sha256File(filePath: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+export async function fastVideoFingerprint(filePath: string): Promise<string> {
+  const fileStat = await stat(filePath).catch(() => null);
+  if (!fileStat || !fileStat.isFile()) return sha256File(filePath);
+
+  if (fileStat.size < 4 * 1024 * 1024) {
+    return sha256File(filePath);
+  }
+
+  const chunkSize = 64 * 1024;
+  const hash = crypto.createHash("sha256");
+  hash.update(`fast-fingerprint-v1:${fileStat.size}:${fileStat.mtimeMs}:`);
+
+  const fileHandle = await open(filePath, "r");
+  try {
+    const headBuf = Buffer.alloc(chunkSize);
+    const { bytesRead: headRead } = await fileHandle.read(headBuf, 0, chunkSize, 0);
+    hash.update(headBuf.subarray(0, headRead));
+
+    const midOffset = Math.max(0, Math.floor((fileStat.size - chunkSize) / 2));
+    const midBuf = Buffer.alloc(chunkSize);
+    const { bytesRead: midRead } = await fileHandle.read(midBuf, 0, chunkSize, midOffset);
+    hash.update(midBuf.subarray(0, midRead));
+
+    const tailOffset = Math.max(0, fileStat.size - chunkSize);
+    const tailBuf = Buffer.alloc(chunkSize);
+    const { bytesRead: tailRead } = await fileHandle.read(tailBuf, 0, chunkSize, tailOffset);
+    hash.update(tailBuf.subarray(0, tailRead));
+
+    return hash.digest("hex");
+  } finally {
+    await fileHandle.close();
+  }
+}
 
 function isSupportedVideo(filePath: string) {
   return VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());

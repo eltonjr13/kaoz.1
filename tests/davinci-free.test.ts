@@ -65,6 +65,7 @@ import {
   resolveMotionProfile,
 } from "../services/davinci-free/intelligent-edit.motion.ts";
 import { karaokeCaptionSlices } from "../services/davinci-free/caption-karaoke.ts";
+import { fastVideoFingerprint } from "../services/davinci-free/video-source.ts";
 import type {
   IntelligentEditEvent,
   IntelligentPedagogicalItem,
@@ -1135,3 +1136,67 @@ test("limpeza de cache do editor remove estado persistido, waveforms, uploads e 
   assert.match(panel, /initialAnalysisLoadedRef/);
   assert.match(panel, /Limpar Cache/);
 });
+
+test("fastVideoFingerprint gera hash determinístico e suporta arquivos pequenos e grandes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "kaoz-fp-test-"));
+  try {
+    const fileA = path.join(dir, "video-sample.mp4");
+    await writeFile(fileA, Buffer.alloc(1024 * 64, 42));
+    const hash1 = await fastVideoFingerprint(fileA);
+    const hash2 = await fastVideoFingerprint(fileA);
+    assert.equal(hash1, hash2);
+    assert.equal(typeof hash1, "string");
+    assert.equal(hash1.length, 64);
+
+    const fileB = path.join(dir, "different.mp4");
+    await writeFile(fileB, Buffer.alloc(1024 * 64, 99));
+    const hashB = await fastVideoFingerprint(fileB);
+    assert.notEqual(hash1, hashB);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pipeline de análise usa âncora visual estabilizada real, cortes de silêncio e transcrição otimizada", async () => {
+  const service = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.service.ts"),
+    "utf8",
+  );
+  const whisper = await readFile(
+    path.join(process.cwd(), "services", "speech", "speech-whisper-cpp-runtime.ts"),
+    "utf8",
+  );
+  const pedagogy = await readFile(
+    path.join(process.cwd(), "services", "davinci-free", "pedagogical-analysis.ts"),
+    "utf8",
+  );
+
+  // Verifies that face tracking doesn't reset target coordinates to 0.5
+  assert.match(service, /target\.x\s*=\s*previousSubjectAnchor\.x/);
+  assert.match(service, /target\.y\s*=\s*previousSubjectAnchor\.y/);
+  // Verifies parallel frame extraction
+  assert.match(service, /Promise\.all\(\s*paddedEvents\.map/);
+
+  // Verifies master audio extraction, WAV copy codec, and concurrency >= 3
+  assert.match(service, /extractMasterAudio/);
+  assert.match(service, /CONCURRENCY\s*=\s*3/);
+  assert.match(service, /"-c:a",\s*"copy"/);
+  assert.match(service, /fastVideoFingerprint/);
+
+  // Verifies decoupled transcript caching
+  assert.match(service, /TRANSCRIPTS_DIR/);
+  assert.match(service, /saveTranscriptCache/);
+
+  // Verifies automatic silence cutting
+  assert.match(service, /autoCutSilences/);
+  assert.match(service, /silenceCutThresholdSeconds/);
+  assert.match(service, /silence-cut/);
+  assert.match(service, /Corte de silêncio/);
+
+  // Verifies Whisper PCM 16k mono fast path
+  assert.match(whisper, /isPcm16kMonoWav/);
+
+  // Verifies pedagogical analysis concurrency
+  assert.match(pedagogy, /Promise\.all\(\s*chunks\.map/);
+});
+
