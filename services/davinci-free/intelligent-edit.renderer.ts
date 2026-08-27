@@ -28,6 +28,7 @@ import {
   type VideoEncoder,
 } from "./video-encoder";
 import { formattedLessonNumber } from "./lesson-download";
+import { karaokeCaptionSlices } from "./caption-karaoke";
 import {
   editedVideoDuration,
   editedVideoTime,
@@ -352,35 +353,16 @@ function injectContextualEmojis(text: string): string {
   return enriched;
 }
 
-function karaokeCaptionWords(
-  caption: IntelligentCaption,
-  useEmojis: boolean,
-) {
-  const words = caption.text.split(/\s+/).filter(Boolean);
-  const enriched = useEmojis ? injectContextualEmojis(caption.text) : caption.text;
-  const suffix = enriched.slice(caption.text.length).trim();
-  if (suffix && words.length) words[words.length - 1] = `${words[words.length - 1]} ${suffix}`;
-  const duration = Math.max(0.04, caption.end - caption.start);
-  const preciseWords = caption.words?.filter(
-    (word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start,
-  );
-  return words.map((text, index) => ({
-    text,
-    start: preciseWords?.[index]?.start ?? caption.start + (duration * index) / words.length,
-    end: preciseWords?.[index]?.end ?? caption.start + (duration * (index + 1)) / words.length,
-  }));
-}
-
 function karaokeCaptionText(
-  words: Array<{ text: string }>,
+  words: string[],
   activeIndex: number,
   accent: string,
 ) {
-  const shouldWrap = words.map((word) => word.text).join(" ").length > 42 && words.length >= 5;
+  const shouldWrap = words.join(" ").length > 42 && words.length >= 5;
   const middle = shouldWrap ? Math.ceil(words.length / 2) : -1;
   return words.map((word, index) => {
     const separator = index === middle ? "\\N" : index > 0 ? " " : "";
-    const safeWord = assText(word.text);
+    const safeWord = assText(word);
     if (index !== activeIndex) return `${separator}${safeWord}`;
     return `${separator}{\\1c${assColor(accent)}\\bord6\\blur0.4}${safeWord}{\\rCaptionKaraoke}`;
   }).join("");
@@ -391,16 +373,10 @@ export function karaokeCaptionEvents(
   colors: IntelligentEditDesign["colors"],
   useEmojis: boolean,
 ) {
-  const words = karaokeCaptionWords(caption, useEmojis);
-  return words.flatMap((word, index) => {
-    const start = index === 0
-      ? caption.start
-      : Math.max(caption.start, Math.min(caption.end, word.start));
-    const nextStart = words[index + 1]?.start ?? caption.end;
-    const end = Math.max(start, Math.min(caption.end, nextStart));
-    if (end <= start) return [];
-    const text = karaokeCaptionText(words, index, colors.primary);
-    return [`Dialogue: 0,${assTime(start)},${assTime(end)},CaptionKaraoke,,0,0,0,,${text}`];
+  const displayText = useEmojis ? injectContextualEmojis(caption.text) : caption.text;
+  return karaokeCaptionSlices(caption, displayText).map((slice) => {
+    const text = karaokeCaptionText(slice.words, slice.activeIndex, colors.primary);
+    return `Dialogue: 0,${assTime(slice.start)},${assTime(slice.end)},CaptionKaraoke,,0,0,0,,${text}`;
   });
 }
 

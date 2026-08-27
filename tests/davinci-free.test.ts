@@ -63,7 +63,7 @@ import {
   defaultMotionPace,
   resolveMotionProfile,
 } from "../services/davinci-free/intelligent-edit.motion.ts";
-import { karaokeCaptionEvents } from "../services/davinci-free/intelligent-edit.renderer.ts";
+import { karaokeCaptionSlices } from "../services/davinci-free/caption-karaoke.ts";
 import type {
   IntelligentEditEvent,
   IntelligentPedagogicalItem,
@@ -86,7 +86,7 @@ test("presets de movimento mantêm ritmo legível em todos os estilos", () => {
 });
 
 test("karaokê destaca somente a palavra ativa em cada intervalo real", () => {
-  const events = karaokeCaptionEvents(
+  const slices = karaokeCaptionSlices(
     {
       start: 2,
       end: 3.5,
@@ -97,23 +97,14 @@ test("karaokê destaca somente a palavra ativa em cada intervalo real", () => {
         { text: "forte", start: 3, end: 3.4 },
       ],
     },
-    {
-      background: "#000000",
-      surface: "#111111",
-      primary: "#FFCC00",
-      secondary: "#8855FF",
-      text: "#FFFFFF",
-      muted: "#AAAAAA",
-    },
-    false,
   );
 
-  assert.equal(events.length, 3);
-  assert.match(events[0], /0:00:02\.00,0:00:02\.40,CaptionKaraoke/);
-  assert.match(events[0], /\\blur0\.4\}Uma\{\\rCaptionKaraoke\} ideia forte$/);
-  assert.match(events[1], /Uma \{\\1c.*\\blur0\.4\}ideia\{\\rCaptionKaraoke\} forte$/);
-  assert.match(events[2], /Uma ideia \{\\1c.*\\blur0\.4\}forte\{\\rCaptionKaraoke\}$/);
-  assert.doesNotMatch(events.join("\n"), /\{\\k\d+/);
+  assert.deepEqual(slices.map(({ start, end, activeIndex }) => ({ start, end, activeIndex })), [
+    { start: 2, end: 2.4, activeIndex: 0 },
+    { start: 2.4, end: 3, activeIndex: 1 },
+    { start: 3, end: 3.5, activeIndex: 2 },
+  ]);
+  assert.deepEqual(slices[1].words, ["Uma", "ideia", "forte"]);
 });
 
 test("composição de movimento separa efeitos concorrentes sem perder eventos", () => {
@@ -973,6 +964,8 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /snapGuideTime/);
   assert.match(renderer, /CaptionHormozi/);
   assert.match(renderer, /CaptionKaraoke/);
+  assert.match(renderer, /karaokeCaptionSlices/);
+  assert.match(renderer, /\\rCaptionKaraoke/);
   assert.match(renderer, /CaptionClean/);
   assert.match(renderer, /CaptionNeon/);
   assert.match(renderer, /CaptionBoxed/);
@@ -984,6 +977,7 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /captionPresetPickerOpen/);
   assert.match(panel, /aria-expanded=\{captionPresetPickerOpen\}/);
   assert.match(panel, /setCaptionPresetPickerOpen\(false\)/);
+  assert.match(panel, /activeWordIndex=\{currentKaraokeWordIndex\}/);
   assert.match(panel, /Neon Tech/);
   assert.match(panel, /Caixa/);
   assert.match(panel, /Contorno/);

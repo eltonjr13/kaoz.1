@@ -78,6 +78,7 @@ import type {
   IntelligentMotionPace,
   IntelligentSoundEffect,
 } from "@/services/davinci-free/intelligent-edit.types";
+import { activeKaraokeWordIndex } from "@/services/davinci-free/caption-karaoke";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -1553,16 +1554,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const currentKaraokeWordIndex = useMemo(() => {
     if (form.captionPreset !== "karaoke" || !currentActiveCaption) return undefined;
-    const words = currentActiveCaption.words?.filter((word) => word.end > word.start) || [];
-    if (words.length) {
-      const activeIndex = words.findIndex((word) => playheadTime >= word.start && playheadTime < word.end);
-      if (activeIndex >= 0) return activeIndex;
-      const nextIndex = words.findIndex((word) => playheadTime < word.start);
-      return nextIndex < 0 ? words.length - 1 : Math.max(0, nextIndex - 1);
-    }
-    const wordCount = currentActiveCaption.text.split(/\s+/).filter(Boolean).length;
-    const progress = (playheadTime - currentActiveCaption.start) / Math.max(0.04, currentActiveCaption.end - currentActiveCaption.start);
-    return Math.min(wordCount - 1, Math.max(0, Math.floor(progress * wordCount)));
+    return activeKaraokeWordIndex(currentActiveCaption, playheadTime);
   }, [currentActiveCaption, form.captionPreset, playheadTime]);
 
   type VideoChapter = {
