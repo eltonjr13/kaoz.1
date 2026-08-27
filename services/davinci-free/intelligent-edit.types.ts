@@ -383,4 +383,6 @@ export interface IntelligentEditAnalysisInput {
   transcriptionAllowCloudFallback?: boolean;
   transcriptionMode?: "webspeech" | "cloud" | "local";
   transcriptionSegments?: TimedTranscriptSegment[];
+  autoCutSilences?: boolean;
+  silenceCutThresholdSeconds?: number;
 }

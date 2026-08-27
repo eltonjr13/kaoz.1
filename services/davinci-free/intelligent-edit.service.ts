@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -57,13 +57,6 @@ import {
   transcriptTimingPrecision,
   type SpeechInterval,
 } from "./caption-timing";
-
-const ROOT = path.join(getLocalDataDir(), "davinci-resolve-free", "intelligent");
-const LATEST_PATH = path.join(ROOT, "latest-analysis.json");
-const ANALYSIS_STATUS_PATH = path.join(ROOT, "analysis-status.json");
-const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".aac", ".m4a", ".flac"]);
-
-export type IntelligentAnalysisStatus = {
   status: "running" | "completed" | "failed";
   requestId: string;
   sourcePath: string;

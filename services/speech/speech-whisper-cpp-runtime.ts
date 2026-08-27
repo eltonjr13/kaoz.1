@@ -188,11 +188,30 @@ async function normalizeAudio(audio: File): Promise<{ wavPath: string; cleanup: 
   }
 }
 
+function isPcm16kMonoWav(buffer: Buffer): boolean {
+  if (buffer.length < 28) return false;
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") return false;
+  const fmtIndex = buffer.indexOf("fmt ");
+  if (fmtIndex === -1 || fmtIndex + 16 > buffer.length) return false;
+  const formatTag = buffer.readUInt16LE(fmtIndex + 8);
+  const channels = buffer.readUInt16LE(fmtIndex + 10);
+  const sampleRate = buffer.readUInt32LE(fmtIndex + 12);
+  return formatTag === 1 && channels === 1 && sampleRate === 16000;
+}
+
 async function requestTranscription(audio: File): Promise<SpeechTranscriptionResult> {
   if (!state.port || !state.backend) throw new Error("Runtime whisper.cpp nao esta pronto.");
-  const normalized = await normalizeAudio(audio);
+  const buffer = Buffer.from(await audio.arrayBuffer());
+  let bytes: Buffer;
+  let cleanup: (() => Promise<void>) | undefined;
+  if (isPcm16kMonoWav(buffer)) {
+    bytes = buffer;
+  } else {
+    const normalized = await normalizeAudio(audio);
+    bytes = await readFile(normalized.wavPath);
+    cleanup = normalized.cleanup;
+  }
   try {
-    const bytes = await readFile(normalized.wavPath);
     const form = new FormData();
     form.set("file", new Blob([bytes], { type: "audio/wav" }), "speech.wav");
     form.set("response_format", "verbose_json");
@@ -213,7 +232,7 @@ async function requestTranscription(audio: File): Promise<SpeechTranscriptionRes
       ...normalizeSpeechTiming(payload),
     };
   } finally {
-    await normalized.cleanup();
+    if (cleanup) await cleanup();
   }
 }
 

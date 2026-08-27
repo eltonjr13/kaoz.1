@@ -339,16 +339,20 @@ export async function analyzePedagogicalTranscript(
   input: AnalyzePedagogicalTranscriptInput,
 ): Promise<IntelligentPedagogicalAnalysis> {
   const chunks = buildPedagogicalTranscriptChunks(input.segments, input.maxChunkCharacters);
-  const items: IntelligentPedagogicalItem[] = [];
+  const chunkOutcomes = await Promise.all(
+    chunks.map(async (chunk) => {
+      const chunkItems = await agentItemsForChunk(input, chunk, chunks.length);
+      if (chunkItems.length) {
+        return { isAgent: true, items: chunkItems };
+      }
+      return { isAgent: false, items: deterministicChunkItems(chunk, chunks.length) };
+    }),
+  );
   let agentChunks = 0;
-  for (const chunk of chunks) {
-    const chunkItems = await agentItemsForChunk(input, chunk, chunks.length);
-    if (chunkItems.length) {
-      agentChunks += 1;
-      items.push(...chunkItems);
-    } else {
-      items.push(...deterministicChunkItems(chunk, chunks.length));
-    }
+  const items: IntelligentPedagogicalItem[] = [];
+  for (const outcome of chunkOutcomes) {
+    if (outcome.isAgent) agentChunks += 1;
+    items.push(...outcome.items);
   }
   const source = agentChunks === chunks.length && chunks.length > 0
     ? "agent"
