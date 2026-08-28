@@ -20,6 +20,7 @@ test("remove dados runtime copiados sem apagar código ou dados originais", asyn
     const standalone = path.join(root, ".next", "standalone");
     const copiedPaths = [
       path.join(standalone, ".generated", "jobs", "copied.txt"),
+      path.join(standalone, "build", "runtime", "parakeet", "copied.txt"),
       path.join(standalone, "storage", "generated", "copied.txt"),
       path.join(standalone, "tmp", "copied.txt"),
       path.join(standalone, "public", "uploads", "copied.txt"),
@@ -33,7 +34,7 @@ test("remove dados runtime copiados sem apagar código ou dados originais", asyn
     }
 
     const removed = pruneNextStandalone(root);
-    assert.deepEqual(removed, [".generated", "storage", "tmp", "public/uploads"]);
+    assert.deepEqual(removed, [".generated", "build/runtime", "storage", "tmp", "public/uploads"]);
     await assert.doesNotReject(() => import("node:fs/promises").then(({ access }) => access(serverFile)));
     await assert.doesNotReject(() => import("node:fs/promises").then(({ access }) => access(originalData)));
     for (const file of copiedPaths) {
@@ -59,12 +60,15 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
     const helperRuntime = path.join(root, "node_modules", "@swc", "helpers", "index.js");
     const reactPackage = path.join(root, "node_modules", "react", "package.json");
     const reactRuntime = path.join(root, "node_modules", "react", "index.js");
+    const swcPackage = path.join(root, "node_modules", "@next", "swc-win32-x64-msvc", "package.json");
+    const swcRuntime = path.join(root, "node_modules", "@next", "swc-win32-x64-msvc", "runtime.node");
     const packageContents = {
       name: "next",
       main: "./dist/server/next.js",
       dependencies: { "@swc/helpers": "1.0.0" },
       peerDependencies: { react: "1.0.0", sass: "1.0.0" },
       peerDependenciesMeta: { sass: { optional: true } },
+      optionalDependencies: { "@next/swc-win32-x64-msvc": "1.0.0" },
     };
 
     for (const [file, contents] of [
@@ -75,6 +79,8 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
       [helperRuntime, "module.exports = {}\n"],
       [reactPackage, JSON.stringify({ name: "react", main: "./index.js" })],
       [reactRuntime, "module.exports = {}\n"],
+      [swcPackage, JSON.stringify({ name: "@next/swc-win32-x64-msvc", main: "runtime.node" })],
+      [swcRuntime, "build-only\n"],
     ]) {
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, contents, "utf8");
@@ -96,6 +102,7 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
       path.join(standalone, "node_modules", "react", "index.js"),
     );
     await assert.rejects(() => readFile(path.join(standalone, "node_modules", "sass", "package.json")), /ENOENT/);
+    await assert.rejects(() => readFile(path.join(standalone, "node_modules", "@next", "swc-win32-x64-msvc", "package.json")), /ENOENT/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const copiedRuntimePaths = [
   ".generated",
+  path.join("build", "runtime"),
   "storage",
   "tmp",
   path.join("public", "uploads"),

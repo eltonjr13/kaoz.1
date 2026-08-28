@@ -20,6 +20,32 @@ const desktopRuntimeEntryPoints = Object.freeze({
   ]),
 });
 
+const buildOnlyOptionalDependencies = new Set([
+  "@next/swc-darwin-arm64",
+  "@next/swc-darwin-x64",
+  "@next/swc-linux-arm64-gnu",
+  "@next/swc-linux-arm64-musl",
+  "@next/swc-linux-x64-gnu",
+  "@next/swc-linux-x64-musl",
+  "@next/swc-win32-arm64-msvc",
+  "@next/swc-win32-x64-msvc",
+]);
+
+function pruneRuntimeMetadata(packageRoot) {
+  const pending = [packageRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(target);
+      } else if (entry.isFile() && (entry.name.endsWith(".map") || entry.name.endsWith(".d.ts"))) {
+        fs.rmSync(target, { force: true });
+      }
+    }
+  }
+}
+
 function assertPathInside(root, candidate, label) {
   const relative = path.relative(root, candidate);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -71,6 +97,7 @@ export function ensureRuntimePackage(root, standaloneRoot, packageName) {
     assertPathInside(standaloneRoot, packageRoot, `Destino do pacote ${relativePackageRoot}`);
     fs.rmSync(packageRoot, { recursive: true, force: true });
     fs.cpSync(sourceRoot, packageRoot, { recursive: true });
+    pruneRuntimeMetadata(packageRoot);
     fs.copyFileSync(sourceManifest, destinationManifest);
 
     const manifest = JSON.parse(fs.readFileSync(sourceManifest, "utf8"));
@@ -82,7 +109,8 @@ export function ensureRuntimePackage(root, standaloneRoot, packageName) {
     }
     const dependencies = new Set([
       ...requiredDependencies,
-      ...Object.keys(manifest.optionalDependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {})
+        .filter((dependency) => !buildOnlyOptionalDependencies.has(dependency)),
     ]);
     const requireFromPackage = createRequire(sourceManifest);
     for (const dependency of dependencies) {

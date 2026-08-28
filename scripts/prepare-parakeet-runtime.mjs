@@ -11,6 +11,25 @@ const marker = path.join(packagesRoot, "onnx_asr", "__init__.py");
 const pythonZip = path.join(runtimeRoot, "python-embed.zip");
 const getPip = path.join(runtimeRoot, "get-pip.py");
 
+function pruneBuildOnlyFiles(rootDirectory) {
+  const pending = [rootDirectory];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (["__pycache__", "test", "tests"].includes(entry.name)) {
+          fs.rmSync(target, { recursive: true, force: true });
+        } else {
+          pending.push(target);
+        }
+      } else if (entry.isFile() && entry.name.endsWith(".pyc")) {
+        fs.rmSync(target, { force: true });
+      }
+    }
+  }
+}
+
 function run(file, args) {
   execFileSync(file, args, { cwd: root, stdio: "inherit" });
 }
@@ -41,5 +60,9 @@ if (!fs.existsSync(marker)) {
   run(pythonExe, [getPip, "--no-warn-script-location"]);
   run(pythonExe, ["-m", "pip", "install", "--no-cache-dir", "--target", packagesRoot, "onnx-asr==0.11.0", "onnxruntime==1.27.0", "soundfile==0.14.0", "huggingface_hub==1.23.0", "faster-whisper==1.1.1"]);
 }
+
+pruneBuildOnlyFiles(runtimeRoot);
+fs.rmSync(pythonZip, { force: true });
+fs.rmSync(getPip, { force: true });
 
 console.log(`Runtime Parakeet preparado em ${runtimeRoot}`);

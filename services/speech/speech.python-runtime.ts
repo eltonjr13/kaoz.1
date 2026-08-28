@@ -113,6 +113,7 @@ function startManagedProcess(provider: SpeechProviderName): void {
       STT_DEVICE: process.env.STT_DEVICE || "cpu",
       STT_COMPUTE_TYPE: process.env.STT_COMPUTE_TYPE || "int8",
       STT_LANGUAGE: process.env.STT_LANGUAGE || "pt",
+      PYTHONDONTWRITEBYTECODE: "1",
       PARAKEET_MODEL_DIR: process.env.PARAKEET_MODEL_DIR || path.join(runtimeRoot, "model"),
       FFMPEG_PATH: getFfmpegExecutable(),
     },
