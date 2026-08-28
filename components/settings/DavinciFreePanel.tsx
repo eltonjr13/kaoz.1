@@ -73,6 +73,7 @@ import {
   type VideoActiveClip,
   type VideoCutRange,
 } from "@/services/davinci-free/video-cuts";
+import { isKaraokeCaptionPreset } from "@/services/davinci-free/intelligent-edit.types";
 import type {
   IntelligentCaptionPreset,
   IntelligentEditEvent,
@@ -141,6 +142,10 @@ const CAPTION_PRESET_OPTIONS: Array<{
 }> = [
   { value: "hormozi", label: "Viral", description: "Alto impacto" },
   { value: "karaoke", label: "Karaokê", description: "Palavra por palavra" },
+  { value: "karaoke-fill", label: "Karaokê Fill", description: "Progresso da fala" },
+  { value: "karaoke-pop", label: "Karaokê Pop", description: "Palavra pulsante" },
+  { value: "karaoke-neon", label: "Karaokê Neon", description: "Brilho sincronizado" },
+  { value: "karaoke-box", label: "Karaokê Caixa", description: "Destaque editorial" },
   { value: "clean", label: "Clean", description: "Leve e discreta" },
   { value: "classic", label: "Clássica", description: "Educacional" },
   { value: "neon", label: "Neon Tech", description: "Brilho futurista" },
@@ -170,9 +175,27 @@ function CaptionPresetPreview({
   if (preset === "hormozi") {
     return <span className={`rounded bg-black/95 px-2 py-1 text-center font-black uppercase tracking-wide text-white shadow-lg ${size}`}>{words.map((word, index) => <span key={`${word}-${index}`} className={index < 2 ? "text-amber-300" : undefined}>{index > 0 ? " " : ""}{word}</span>)}</span>;
   }
-  if (preset === "karaoke") {
+  if (isKaraokeCaptionPreset(preset)) {
     const currentWord = activeWordIndex ?? 0;
-    return <span className={`rounded-md border border-violet-400/40 bg-black/85 px-2 py-1 text-center font-extrabold text-white shadow-lg ${size}`}>{words.map((word, index) => <span key={`${word}-${index}`} className={index === currentWord ? "text-violet-400 [text-shadow:0_0_8px_rgba(167,139,250,0.8)]" : undefined}>{index > 0 ? " " : ""}{word}</span>)}</span>;
+    const shell = preset === "karaoke-neon"
+      ? "rounded-md border border-cyan-300/60 bg-[#090312]/90 shadow-[0_0_16px_rgba(34,211,238,0.35)]"
+      : preset === "karaoke-box"
+        ? "rounded-sm border border-amber-200/70 bg-amber-300 text-zinc-950 shadow-[3px_3px_0_rgba(0,0,0,0.85)]"
+        : "rounded-md border border-violet-400/40 bg-black/85 text-white shadow-lg";
+    return <span className={`${shell} px-2 py-1 text-center font-extrabold ${size}`}>{words.map((word, index) => {
+      const active = index === currentWord;
+      const completed = index < currentWord;
+      const wordClass = preset === "karaoke-fill"
+        ? active ? "text-amber-200 scale-110" : completed ? "text-violet-400" : "text-white/55"
+        : preset === "karaoke-pop"
+          ? active ? "inline-block scale-125 text-lime-300 [text-shadow:0_0_8px_rgba(190,242,100,0.75)]" : "text-white/70"
+          : preset === "karaoke-neon"
+            ? active ? "text-cyan-200 [text-shadow:0_0_10px_#22d3ee]" : completed ? "text-fuchsia-300" : "text-white/55"
+            : preset === "karaoke-box"
+              ? active ? "rounded-sm bg-zinc-950 px-1 text-amber-200" : completed ? "text-zinc-700" : "text-zinc-950/55"
+              : active ? "text-violet-400 [text-shadow:0_0_8px_rgba(167,139,250,0.8)]" : undefined;
+      return <span key={`${word}-${index}`} className={wordClass}>{index > 0 ? " " : ""}{word}</span>;
+    })}</span>;
   }
   if (preset === "clean") {
     return <span className={`rounded-full border border-white/15 bg-zinc-950/80 px-2.5 py-1 text-center font-medium text-zinc-100 shadow ${size}`}>{text}</span>;
@@ -1624,7 +1647,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [analysis?.captions, captionPlaybackTime, captionsEnabled, review.captions]);
 
   const currentKaraokeWordIndex = useMemo(() => {
-    if (form.captionPreset !== "karaoke" || !currentActiveCaption) return undefined;
+    if (!isKaraokeCaptionPreset(form.captionPreset) || !currentActiveCaption) return undefined;
     return activeKaraokeWordIndex(currentActiveCaption, captionPlaybackTime);
   }, [captionPlaybackTime, currentActiveCaption, form.captionPreset]);
 

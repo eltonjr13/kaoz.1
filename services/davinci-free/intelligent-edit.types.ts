@@ -30,15 +30,30 @@ export type IntelligentCourseThemeKey =
   | "technology"
   | "creative";
 
-export type IntelligentCaptionPreset =
-  | "hormozi"
-  | "karaoke"
-  | "clean"
-  | "classic"
-  | "neon"
-  | "boxed"
-  | "outline"
-  | "highlight";
+export const INTELLIGENT_CAPTION_PRESETS = [
+  "hormozi",
+  "karaoke",
+  "karaoke-fill",
+  "karaoke-pop",
+  "karaoke-neon",
+  "karaoke-box",
+  "clean",
+  "classic",
+  "neon",
+  "boxed",
+  "outline",
+  "highlight",
+] as const;
+
+export type IntelligentCaptionPreset = typeof INTELLIGENT_CAPTION_PRESETS[number];
+
+export function isIntelligentCaptionPreset(value: unknown): value is IntelligentCaptionPreset {
+  return INTELLIGENT_CAPTION_PRESETS.includes(value as IntelligentCaptionPreset);
+}
+
+export function isKaraokeCaptionPreset(value: unknown): value is IntelligentCaptionPreset {
+  return typeof value === "string" && (value === "karaoke" || value.startsWith("karaoke-"));
+}
 
 export interface IntelligentEditDesign {
   palette: IntelligentEditPalette;

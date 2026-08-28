@@ -66,6 +66,11 @@ import {
 } from "../services/davinci-free/intelligent-edit.motion.ts";
 import { karaokeCaptionSlices } from "../services/davinci-free/caption-karaoke.ts";
 import { fastVideoFingerprint } from "../services/davinci-free/video-source.ts";
+import {
+  INTELLIGENT_CAPTION_PRESETS,
+  isIntelligentCaptionPreset,
+  isKaraokeCaptionPreset,
+} from "../services/davinci-free/intelligent-edit.types.ts";
 import type {
   IntelligentEditEvent,
   IntelligentPedagogicalItem,
@@ -107,6 +112,15 @@ test("karaokê destaca somente a palavra ativa em cada intervalo real", () => {
     { start: 3, end: 3.5, activeIndex: 2 },
   ]);
   assert.deepEqual(slices[1].words, ["Uma", "ideia", "forte"]);
+  assert.deepEqual(INTELLIGENT_CAPTION_PRESETS.filter(isKaraokeCaptionPreset), [
+    "karaoke",
+    "karaoke-fill",
+    "karaoke-pop",
+    "karaoke-neon",
+    "karaoke-box",
+  ]);
+  assert.equal(isIntelligentCaptionPreset("karaoke-neon"), true);
+  assert.equal(isIntelligentCaptionPreset("karaoke-inexistente"), false);
 });
 
 test("composição de movimento separa efeitos concorrentes sem perder eventos", () => {
@@ -987,8 +1001,12 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /snapGuideTime/);
   assert.match(renderer, /CaptionHormozi/);
   assert.match(renderer, /CaptionKaraoke/);
+  assert.match(renderer, /CaptionKaraokeFill/);
+  assert.match(renderer, /CaptionKaraokePop/);
+  assert.match(renderer, /CaptionKaraokeNeon/);
+  assert.match(renderer, /CaptionKaraokeBox/);
   assert.match(renderer, /karaokeCaptionSlices/);
-  assert.match(renderer, /\\rCaptionKaraoke/);
+  assert.match(renderer, /karaokeStyleName/);
   assert.match(renderer, /CaptionClean/);
   assert.match(renderer, /CaptionNeon/);
   assert.match(renderer, /CaptionBoxed/);
@@ -1001,6 +1019,10 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /aria-expanded=\{captionPresetPickerOpen\}/);
   assert.match(panel, /setCaptionPresetPickerOpen\(false\)/);
   assert.match(panel, /activeWordIndex=\{currentKaraokeWordIndex\}/);
+  assert.match(panel, /Karaokê Fill/);
+  assert.match(panel, /Karaokê Pop/);
+  assert.match(panel, /Karaokê Neon/);
+  assert.match(panel, /Karaokê Caixa/);
   assert.match(panel, /Neon Tech/);
   assert.match(panel, /Caixa/);
   assert.match(panel, /Contorno/);

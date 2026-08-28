@@ -8,6 +8,7 @@ import {
   sanitizeEditorialPreviewPath,
   sanitizeEditorialReviewTimestamp,
 } from "./editorial-review-metadata";
+import { isIntelligentCaptionPreset } from "./intelligent-edit.types";
 import type {
   IntelligentCourseEditorialStandard,
   IntelligentEditorialCaptionOverride,
@@ -256,8 +257,8 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
     pedagogy,
   };
   if (typeof raw.captionsEnabled === "boolean") review.captionsEnabled = raw.captionsEnabled;
-  if (["hormozi", "karaoke", "clean", "classic", "neon", "boxed", "outline", "highlight"].includes(String(raw.captionPreset))) {
-    review.captionPreset = raw.captionPreset as IntelligentEditorialReview["captionPreset"];
+  if (isIntelligentCaptionPreset(raw.captionPreset)) {
+    review.captionPreset = raw.captionPreset;
   }
   if (typeof raw.captionEmojis === "boolean") review.captionEmojis = raw.captionEmojis;
   if (["bottom", "center", "top"].includes(String(raw.captionPosition))) {

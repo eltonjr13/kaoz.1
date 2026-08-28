@@ -15,6 +15,7 @@ import {
 } from "@/services/agent-llm/agent-llm.service";
 import {
   INTELLIGENT_EDIT_PLAN_VERSION,
+  isIntelligentCaptionPreset,
   type IntelligentCaption,
   type IntelligentCaptionPreset,
   type IntelligentCourseIdentity,
@@ -1375,7 +1376,7 @@ export async function analyzeIntelligentEdit(
         : "subtle") as IntelligentEditStyle,
     ),
     captionsEnabled: rawInput.captionsEnabled !== false,
-    captionPreset: (["hormozi", "karaoke", "clean", "classic", "neon", "boxed", "outline", "highlight"].includes(String(rawInput.captionPreset))
+    captionPreset: (isIntelligentCaptionPreset(rawInput.captionPreset)
       ? rawInput.captionPreset
       : "hormozi") as IntelligentCaptionPreset,
     captionEmojis: rawInput.captionEmojis !== false,
@@ -1438,6 +1439,8 @@ export async function analyzeIntelligentEdit(
       style: input.style,
       motionPace: input.motionPace,
       captionsEnabled: input.captionsEnabled,
+      captionPreset: input.captionPreset,
+      captionEmojis: input.captionEmojis,
       reuseCourseTheme: input.reuseCourseTheme,
       musicPath: input.musicPath,
       musicDb: input.musicDb,

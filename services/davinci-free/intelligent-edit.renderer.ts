@@ -9,6 +9,7 @@ import { getLocalDataDir } from "@/lib/runtime-paths";
 import { createDavinciFreePlan } from "./davinci-free.service";
 import {
   type IntelligentCaption,
+  type IntelligentCaptionPreset,
   type IntelligentEditDesign,
   type IntelligentEditEvent,
   type IntelligentEditPlan,
@@ -195,6 +196,10 @@ function assHeader(plan: IntelligentEditPlan) {
     `Style: Caption,Segoe UI,54,${assColor(colors.text)},&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,62,1`,
     `Style: CaptionHormozi,Arial Black,58,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,2,2,80,80,70,1`,
     `Style: CaptionKaraoke,Segoe UI Black,56,&H00FFFFFF,&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
+    `Style: CaptionKaraokeFill,Segoe UI Black,56,&H88FFFFFF,&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,4,1,2,80,80,65,1`,
+    `Style: CaptionKaraokePop,Arial Black,58,&HCCFFFFFF,&H00FFFFFF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,5,2,2,78,78,65,1`,
+    `Style: CaptionKaraokeNeon,Arial Black,56,&H99FFFFFF,&H00FFFFFF,&H00FF6430,&H780D0712,-1,0,0,0,100,100,1,0,1,3,2,2,80,80,66,1`,
+    `Style: CaptionKaraokeBox,Arial Black,54,&H00111111,&H00FFFFFF,&H00000000,${assColor(colors.primary)},-1,0,0,0,100,100,0,0,3,1,0,2,82,82,66,1`,
     `Style: CaptionClean,Segoe UI Semibold,46,${assColor(colors.text)},&H000000FF,&H0018181B,&HA0000000,-1,0,0,0,100,100,0,0,1,1,0,2,100,100,55,1`,
     `Style: CaptionNeon,Arial Black,54,&H00FFF4D8,&H00FFFFFF,&H00FF6430,&H780D0712,-1,0,0,0,100,100,1,0,1,3,2,2,80,80,66,1`,
     `Style: CaptionBoxed,Arial Black,52,&H00111111,&H00FFFFFF,&H00000000,${assColor(colors.secondary || "#FFE600")},-1,0,0,0,100,100,0,0,3,1,0,2,88,88,66,1`,
@@ -356,27 +361,60 @@ function injectContextualEmojis(text: string): string {
 function karaokeCaptionText(
   words: string[],
   activeIndex: number,
-  accent: string,
+  preset: IntelligentCaptionPreset,
+  colors: IntelligentEditDesign["colors"],
 ) {
   const shouldWrap = words.join(" ").length > 42 && words.length >= 5;
   const middle = shouldWrap ? Math.ceil(words.length / 2) : -1;
+  const styleName = karaokeStyleName(preset);
   return words.map((word, index) => {
     const separator = index === middle ? "\\N" : index > 0 ? " " : "";
     const safeWord = assText(word);
-    if (index !== activeIndex) return `${separator}${safeWord}`;
-    return `${separator}{\\1c${assColor(accent)}\\bord6\\blur0.4}${safeWord}{\\rCaptionKaraoke}`;
+    if (index !== activeIndex) {
+      if (preset === "karaoke-fill" && index < activeIndex) {
+        return `${separator}{\\1c${assColor(colors.secondary)}}${safeWord}{\\r${styleName}}`;
+      }
+      if (preset === "karaoke-neon" && index < activeIndex) {
+        return `${separator}{\\1c${assColor(colors.primary)}\\blur0.8}${safeWord}{\\r${styleName}}`;
+      }
+      if (preset === "karaoke-box" && index < activeIndex) {
+        return `${separator}{\\alpha&H55&}${safeWord}{\\r${styleName}}`;
+      }
+      return `${separator}${safeWord}`;
+    }
+    if (preset === "karaoke-pop") {
+      return `${separator}{\\1c${assColor(colors.secondary)}\\bord7\\fscx124\\fscy124\\t(0,120,\\fscx112\\fscy112)}${safeWord}{\\r${styleName}}`;
+    }
+    if (preset === "karaoke-neon") {
+      return `${separator}{\\1c&H00FFFFCC&\\3c&H00FFFF00&\\bord7\\blur2}${safeWord}{\\r${styleName}}`;
+    }
+    if (preset === "karaoke-box") {
+      return `${separator}{\\1c&H00FFFFFF&\\3c&H00101010&\\bord3\\fscx108\\fscy108}${safeWord}{\\r${styleName}}`;
+    }
+    const accent = preset === "karaoke-fill" ? colors.secondary : colors.primary;
+    return `${separator}{\\1c${assColor(accent)}\\bord6\\blur0.4}${safeWord}{\\r${styleName}}`;
   }).join("");
+}
+
+function karaokeStyleName(preset: IntelligentCaptionPreset) {
+  if (preset === "karaoke-fill") return "CaptionKaraokeFill";
+  if (preset === "karaoke-pop") return "CaptionKaraokePop";
+  if (preset === "karaoke-neon") return "CaptionKaraokeNeon";
+  if (preset === "karaoke-box") return "CaptionKaraokeBox";
+  return "CaptionKaraoke";
 }
 
 export function karaokeCaptionEvents(
   caption: IntelligentCaption,
   colors: IntelligentEditDesign["colors"],
   useEmojis: boolean,
+  preset: IntelligentCaptionPreset = "karaoke",
 ) {
   const displayText = useEmojis ? injectContextualEmojis(caption.text) : caption.text;
   return karaokeCaptionSlices(caption, displayText).map((slice) => {
-    const text = karaokeCaptionText(slice.words, slice.activeIndex, colors.primary);
-    return `Dialogue: 0,${assTime(slice.start)},${assTime(slice.end)},CaptionKaraoke,,0,0,0,,${text}`;
+    const styleName = karaokeStyleName(preset);
+    const text = karaokeCaptionText(slice.words, slice.activeIndex, preset, colors);
+    return `Dialogue: 0,${assTime(slice.start)},${assTime(slice.end)},${styleName},,0,0,0,,${text}`;
   });
 }
 
@@ -462,8 +500,8 @@ function bodyAss(plan: IntelligentEditPlan) {
     const preset = design.captionPreset || "hormozi";
     const useEmojis = design.captionEmojis !== false;
     for (const caption of plan.captions) {
-      if (preset === "karaoke") {
-        lines.push(...karaokeCaptionEvents(caption, design.colors, useEmojis));
+      if (preset.startsWith("karaoke")) {
+        lines.push(...karaokeCaptionEvents(caption, design.colors, useEmojis, preset));
         continue;
       }
       const { styleName, formattedText } = formatPresetCaption(
