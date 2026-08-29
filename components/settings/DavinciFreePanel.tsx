@@ -80,7 +80,7 @@ import type {
   IntelligentMotionPace,
   IntelligentSoundEffect,
 } from "@/services/davinci-free/intelligent-edit.types";
-import { activeKaraokeWordIndex } from "@/services/davinci-free/caption-karaoke";
+import { karaokeWordState } from "@/services/davinci-free/caption-karaoke";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -159,11 +159,13 @@ function CaptionPresetPreview({
   text,
   compact = false,
   activeWordIndex,
+  completedWordIndex,
 }: {
   preset: IntelligentCaptionPreset;
   text: string;
   compact?: boolean;
   activeWordIndex?: number;
+  completedWordIndex?: number;
 }) {
   const size = compact ? "text-[9px] leading-[1.15]" : "text-xs sm:text-sm leading-tight";
   const words = text.split(/\s+/).filter(Boolean);
@@ -177,6 +179,7 @@ function CaptionPresetPreview({
   }
   if (isKaraokeCaptionPreset(preset)) {
     const currentWord = activeWordIndex ?? 0;
+    const completedThrough = completedWordIndex ?? currentWord - 1;
     const shell = preset === "karaoke-neon"
       ? "rounded-md border border-cyan-300/60 bg-[#090312]/90 shadow-[0_0_16px_rgba(34,211,238,0.35)]"
       : preset === "karaoke-box"
@@ -184,7 +187,7 @@ function CaptionPresetPreview({
         : "rounded-md border border-violet-400/40 bg-black/85 text-white shadow-lg";
     return <span className={`${shell} px-2 py-1 text-center font-extrabold ${size}`}>{words.map((word, index) => {
       const active = index === currentWord;
-      const completed = index < currentWord;
+      const completed = index <= completedThrough;
       const wordClass = preset === "karaoke-fill"
         ? active ? "text-amber-200 scale-110" : completed ? "text-violet-400" : "text-white/55"
         : preset === "karaoke-pop"
@@ -1646,9 +1649,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     };
   }, [analysis?.captions, captionPlaybackTime, captionsEnabled, review.captions]);
 
-  const currentKaraokeWordIndex = useMemo(() => {
+  const currentKaraokeWordState = useMemo(() => {
     if (!isKaraokeCaptionPreset(form.captionPreset) || !currentActiveCaption) return undefined;
-    return activeKaraokeWordIndex(currentActiveCaption, captionPlaybackTime);
+    return karaokeWordState(currentActiveCaption, captionPlaybackTime);
   }, [captionPlaybackTime, currentActiveCaption, form.captionPreset]);
 
   type VideoChapter = {
@@ -3148,7 +3151,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       <CaptionPresetPreview
                         preset={form.captionPreset}
                         text={form.captionEmojis ? injectContextualEmojis(currentActiveCaption.text) : currentActiveCaption.text}
-                        activeWordIndex={currentKaraokeWordIndex}
+                        activeWordIndex={currentKaraokeWordState?.activeIndex}
+                        completedWordIndex={currentKaraokeWordState?.completedIndex}
                       />
                     </div>
                   </div>

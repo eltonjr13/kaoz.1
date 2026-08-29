@@ -5,6 +5,12 @@ export type KaraokeCaptionSlice = {
   end: number;
   words: string[];
   activeIndex: number;
+  completedIndex: number;
+};
+
+export type KaraokeWordState = {
+  activeIndex: number;
+  completedIndex: number;
 };
 
 function displayWords(caption: IntelligentCaption, displayText: string) {
@@ -33,26 +39,54 @@ export function karaokeCaptionSlices(
   displayText = caption.text,
 ): KaraokeCaptionSlice[] {
   const words = timedWords(caption, displayWords(caption, displayText));
-  return words.flatMap((word, index) => {
-    const start = index === 0
-      ? caption.start
-      : Math.max(caption.start, Math.min(caption.end, word.start));
-    const nextStart = words[index + 1]?.start ?? caption.end;
-    const end = Math.max(start, Math.min(caption.end, nextStart));
-    if (end <= start) return [];
-    return [{ start, end, words: words.map((item) => item.text), activeIndex: index }];
+  const display = words.map((item) => item.text);
+  const slices: KaraokeCaptionSlice[] = [];
+  let cursor = caption.start;
+
+  words.forEach((word, index) => {
+    const start = Math.max(cursor, Math.max(caption.start, Math.min(caption.end, word.start)));
+    const nextStart = words[index + 1]?.start;
+    const end = Math.max(
+      start,
+      Math.min(caption.end, word.end, nextStart === undefined ? caption.end : Math.max(start, nextStart)),
+    );
+    if (start > cursor) {
+      slices.push({ start: cursor, end: start, words: display, activeIndex: -1, completedIndex: index - 1 });
+    }
+    if (end > start) {
+      slices.push({ start, end, words: display, activeIndex: index, completedIndex: index - 1 });
+      cursor = end;
+    }
   });
+
+  if (cursor < caption.end) {
+    slices.push({
+      start: cursor,
+      end: caption.end,
+      words: display,
+      activeIndex: -1,
+      completedIndex: words.length - 1,
+    });
+  }
+  return slices;
 }
 
-export function activeKaraokeWordIndex(caption: IntelligentCaption, playheadTime: number) {
+export function karaokeWordState(caption: IntelligentCaption, playheadTime: number): KaraokeWordState {
   const words = caption.words?.filter((word) => word.end > word.start) || [];
   if (words.length) {
     const activeIndex = words.findIndex((word) => playheadTime >= word.start && playheadTime < word.end);
-    if (activeIndex >= 0) return activeIndex;
-    const nextIndex = words.findIndex((word) => playheadTime < word.start);
-    return nextIndex < 0 ? words.length - 1 : Math.max(0, nextIndex - 1);
+    const completedIndex = words.reduce(
+      (latest, word, index) => word.end <= playheadTime ? index : latest,
+      -1,
+    );
+    return { activeIndex, completedIndex };
   }
   const wordCount = caption.text.split(/\s+/).filter(Boolean).length;
   const progress = (playheadTime - caption.start) / Math.max(0.04, caption.end - caption.start);
-  return Math.min(wordCount - 1, Math.max(0, Math.floor(progress * wordCount)));
+  const activeIndex = Math.min(wordCount - 1, Math.max(0, Math.floor(progress * wordCount)));
+  return { activeIndex, completedIndex: activeIndex - 1 };
+}
+
+export function activeKaraokeWordIndex(caption: IntelligentCaption, playheadTime: number) {
+  return karaokeWordState(caption, playheadTime).activeIndex;
 }

@@ -64,7 +64,7 @@ import {
   defaultMotionPace,
   resolveMotionProfile,
 } from "../services/davinci-free/intelligent-edit.motion.ts";
-import { karaokeCaptionSlices } from "../services/davinci-free/caption-karaoke.ts";
+import { karaokeCaptionSlices, karaokeWordState } from "../services/davinci-free/caption-karaoke.ts";
 import { fastVideoFingerprint } from "../services/davinci-free/video-source.ts";
 import {
   INTELLIGENT_CAPTION_PRESETS,
@@ -106,12 +106,24 @@ test("karaokê destaca somente a palavra ativa em cada intervalo real", () => {
     },
   );
 
-  assert.deepEqual(slices.map(({ start, end, activeIndex }) => ({ start, end, activeIndex })), [
-    { start: 2, end: 2.4, activeIndex: 0 },
-    { start: 2.4, end: 3, activeIndex: 1 },
-    { start: 3, end: 3.5, activeIndex: 2 },
+  assert.deepEqual(slices.map(({ start, end, activeIndex, completedIndex }) => ({ start, end, activeIndex, completedIndex })), [
+    { start: 2, end: 2.1, activeIndex: -1, completedIndex: -1 },
+    { start: 2.1, end: 2.4, activeIndex: 0, completedIndex: -1 },
+    { start: 2.4, end: 3, activeIndex: 1, completedIndex: 0 },
+    { start: 3, end: 3.4, activeIndex: 2, completedIndex: 1 },
+    { start: 3.4, end: 3.5, activeIndex: -1, completedIndex: 2 },
   ]);
-  assert.deepEqual(slices[1].words, ["Uma", "ideia", "forte"]);
+  assert.deepEqual(slices[2].words, ["Uma", "ideia", "forte"]);
+  assert.deepEqual(karaokeWordState({
+    start: 2,
+    end: 3.5,
+    text: "Uma ideia forte",
+    words: [
+      { text: "Uma", start: 2.1, end: 2.3 },
+      { text: "ideia", start: 2.5, end: 2.9 },
+      { text: "forte", start: 3.1, end: 3.4 },
+    ],
+  }, 2.4), { activeIndex: -1, completedIndex: 0 });
   assert.deepEqual(INTELLIGENT_CAPTION_PRESETS.filter(isKaraokeCaptionPreset), [
     "karaoke",
     "karaoke-fill",
@@ -1018,7 +1030,8 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /captionPresetPickerOpen/);
   assert.match(panel, /aria-expanded=\{captionPresetPickerOpen\}/);
   assert.match(panel, /setCaptionPresetPickerOpen\(false\)/);
-  assert.match(panel, /activeWordIndex=\{currentKaraokeWordIndex\}/);
+  assert.match(panel, /activeWordIndex=\{currentKaraokeWordState\?\.activeIndex\}/);
+  assert.match(panel, /completedWordIndex=\{currentKaraokeWordState\?\.completedIndex\}/);
   assert.match(panel, /Karaokê Fill/);
   assert.match(panel, /Karaokê Pop/);
   assert.match(panel, /Karaokê Neon/);

@@ -361,6 +361,7 @@ function injectContextualEmojis(text: string): string {
 function karaokeCaptionText(
   words: string[],
   activeIndex: number,
+  completedIndex: number,
   preset: IntelligentCaptionPreset,
   colors: IntelligentEditDesign["colors"],
 ) {
@@ -371,13 +372,13 @@ function karaokeCaptionText(
     const separator = index === middle ? "\\N" : index > 0 ? " " : "";
     const safeWord = assText(word);
     if (index !== activeIndex) {
-      if (preset === "karaoke-fill" && index < activeIndex) {
+      if (preset === "karaoke-fill" && index <= completedIndex) {
         return `${separator}{\\1c${assColor(colors.secondary)}}${safeWord}{\\r${styleName}}`;
       }
-      if (preset === "karaoke-neon" && index < activeIndex) {
+      if (preset === "karaoke-neon" && index <= completedIndex) {
         return `${separator}{\\1c${assColor(colors.primary)}\\blur0.8}${safeWord}{\\r${styleName}}`;
       }
-      if (preset === "karaoke-box" && index < activeIndex) {
+      if (preset === "karaoke-box" && index <= completedIndex) {
         return `${separator}{\\alpha&H55&}${safeWord}{\\r${styleName}}`;
       }
       return `${separator}${safeWord}`;
@@ -413,7 +414,7 @@ export function karaokeCaptionEvents(
   const displayText = useEmojis ? injectContextualEmojis(caption.text) : caption.text;
   return karaokeCaptionSlices(caption, displayText).map((slice) => {
     const styleName = karaokeStyleName(preset);
-    const text = karaokeCaptionText(slice.words, slice.activeIndex, preset, colors);
+    const text = karaokeCaptionText(slice.words, slice.activeIndex, slice.completedIndex, preset, colors);
     return `Dialogue: 0,${assTime(slice.start)},${assTime(slice.end)},${styleName},,0,0,0,,${text}`;
   });
 }
