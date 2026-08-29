@@ -31,7 +31,7 @@ const buildOnlyOptionalDependencies = new Set([
   "@next/swc-win32-x64-msvc",
 ]);
 
-function pruneRuntimeMetadata(packageRoot) {
+export function pruneRuntimeMetadata(packageRoot) {
   const pending = [packageRoot];
   while (pending.length > 0) {
     const directory = pending.pop();

@@ -119,6 +119,7 @@
     "appId": "com.kaoz1.desktop",
     "productName": "Kaoz.1",
     "asar": true,
+    "compression": "maximum",
     "directories": {
       "app": "dist/electron-shell",
       "output": "release"

@@ -56,6 +56,8 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
     const nextRuntime = path.join(standalone, "node_modules", "next", "dist", "server", "next.js");
     const nextPackage = path.join(root, "node_modules", "next", "package.json");
     const sourceNextRuntime = path.join(root, "node_modules", "next", "dist", "server", "next.js");
+    const sourceMap = path.join(root, "node_modules", "next", "dist", "server", "next.js.map");
+    const typeDeclaration = path.join(root, "node_modules", "next", "dist", "server", "next.d.ts");
     const helperPackage = path.join(root, "node_modules", "@swc", "helpers", "package.json");
     const helperRuntime = path.join(root, "node_modules", "@swc", "helpers", "index.js");
     const reactPackage = path.join(root, "node_modules", "react", "package.json");
@@ -74,6 +76,8 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
     for (const [file, contents] of [
       [serverFile, "require('next')\n"],
       [sourceNextRuntime, "module.exports = {}\n"],
+      [sourceMap, "{}\n"],
+      [typeDeclaration, "export {};\n"],
       [nextPackage, JSON.stringify(packageContents)],
       [helperPackage, JSON.stringify({ name: "@swc/helpers", main: "./index.js" })],
       [helperRuntime, "module.exports = {}\n"],
@@ -93,6 +97,8 @@ test("preserva o pacote Next e resolve dentro do standalone desktop", async () =
       packageContents,
     );
     assert.equal(createRequire(serverFile).resolve("next"), nextRuntime);
+    await assert.rejects(() => readFile(path.join(standalone, "node_modules", "next", "dist", "server", "next.js.map")), /ENOENT/);
+    await assert.rejects(() => readFile(path.join(standalone, "node_modules", "next", "dist", "server", "next.d.ts")), /ENOENT/);
     assert.equal(
       createRequire(serverFile).resolve("@swc/helpers"),
       path.join(standalone, "node_modules", "@swc", "helpers", "index.js"),

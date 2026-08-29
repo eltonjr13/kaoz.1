@@ -9,6 +9,7 @@ fs.rmSync(output, { recursive: true, force: true });
 fs.mkdirSync(path.join(output, "build"), { recursive: true });
 fs.cpSync(path.join(root, "electron"), path.join(output, "electron"), { recursive: true });
 fs.copyFileSync(path.join(root, "build", "icon.png"), path.join(output, "build", "icon.png"));
+fs.copyFileSync(path.join(root, "build", "icon.ico"), path.join(output, "build", "icon.ico"));
 
 const manifest = {
   name: sourcePackage.name,
