@@ -3,24 +3,25 @@ import { parseWhatsAppChat } from '@/lib/model-p/chat-parser';
 
 export const dynamic = 'force-dynamic';
 
+async function extractRawTextFromRequest(request: Request): Promise<string> {
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const file = formData.get('file');
+    if (file && typeof file === 'object' && 'text' in file) {
+      return (file as Blob).text();
+    }
+    const textParam = formData.get('text');
+    return typeof textParam === 'string' ? textParam : '';
+  }
+
+  const body = await request.json().catch(() => null) as { text?: string } | null;
+  return body?.text || '';
+}
+
 export async function POST(request: Request) {
   try {
-    const contentType = request.headers.get('content-type') || '';
-    let rawText = '';
-
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await request.formData();
-      const file = formData.get('file');
-      if (file && typeof file === 'object' && 'text' in file) {
-        rawText = await (file as Blob).text();
-      } else {
-        const textParam = formData.get('text');
-        if (typeof textParam === 'string') rawText = textParam;
-      }
-    } else {
-      const body = await request.json().catch(() => null) as { text?: string } | null;
-      if (body?.text) rawText = body.text;
-    }
+    const rawText = await extractRawTextFromRequest(request);
 
     if (!rawText || rawText.trim().length === 0) {
       return NextResponse.json(

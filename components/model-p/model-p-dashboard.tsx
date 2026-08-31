@@ -358,6 +358,37 @@ export function ModelPDashboard() {
         )}
       </div>
 
+      <div className="flex items-center gap-2 border-b border-[var(--line)] pb-3">
+        <button
+          type="button"
+          onClick={() => { setActiveTab("personas"); setSelectedPlaygroundPersona(null); }}
+          className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+            activeTab === "personas"
+              ? "bg-[#7C6CF2] text-white shadow-sm"
+              : "text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Sparkles size={14} />
+          <span>Réplicas de Estilo (WhatsApp & Chats)</span>
+          <span className="rounded-full bg-black/30 px-1.5 py-0.2 text-[10px]">
+            {personas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("cognitive")}
+          className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+            activeTab === "cognitive"
+              ? "bg-[#7C6CF2] text-white shadow-sm"
+              : "text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Brain size={14} />
+          <span>Memória Cognitiva do Usuário</span>
+        </button>
+      </div>
+
       {error && (
         <div className="rounded-xl border border-red-800/60 bg-red-950/50 p-4 text-xs text-red-300 flex items-center gap-2">
           <AlertCircle size={15} />
@@ -365,67 +396,32 @@ export function ModelPDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ModelPCategorySection
-          title="Perfil & Fatos"
-          subtitle="O que o agente sabe de concreto sobre você"
-          icon={
-            <div className="rounded-lg bg-blue-500/10 p-1.5 text-blue-400 border border-blue-500/20">
-              <Brain size={16} />
-            </div>
-          }
-          items={snapshot?.facts}
-          emptyMessage="Nenhum fato pessoal assimilado ainda."
-          isForgettingId={forgetId}
+      {activeTab === "personas" ? (
+        <PersonasTabContent
+          personas={personas}
+          selectedPlaygroundPersona={selectedPlaygroundPersona}
+          onBackFromPlayground={() => setSelectedPlaygroundPersona(null)}
+          onOpenUpload={() => setIsUploadModalOpen(true)}
+          onSelectPlayground={(p) => setSelectedPlaygroundPersona(p)}
+          onDeletePersona={handleDeletePersona}
+        />
+      ) : (
+        <CognitiveMemoryGrid
+          snapshot={snapshot}
+          forgetId={forgetId}
           onForget={handleForget}
           onInspect={handleInspectEvidence}
         />
+      )}
 
-        <ModelPCategorySection
-          title="Como Você Pensa"
-          subtitle="Preferências pessoais e estéticas aprendidas"
-          icon={
-            <div className="rounded-lg bg-purple-500/10 p-1.5 text-purple-400 border border-purple-500/20">
-              <Lightbulb size={16} />
-            </div>
-          }
-          items={snapshot?.preferences}
-          emptyMessage="Nenhuma preferência assimilada ainda."
-          isForgettingId={forgetId}
-          onForget={handleForget}
-          onInspect={handleInspectEvidence}
-        />
-
-        <ModelPCategorySection
-          title="Como Você Trabalha"
-          subtitle="Regras de fluxo, projetos e tecnologias"
-          icon={
-            <div className="rounded-lg bg-emerald-500/10 p-1.5 text-emerald-400 border border-emerald-500/20">
-              <Briefcase size={16} />
-            </div>
-          }
-          items={snapshot?.workStyles}
-          emptyMessage="Nenhuma regra de trabalho assimilada ainda."
-          isForgettingId={forgetId}
-          onForget={handleForget}
-          onInspect={handleInspectEvidence}
-        />
-
-        <ModelPCategorySection
-          title="Sinais Comportamentais"
-          subtitle="Correções e limites assimilados de conversas"
-          icon={
-            <div className="rounded-lg bg-amber-500/10 p-1.5 text-amber-400 border border-amber-500/20">
-              <ShieldCheck size={16} />
-            </div>
-          }
-          items={snapshot?.behavioralSignals}
-          emptyMessage="Nenhum sinal comportamental registrado ainda."
-          isForgettingId={forgetId}
-          onForget={handleForget}
-          onInspect={handleInspectEvidence}
-        />
-      </div>
+      <PersonaUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onPersonaCreated={(newPersona) => {
+          setPersonas((prev) => [newPersona, ...prev]);
+          setSelectedPlaygroundPersona(newPersona);
+        }}
+      />
 
       <EvidenceModal
         evidence={selectedEvidence}
@@ -433,5 +429,115 @@ export function ModelPDashboard() {
         onClose={() => setSelectedEvidence(null)}
       />
     </div>
+  );
+}
+
+function CognitiveMemoryGrid({
+  snapshot,
+  forgetId,
+  onForget,
+  onInspect,
+}: {
+  snapshot: PersonalModelSnapshot | null;
+  forgetId: string | null;
+  onForget: (id: string) => void;
+  onInspect: (item: PersonalModelItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <ModelPCategorySection
+        title="Perfil & Fatos"
+        subtitle="O que o agente sabe de concreto sobre você"
+        icon={
+          <div className="rounded-lg bg-blue-500/10 p-1.5 text-blue-400 border border-blue-500/20">
+            <Brain size={16} />
+          </div>
+        }
+        items={snapshot?.facts}
+        emptyMessage="Nenhum fato pessoal assimilado ainda."
+        isForgettingId={forgetId}
+        onForget={onForget}
+        onInspect={onInspect}
+      />
+
+      <ModelPCategorySection
+        title="Como Você Pensa"
+        subtitle="Preferências pessoais e estéticas aprendidas"
+        icon={
+          <div className="rounded-lg bg-purple-500/10 p-1.5 text-purple-400 border border-purple-500/20">
+            <Lightbulb size={16} />
+          </div>
+        }
+        items={snapshot?.preferences}
+        emptyMessage="Nenhuma preferência assimilada ainda."
+        isForgettingId={forgetId}
+        onForget={onForget}
+        onInspect={onInspect}
+      />
+
+      <ModelPCategorySection
+        title="Como Você Trabalha"
+        subtitle="Regras de fluxo, projetos e tecnologias"
+        icon={
+          <div className="rounded-lg bg-emerald-500/10 p-1.5 text-emerald-400 border border-emerald-500/20">
+            <Briefcase size={16} />
+          </div>
+        }
+        items={snapshot?.workStyles}
+        emptyMessage="Nenhuma regra de trabalho assimilada ainda."
+        isForgettingId={forgetId}
+        onForget={onForget}
+        onInspect={onInspect}
+      />
+
+      <ModelPCategorySection
+        title="Sinais Comportamentais"
+        subtitle="Correções e limites assimilados de conversas"
+        icon={
+          <div className="rounded-lg bg-amber-500/10 p-1.5 text-amber-400 border border-amber-500/20">
+            <ShieldCheck size={16} />
+          </div>
+        }
+        items={snapshot?.behavioralSignals}
+        emptyMessage="Nenhum sinal comportamental registrado ainda."
+        isForgettingId={forgetId}
+        onForget={onForget}
+        onInspect={onInspect}
+      />
+    </div>
+  );
+}
+
+function PersonasTabContent({
+  personas,
+  selectedPlaygroundPersona,
+  onBackFromPlayground,
+  onOpenUpload,
+  onSelectPlayground,
+  onDeletePersona,
+}: {
+  personas: PersonaStyleProfile[];
+  selectedPlaygroundPersona: PersonaStyleProfile | null;
+  onBackFromPlayground: () => void;
+  onOpenUpload: () => void;
+  onSelectPlayground: (p: PersonaStyleProfile) => void;
+  onDeletePersona: (id: string) => void;
+}) {
+  if (selectedPlaygroundPersona) {
+    return (
+      <PersonaChatPlayground
+        persona={selectedPlaygroundPersona}
+        onBack={onBackFromPlayground}
+      />
+    );
+  }
+
+  return (
+    <PersonaListView
+      personas={personas}
+      onOpenUpload={onOpenUpload}
+      onSelectPlayground={onSelectPlayground}
+      onDeletePersona={onDeletePersona}
+    />
   );
 }

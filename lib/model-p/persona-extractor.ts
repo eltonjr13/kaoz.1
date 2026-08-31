@@ -4,8 +4,8 @@ import type {
   PersonaRole,
   PersonaStyleProfile,
   PersonaStylometry,
-} from './types';
-import { queryConfiguredAgentCli } from '../../services/agent-llm/agent-llm.service';
+} from './types.ts';
+import { queryConfiguredAgentCli } from '../../services/agent-llm/agent-llm.service.ts';
 
 const COMMON_SLANG_CANDIDATES = [
   'vc', 'você', 'voce', 'tb', 'tbm', 'tambem', 'blz', 'beleza',
@@ -52,6 +52,24 @@ function detectSlang(messages: string[]): string[] {
     .map(([word]) => word);
 }
 
+interface PunctuationTraits {
+  hasExclamation: boolean;
+  hasQuestion: boolean;
+  hasEllipsis: boolean;
+  isAllLower: boolean;
+  hasNoEndingPunct: boolean;
+}
+
+function checkPunctuationTraits(trimmed: string): PunctuationTraits {
+  return {
+    hasExclamation: trimmed.includes('!'),
+    hasQuestion: trimmed.includes('?'),
+    hasEllipsis: trimmed.includes('...') || trimmed.includes('…'),
+    isAllLower: trimmed === trimmed.toLowerCase() && /[a-z]/i.test(trimmed),
+    hasNoEndingPunct: !/[.!?…]$/.test(trimmed),
+  };
+}
+
 function calculatePunctuation(messages: string[]): PersonaPunctuationStyle {
   if (messages.length === 0) {
     return {
@@ -72,11 +90,12 @@ function calculatePunctuation(messages: string[]): PersonaPunctuationStyle {
   for (const msg of messages) {
     const trimmed = msg.trim();
     if (!trimmed) continue;
-    if (trimmed.includes('!')) exclamations += 1;
-    if (trimmed.includes('?')) questions += 1;
-    if (trimmed.includes('...') || trimmed.includes('…')) ellipses += 1;
-    if (trimmed === trimmed.toLowerCase() && /[a-z]/i.test(trimmed)) allLower += 1;
-    if (!/[.!?…]$/.test(trimmed)) noEndingPunct += 1;
+    const traits = checkPunctuationTraits(trimmed);
+    if (traits.hasExclamation) exclamations += 1;
+    if (traits.hasQuestion) questions += 1;
+    if (traits.hasEllipsis) ellipses += 1;
+    if (traits.isAllLower) allLower += 1;
+    if (traits.hasNoEndingPunct) noEndingPunct += 1;
   }
 
   const total = messages.length;

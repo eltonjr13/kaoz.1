@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getLocalDataDir } from '../runtime-paths';
-import type { PersonaStyleProfile } from './types';
+import { getLocalDataDir } from '../runtime-paths.ts';
+import type { PersonaStyleProfile } from './types.ts';
 
 const STORE_FILENAME = 'model-p-personas.json';
 

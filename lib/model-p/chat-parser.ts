@@ -2,7 +2,7 @@ import type {
   ChatParticipantSummary,
   ParsedChatMessage,
   ParsedChatResult,
-} from './types';
+} from './types.ts';
 
 // Android format: 12/03/2024, 14:30 - Sender: message
 // or 12/03/24 14:30 - Sender: message

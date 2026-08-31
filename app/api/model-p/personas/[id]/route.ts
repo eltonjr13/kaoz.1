@@ -24,6 +24,19 @@ export async function GET(
   }
 }
 
+function mergePersonaUpdates(
+  existing: PersonaStyleProfile,
+  updates: Partial<PersonaStyleProfile> | null
+): PersonaStyleProfile {
+  if (!updates) return existing;
+  const result: PersonaStyleProfile = { ...existing, updatedAt: new Date().toISOString() };
+  if (typeof updates.name === 'string' && updates.name.trim()) result.name = updates.name.trim();
+  if (typeof updates.description === 'string' && updates.description.trim()) result.description = updates.description.trim();
+  if (typeof updates.systemPrompt === 'string' && updates.systemPrompt.trim()) result.systemPrompt = updates.systemPrompt.trim();
+  if (updates.role) result.role = updates.role;
+  return result;
+}
+
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -38,14 +51,7 @@ export async function PUT(
     }
 
     const updates = await request.json().catch(() => null) as Partial<PersonaStyleProfile> | null;
-    const updated: PersonaStyleProfile = {
-      ...existing,
-      name: updates?.name?.trim() || existing.name,
-      description: updates?.description?.trim() || existing.description,
-      systemPrompt: updates?.systemPrompt?.trim() || existing.systemPrompt,
-      role: updates?.role || existing.role,
-      updatedAt: new Date().toISOString(),
-    };
+    const updated = mergePersonaUpdates(existing, updates);
 
     await store.savePersona(updated);
     return NextResponse.json({ persona: updated });
