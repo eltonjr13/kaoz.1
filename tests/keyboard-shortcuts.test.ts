@@ -31,6 +31,7 @@ test("shortcut definitions are correctly configured and unique", () => {
   assert.ok(ids.has("nav.flow"), "Must contain nav.flow");
   assert.ok(ids.has("nav.supervision"), "Must contain nav.supervision");
   assert.ok(ids.has("nav.cortex"), "Must contain nav.cortex");
+  assert.ok(ids.has("nav.modelP"), "Must contain nav.modelP");
   assert.ok(ids.has("nav.video"), "Must contain nav.video");
   assert.ok(ids.has("nav.settings"), "Must contain nav.settings");
   assert.ok(ids.has("chat.newChat"), "Must contain chat.newChat");

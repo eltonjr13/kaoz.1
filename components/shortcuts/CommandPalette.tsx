@@ -8,6 +8,7 @@ import {
   Sparkles,
   Activity,
   Brain,
+  UserCheck,
   Video,
   Settings,
   PlusCircle,
@@ -132,6 +133,19 @@ export function CommandPalette() {
         action: () => {
           closeCommandPalette();
           router.push("/settings");
+        },
+      },
+      {
+        id: "nav-model-p",
+        label: "Model P (Modelo Pessoal)",
+        description: "Visualizar o que o agente compreende sobre você e suas preferências",
+        category: "Navegação",
+        icon: UserCheck,
+        displayKey: "Alt + 6",
+        keywords: "model p modelo pessoal preferencias fatos perfil identidade",
+        action: () => {
+          closeCommandPalette();
+          router.push("/model-p");
         },
       },
 

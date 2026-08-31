@@ -8,6 +8,7 @@ export type ShortcutActionId =
   | "nav.flow"
   | "nav.supervision"
   | "nav.cortex"
+  | "nav.modelP"
   | "nav.video"
   | "nav.settings"
   | "chat.newChat"
@@ -144,6 +145,16 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     keys: ["alt+5"],
     displayKey: "Alt + 5",
     href: "/settings",
+    allowInInput: false,
+  },
+  {
+    id: "nav.modelP",
+    label: "Ir para Model P",
+    description: "Visualizar o modelo cognitivo e preferências pessoais do usuário",
+    category: "navigation",
+    keys: ["alt+6"],
+    displayKey: "Alt + 6",
+    href: "/model-p",
     allowInInput: false,
   },
 
