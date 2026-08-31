@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ChatMemoryEvidenceRef,
   ChatMemoryKind,
   ChatMemoryScope,
@@ -62,4 +62,69 @@ export interface PersonalModelEvidenceDetail {
   confidenceLevel: ConfidenceLevel;
   evidenceTexts: string[];
   referencedMessages: PersonalModelReferencedMessage[];
+}
+
+export type PersonaRole = 'simulator' | 'user_clone' | 'custom';
+
+export interface ParsedChatMessage {
+  id: string;
+  timestamp: string;
+  sender: string;
+  content: string;
+}
+
+export interface ChatParticipantSummary {
+  name: string;
+  messageCount: number;
+  wordCount: number;
+  sampleLines: string[];
+}
+
+export interface ParsedChatResult {
+  participants: ChatParticipantSummary[];
+  totalMessages: number;
+  messages: ParsedChatMessage[];
+}
+
+export interface PersonaEmojiStat {
+  emoji: string;
+  count: number;
+}
+
+export interface PersonaPunctuationStyle {
+  exclamationRatio: number;
+  questionRatio: number;
+  ellipsisRatio: number;
+  allLowerCaseRatio: number;
+  noPunctuationEndingRatio: number;
+}
+
+export interface PersonaStylometry {
+  totalAnalyzedMessages: number;
+  averageWordsPerMessage: number;
+  shortMessageRatio: number;
+  topEmojis: PersonaEmojiStat[];
+  commonSlang: string[];
+  punctuation: PersonaPunctuationStyle;
+  sampleQuotes: string[];
+}
+
+export interface PersonaStyleProfile {
+  id: string;
+  name: string;
+  targetParticipant: string;
+  role: PersonaRole;
+  description: string;
+  stylometry: PersonaStylometry;
+  systemPrompt: string;
+  fewShotExamples: Array<{ input: string; output: string }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonaPlaygroundMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
 }
