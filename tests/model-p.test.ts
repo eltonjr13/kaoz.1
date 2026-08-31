@@ -129,6 +129,16 @@ test("Model P ignora memórias inativas ou arquivadas", () => {
   assert.equal(snapshot.preferences.length, 0);
 });
 
+test("Model P não apresenta memórias pendentes de revisão como fatos ativos", () => {
+  const records: ChatMemoryRecord[] = [
+    createMockRecord({ id: "active-1", status: "active" }),
+    createMockRecord({ id: "pending-1", status: "pending_review" }),
+  ];
+
+  const snapshot = buildPersonalModelSnapshot(records);
+  assert.deepEqual(snapshot.facts.map((item) => item.id), ["active-1"]);
+});
+
 test("Model P não inventa dados quando não existem memórias (empty states íntegros)", () => {
   const snapshot = buildPersonalModelSnapshot([]);
   assert.equal(snapshot.summary.totalMemories, 0);

@@ -134,7 +134,7 @@ function PersonaCard({
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 border-y border-white/[0.04] py-3 text-[11px]">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-y border-white/[0.04] py-3 text-[11px]">
         <div className="flex items-center gap-1.5 text-zinc-400">
           <Hash size={12} className="text-[#a99fff]" />
           <span>{stylometry.totalAnalyzedMessages} msgs</span>
@@ -142,6 +142,10 @@ function PersonaCard({
         <div className="flex items-center gap-1.5 text-zinc-400">
           <Zap size={12} className="text-amber-400" />
           <span>{stylometry.averageWordsPerMessage} pal/msg</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-zinc-400">
+          <MessageSquare size={12} className="text-sky-400" />
+          <span>{persona.qualityReport?.pairedExamples || 0} pares</span>
         </div>
         <div className="flex items-center gap-1.5 text-zinc-400 truncate">
           <Smile size={12} className="text-emerald-400" />
@@ -152,6 +156,12 @@ function PersonaCard({
           </span>
         </div>
       </div>
+
+      {persona.qualityReport?.warnings?.[0] && (
+        <p className="text-[10px] leading-relaxed text-amber-400/80">
+          {persona.qualityReport.warnings[0]}
+        </p>
+      )}
 
       {stylometry.commonSlang.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -186,21 +196,21 @@ function PersonaCard({
 function QualityBadge({ score }: { score: 'low' | 'medium' | 'high' }) {
   if (score === 'high') {
     return (
-      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20" title="Alta fidelidade de estilo">
-        Alta Precisão
+      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20" title="Base ampla e contextual; a fidelidade final deve ser validada no chat">
+        Base Forte
       </span>
     );
   }
   if (score === 'medium') {
     return (
-      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-400 border border-amber-500/20" title="Fidelidade aceitável de estilo">
-        Média Precisão
+      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-400 border border-amber-500/20" title="Base moderada; ainda pode faltar variedade contextual">
+        Base Média
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold text-rose-400 border border-rose-500/20" title="Poucos dados para clonar com perfeição">
-      Baixa Precisão
+    <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold text-rose-400 border border-rose-500/20" title="Poucos dados ou poucos pares reais de contexto e resposta">
+      Base Limitada
     </span>
   );
 }

@@ -54,7 +54,7 @@ function categorizeItem(
 }
 
 export function buildPersonalModelSnapshot(records: ChatMemoryRecord[]): PersonalModelSnapshot {
-  const activeRecords = records.filter((r) => r.status === 'active' || r.status === 'pending_review');
+  const activeRecords = records.filter((record) => record.status === 'active');
 
   const facts: PersonalModelItem[] = [];
   const preferences: PersonalModelItem[] = [];
@@ -157,7 +157,14 @@ export function formatPersonalModelContext(snapshot: PersonalModelSnapshot, maxT
   let text = lines.join('\n');
   const estimatedTokens = Math.ceil(text.length / 3.5);
   if (estimatedTokens > maxTokens) {
-    text = text.slice(0, Math.floor(maxTokens * 3.5)) + '...';
+    const maxChars = Math.floor(maxTokens * 3.5);
+    const fitted: string[] = [];
+    for (const line of lines) {
+      const candidate = [...fitted, line].join('\n');
+      if (candidate.length + 4 > maxChars) break;
+      fitted.push(line);
+    }
+    text = `${fitted.join('\n')}\n...`;
   }
   return text;
 }

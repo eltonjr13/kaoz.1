@@ -4,6 +4,8 @@ import type { PersonaStyleProfile } from '@/lib/model-p/types';
 
 export const dynamic = 'force-dynamic';
 
+const VALID_ROLES = new Set(['simulator', 'user_clone', 'custom']);
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -33,7 +35,7 @@ function mergePersonaUpdates(
   if (typeof updates.name === 'string' && updates.name.trim()) result.name = updates.name.trim();
   if (typeof updates.description === 'string' && updates.description.trim()) result.description = updates.description.trim();
   if (typeof updates.systemPrompt === 'string' && updates.systemPrompt.trim()) result.systemPrompt = updates.systemPrompt.trim();
-  if (updates.role) result.role = updates.role;
+  if (updates.role && VALID_ROLES.has(updates.role)) result.role = updates.role;
   return result;
 }
 

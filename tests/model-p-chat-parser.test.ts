@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWhatsAppChat, filterParticipantMessages } from '../lib/model-p/chat-parser.ts';
-import { extractStylometry } from '../lib/model-p/persona-extractor.ts';
+import {
+  buildPersonaTrainingExamples,
+  parseWhatsAppChat,
+  filterParticipantMessages,
+} from '../lib/model-p/chat-parser.ts';
+import { calculatePersonaQuality, extractStylometry } from '../lib/model-p/persona-extractor.ts';
+import { selectRelevantPersonaExamples } from '../lib/model-p/persona-retrieval.ts';
 
 const SAMPLE_ANDROID_CHAT = `
 12/03/2024, 10:15 - As mensagens e chamadas são protegidas com a criptografia de ponta a ponta.
@@ -89,5 +94,51 @@ describe('Model P - WhatsApp Chat Parser & Isolation', () => {
     assert.ok(stylometry.topEmojis.some((e) => e.emoji === '🚀'));
     assert.ok(stylometry.commonSlang.includes('mano'));
     assert.ok(stylometry.punctuation.exclamationRatio > 0);
+  });
+
+  it('does not discard a real message when a standalone system event follows it', () => {
+    const result = parseWhatsAppChat(`
+12/03/2024, 10:16 - Carlos: fala real
+12/03/2024, 10:17 - Carlos adicionou Ana
+12/03/2024, 10:18 - Carlos: próxima fala
+`);
+
+    assert.deepEqual(result.messages.map((message) => message.content), ['fala real', 'próxima fala']);
+  });
+
+  it('builds real context-response pairs and groups fragmented target replies', () => {
+    const result = parseWhatsAppChat(`
+12/03/2024, 10:16 - Ana: você vai hoje?
+12/03/2024, 10:17 - Carlos: vou nada kkk
+12/03/2024, 10:17 - Carlos: mó preguiça
+12/03/2024, 10:18 - Ana: e o projeto?
+12/03/2024, 10:19 - Carlos: amanhã eu vejo
+`);
+    const examples = buildPersonaTrainingExamples(result.messages, 'Carlos');
+
+    assert.equal(examples.length, 2);
+    assert.equal(examples[0].input, 'Ana: você vai hoje?');
+    assert.equal(examples[0].output, 'vou nada kkk\nmó preguiça');
+    assert.equal(examples[1].output, 'amanhã eu vejo');
+  });
+
+  it('retrieves the most relevant real response example for the current subject', () => {
+    const examples = [
+      { id: 'food', input: 'Ana: vamos pedir pizza?', output: 'bora', sourceTimestamp: '1' },
+      { id: 'project', input: 'Ana: como ficou o projeto do cliente?', output: 'terminei ontem', sourceTimestamp: '2' },
+      { id: 'travel', input: 'Ana: quando você vai viajar?', output: 'sexta', sourceTimestamp: '3' },
+    ];
+
+    const selected = selectRelevantPersonaExamples(examples, 'e o projeto do cliente?', 1);
+    assert.equal(selected[0].id, 'project');
+  });
+
+  it('does not classify a repetitive history as a strong base without response pairs', () => {
+    const messages = Array.from({ length: 600 }, () => 'ok projeto ok projeto');
+    const stylometry = extractStylometry(messages);
+    const quality = calculatePersonaQuality(stylometry, messages, 0);
+
+    assert.notEqual(quality.tier, 'high');
+    assert.ok(quality.report.warnings.some((warning) => warning.includes('contexto e resposta')));
   });
 });
