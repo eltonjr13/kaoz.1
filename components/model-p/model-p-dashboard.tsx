@@ -12,8 +12,17 @@ import {
   ExternalLink,
   ShieldCheck,
 } from "lucide-react";
-import type { PersonalModelItem, PersonalModelSnapshot, PersonalModelEvidenceDetail } from "@/lib/model-p/types";
+import type {
+  PersonalModelItem,
+  PersonalModelSnapshot,
+  PersonalModelEvidenceDetail,
+  PersonaStyleProfile,
+} from "@/lib/model-p/types";
 import { EvidenceModal } from "./evidence-modal";
+import { PersonaUploadModal } from "./persona-upload-modal";
+import { PersonaListView } from "./persona-list-view";
+import { PersonaChatPlayground } from "./persona-chat-playground";
+import { MessageSquare, Sparkles } from "lucide-react";
 
 function ConfidenceBadge({ level, score }: { level: "high" | "medium" | "low"; score: number }) {
   const percent = Math.round(score * 100);
@@ -150,7 +159,11 @@ function ModelPCategorySection({
 }
 
 export function ModelPDashboard() {
+  const [activeTab, setActiveTab] = useState<"cognitive" | "personas">("personas");
   const [snapshot, setSnapshot] = useState<PersonalModelSnapshot | null>(null);
+  const [personas, setPersonas] = useState<PersonaStyleProfile[]>([]);
+  const [selectedPlaygroundPersona, setSelectedPlaygroundPersona] = useState<PersonaStyleProfile | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedEvidence, setSelectedEvidence] = useState<PersonalModelEvidenceDetail | null>(null);
@@ -161,10 +174,17 @@ export function ModelPDashboard() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/model-p", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Falha ao carregar o Personal Model.");
-      setSnapshot(data.snapshot || null);
+      const [resModel, resPersonas] = await Promise.all([
+        fetch("/api/model-p", { cache: "no-store" }),
+        fetch("/api/model-p/personas", { cache: "no-store" }),
+      ]);
+      const dataModel = await resModel.json();
+      const dataPersonas = await resPersonas.json();
+
+      if (resModel.ok) setSnapshot(dataModel.snapshot || null);
+      if (resPersonas.ok && Array.isArray(dataPersonas.personas)) {
+        setPersonas(dataPersonas.personas);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -175,6 +195,21 @@ export function ModelPDashboard() {
   useEffect(() => {
     void fetchModel();
   }, []);
+
+  const handleDeletePersona = async (id: string) => {
+    try {
+      setPersonas((prev) => prev.filter((p) => p.id !== id));
+      if (selectedPlaygroundPersona?.id === id) {
+        setSelectedPlaygroundPersona(null);
+      }
+      await fetch(`/api/model-p/personas/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      void fetchModel();
+    }
+  };
 
   const handleInspectEvidence = async (item: PersonalModelItem) => {
     setLoadingEvidence(true);
