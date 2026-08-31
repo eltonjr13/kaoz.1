@@ -21,6 +21,8 @@ const SYSTEM_PATTERNS = [
   /end-to-end encrypt/i,
   /arquivo de m[ií]dia oculto/i,
   /<media omitted>/i,
+  /(?:imagem|m[ií]dia|[aá]udio|v[ií]deo|figurinha|sticker) (?:ocult[ao]|ocultada|omitid[ao])/i,
+  /(?:image|media|audio|video|sticker) omitted/i,
   /mensagem apagada/i,
   /message was deleted/i,
   /chamada de (?:voz|v[ií]deo) perdida/i,

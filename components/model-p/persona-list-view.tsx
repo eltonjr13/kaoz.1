@@ -20,6 +20,18 @@ interface PersonaListViewProps {
   onDeletePersona: (id: string) => void;
 }
 
+function getEffectiveQualityScore(persona: PersonaStyleProfile): 'low' | 'medium' | 'high' {
+  if (!persona.qualityReport) return 'low';
+  return persona.qualityScore || 'low';
+}
+
+function getQualityWarning(persona: PersonaStyleProfile): string | undefined {
+  if (!persona.qualityReport) {
+    return 'Perfil legado: recrie a simulação para aprender pares reais de contexto e resposta.';
+  }
+  return persona.qualityReport.warnings?.[0];
+}
+
 export function PersonaListView({
   personas,
   onOpenUpload,
@@ -98,6 +110,8 @@ function PersonaCard({
 }) {
   const isClone = persona.role === "user_clone";
   const { stylometry } = persona;
+  const isLegacyProfile = !persona.qualityReport;
+  const effectiveQualityScore = getEffectiveQualityScore(persona);
 
   return (
     <div className="group rounded-2xl border border-[var(--line)] bg-[#111319] p-5 space-y-4 hover:border-zinc-600/80 hover:bg-[#131620] transition-all">
@@ -113,8 +127,9 @@ function PersonaCard({
                 {isClone ? "Meu Clone" : "Simulador"}
               </span>
               <QualityBadge
-                score={persona.qualityScore || 'low'}
+                score={effectiveQualityScore}
                 numericScore={persona.qualityReport?.score}
+                legacy={isLegacyProfile}
               />
             </div>
             <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
@@ -160,7 +175,9 @@ function PersonaCard({
         </div>
       </div>
 
-      <PersonaQualityWarning warning={persona.qualityReport?.warnings?.[0]} />
+      <PersonaQualityWarning
+        warning={getQualityWarning(persona)}
+      />
 
       {stylometry.commonSlang.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -204,11 +221,20 @@ function PersonaQualityWarning({ warning }: { warning?: string }) {
 function QualityBadge({
   score,
   numericScore,
+  legacy = false,
 }: {
   score: 'low' | 'medium' | 'high';
   numericScore?: number;
+  legacy?: boolean;
 }) {
   const suffix = typeof numericScore === 'number' ? ` · ${numericScore}/100` : '';
+  if (legacy) {
+    return (
+      <span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-[9px] font-semibold text-zinc-400 border border-zinc-500/20" title="Perfil criado antes da análise contextual">
+        Perfil Legado
+      </span>
+    );
+  }
   if (score === 'high') {
     return (
       <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20" title="Base ampla e contextual; a fidelidade final deve ser validada no chat">
