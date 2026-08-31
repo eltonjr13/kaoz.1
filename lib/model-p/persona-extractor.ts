@@ -7,13 +7,28 @@ import type {
 } from './types.ts';
 import { queryConfiguredAgentCli } from '../../services/agent-llm/agent-llm.service.ts';
 
-const COMMON_SLANG_CANDIDATES = [
-  'vc', 'você', 'voce', 'tb', 'tbm', 'tambem', 'blz', 'beleza',
-  'mano', 'cara', 'top', 'show', 'massa', 'valeu', 'vlw',
-  'kkk', 'kkkk', 'rsrs', 'haha', 'né', 'neh', 'pq', 'porque',
-  'oq', 'ta', 'tá', 'to', 'tô', 'po', 'pô', 'bora', 'mano',
-  'fechou', 'tranquilo', 'demais', 'bicho', 'parça', 'vei', 'véi'
-];
+const PORTUGUESE_STOPWORDS = new Set([
+  'de', 'a', 'o', 'que', 'e', 'do', 'da', 'em', 'um', 'para', 'com', 'não', 'na', 'os', 'no', 'se', 'nao',
+  'por', 'mais', 'as', 'dos', 'como', 'mas', 'foi', 'ao', 'ele', 'das', 'tem', 'à', 'seu', 'sua',
+  'ou', 'ser', 'quando', 'muito', 'há', 'nos', 'já', 'está', 'eu', 'também', 'só', 'pelo', 'pela',
+  'até', 'isso', 'ela', 'entre', 'era', 'depois', 'sem', 'mesmo', 'aos', 'ter', 'seus', 'quem', 'nas', 'me',
+  'esse', 'eles', 'estão', 'você', 'tinha', 'foram', 'essa', 'num', 'nem', 'suas', 'meu', 'às', 'minha',
+  'têm', 'numa', 'pelos', 'elas', 'havia', 'seja', 'qual', 'será', 'nós', 'tenho', 'lhe', 'deles',
+  'essas', 'esses', 'pelas', 'este', 'fosse', 'dele', 'tu', 'te', 'vocês', 'vos', 'lhes', 'meus', 'minhas',
+  'teu', 'tua', 'teus', 'tuas', 'nosso', 'nossa', 'nossos', 'nossas', 'dela', 'delas', 'esta', 'estes',
+  'estas', 'aquele', 'aquela', 'aqueles', 'aquelas', 'isto', 'aquilo', 'estou', 'estamos', 'estive', 'esteve',
+  'estivemos', 'estiveram', 'estava', 'estávamos', 'estavam', 'estivera', 'estivéramos', 'esteja', 'estejamos',
+  'estejam', 'estivesse', 'estivéssemos', 'estivessem', 'estiver', 'estivermos', 'estiverem', 'hei', 'havemos',
+  'hão', 'houve', 'houvemos', 'houveram', 'houvera', 'houvéramos', 'haja', 'hajamos', 'hajam', 'houvesse',
+  'houvéssemos', 'houvessem', 'houver', 'houvermos', 'houverem', 'houverei', 'houverá', 'houveremos',
+  'houverão', 'houveria', 'houveríamos', 'houveriam', 'sou', 'somos', 'são', 'éramos', 'eram', 'fui', 'fomos',
+  'fora', 'fôramos', 'sejamos', 'sejam', 'fôssemos', 'fossem', 'for', 'formos', 'forem', 'serei', 'seremos',
+  'serão', 'seria', 'seríamos', 'seriam', 'temos', 'tém', 'tínhamos', 'tinham', 'tive', 'teve', 'tivemos',
+  'tiveram', 'tivera', 'tivéramos', 'tenha', 'tenhamos', 'tenham', 'tivéssemos', 'tivessem', 'tiver', 'tivermos',
+  'tiverem', 'terei', 'terá', 'teremos', 'terão', 'teria', 'teríamos', 'teriam', 'pro', 'pra', 'tá', 'to', 'tô',
+  'né', 'neh', 'aí', 'ai', 'aqui', 'ali', 'lá', 'então', 'entao', 'assim', 'porque', 'pq', 'pois', 'sim', 'bem',
+  'mal', 'tudo', 'nada', 'algo', 'alguém', 'alguem', 'ninguém', 'ninguem', 'quem', 'qual', 'quais', 'onde'
+]);
 
 const EMOJI_REGEX = /\p{Extended_Pictographic}/gu;
 
@@ -39,7 +54,7 @@ function detectSlang(messages: string[]): string[] {
   for (const msg of messages) {
     const words = msg.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
     for (const w of words) {
-      if (COMMON_SLANG_CANDIDATES.includes(w)) {
+      if (w.length > 2 && !PORTUGUESE_STOPWORDS.has(w)) {
         wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
       }
     }
@@ -154,56 +169,58 @@ function buildDeterministicPrompt(
 ): string {
   const isClone = role === 'user_clone';
   const roleDesc = isClone
-    ? `Você é o clone conversacional de ${name}. Responda mensagens agindo exatamente como ${name} falaria.`
-    : `Você é uma simulação de ${name}. Converse com o usuário mantendo rigorosamente a personalidade e o estilo de fala de ${name}.`;
+    ? `Você é o clone conversacional EXATO de ${name}. Seu objetivo único é imitar como ${name} digita no WhatsApp.`
+    : `Você é uma simulação EXATA de ${name}. Fale exatamente como as citações de exemplo.`;
 
   const emojiGuide = stylometry.topEmojis.length > 0
-    ? `Emojis característicos: ${stylometry.topEmojis.map((e) => e.emoji).join(' ')}. Use-os com naturalidade sem exageros.`
-    : 'Não abuse de emojis; use raramente se necessário.';
+    ? `REGRA DE EMOJIS: Os únicos emojis permitidos são: ${stylometry.topEmojis.map((e) => e.emoji).join(' ')}. Use NO MÁXIMO UM por frase, e apenas se for muito natural. NUNCA exagere ou pareça artificial.`
+    : 'REGRA DE EMOJIS: É PROIBIDO usar emojis. O usuário nunca os usa.';
 
   const punctGuide = stylometry.punctuation.noPunctuationEndingRatio > 0.6
-    ? 'Evite terminar frases curtas com ponto final, simulando a escrita casual de chat.'
-    : 'Use pontuação normalmente conforme necessário.';
+    ? 'PONTUAÇÃO: NÃO use ponto final (.) no final das frases. Escreva como num chat rápido.'
+    : 'PONTUAÇÃO: Use pontuação normal.';
 
   const lowerGuide = stylometry.punctuation.allLowerCaseRatio > 0.7
-    ? 'Escreva de forma despojada, frequentemente em letras minúsculas no início de frases curtas.'
-    : 'Mantenha caixa alta padrão nas frases.';
+    ? 'LETRAS: Escreva predominantemente em letras minúsculas (ex: "oi tudo bem", não "Oi Tudo bem").'
+    : 'LETRAS: Use capitalização padrão.';
 
   const lengthGuide = stylometry.shortMessageRatio > 0.5
-    ? 'Prefira mensagens concisas, diretas e naturais de mensagens instantâneas.'
-    : 'Respostas com tamanho equilibrado, sem enrolação.';
+    ? 'TAMANHO: Suas respostas DEBEM SER EXTREMAMENTE CURTAS (1 a 5 palavras). Seja conciso.'
+    : 'TAMANHO: Respostas curtas de WhatsApp. Sem parágrafos longos.';
 
   const slangGuide = stylometry.commonSlang.length > 0
-    ? `Gírias e expressões habituais: ${stylometry.commonSlang.join(', ')}.`
-    : '';
-
-  const quotesSection = stylometry.sampleQuotes.length > 0
-    ? `\nExemplos reais de falas autênticas de ${name}:\n${stylometry.sampleQuotes.slice(0, 6).map((q) => `"${q}"`).join('\n')}`
+    ? `GÍRIAS OBRIGATÓRIAS (use quando natural): ${stylometry.commonSlang.join(', ')}.`
     : '';
 
   return [
-    `[DIRETRIZ DE IDENTIDADE E ESTILO CONVERSACIONAL]`,
+    `[DIRETRIZ DE IDENTIDADE - MODO CRU]`,
     roleDesc,
     `- ${lengthGuide}`,
     `- ${punctGuide}`,
     `- ${lowerGuide}`,
     `- ${emojiGuide}`,
     slangGuide ? `- ${slangGuide}` : '',
-    quotesSection,
-    `Mantenha a autenticidade e nunca quebre o personagem ou mencione que é uma IA.`,
+    `\nREGRAS CRÍTICAS:\n1. NUNCA seja "prestativo" como um assistente de IA.\n2. NUNCA use linguagem polida se não estiver nos exemplos.\n3. NUNCA diga que você é uma IA. Apenas responda secamente ou com o tom exato de ${name}.`,
   ].filter(Boolean).join('\n');
 }
 
-export async function synthesizePersonaProfile(
-  targetParticipant: string,
-  role: PersonaRole,
-  messages: string[]
-): Promise<PersonaStyleProfile> {
-  const stylometry = extractStylometry(messages);
-  const now = new Date().toISOString();
-  const profileId = `persona-${Date.now()}`;
-  const defaultPrompt = buildDeterministicPrompt(targetParticipant, role, stylometry);
+function calculateQualityScore(stylometry: PersonaStylometry): 'low' | 'medium' | 'high' {
+  const totalMsgs = stylometry.totalAnalyzedMessages;
+  const totalWords = stylometry.averageWordsPerMessage * totalMsgs;
+  if (totalMsgs > 500 && (stylometry.topEmojis.length > 0 || stylometry.commonSlang.length > 0)) {
+    return 'high';
+  }
+  if (totalMsgs >= 100 || totalWords >= 500) {
+    return 'medium';
+  }
+  return 'low';
+}
 
+async function enhancePromptWithLLM(
+  targetParticipant: string,
+  stylometry: PersonaStylometry,
+  defaultPrompt: string
+): Promise<{ synthesizedPrompt: string; fewShotExamples: Array<{ input: string; output: string }> }> {
   let synthesizedPrompt = defaultPrompt;
   let fewShotExamples: Array<{ input: string; output: string }> = [];
 
@@ -239,6 +256,25 @@ Responda APENAS em formato JSON:
     console.warn('[synthesizePersonaProfile] Usando gerador determinístico de estilo:', error);
   }
 
+  return { synthesizedPrompt, fewShotExamples };
+}
+
+export async function synthesizePersonaProfile(
+  targetParticipant: string,
+  role: PersonaRole,
+  messages: string[]
+): Promise<PersonaStyleProfile> {
+  const stylometry = extractStylometry(messages);
+  const now = new Date().toISOString();
+  const profileId = `persona-${Date.now()}`;
+  const defaultPrompt = buildDeterministicPrompt(targetParticipant, role, stylometry);
+
+  const { synthesizedPrompt, fewShotExamples } = await enhancePromptWithLLM(
+    targetParticipant,
+    stylometry,
+    defaultPrompt
+  );
+
   return {
     id: profileId,
     name: role === 'user_clone' ? `Meu Clone (${targetParticipant})` : `Simulação: ${targetParticipant}`,
@@ -250,6 +286,7 @@ Responda APENAS em formato JSON:
     stylometry,
     systemPrompt: synthesizedPrompt,
     fewShotExamples,
+    qualityScore: calculateQualityScore(stylometry),
     createdAt: now,
     updatedAt: now,
   };

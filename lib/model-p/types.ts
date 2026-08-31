@@ -118,6 +118,7 @@ export interface PersonaStyleProfile {
   stylometry: PersonaStylometry;
   systemPrompt: string;
   fewShotExamples: Array<{ input: string; output: string }>;
+  qualityScore: 'low' | 'medium' | 'high';
   createdAt: string;
   updatedAt: string;
 }

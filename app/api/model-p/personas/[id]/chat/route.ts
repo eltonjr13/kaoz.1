@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PersonaStore } from '@/lib/model-p/persona-store';
 import { queryConfiguredAgentCli } from '@/services/agent-llm/agent-llm.service';
-import type { PersonaPlaygroundMessage } from '@/lib/model-p/types';
+import type { PersonaPlaygroundMessage, PersonaStyleProfile } from '@/lib/model-p/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,20 +10,31 @@ interface ChatRequestBody {
 }
 
 function formatPlaygroundPrompt(
-  systemPrompt: string,
+  persona: PersonaStyleProfile,
   history: PersonaPlaygroundMessage[]
 ): string {
-  const dialog = history
+  // Keep sliding window of last 10 messages to avoid blowing up context
+  const recentHistory = history.slice(-10);
+  const dialog = recentHistory
     .map((msg) => `${msg.role === 'user' ? 'Usuário' : 'Você'}: ${msg.content}`)
     .join('\n');
 
+  const examples = persona.fewShotExamples?.map(ex => `Usuário: ${ex.input}\nVocê: ${ex.output}`).join('\n\n') || '';
+  const rawQuotes = persona.stylometry.sampleQuotes?.slice(0, 5).map(q => `Você: ${q}`).join('\n') || '';
+
   return [
-    systemPrompt,
+    persona.systemPrompt,
     '',
-    '[HISTÓRICO DA CONVERSA]',
+    '--- REGRA CRÍTICA ---',
+    'Você NÃO É um assistente de IA. Você é a pessoa real descrita acima.',
+    'Responda de forma crua, sem enrolação e idêntica aos exemplos. Se não houver emojis nos exemplos, NÃO use emojis.',
+    '',
+    examples ? '[EXEMPLOS DE COMO VOCÊ RESPONDE]\n' + examples : '',
+    rawQuotes ? '\n[EXEMPLOS REAIS DE FRASES SUAS]\n' + rawQuotes : '',
+    '\n[HISTÓRICO DA CONVERSA]',
     dialog,
     'Você:',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 export async function POST(
@@ -46,7 +57,7 @@ export async function POST(
       return NextResponse.json({ error: 'Nenhuma mensagem enviada' }, { status: 400 });
     }
 
-    const prompt = formatPlaygroundPrompt(persona.systemPrompt, messages);
+    const prompt = formatPlaygroundPrompt(persona, messages);
     const reply = await queryConfiguredAgentCli(prompt, { useExternalTools: false });
 
     return NextResponse.json({

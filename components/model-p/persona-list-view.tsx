@@ -107,11 +107,12 @@ function PersonaCard({
             <User size={18} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-white">{persona.name}</h3>
               <span className="rounded-full bg-[#7C6CF2]/20 px-2 py-0.5 text-[9px] font-semibold text-[#a99fff] border border-[#7C6CF2]/30">
                 {isClone ? "Meu Clone" : "Simulador"}
               </span>
+              <QualityBadge score={persona.qualityScore || 'low'} />
             </div>
             <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
               {persona.description}
@@ -179,5 +180,27 @@ function PersonaCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function QualityBadge({ score }: { score: 'low' | 'medium' | 'high' }) {
+  if (score === 'high') {
+    return (
+      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20" title="Alta fidelidade de estilo">
+        Alta Precisão
+      </span>
+    );
+  }
+  if (score === 'medium') {
+    return (
+      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-400 border border-amber-500/20" title="Fidelidade aceitável de estilo">
+        Média Precisão
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold text-rose-400 border border-rose-500/20" title="Poucos dados para clonar com perfeição">
+      Baixa Precisão
+    </span>
   );
 }
