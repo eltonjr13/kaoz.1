@@ -143,9 +143,9 @@ export function PersonaUploadModal({
               <Sparkles size={20} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">Clonar Estilo de Conversa</h2>
+              <h2 className="text-base font-semibold text-white">Criar Simulação de Conversa</h2>
               <p className="text-xs text-zinc-400">
-                Aprenda o modo exato de falar a partir de mensagens reais de WhatsApp ou outros chats
+                Aprenda padrões de resposta e estilo a partir de mensagens reais de WhatsApp ou outros chats
               </p>
             </div>
           </div>
@@ -198,7 +198,7 @@ export function PersonaUploadModal({
             <div>
               <h3 className="text-sm font-semibold text-white">Sintetizando Estilo e Voz</h3>
               <p className="text-xs text-zinc-400 mt-1 max-w-sm">
-                Isolando apenas as falas de <strong className="text-zinc-200">{selectedParticipant}</strong>, calculando métricas de vocabulário, cadência e construindo o clone conversacional...
+                Relacionando as falas de <strong className="text-zinc-200">{selectedParticipant}</strong> ao contexto anterior, calculando métricas de vocabulário e construindo a simulação...
               </p>
             </div>
           </div>
@@ -372,7 +372,7 @@ function SelectParticipantStepView({
             }`}
           >
             <p className="text-xs font-semibold text-zinc-100">Simulador de Conversa</p>
-            <p className="text-[11px] text-zinc-500 mt-1">O agente assume a identidade dessa pessoa para você conversar com ela.</p>
+            <p className="text-[11px] text-zinc-500 mt-1">O agente simula padrões de resposta dessa pessoa sem alegar ser ela.</p>
           </button>
           <button
             type="button"
@@ -384,7 +384,7 @@ function SelectParticipantStepView({
             }`}
           >
             <p className="text-xs font-semibold text-zinc-100">Meu Clone Pessoal</p>
-            <p className="text-[11px] text-zinc-500 mt-1">Aprende o seu próprio jeito para redigir ou responder exatamente como você.</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Aprende o seu jeito para sugerir respostas com estilo semelhante ao seu.</p>
           </button>
         </div>
       </div>
@@ -404,7 +404,7 @@ function SelectParticipantStepView({
           className="inline-flex items-center gap-2 rounded-xl bg-[#7C6CF2] px-4 py-2 text-xs font-medium text-white hover:bg-[#6a5ad9] disabled:opacity-50 transition-colors shadow-sm"
         >
           <Sparkles size={14} />
-          <span>Criar Réplica de Estilo</span>
+          <span>Criar Simulação de Estilo</span>
         </button>
       </div>
     </div>

@@ -69,6 +69,10 @@ function matchMessageHeader(line: string): MatchHeaderResult | null {
   return null;
 }
 
+function pushCurrentMessage(messages: ParsedChatMessage[], current: ParsedChatMessage | null): void {
+  if (current && !isSystemMessage(current.content)) messages.push(current);
+}
+
 export function parseWhatsAppChat(rawText: string): ParsedChatResult {
   const lines = rawText.split(/\r?\n/);
   const messages: ParsedChatMessage[] = [];
@@ -78,9 +82,7 @@ export function parseWhatsAppChat(rawText: string): ParsedChatResult {
   for (const line of lines) {
     const header = matchMessageHeader(line);
     if (header) {
-      if (currentMsg && !isSystemMessage(currentMsg.content)) {
-        messages.push(currentMsg);
-      }
+      pushCurrentMessage(messages, currentMsg);
       counter += 1;
       currentMsg = {
         id: `chat-msg-${counter}`,
@@ -89,18 +91,14 @@ export function parseWhatsAppChat(rawText: string): ParsedChatResult {
         content: header.firstLine,
       };
     } else if (isStandaloneSystemLine(line)) {
-      if (currentMsg && !isSystemMessage(currentMsg.content)) {
-        messages.push(currentMsg);
-      }
+      pushCurrentMessage(messages, currentMsg);
       currentMsg = null;
     } else if (currentMsg) {
       currentMsg.content = `${currentMsg.content}\n${line}`.trim();
     }
   }
 
-  if (currentMsg && !isSystemMessage(currentMsg.content)) {
-    messages.push(currentMsg);
-  }
+  pushCurrentMessage(messages, currentMsg);
 
   const participants = buildParticipantSummaries(messages);
 

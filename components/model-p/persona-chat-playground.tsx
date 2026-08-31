@@ -10,14 +10,7 @@ interface PersonaChatPlaygroundProps {
 }
 
 export function PersonaChatPlayground({ persona, onBack }: PersonaChatPlaygroundProps) {
-  const [messages, setMessages] = useState<PersonaPlaygroundMessage[]>([
-    {
-      id: "initial-1",
-      role: "assistant",
-      content: persona.fewShotExamples?.[0]?.output || "Opa, e aí! Pode falar.",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<PersonaPlaygroundMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -69,14 +62,7 @@ export function PersonaChatPlayground({ persona, onBack }: PersonaChatPlayground
   };
 
   const handleClear = () => {
-    setMessages([
-      {
-        id: "initial-clear",
-        role: "assistant",
-        content: persona.fewShotExamples?.[0]?.output || "Opa, e aí! Pode falar.",
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    setMessages([]);
   };
 
   return (
@@ -118,6 +104,13 @@ export function PersonaChatPlayground({ persona, onBack }: PersonaChatPlayground
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="flex h-full items-center justify-center text-center">
+            <p className="max-w-xs text-xs leading-relaxed text-zinc-500">
+              Simulação pronta. Envie uma mensagem para gerar a primeira resposta com exemplos reais relevantes ao assunto.
+            </p>
+          </div>
+        )}
         {messages.map((m) => (
           <div
             key={m.id}

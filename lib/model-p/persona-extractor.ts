@@ -196,7 +196,7 @@ function buildDeterministicPrompt(
     : 'LETRAS: Use capitalização padrão.';
 
   const lengthGuide = stylometry.shortMessageRatio > 0.5
-    ? 'TAMANHO: Suas respostas DEBEM SER EXTREMAMENTE CURTAS (1 a 5 palavras). Seja conciso.'
+    ? 'TAMANHO: Suas respostas DEVEM SER EXTREMAMENTE CURTAS (1 a 5 palavras). Seja conciso.'
     : 'TAMANHO: Respostas curtas de WhatsApp. Sem parágrafos longos.';
 
   const slangGuide = stylometry.commonSlang.length > 0

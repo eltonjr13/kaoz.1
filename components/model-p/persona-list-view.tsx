@@ -30,9 +30,9 @@ export function PersonaListView({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-[var(--line)] bg-[#101217] p-5">
         <div>
-          <h2 className="text-sm font-semibold text-white">Réplicas & Clones de Conversa</h2>
+          <h2 className="text-sm font-semibold text-white">Simulações de Conversa</h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Perfis de estilo e voz aprendidos a partir de históricos de WhatsApp ou outros chats
+            Perfis de resposta e estilo aprendidos a partir de históricos de WhatsApp ou outros chats
           </p>
         </div>
         <button
@@ -41,7 +41,7 @@ export function PersonaListView({
           className="inline-flex items-center gap-2 rounded-xl bg-[#7C6CF2] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#6a5ad9] transition-colors shadow-sm self-start sm:self-center"
         >
           <Sparkles size={14} />
-          <span>Clonar Novo Estilo</span>
+          <span>Criar Nova Simulação</span>
         </button>
       </div>
 
@@ -72,7 +72,7 @@ function EmptyPersonasState({ onOpenUpload }: { onOpenUpload: () => void }) {
       <div>
         <h3 className="text-sm font-semibold text-white">Nenhum estilo conversacional clonado ainda</h3>
         <p className="text-xs text-zinc-400 mt-1 max-w-md mx-auto">
-          Faça upload de uma conversa do WhatsApp (.txt) para o agente aprender a cadência, gírias, emojis e forma exata de falar de uma pessoa.
+          Faça upload de uma conversa do WhatsApp (.txt) para o agente aprender padrões contextuais, cadência, vocabulário e emojis.
         </p>
       </div>
       <button
@@ -112,7 +112,10 @@ function PersonaCard({
               <span className="rounded-full bg-[#7C6CF2]/20 px-2 py-0.5 text-[9px] font-semibold text-[#a99fff] border border-[#7C6CF2]/30">
                 {isClone ? "Meu Clone" : "Simulador"}
               </span>
-              <QualityBadge score={persona.qualityScore || 'low'} />
+              <QualityBadge
+                score={persona.qualityScore || 'low'}
+                numericScore={persona.qualityReport?.score}
+              />
             </div>
             <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
               {persona.description}
@@ -157,11 +160,7 @@ function PersonaCard({
         </div>
       </div>
 
-      {persona.qualityReport?.warnings?.[0] && (
-        <p className="text-[10px] leading-relaxed text-amber-400/80">
-          {persona.qualityReport.warnings[0]}
-        </p>
-      )}
+      <PersonaQualityWarning warning={persona.qualityReport?.warnings?.[0]} />
 
       {stylometry.commonSlang.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -193,24 +192,40 @@ function PersonaCard({
   );
 }
 
-function QualityBadge({ score }: { score: 'low' | 'medium' | 'high' }) {
+function PersonaQualityWarning({ warning }: { warning?: string }) {
+  if (!warning) return null;
+  return (
+    <p className="text-[10px] leading-relaxed text-amber-400/80">
+      {warning}
+    </p>
+  );
+}
+
+function QualityBadge({
+  score,
+  numericScore,
+}: {
+  score: 'low' | 'medium' | 'high';
+  numericScore?: number;
+}) {
+  const suffix = typeof numericScore === 'number' ? ` · ${numericScore}/100` : '';
   if (score === 'high') {
     return (
       <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/20" title="Base ampla e contextual; a fidelidade final deve ser validada no chat">
-        Base Forte
+        Base Forte{suffix}
       </span>
     );
   }
   if (score === 'medium') {
     return (
       <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-400 border border-amber-500/20" title="Base moderada; ainda pode faltar variedade contextual">
-        Base Média
+        Base Média{suffix}
       </span>
     );
   }
   return (
     <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold text-rose-400 border border-rose-500/20" title="Poucos dados ou poucos pares reais de contexto e resposta">
-      Base Limitada
+      Base Limitada{suffix}
     </span>
   );
 }

@@ -369,7 +369,7 @@ export function ModelPDashboard() {
           }`}
         >
           <Sparkles size={14} />
-          <span>Réplicas de Estilo (WhatsApp & Chats)</span>
+          <span>Simulações de Estilo (WhatsApp & Chats)</span>
           <span className="rounded-full bg-black/30 px-1.5 py-0.2 text-[10px]">
             {personas.length}
           </span>
