@@ -109,6 +109,20 @@ export interface PersonaStylometry {
   sampleQuotes: string[];
 }
 
+export interface PersonaTrainingExample {
+  id: string;
+  input: string;
+  output: string;
+  sourceTimestamp: string;
+}
+
+export interface PersonaQualityReport {
+  score: number;
+  pairedExamples: number;
+  lexicalDiversity: number;
+  warnings: string[];
+}
+
 export interface PersonaStyleProfile {
   id: string;
   name: string;
@@ -118,6 +132,8 @@ export interface PersonaStyleProfile {
   stylometry: PersonaStylometry;
   systemPrompt: string;
   fewShotExamples: Array<{ input: string; output: string }>;
+  trainingExamples?: PersonaTrainingExample[];
+  qualityReport?: PersonaQualityReport;
   qualityScore: 'low' | 'medium' | 'high';
   createdAt: string;
   updatedAt: string;

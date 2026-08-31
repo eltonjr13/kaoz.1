@@ -2,6 +2,7 @@ import type {
   ChatParticipantSummary,
   ParsedChatMessage,
   ParsedChatResult,
+  PersonaTrainingExample,
 } from './types.ts';
 
 // Android format: 12/03/2024, 14:30 - Sender: message
@@ -12,6 +13,8 @@ const ANDROID_HEADER_REGEX = /^(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:,\s*|\s+)\d{1,
 // iOS format: [12/03/2024, 14:30:15] Sender: message
 // or [12/03/24 14:30] Sender: message
 const IOS_HEADER_REGEX = /^\[(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:,\s*|\s+)\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)\]\s*([^:]+):\s*(.*)$/;
+const ANDROID_SYSTEM_REGEX = /^(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:,\s*|\s+)\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)\s*-\s*(.*)$/;
+const IOS_SYSTEM_REGEX = /^\[(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:,\s*|\s+)\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)\]\s*(.*)$/;
 
 const SYSTEM_PATTERNS = [
   /criptografia de ponta a ponta/i,
@@ -30,6 +33,11 @@ const SYSTEM_PATTERNS = [
 
 function isSystemMessage(content: string): boolean {
   return SYSTEM_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function isStandaloneSystemLine(line: string): boolean {
+  const match = line.trim().match(IOS_SYSTEM_REGEX) || line.trim().match(ANDROID_SYSTEM_REGEX);
+  return Boolean(match && isSystemMessage(match[2]));
 }
 
 interface MatchHeaderResult {
@@ -80,6 +88,11 @@ export function parseWhatsAppChat(rawText: string): ParsedChatResult {
         sender: header.sender,
         content: header.firstLine,
       };
+    } else if (isStandaloneSystemLine(line)) {
+      if (currentMsg && !isSystemMessage(currentMsg.content)) {
+        messages.push(currentMsg);
+      }
+      currentMsg = null;
     } else if (currentMsg) {
       currentMsg.content = `${currentMsg.content}\n${line}`.trim();
     }
@@ -139,4 +152,44 @@ export function filterParticipantMessages(
       msg.content.length > 0 &&
       !isSystemMessage(msg.content)
   );
+}
+
+/**
+ * Preserves how the selected participant responded to the preceding messages.
+ * Consecutive messages from the participant are grouped into the same output,
+ * matching the fragmented cadence commonly found in chat exports.
+ */
+export function buildPersonaTrainingExamples(
+  messages: ParsedChatMessage[],
+  targetName: string,
+  limit = 500
+): PersonaTrainingExample[] {
+  const normalizedTarget = targetName.toLowerCase().trim();
+  const examples: PersonaTrainingExample[] = [];
+  let pendingContext: ParsedChatMessage[] = [];
+
+  for (const message of messages) {
+    const isTarget = message.sender.toLowerCase().trim() === normalizedTarget;
+    if (!isTarget) {
+      pendingContext = [...pendingContext, message].slice(-3);
+      continue;
+    }
+
+    if (pendingContext.length > 0) {
+      examples.push({
+        id: `persona-example-${message.id}`,
+        input: pendingContext.map((item) => `${item.sender}: ${item.content}`).join('\n'),
+        output: message.content,
+        sourceTimestamp: message.timestamp,
+      });
+      pendingContext = [];
+    } else if (examples.length > 0) {
+      const previous = examples[examples.length - 1];
+      previous.output = `${previous.output}\n${message.content}`;
+    }
+
+    if (examples.length >= limit) break;
+  }
+
+  return examples;
 }
