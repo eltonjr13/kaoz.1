@@ -3,6 +3,8 @@ import { parseWhatsAppChat } from '@/lib/model-p/chat-parser';
 
 export const dynamic = 'force-dynamic';
 
+const MAX_CHAT_BYTES = 5 * 1024 * 1024;
+
 async function extractRawTextFromRequest(request: Request): Promise<string> {
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('multipart/form-data')) {
@@ -27,6 +29,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Nenhum conteúdo de conversa fornecido. Envie um arquivo .txt ou texto colado.' },
         { status: 400 }
+      );
+    }
+
+    if (Buffer.byteLength(rawText, 'utf8') > MAX_CHAT_BYTES) {
+      return NextResponse.json(
+        { error: 'A conversa excede o limite de 5 MB. Divida o histórico em partes menores.' },
+        { status: 413 }
       );
     }
 

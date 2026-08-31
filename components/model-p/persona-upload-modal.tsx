@@ -19,7 +19,6 @@ import type {
   PersonaRole,
   PersonaStyleProfile,
 } from "@/lib/model-p/types";
-import { filterParticipantMessages } from "@/lib/model-p/chat-parser";
 
 interface PersonaUploadModalProps {
   isOpen: boolean;
@@ -42,6 +41,7 @@ export function PersonaUploadModal({
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
   const [role, setRole] = useState<PersonaRole>("simulator");
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   if (!isOpen) return null;
 
@@ -90,10 +90,9 @@ export function PersonaUploadModal({
     setStep("processing");
 
     try {
-      const targetMessages = filterParticipantMessages(
-        parseResult.messages,
-        selectedParticipant
-      ).map((m: ParsedChatMessage) => m.content);
+      const targetMessages = parseResult.messages
+        .filter((message: ParsedChatMessage) => message.sender === selectedParticipant)
+        .map((message: ParsedChatMessage) => message.content);
 
       if (targetMessages.length === 0) {
         throw new Error(`Nenhuma mensagem válida encontrada para o participante "${selectedParticipant}".`);
@@ -106,6 +105,7 @@ export function PersonaUploadModal({
           targetParticipant: selectedParticipant,
           role,
           messages: targetMessages,
+          conversationMessages: parseResult.messages,
         }),
       });
 
@@ -130,6 +130,7 @@ export function PersonaUploadModal({
     setParseResult(null);
     setSelectedParticipant(null);
     setRole("simulator");
+    setPrivacyAccepted(false);
     setError("");
   };
 
@@ -182,6 +183,8 @@ export function PersonaUploadModal({
             setSelectedParticipant={setSelectedParticipant}
             role={role}
             setRole={setRole}
+            privacyAccepted={privacyAccepted}
+            setPrivacyAccepted={setPrivacyAccepted}
             onBack={() => setStep("upload")}
             onConfirm={handleCreatePersona}
           />
@@ -282,6 +285,8 @@ function SelectParticipantStepView({
   setSelectedParticipant,
   role,
   setRole,
+  privacyAccepted,
+  setPrivacyAccepted,
   onBack,
   onConfirm,
 }: {
@@ -290,6 +295,8 @@ function SelectParticipantStepView({
   setSelectedParticipant: (s: string) => void;
   role: PersonaRole;
   setRole: (r: PersonaRole) => void;
+  privacyAccepted: boolean;
+  setPrivacyAccepted: (accepted: boolean) => void;
   onBack: () => void;
   onConfirm: () => void;
 }) {
@@ -298,9 +305,21 @@ function SelectParticipantStepView({
       <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2.5 text-xs text-amber-300">
         <ShieldAlert size={16} className="shrink-0 mt-0.5 text-amber-400" />
         <p className="leading-relaxed">
-          <strong>Isolamento de Estilo Ativado:</strong> Apenas as falas do participante escolhido serão analisadas. As mensagens de outros participantes ou suas respostas serão rigorosamente descartadas para não mesclar personalidades.
+          <strong>Aprendizado contextual ativado:</strong> o estilo será calculado apenas com as falas do participante escolhido. As mensagens anteriores dos demais participantes serão usadas somente como contexto para aprender como essa pessoa responde.
         </p>
       </div>
+
+      <label className="flex items-start gap-2.5 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-xs text-sky-200 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={privacyAccepted}
+          onChange={(event) => setPrivacyAccepted(event.target.checked)}
+          className="mt-0.5 accent-[#7C6CF2]"
+        />
+        <span className="leading-relaxed">
+          Confirmo que tenho autorização para usar esta conversa. Entendo que amostras selecionadas podem ser enviadas ao provedor de IA configurado e que o perfil armazenará trechos locais para melhorar a simulação.
+        </span>
+      </label>
 
       <div className="space-y-2">
         <label className="text-xs font-semibold text-zinc-300">
@@ -381,7 +400,7 @@ function SelectParticipantStepView({
         <button
           type="button"
           onClick={onConfirm}
-          disabled={!selectedParticipant}
+          disabled={!selectedParticipant || !privacyAccepted}
           className="inline-flex items-center gap-2 rounded-xl bg-[#7C6CF2] px-4 py-2 text-xs font-medium text-white hover:bg-[#6a5ad9] disabled:opacity-50 transition-colors shadow-sm"
         >
           <Sparkles size={14} />
