@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -27,7 +27,16 @@ import {
   normalizeVideoEncoderPreference,
   videoEncoderArguments,
   type VideoEncoder,
+  type VideoEncoderOptions,
 } from "./video-encoder";
+import {
+  estimateVideoExportBytes,
+  normalizeVideoExportProfile,
+  proxyVideoProfile,
+  resolveVideoExportProfile,
+  type ResolvedVideoExportProfile,
+  type VideoExportProfile,
+} from "./video-export-profile";
 import { formattedLessonNumber } from "./lesson-download";
 import { karaokeCaptionSlices } from "./caption-karaoke";
 import {
@@ -78,15 +87,36 @@ function runFfmpeg(
   args: string[],
   timeoutMs = 60 * 60_000,
   onProgress?: (progress: number) => void,
+  signal?: AbortSignal,
 ) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(ffmpegPath(), ["-progress", "pipe:2", "-nostats", ...args], { windowsHide: true });
     const stderr: Buffer[] = [];
     let progressOutput = "";
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      callback();
+    };
+    const abort = () => {
+      child.kill();
+      if (process.platform === "win32" && child.pid) {
+        const pid = child.pid;
+        setTimeout(() => {
+          if (child.exitCode === null) spawn("taskkill.exe", ["/pid", String(pid), "/t", "/f"], { windowsHide: true });
+        }, 3_000).unref();
+      }
+      finish(() => reject(new DOMException("Renderização cancelada.", "AbortError")));
+    };
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error("Render excedeu o limite de tempo."));
+      finish(() => reject(new Error("Render excedeu o limite de tempo.")));
     }, timeoutMs);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
     child.stderr.on("data", (chunk: Buffer) => {
       stderr.push(chunk);
       if (!onProgress) return;
@@ -99,16 +129,21 @@ function runFfmpeg(
       }
     });
     child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+      finish(() => reject(error));
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`FFmpeg falhou (${code}): ${Buffer.concat(stderr).toString("utf8").slice(-1_200)}`));
+      finish(() => {
+        if (code === 0) resolve();
+        else reject(new Error(`FFmpeg falhou (${code}): ${Buffer.concat(stderr).toString("utf8").slice(-1_200)}`));
+      });
     });
   });
 }
+
+export type RenderExecutionOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: number, stage: string) => void;
+};
 
 let amdAmfProbe: Promise<boolean> | undefined;
 
@@ -689,6 +724,23 @@ function bodyVideoFilter(plan: IntelligentEditPlan, assPath: string) {
   return filters.join(",");
 }
 
+function bodyVideoFilterForRange(plan: IntelligentEditPlan, assPath: string, includeBoundaryFades: boolean) {
+  if (includeBoundaryFades) return bodyVideoFilter(plan, assPath);
+  const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
+  const scale = scaleExpression(plan.events);
+  const focusX = focalExpression(plan.events, "x");
+  const focusY = focalExpression(plan.events, "y");
+  const transition = transitionExpression(plan.events);
+  const filters = [
+    `scale=${plan.media.width}:${plan.media.height}:flags=lanczos`,
+    `scale=w='trunc(iw*(${scale})/2)*2':h='trunc(ih*(${scale})/2)*2':eval=frame`,
+    `crop=${plan.media.width}:${plan.media.height}:x='${focusX}':y='${focusY}'`,
+    `eq=contrast=1.025:saturation=1.05:gamma=1.0:brightness='-${motion.transitionDarkness.toFixed(3)}*(${transition})':eval=frame`,
+    `ass='${filterPath(assPath)}'`,
+  ];
+  return filters.join(",");
+}
+
 function cardProgressFilters(
   plan: IntelligentEditPlan,
   kind: "intro" | "outro",
@@ -779,6 +831,8 @@ async function renderCard(
   outputPath: string,
   encoder: VideoEncoder,
   onProgress?: (progress: number) => void,
+  encoderOptions?: VideoEncoderOptions,
+  signal?: AbortSignal,
 ) {
   const motion = resolveMotionProfile(plan.motion?.pace, plan.style);
   const duration = plan.events.find((item) => item.kind === kind)?.duration || 4;
@@ -812,13 +866,13 @@ async function renderCard(
     `afade=t=in:st=0:d=${Math.min(0.65, motion.entranceSeconds).toFixed(3)},afade=t=out:st=${(duration - Math.min(0.65, motion.exitSeconds)).toFixed(3)}:d=${Math.min(0.65, motion.exitSeconds).toFixed(3)}`,
     "-t",
     duration.toFixed(3),
-    ...videoEncoderArguments(encoder),
+    ...videoEncoderArguments(encoder, encoderOptions),
     "-c:a",
     "aac",
     "-ar",
     "48000",
     outputPath,
-  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / duration)));
+  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / duration)), signal);
 }
 
 async function renderBody(
@@ -827,10 +881,14 @@ async function renderBody(
   outputPath: string,
   encoder: VideoEncoder,
   onProgress?: (progress: number) => void,
+  encoderOptions?: VideoEncoderOptions,
+  signal?: AbortSignal,
+  sourceStart = 0,
+  includeBoundaryFades = true,
 ) {
   const select = videoCutSelectExpression(plan.events, plan.media.durationSeconds);
   const videoFilter = [
-    bodyVideoFilter(plan, assPath),
+    bodyVideoFilterForRange(plan, assPath, includeBoundaryFades),
     ...(select ? [`select='${select}'`, "setpts=N/FRAME_RATE/TB"] : []),
   ].join(",");
   const audioFilters = [
@@ -841,8 +899,10 @@ async function renderBody(
     "-y",
     "-threads",
     "0",
+    ...(sourceStart > 0 ? ["-ss", sourceStart.toFixed(3)] : []),
     "-i",
     plan.sourcePath,
+    ...(sourceStart > 0 ? ["-t", plan.media.durationSeconds.toFixed(3)] : []),
     "-map",
     "0:v:0",
     "-map",
@@ -853,13 +913,15 @@ async function renderBody(
     audioFilters,
     "-r",
     plan.media.fps.toFixed(3),
-    ...videoEncoderArguments(encoder),
+    ...videoEncoderArguments(encoder, encoderOptions),
     "-c:a",
     "aac",
+    "-b:a",
+    "192k",
     "-ar",
     "48000",
     outputPath,
-  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / plan.media.durationSeconds)));
+  ], 60 * 60_000, (seconds) => onProgress?.(Math.min(1, seconds / plan.media.durationSeconds)), signal);
 }
 
 function concatFileEntry(filePath: string) {
@@ -867,22 +929,8 @@ function concatFileEntry(filePath: string) {
   return `file '${escaped}'`;
 }
 
-async function concatenateVideoSegments(
-  paths: string[],
-  concatPath: string,
-  joinedPath: string,
-) {
+async function writeConcatFile(paths: string[], concatPath: string) {
   await writeFile(concatPath, `${paths.map(concatFileEntry).join("\n")}\n`, "utf8");
-  await runFfmpeg([
-    "-y",
-    "-f", "concat",
-    "-safe", "0",
-    "-i", concatPath,
-    "-map", "0:v:0",
-    "-map", "0:a:0",
-    "-c", "copy",
-    joinedPath,
-  ]);
 }
 
 function sfxFileForEvent(
@@ -942,25 +990,28 @@ async function collectSfxEvents(plan: IntelligentEditPlan) {
   return events.slice(0, 14);
 }
 
-async function mixFinalAudio(
+async function finalizeVideoFromSegments(
   plan: IntelligentEditPlan,
-  joinedPath: string,
+  segmentPaths: string[],
+  concatPath: string,
   outputPath: string,
+  signal?: AbortSignal,
 ) {
+  await writeConcatFile(segmentPaths, concatPath);
   const sfxEvents = await collectSfxEvents(plan);
   const voiceEnhanceEnabled = plan.media.voiceEnhance === true;
   const musicEnabled = Boolean(plan.media.musicPath);
 
   if (!musicEnabled && sfxEvents.length === 0 && !voiceEnhanceEnabled) {
     await runFfmpeg([
-      "-y", "-i", joinedPath,
+      "-y", "-f", "concat", "-safe", "0", "-i", concatPath,
       "-map", "0:v:0", "-map", "0:a:0",
       "-c", "copy", "-movflags", "+faststart", outputPath,
-    ]);
+    ], 60 * 60_000, undefined, signal);
     return;
   }
 
-  const args = ["-y", "-i", joinedPath];
+  const args = ["-y", "-f", "concat", "-safe", "0", "-i", concatPath];
   const totalDuration = editedVideoDuration(plan.events, plan.media.durationSeconds) + 8;
   const filterParts: string[] = [];
   let voiceLabel = "[0:a]";
@@ -1018,7 +1069,7 @@ async function mixFinalAudio(
     "-movflags", "+faststart",
     outputPath,
   );
-  await runFfmpeg(args);
+  await runFfmpeg(args, 60 * 60_000, undefined, signal);
 }
 
 async function renderSegments(
@@ -1026,6 +1077,8 @@ async function renderSegments(
   paths: { introAss: string; bodyAss: string; outroAss: string; intro: string; body: string; outro: string },
   encoder: VideoEncoder,
   onProgress?: (progress: number) => void,
+  encoderOptions?: VideoEncoderOptions,
+  signal?: AbortSignal,
 ) {
   const segmentProgress = { intro: 0, body: 0, outro: 0 };
   const report = (segment: keyof typeof segmentProgress, value: number) => {
@@ -1037,9 +1090,9 @@ async function renderSegments(
     );
   };
   const results = await Promise.allSettled([
-    renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value)),
-    renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value)),
-    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value)),
+    renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value), encoderOptions, signal),
+    renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value), encoderOptions, signal),
+    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value), encoderOptions, signal),
   ]);
   const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failure) throw failure.reason;
@@ -1047,6 +1100,7 @@ async function renderSegments(
 
 export async function renderIntelligentEdit(
   rawInput: Record<string, unknown>,
+  execution: RenderExecutionOptions = {},
 ) {
   const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
   const plan = await readIntelligentEditPlan(planId || undefined);
@@ -1066,6 +1120,7 @@ export async function renderIntelligentEdit(
     lastProgress = nextProgress;
     renderStatus.progress = nextProgress;
     renderStatus.stage = stage;
+    execution.onProgress?.(nextProgress, stage);
     statusWrite = statusWrite
       .then(() => writeRenderStatus({ ...renderStatus }))
       .catch(() => undefined);
@@ -1073,24 +1128,43 @@ export async function renderIntelligentEdit(
   await writeRenderStatus(renderStatus);
   const outputResolution = normalizeVideoOutputResolution(rawInput.outputResolution);
   const renderMode = rawInput.renderMode === "live-preview" ? "live-preview" : "final";
-  const outputDimensions = resolveVideoOutputDimensions(
-    plan.media.width,
-    plan.media.height,
-    outputResolution,
-  );
+  const requestedProfile = rawInput.exportProfile && typeof rawInput.exportProfile === "object"
+    ? normalizeVideoExportProfile(rawInput.exportProfile)
+    : null;
+  const resolvedProfile = requestedProfile
+    ? resolveVideoExportProfile(requestedProfile, plan.media)
+    : null;
+  const outputDimensions = resolvedProfile || resolveVideoOutputDimensions(
+      plan.media.width,
+      plan.media.height,
+      outputResolution,
+    );
   const renderPlan: IntelligentEditPlan = {
     ...plan,
-    media: { ...plan.media, ...outputDimensions },
+    media: {
+      ...plan.media,
+      width: outputDimensions.width,
+      height: outputDimensions.height,
+      fps: resolvedProfile?.fps || plan.media.fps,
+    },
     design: plan.design ? {
       ...plan.design,
       captionsEnabled: renderMode === "final" && plan.design.captionsEnabled !== false,
     } : plan.design,
   };
-  const requestedEncoder = normalizeVideoEncoderPreference(rawInput.videoEncoder);
+  const requestedEncoder = normalizeVideoEncoderPreference(resolvedProfile?.videoEncoder ?? rawInput.videoEncoder);
   let encoder = await selectVideoEncoder(requestedEncoder);
   let encoderFallback = false;
-  const directory = plan.artifacts.directory;
+  const encoderOptions: VideoEncoderOptions = {
+    bitrateKbps: resolvedProfile?.bitrateKbps,
+    speed: renderMode === "live-preview" ? "speed" : "balanced",
+  };
   const prefix = renderMode === "live-preview" ? "live-preview" : "final";
+  const requestedWorkingDirectory = typeof rawInput.workingDirectory === "string" && path.isAbsolute(rawInput.workingDirectory)
+    ? path.resolve(rawInput.workingDirectory)
+    : plan.artifacts.directory;
+  const directory = path.join(requestedWorkingDirectory, plan.id, prefix);
+  await mkdir(directory, { recursive: true });
   const bodyAssPath = path.join(directory, `${prefix}-body.ass`);
   const introAssPath = path.join(directory, `${prefix}-intro.ass`);
   const outroAssPath = path.join(directory, `${prefix}-outro.ass`);
@@ -1098,8 +1172,16 @@ export async function renderIntelligentEdit(
   const bodyPath = path.join(directory, `${prefix}-body.mp4`);
   const outroPath = path.join(directory, `${prefix}-outro.mp4`);
   const concatPath = path.join(directory, `${prefix}-concat.txt`);
-  const joinedPath = path.join(directory, `${prefix}-joined.mp4`);
-  const previewPath = path.join(directory, renderMode === "live-preview" ? "live-preview-v1.mp4" : "preview-v4.mp4");
+  const requestedOutputPath = typeof rawInput.outputPath === "string" && path.isAbsolute(rawInput.outputPath)
+    ? path.resolve(rawInput.outputPath)
+    : undefined;
+  const previewPath = requestedOutputPath || path.join(
+    plan.artifacts.directory,
+    renderMode === "live-preview" ? "live-preview-v1.mp4" : "preview-v4.mp4",
+  );
+  const partialPath = previewPath.replace(/\.mp4$/i, ".partial.mp4");
+  const temporaryPaths = [introPath, bodyPath, outroPath, concatPath, partialPath];
+  await Promise.all(temporaryPaths.map((filePath) => unlink(filePath).catch(() => undefined)));
   await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
   await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(renderPlan, "outro"), "utf8");
@@ -1115,29 +1197,44 @@ export async function renderIntelligentEdit(
     reportProgress(4, "Gerando cenas e efeitos...");
     await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
       reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-    });
+    }, encoderOptions, execution.signal);
   } catch (error) {
+    if ((error as Error).name === "AbortError") throw error;
     if (encoder !== "amd-amf") throw error;
     encoder = "libx264";
     encoderFallback = true;
+    await Promise.all([introPath, bodyPath, outroPath].map((filePath) => unlink(filePath).catch(() => undefined)));
     reportProgress(4, "Aceleração AMD indisponível; continuando com CPU...");
     await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
       reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-    });
+    }, encoderOptions, execution.signal);
   }
-  reportProgress(88, "Unindo as cenas renderizadas...");
-  await concatenateVideoSegments(
-    [introPath, bodyPath, outroPath],
-    concatPath,
-    joinedPath,
-  );
-  reportProgress(94, "Finalizando áudio e preparando o arquivo...");
-  await mixFinalAudio(renderPlan, joinedPath, previewPath);
+  reportProgress(88, "Unindo cenas e finalizando áudio...");
+  try {
+    await finalizeVideoFromSegments(
+      renderPlan,
+      [introPath, bodyPath, outroPath],
+      concatPath,
+      partialPath,
+      execution.signal,
+    );
+    await unlink(previewPath).catch(() => undefined);
+    await rename(partialPath, previewPath);
+  } finally {
+    await Promise.all([introPath, bodyPath, outroPath, concatPath, partialPath]
+      .map((filePath) => unlink(filePath).catch(() => undefined)));
+  }
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
+    planId: plan.id,
+    updatedAt: plan.editorial?.updatedAt,
+    renderMode,
+    profile: resolvedProfile,
+  })).digest("hex");
   const updated: IntelligentEditPlan = {
     ...plan,
     artifacts: renderMode === "live-preview"
-      ? { ...plan.artifacts, previewPath }
-      : { ...plan.artifacts, finalPath: previewPath },
+      ? { ...plan.artifacts, previewPath, proxyPath: previewPath, proxyFingerprint: fingerprint }
+      : { ...plan.artifacts, finalPath: previewPath, finalFingerprint: fingerprint },
   };
   if (renderMode === "live-preview") await recordEditorialPreview(plan, previewPath);
   await statusWrite;
@@ -1153,9 +1250,10 @@ export async function renderIntelligentEdit(
     finalPath: renderMode === "final" ? previewPath : undefined,
     renderMode,
     outputResolution: {
-      mode: outputResolution,
+      mode: resolvedProfile?.resolution || outputResolution,
       ...outputDimensions,
     },
+    exportProfile: resolvedProfile,
     videoEncoder: {
       requested: requestedEncoder,
       used: encoder,
@@ -1181,6 +1279,187 @@ export async function renderIntelligentEdit(
       backgroundMusic: Boolean(plan.media.musicPath),
       visualAnalysis: plan.visual.source,
     },
+  };
+}
+
+function shiftedRangePlan(plan: IntelligentEditPlan, start: number, duration: number, profile: ResolvedVideoExportProfile) {
+  const end = start + duration;
+  const overlaps = (itemStart: number, itemDuration: number) => itemStart < end && itemStart + itemDuration > start;
+  return {
+    ...plan,
+    media: {
+      ...plan.media,
+      width: profile.width,
+      height: profile.height,
+      fps: profile.fps,
+      durationSeconds: duration,
+    },
+    events: plan.events
+      .filter((event) => event.kind !== "intro" && event.kind !== "outro" && overlaps(event.start, event.duration))
+      .map((event) => ({
+        ...event,
+        start: Math.max(0, event.start - start),
+        duration: Math.max(0.01, Math.min(end, event.start + event.duration) - Math.max(start, event.start)),
+      })),
+    captions: plan.captions
+      .filter((caption) => caption.start < end && caption.end > start)
+      .map((caption) => ({
+        ...caption,
+        start: Math.max(0, caption.start - start),
+        end: Math.min(duration, caption.end - start),
+        words: caption.words?.filter((word) => word.start < end && word.end > start).map((word) => ({
+          ...word,
+          start: Math.max(0, word.start - start),
+          end: Math.min(duration, word.end - start),
+        })),
+      })),
+    design: plan.design ? { ...plan.design, captionsEnabled: plan.design.captionsEnabled !== false } : plan.design,
+  } satisfies IntelligentEditPlan;
+}
+
+export async function renderIntelligentProxy(
+  rawInput: Record<string, unknown>,
+  execution: RenderExecutionOptions = {},
+) {
+  const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
+  const plan = await readIntelligentEditPlan(planId || undefined);
+  if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const profile = proxyVideoProfile(plan.media);
+  const source = await stat(plan.sourcePath);
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
+    sourceHash: plan.sourceHash,
+    sourceSize: source.size,
+    sourceModifiedAt: source.mtimeMs,
+    profile,
+    version: 1,
+  })).digest("hex");
+  const cacheDirectory = typeof rawInput.cacheDirectory === "string" && path.isAbsolute(rawInput.cacheDirectory)
+    ? path.resolve(rawInput.cacheDirectory)
+    : plan.artifacts.directory;
+  const proxyDirectory = path.join(cacheDirectory, plan.id, "proxy");
+  await mkdir(proxyDirectory, { recursive: true });
+  const proxyPath = path.join(proxyDirectory, `proxy-v1-${fingerprint.slice(0, 12)}.mp4`);
+  const cached = await stat(proxyPath).catch(() => null);
+  if (cached?.isFile() && cached.size > 0) {
+    await recordEditorialPreview(plan, proxyPath);
+    return {
+      planId: plan.id,
+      proxyPath,
+      previewPath: proxyPath,
+      fingerprint,
+      cached: true,
+      exportProfile: profile,
+      durationSeconds: plan.media.durationSeconds,
+    };
+  }
+  const partialPath = proxyPath.replace(/\.mp4$/i, ".partial.mp4");
+  await unlink(partialPath).catch(() => undefined);
+  let encoder = await selectVideoEncoder(profile.videoEncoder);
+  let fallback = false;
+  const args = (selected: VideoEncoder) => [
+    "-y", "-i", plan.sourcePath,
+    "-map", "0:v:0", "-map", "0:a:0?",
+    "-vf", `scale=${profile.width}:${profile.height}:flags=bilinear`,
+    "-r", String(profile.fps),
+    "-g", String(profile.fps),
+    ...videoEncoderArguments(selected, { bitrateKbps: profile.bitrateKbps, speed: "speed" }),
+    "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+    "-movflags", "+faststart",
+    partialPath,
+  ];
+  try {
+    await runFfmpeg(args(encoder), 60 * 60_000, (seconds) => {
+      execution.onProgress?.(Math.min(99, Math.round(seconds / plan.media.durationSeconds * 100)), "Gerando proxy 720p...");
+    }, execution.signal);
+  } catch (error) {
+    if ((error as Error).name === "AbortError" || encoder !== "amd-amf") throw error;
+    encoder = "libx264";
+    fallback = true;
+    await unlink(partialPath).catch(() => undefined);
+    await runFfmpeg(args(encoder), 60 * 60_000, (seconds) => {
+      execution.onProgress?.(Math.min(99, Math.round(seconds / plan.media.durationSeconds * 100)), "Gerando proxy com CPU...");
+    }, execution.signal);
+  }
+  await rename(partialPath, proxyPath);
+  await recordEditorialPreview(plan, proxyPath);
+  execution.onProgress?.(100, "Proxy pronto.");
+  return {
+    planId: plan.id,
+    proxyPath,
+    previewPath: proxyPath,
+    fingerprint,
+    cached: false,
+    videoEncoder: { used: encoder, fallback },
+    exportProfile: profile,
+    estimatedBytes: estimateVideoExportBytes(plan.media.durationSeconds, profile),
+    durationSeconds: plan.media.durationSeconds,
+  };
+}
+
+export async function renderIntelligentSpotPreview(
+  rawInput: Record<string, unknown>,
+  execution: RenderExecutionOptions = {},
+) {
+  const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
+  const plan = await readIntelligentEditPlan(planId || undefined);
+  if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const requestedDuration = Math.max(1, Math.min(30, Number(rawInput.durationSeconds) || 10));
+  const start = Math.max(0, Math.min(
+    plan.media.durationSeconds - requestedDuration,
+    Number(rawInput.startSeconds) || 0,
+  ));
+  const duration = Math.min(requestedDuration, plan.media.durationSeconds - start);
+  const profile = resolveVideoExportProfile(rawInput.exportProfile, plan.media);
+  const rangePlan = shiftedRangePlan(plan, start, duration, profile);
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
+    planId: plan.id,
+    updatedAt: plan.editorial?.updatedAt,
+    start,
+    duration,
+    profile,
+  })).digest("hex");
+  const cacheDirectory = typeof rawInput.cacheDirectory === "string" && path.isAbsolute(rawInput.cacheDirectory)
+    ? path.resolve(rawInput.cacheDirectory)
+    : plan.artifacts.directory;
+  const spotDirectory = path.join(cacheDirectory, plan.id, "spot");
+  await mkdir(spotDirectory, { recursive: true });
+  const outputPath = path.join(spotDirectory, `spot-preview-v1-${fingerprint.slice(0, 12)}.mp4`);
+  const cached = await stat(outputPath).catch(() => null);
+  if (cached?.isFile() && cached.size > 0) return { planId: plan.id, spotPreviewPath: outputPath, fingerprint, cached: true, start, duration, exportProfile: profile };
+  const assPath = path.join(spotDirectory, `spot-preview-${fingerprint.slice(0, 12)}.ass`);
+  const partialPath = outputPath.replace(/\.mp4$/i, ".partial.mp4");
+  await writeFile(assPath, bodyAss(rangePlan), "utf8");
+  await unlink(partialPath).catch(() => undefined);
+  let encoder = await selectVideoEncoder(profile.videoEncoder);
+  let fallback = false;
+  try {
+    try {
+      await renderBody(rangePlan, assPath, partialPath, encoder, (value) => {
+        execution.onProgress?.(Math.round(value * 99), "Renderizando trecho exato...");
+      }, { bitrateKbps: profile.bitrateKbps, speed: "speed" }, execution.signal, start, false);
+    } catch (error) {
+      if ((error as Error).name === "AbortError" || encoder !== "amd-amf") throw error;
+      encoder = "libx264";
+      fallback = true;
+      await unlink(partialPath).catch(() => undefined);
+      await renderBody(rangePlan, assPath, partialPath, encoder, (value) => {
+        execution.onProgress?.(Math.round(value * 99), "Renderizando trecho com CPU...");
+      }, { bitrateKbps: profile.bitrateKbps, speed: "speed" }, execution.signal, start, false);
+    }
+    await rename(partialPath, outputPath);
+  } finally {
+    await Promise.all([partialPath, assPath].map((filePath) => unlink(filePath).catch(() => undefined)));
+  }
+  execution.onProgress?.(100, "Trecho exato pronto.");
+  return {
+    planId: plan.id,
+    spotPreviewPath: outputPath,
+    fingerprint,
+    cached: false,
+    start,
+    duration,
+    videoEncoder: { used: encoder, fallback },
+    exportProfile: profile,
   };
 }
 

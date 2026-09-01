@@ -363,7 +363,12 @@ export interface IntelligentEditPlan {
     captionsPath: string;
     planPath: string;
     previewPath?: string;
+    proxyPath?: string;
+    proxyFingerprint?: string;
+    spotPreviewPath?: string;
+    spotPreviewFingerprint?: string;
     finalPath?: string;
+    finalFingerprint?: string;
   };
 }
 
