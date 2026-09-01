@@ -8,6 +8,7 @@ import {
 } from "@/services/davinci-free/intelligent-edit.service";
 import { readIntelligentRenderStatus } from "@/services/davinci-free/intelligent-edit.renderer";
 import { readEditorialReview } from "@/services/davinci-free/intelligent-edit.review";
+import { listVideoRenderJobs } from "@/services/davinci-free/video-render-job.service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
@@ -24,6 +25,15 @@ const TOOL_BY_ACTION = {
   "reset-editorial-review": "davinci-free:reset-editorial-review",
   "save-course-editorial-standard": "davinci-free:save-course-editorial-standard",
   "render-preview": "davinci-free:render-intelligent",
+  "start-proxy": "davinci-free:start-render-job",
+  "start-spot-preview": "davinci-free:start-render-job",
+  "start-export": "davinci-free:start-render-job",
+  "render-job-status": "davinci-free:get-render-job",
+  "list-render-jobs": "davinci-free:list-render-jobs",
+  "cancel-render": "davinci-free:cancel-render-job",
+  "resume-render": "davinci-free:resume-render-job",
+  "get-render-settings": "davinci-free:get-render-settings",
+  "save-render-settings": "davinci-free:save-render-settings",
   "approve-intelligent": "davinci-free:approve-intelligent",
   "archive-pending": "davinci-free:archive-pending",
   "choose-folder": "davinci-free:choose-course-folder",
@@ -44,7 +54,16 @@ const READ_ACTIONS = new Set<Action>([
   "discover-batch",
   "discover-drive-batch",
   "batch-status",
+  "render-job-status",
+  "list-render-jobs",
+  "get-render-settings",
 ]);
+
+const RENDER_KIND_BY_ACTION: Partial<Record<Action, "proxy" | "spot-preview" | "export">> = {
+  "start-proxy": "proxy",
+  "start-spot-preview": "spot-preview",
+  "start-export": "export",
+};
 
 async function execute(action: Action, arguments_: Record<string, unknown>) {
   const toolId = TOOL_BY_ACTION[action];
@@ -87,11 +106,13 @@ export async function GET(request: Request) {
   try {
     const searchParams = new URL(request.url).searchParams;
     if (searchParams.get("progress") === "1") {
-      const [analysisStatus, renderStatus] = await Promise.all([
+      const planId = searchParams.get("planId") || "";
+      const [analysisStatus, renderStatus, renderJobs] = await Promise.all([
         readIntelligentAnalysisStatus(),
         readIntelligentRenderStatus(),
+        listVideoRenderJobs(planId ? { planId } : {}),
       ]);
-      return NextResponse.json({ analysisStatus, renderStatus });
+      return NextResponse.json({ analysisStatus, renderStatus, ...renderJobs });
     }
 
     const status = await execute("status", {});
@@ -123,7 +144,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
     }
     const { action: _action, ...arguments_ } = body;
-    return NextResponse.json(await execute(action, arguments_));
+    const renderKind = RENDER_KIND_BY_ACTION[action];
+    return NextResponse.json(await execute(action, renderKind ? { ...arguments_, kind: renderKind } : arguments_));
   } catch (error) {
     return NextResponse.json({ error: message(error) }, { status: 400 });
   }

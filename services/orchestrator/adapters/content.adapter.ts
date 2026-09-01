@@ -35,6 +35,14 @@ import {
   startCourseBatch,
 } from "../../davinci-free/course-batch.service";
 import { resyncIntelligentCaptions } from "../../davinci-free/caption-resync";
+import {
+  cancelVideoRenderJob,
+  listVideoRenderJobs,
+  readVideoRenderJob,
+  resumeVideoRenderJob,
+  startVideoRenderJob,
+} from "../../davinci-free/video-render-job.service";
+import { readVideoRenderSettings, saveVideoRenderSettings } from "../../davinci-free/video-render-settings";
 
 export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:get-status": async () => ({
@@ -66,6 +74,13 @@ export const contentHandlers: Record<string, ToolHandler> = {
   "davinci-free:render-intelligent": async (args) => ({
     output: await renderIntelligentEdit(args),
   }),
+  "davinci-free:start-render-job": async (args) => ({ output: await startVideoRenderJob(args) }),
+  "davinci-free:get-render-job": async (args) => ({ output: await readVideoRenderJob(args) }),
+  "davinci-free:list-render-jobs": async (args) => ({ output: await listVideoRenderJobs(args) }),
+  "davinci-free:cancel-render-job": async (args) => ({ output: await cancelVideoRenderJob(args) }),
+  "davinci-free:resume-render-job": async (args) => ({ output: await resumeVideoRenderJob(args) }),
+  "davinci-free:get-render-settings": async () => ({ output: await readVideoRenderSettings() }),
+  "davinci-free:save-render-settings": async (args) => ({ output: await saveVideoRenderSettings(args) }),
   "davinci-free:approve-intelligent": async (args) => ({
     output: await approveIntelligentEdit(args),
   }),
