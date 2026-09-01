@@ -19,10 +19,19 @@ import {
   applyCourseIdentity,
   readIntelligentEditPlan,
 } from "./intelligent-edit.service";
-import { renderIntelligentEdit } from "./intelligent-edit.renderer";
 import { applyCourseEditorialStandard } from "./intelligent-edit.review";
 import type { IntelligentCourseIdentity, IntelligentEditStyle, IntelligentMotionPace } from "./intelligent-edit.types";
 import { normalizeMotionPace } from "./intelligent-edit.motion";
+import {
+  normalizeVideoExportProfile,
+  type VideoExportProfile,
+} from "./video-export-profile";
+import {
+  cancelVideoRenderJob,
+  resumeVideoRenderJob,
+  startVideoRenderJob,
+  waitForVideoRenderJob,
+} from "./video-render-job.service";
 import {
   normalizeVideoOutputResolution,
   type VideoOutputResolution,
@@ -90,6 +99,7 @@ export interface CourseBatchItem {
   totalBytes?: number;
   status: CourseBatchItemStatus;
   planId?: string;
+  renderJobId?: string;
   previewPath?: string;
   error?: string;
   startedAt?: string;
@@ -104,7 +114,7 @@ type GoogleDriveBatchSource = {
 };
 
 export interface CourseBatchJob {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   id: string;
   requestId: string;
   status: CourseBatchStatus;
@@ -123,6 +133,7 @@ export interface CourseBatchJob {
   useAgent: boolean;
   outputResolution?: VideoOutputResolution;
   videoEncoder?: VideoEncoderPreference;
+  exportProfile?: VideoExportProfile;
   transcriptionRuntime?: "web" | "desktop";
   transcriptionMode?: "cloud" | "local";
   transcriptionModelId?: string;
@@ -331,7 +342,53 @@ async function resolveBatchIdentity(job: CourseBatchJob) {
   return identity;
 }
 
-async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourseIdentity) {
+function legacyBatchExportProfile(job: CourseBatchJob, plan: { media: { width: number; height: number; fps: number } }) {
+  if (job.exportProfile) return normalizeVideoExportProfile(job.exportProfile);
+  const longestEdge = Math.max(plan.media.width, plan.media.height);
+  const resolution = job.outputResolution === "source" && longestEdge > 1_920
+    ? "2k"
+    : longestEdge > 1_280
+      ? "1080p"
+      : "720p";
+  const fps = plan.media.fps >= 59.5 ? 60 : plan.media.fps >= 29.5 ? 30 : 24;
+  return normalizeVideoExportProfile({
+    resolution,
+    fps,
+    bitrateMode: "recommended",
+    videoEncoder: job.videoEncoder,
+  });
+}
+
+async function renderBatchPlan(
+  job: CourseBatchJob,
+  item: CourseBatchItem,
+  plan: { id: string; media: { width: number; height: number; fps: number } },
+  signal: AbortSignal,
+) {
+  throwIfCancelled(job, signal);
+  let renderJob = await startVideoRenderJob({
+    requestId: `batch-${job.id}-${String(item.index).padStart(4, "0")}`,
+    planId: plan.id,
+    kind: "batch-export",
+    exportProfile: legacyBatchExportProfile(job, plan),
+  });
+  item.renderJobId = renderJob.id;
+  await saveJob(job);
+  if (["cancelled", "failed"].includes(renderJob.status)) {
+    renderJob = await resumeVideoRenderJob({ jobId: renderJob.id });
+  }
+  const cancel = () => void cancelVideoRenderJob({ jobId: renderJob.id }).catch(() => undefined);
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    const completed = await waitForVideoRenderJob(renderJob.id, signal);
+    if (!completed.resultPath) throw new Error("A exportação do lote terminou sem arquivo de saída.");
+    return completed.resultPath;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}
+
+async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourseIdentity, signal: AbortSignal) {
   const entries = await analyzedPlans(job);
   for (const [index, entry] of entries.entries()) {
     const { item, plan } = entry;
@@ -342,12 +399,7 @@ async function renderLocalItems(job: CourseBatchJob, identity: IntelligentCourse
     try {
       const standardized = await applyCourseIdentity(plan, identity, index + 1);
       await applyCourseEditorialStandard(standardized);
-      const rendered = await renderIntelligentEdit({
-        planId: standardized.id,
-        outputResolution: job.outputResolution,
-        videoEncoder: job.videoEncoder,
-      });
-      item.previewPath = rendered.previewPath;
+      item.previewPath = await renderBatchPlan(job, item, standardized, signal);
       item.status = "completed";
       item.completedAt = new Date().toISOString();
     } catch (error) {
@@ -473,11 +525,17 @@ function renderKey(job: CourseBatchJob, item: CourseBatchItem, identity: Intelli
     sfxPack: job.sfxPack,
     outputResolution: job.outputResolution,
     videoEncoder: job.videoEncoder,
+    exportProfile: job.exportProfile,
     identity,
   })).digest("hex");
 }
 
-async function renderDriveItem(job: CourseBatchJob, item: CourseBatchItem, identity: IntelligentCourseIdentity) {
+async function renderDriveItem(
+  job: CourseBatchJob,
+  item: CourseBatchItem,
+  identity: IntelligentCourseIdentity,
+  signal: AbortSignal,
+) {
   if (item.previewPath && (await stat(item.previewPath).catch(() => null))?.isFile()) return;
   const plan = item.planId ? await readIntelligentEditPlan(item.planId) : null;
   if (!plan) throw new Error("Plano editorial da aula não encontrado.");
@@ -485,11 +543,7 @@ async function renderDriveItem(job: CourseBatchJob, item: CourseBatchItem, ident
   await saveJob(job);
   const standardized = await applyCourseIdentity(plan, identity, item.lessonIndex || 1);
   await applyCourseEditorialStandard(standardized);
-  item.previewPath = (await renderIntelligentEdit({
-    planId: standardized.id,
-    outputResolution: job.outputResolution,
-    videoEncoder: job.videoEncoder,
-  })).previewPath;
+  item.previewPath = await renderBatchPlan(job, item, standardized, signal);
   await saveJob(job);
 }
 
@@ -540,7 +594,7 @@ async function finishDriveItem(job: CourseBatchJob, item: CourseBatchItem, signa
   if (!identity) return;
   try {
     throwIfCancelled(job, signal);
-    await renderDriveItem(job, item, identity);
+    await renderDriveItem(job, item, identity, signal);
     throwIfCancelled(job, signal);
     await uploadDriveItem(job, item, identity, signal);
     item.status = "completed";
@@ -583,7 +637,7 @@ async function recoverInterruptedLegacyJob(job: CourseBatchJob | null) {
 
 async function resumePersistedJob(job: CourseBatchJob | null) {
   const recovered = await recoverInterruptedLegacyJob(job);
-  if (recovered?.version === 2 && ["queued", "running"].includes(recovered.status) && !recovered.cancelRequested) launchBatch(recovered.id);
+  if (recovered && recovered.version >= 2 && ["queued", "running"].includes(recovered.status) && !recovered.cancelRequested) launchBatch(recovered.id);
   return recovered;
 }
 
@@ -608,10 +662,10 @@ async function executeBatch(id: string, signal: AbortSignal) {
   job.error = undefined;
   await saveJob(job);
   try {
-    if (job.version === 2 && job.source?.type === "google-drive") await executeDriveBatch(job, signal);
+    if (job.source?.type === "google-drive") await executeDriveBatch(job, signal);
     else {
       await analyzeBatchItems(job);
-      await renderLocalItems(job, await resolveBatchIdentity(job));
+      await renderLocalItems(job, await resolveBatchIdentity(job), signal);
     }
     job.status = job.failed > 0 ? "completed-with-errors" : "completed";
   } catch (error) {
@@ -659,6 +713,12 @@ function commonJob(input: Record<string, unknown>, id: string, normalizedRequest
     useAgent: input.useAgent !== false,
     outputResolution: normalizeVideoOutputResolution(input.outputResolution),
     videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),
+    exportProfile: normalizeVideoExportProfile(input.exportProfile, {
+      resolution: normalizeVideoOutputResolution(input.outputResolution) === "source" ? "2k" : "1080p",
+      fps: 30,
+      bitrateMode: "recommended",
+      videoEncoder: normalizeVideoEncoderPreference(input.videoEncoder),
+    }),
     transcriptionRuntime: input.transcriptionRuntime === "desktop" ? "desktop" as const : "web" as const,
     transcriptionMode: input.transcriptionMode === "cloud" ? "cloud" as const : "local" as const,
     transcriptionModelId: typeof input.transcriptionModelId === "string" ? input.transcriptionModelId : undefined,
@@ -736,7 +796,7 @@ async function startGoogleDriveBatch(rawInput: Record<string, unknown>, id: stri
   };
 
   const job: CourseBatchJob = {
-    version: 2,
+    version: 3,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || manifest.root.name).slice(0, 100)),
     source: { type: "google-drive", manifestId, rootFolderId: manifest.root.fileId, rootFolderName: manifest.root.name },
     folderPath: path.join(localRoot, id, "media"),
@@ -777,7 +837,7 @@ export async function startCourseBatch(rawInput: Record<string, unknown>) {
   }
 
   const job: CourseBatchJob = {
-    version: 1,
+    version: 3,
     ...commonJob(rawInput, id, normalizedRequestId, (cleanText(rawInput.courseName) || discovered.suggestedCourseName).slice(0, 100)),
     source: { type: "local" },
     folderPath: discovered.folderPath,

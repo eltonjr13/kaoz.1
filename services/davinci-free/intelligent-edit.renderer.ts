@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -1089,13 +1089,9 @@ async function renderSegments(
       (segmentProgress.outro * 0.08),
     );
   };
-  const results = await Promise.allSettled([
-    renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value), encoderOptions, signal),
-    renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value), encoderOptions, signal),
-    renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value), encoderOptions, signal),
-  ]);
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failure) throw failure.reason;
+  await renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value), encoderOptions, signal);
+  await renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value), encoderOptions, signal);
+  await renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value), encoderOptions, signal);
 }
 
 export async function renderIntelligentEdit(
@@ -1180,7 +1176,7 @@ export async function renderIntelligentEdit(
     renderMode === "live-preview" ? "live-preview-v1.mp4" : "preview-v4.mp4",
   );
   const partialPath = previewPath.replace(/\.mp4$/i, ".partial.mp4");
-  const temporaryPaths = [introPath, bodyPath, outroPath, concatPath, partialPath];
+  const temporaryPaths = [introPath, bodyPath, outroPath, concatPath, partialPath, bodyAssPath, introAssPath, outroAssPath];
   await Promise.all(temporaryPaths.map((filePath) => unlink(filePath).catch(() => undefined)));
   await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
   await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
@@ -1194,35 +1190,29 @@ export async function renderIntelligentEdit(
     outro: outroPath,
   };
   try {
-    reportProgress(4, "Gerando cenas e efeitos...");
-    await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
-      reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-    }, encoderOptions, execution.signal);
-  } catch (error) {
-    if ((error as Error).name === "AbortError") throw error;
-    if (encoder !== "amd-amf") throw error;
-    encoder = "libx264";
-    encoderFallback = true;
-    await Promise.all([introPath, bodyPath, outroPath].map((filePath) => unlink(filePath).catch(() => undefined)));
-    reportProgress(4, "Aceleração AMD indisponível; continuando com CPU...");
-    await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
-      reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-    }, encoderOptions, execution.signal);
-  }
-  reportProgress(88, "Unindo cenas e finalizando áudio...");
-  try {
-    await finalizeVideoFromSegments(
-      renderPlan,
-      [introPath, bodyPath, outroPath],
-      concatPath,
-      partialPath,
-      execution.signal,
-    );
+    try {
+      reportProgress(4, "Gerando cenas e efeitos...");
+      await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
+        reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
+      }, encoderOptions, execution.signal);
+    } catch (error) {
+      if ((error as Error).name === "AbortError") throw error;
+      if (encoder !== "amd-amf") throw error;
+      encoder = "libx264";
+      encoderFallback = true;
+      await Promise.all([introPath, bodyPath, outroPath].map((filePath) => unlink(filePath).catch(() => undefined)));
+      reportProgress(4, "Aceleração AMD indisponível; continuando com CPU...");
+      await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
+        reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
+      }, encoderOptions, execution.signal);
+    }
+    reportProgress(88, "Unindo cenas e finalizando áudio...");
+    await finalizeVideoFromSegments(renderPlan, [introPath, bodyPath, outroPath], concatPath, partialPath, execution.signal);
     await unlink(previewPath).catch(() => undefined);
     await rename(partialPath, previewPath);
   } finally {
-    await Promise.all([introPath, bodyPath, outroPath, concatPath, partialPath]
-      .map((filePath) => unlink(filePath).catch(() => undefined)));
+    await unlink(partialPath).catch(() => undefined);
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined);
   }
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
     planId: plan.id,
