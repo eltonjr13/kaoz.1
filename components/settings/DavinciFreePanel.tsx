@@ -113,9 +113,33 @@ type Status = {
     completedAt?: string;
     error?: string;
   } | null;
+  renderJobs?: VideoRenderJob[];
 };
 
-type ProgressStatus = Pick<Status, "analysisStatus" | "renderStatus">;
+type ProgressStatus = Pick<Status, "analysisStatus" | "renderStatus" | "renderJobs">;
+
+type VideoExportProfile = {
+  resolution: "720p" | "1080p" | "2k";
+  fps: 24 | 30 | 60;
+  bitrateMode: "recommended" | "high" | "custom";
+  bitrateKbps: number;
+  videoEncoder: "auto" | "cpu";
+};
+
+type VideoRenderJob = {
+  id: string;
+  planId: string;
+  kind: "proxy" | "spot-preview" | "export" | "batch-export";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  stage: string;
+  resultPath?: string;
+  outputPath?: string;
+  estimatedBytes: number;
+  outputBytes?: number;
+  etaSeconds?: number;
+  error?: string;
+};
 
 type VideoSpeechModel = {
   id: string;
@@ -303,7 +327,7 @@ type Analysis = {
       editorialSuggestion?: string;
     }>;
   };
-  artifacts: { previewPath?: string; finalPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
+  artifacts: { proxyPath?: string; previewPath?: string; spotPreviewPath?: string; finalPath?: string; transcriptTextPath?: string; captionsPath: string; planPath: string };
 };
 
 type BatchDiscovery = {
@@ -320,7 +344,7 @@ type BatchDiscovery = {
 
 type BatchJob = {
   id: string;
-  version?: 1 | 2;
+  version?: 1 | 2 | 3;
   status: "queued" | "running" | "cancelled" | "completed" | "completed-with-errors";
   source?: { type: "local" } | { type: "google-drive"; manifestId: string; rootFolderName: string };
   folderPath: string;
@@ -363,6 +387,11 @@ const fieldClass =
   "w-full rounded-[6px] border border-white/10 bg-[#0D0F14] px-2.5 py-1.5 text-xs text-[#F4F5F7] placeholder-[#5D6472] outline-none transition-colors hover:border-white/15 focus:border-[#7C6CF2]/70 focus:ring-1 focus:ring-[#7C6CF2]/20";
 const WEB_SPEECH_MODE = "__webspeech__";
 const CLOUD_API_MODE = "__cloud_api__";
+
+function recommendedExportBitrate(resolution: VideoExportProfile["resolution"], fps: number) {
+  const table = { "720p": [4_000, 6_000], "1080p": [8_000, 12_000], "2k": [14_000, 20_000] } as const;
+  return table[resolution][fps > 30 ? 1 : 0];
+}
 
 const kindLabel: Record<EditEvent["kind"], string> = {
   intro: "Intro",
@@ -481,6 +510,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [musicWaveform, setMusicWaveform] = useState<number[]>([]);
   const [waveformBusy, setWaveformBusy] = useState<boolean>(false);
   const [previewStale, setPreviewStale] = useState<boolean>(false);
+  const [useProxyPreview, setUseProxyPreview] = useState<boolean>(true);
+  const [spotPreviewJobId, setSpotPreviewJobId] = useState<string | null>(null);
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [exportDirectory, setExportDirectory] = useState<string>("");
+  const [exportName, setExportName] = useState<string>("");
+  const [exportProfile, setExportProfile] = useState<VideoExportProfile>({
+    resolution: "1080p",
+    fps: 30,
+    bitrateMode: "recommended",
+    bitrateKbps: 8_000,
+    videoEncoder: "auto",
+  });
   const [captionSaveState, setCaptionSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pendingSourceCuts, setPendingSourceCuts] = useState<EditEvent[]>([]);
   const [cutStartTime, setCutStartTime] = useState<number | null>(null);
@@ -491,6 +532,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [showSilenceModal, setShowSilenceModal] = useState<boolean>(false);
   const [showClearCacheModal, setShowClearCacheModal] = useState<boolean>(false);
   const initialAnalysisLoadedRef = useRef<boolean>(false);
+  const proxyRequestedPlansRef = useRef<Set<string>>(new Set());
+  const handledRenderJobsRef = useRef<Set<string>>(new Set());
   const [silenceThreshold, setSilenceThreshold] = useState<number>(0.045);
   const [silenceMinDuration, setSilenceMinDuration] = useState<number>(0.4);
   const [silencePadding, setSilencePadding] = useState<number>(0.08);
@@ -602,6 +645,81 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!response.ok) throw new Error(data.error || "Falha ao consultar o progresso do processamento.");
     setStatus((current) => mergeProgressStatus(current, data));
   }, []);
+
+  const requestProxy = useCallback(async (planId: string, reason: string) => {
+    if (proxyRequestedPlansRef.current.has(planId)) return;
+    proxyRequestedPlansRef.current.add(planId);
+    const response = await fetch("/api/davinci-free", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "start-proxy",
+        requestId: `proxy-${planId}-v1`,
+        planId,
+      }),
+    });
+    const data = await response.json() as VideoRenderJob & { error?: string };
+    if (!response.ok) {
+      proxyRequestedPlansRef.current.delete(planId);
+      throw new Error(data.error || "Falha ao iniciar o proxy.");
+    }
+    addLog("info", "Proxy 720p30 enviado para a fila.", reason);
+    await refreshProgress();
+  }, [addLog, refreshProgress]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("kaoz-video-export-profile-v1");
+      if (saved) setExportProfile((current) => ({ ...current, ...JSON.parse(saved) as VideoExportProfile }));
+    } catch {
+      // Mantém o preset Recomendado no primeiro uso.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!analysis || analysis.artifacts.previewPath) return;
+    const needsProxy = analysis.media.width * analysis.media.height > 1280 * 720 || analysis.media.fps > 30.01;
+    if (!needsProxy) {
+      setUseProxyPreview(false);
+      return;
+    }
+    void requestProxy(analysis.id, "A fonte excede 720p ou 30 fps; o editor continua usando a fonte enquanto o proxy é criado.")
+      .catch((error) => addLog("warn", "Não foi possível iniciar o proxy automaticamente.", caughtMessage(error)));
+  }, [addLog, analysis, requestProxy]);
+
+  useEffect(() => {
+    const jobs = status?.renderJobs || [];
+    const active = jobs.some((job) => job.status === "queued" || job.status === "running");
+    for (const job of jobs) {
+      if (!analysis || job.planId !== analysis.id || !["completed", "failed", "cancelled"].includes(job.status)) continue;
+      if (handledRenderJobsRef.current.has(job.id)) continue;
+      handledRenderJobsRef.current.add(job.id);
+      if (job.status === "completed" && job.kind === "proxy") {
+        fetch("/api/davinci-free?analysis=1", { cache: "no-store" })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.analysis) {
+              setAnalysis(data.analysis as Analysis);
+              setReview((data.editorialReview as EditorialReview | null) || { events: [], captions: [] });
+              setUseProxyPreview(true);
+              addLog("success", "Proxy 720p30 pronto.", "A reprodução foi alternada para o proxy; você pode voltar à fonte a qualquer momento.");
+            }
+          })
+          .catch(() => undefined);
+      } else if (job.status === "completed" && job.kind === "spot-preview") {
+        setSpotPreviewJobId(job.id);
+        addLog("success", "Trecho exato pronto.", job.resultPath);
+      } else if (job.status === "completed" && job.kind === "export") {
+        addLog("success", "Exportação final concluída.", job.resultPath);
+        onStatusMessage({ text: "Vídeo exportado com sucesso.", type: "success" });
+      } else if (job.status === "failed") {
+        addLog("error", "Falha em uma renderização.", job.error);
+      }
+    }
+    if (!active) return;
+    const timer = window.setInterval(() => void refreshProgress().catch(() => undefined), 750);
+    return () => window.clearInterval(timer);
+  }, [addLog, analysis, onStatusMessage, refreshProgress, status?.renderJobs]);
 
   useEffect(() => {
     const bridge = window.kaoz1Desktop;
@@ -1055,47 +1173,52 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     }
   }
 
-  async function renderPreview() {
+  async function renderExactSpot() {
     if (!analysis) return;
-    setBusy("render-preview");
-    try {
-      addLog("info", "Salvando revisão e gerando a prévia-base sem legendas...", `Plano ID: ${analysis.id}`);
-      const saved = await action("save-editorial-review", { planId: analysis.id, review });
-      if (!saved) {
-        addLog("error", "Falha ao salvar a revisão editorial.");
-        return;
-      }
-      addLog("ffmpeg", "Executando codificação H.264 / AAC; as legendas continuarão como camada ao vivo...");
-      const result = await action("render-preview", {
-        planId: analysis.id,
-        renderMode: "live-preview",
-        outputResolution: form.outputResolution,
-        videoEncoder: form.videoEncoder,
-        transcriptionRuntime: window.kaoz1Desktop ? "desktop" : "web",
-        transcriptionModelId: form.transcriptionModelId,
-        transcriptionDevice: form.transcriptionDevice,
-        transcriptionAllowCloudFallback: form.transcriptionAllowCloudFallback,
-      });
-      if (result?.plan) {
-        setAnalysis(result.plan as Analysis);
-        setReview((current) => ({ ...current, previewPath: String(result.previewPath) }));
-        setPlayheadTime(0);
-        setPlayerDuration(Number(result.durationSeconds) || 0);
-        setPreviewStale(false);
-        addLog(
-          "success",
-          "Prévia-base renderizada e pronta para edição instantânea!",
-          `Arquivo de vídeo: ${String(result.previewPath)} | Saída: ${Number(result.outputResolution?.width)}x${Number(result.outputResolution?.height)} | Encoder: ${String(result.videoEncoder?.used)}`,
-        );
-        onStatusMessage({
-          text: "Prévia limpa pronta. Mudanças nas legendas agora aparecem sem nova renderização.",
-          type: "success",
-        });
-      } else {
-        addLog("error", "Erro ao renderizar o vídeo com FFmpeg.");
-      }
-    } finally {
-      setBusy(null);
+    const saved = await action("save-editorial-review", { planId: analysis.id, review });
+    if (!saved) return;
+    const markedRange = inPoint !== null && outPoint !== null && outPoint > inPoint
+      ? { start: inPoint, duration: outPoint - inPoint }
+      : { start: Math.max(0, playheadTime - 5), duration: Math.min(10, analysis.media.durationSeconds) };
+    if (markedRange.duration > 30) {
+      onStatusMessage({ text: "O trecho exato pode ter no máximo 30 segundos. Ajuste os pontos In/Out.", type: "error" });
+      return;
+    }
+    setSpotPreviewJobId(null);
+    const job = await action("start-spot-preview", {
+      requestId: `spot-${analysis.id}-${crypto.randomUUID()}`,
+      planId: analysis.id,
+      startSeconds: markedRange.start,
+      durationSeconds: markedRange.duration,
+      exportProfile,
+    }) as VideoRenderJob | null;
+    if (job?.id) {
+      addLog("info", "Trecho exato enviado para a fila.", `${markedRange.duration.toFixed(1)}s a partir de ${clock(markedRange.start)}.`);
+      await refreshProgress();
+    }
+  }
+
+  async function chooseExportDirectory() {
+    const selected = await action("choose-folder", {});
+    if (selected?.folderPath) setExportDirectory(String(selected.folderPath));
+  }
+
+  async function startExport() {
+    if (!analysis) return;
+    const saved = await action("save-editorial-review", { planId: analysis.id, review });
+    if (!saved) return;
+    window.localStorage.setItem("kaoz-video-export-profile-v1", JSON.stringify(exportProfile));
+    const job = await action("start-export", {
+      requestId: `export-${analysis.id}-${crypto.randomUUID()}`,
+      planId: analysis.id,
+      destinationDirectory: exportDirectory || undefined,
+      outputName: exportName || analysis.lessonName || analysis.moduleName,
+      exportProfile,
+    }) as VideoRenderJob | null;
+    if (job?.id) {
+      setShowExportModal(false);
+      addLog("info", "Exportação final enviada para a fila.", "O editor permanece disponível durante o processamento.");
+      await refreshProgress();
     }
   }
 
@@ -1196,13 +1319,20 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   async function approve() {
     if (!analysis) return;
+    const completedExport = (status?.renderJobs || []).find(
+      (job) => job.planId === analysis.id && job.kind === "export" && job.status === "completed" && job.resultPath,
+    );
+    if (!completedExport?.resultPath) {
+      onStatusMessage({ text: "Exporte o vídeo antes de enviá-lo ao DaVinci.", type: "error" });
+      setShowExportModal(true);
+      return;
+    }
     const saved = await action("save-editorial-review", { planId: analysis.id, review });
     if (!saved) return;
     const result = await action("approve-intelligent", {
       requestId: `approved-${crypto.randomUUID()}`,
       planId: analysis.id,
-      outputResolution: form.outputResolution,
-      videoEncoder: form.videoEncoder,
+      finalPath: completedExport.resultPath,
     });
     if (result?.requestId) {
       onStatusMessage({
@@ -1467,8 +1597,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     return counts;
   }, [analysis]);
 
-  const activeMediaAsset = analysis?.artifacts.previewPath ? "preview" : "source";
-  const hasLiveCaptionPreview = analysis?.artifacts.previewPath?.replaceAll("\\", "/").endsWith("/live-preview-v1.mp4") === true;
+  const proxyPath = analysis?.artifacts.proxyPath
+    || (analysis?.artifacts.previewPath?.replaceAll("\\", "/").includes("/proxy-v1-") ? analysis.artifacts.previewPath : undefined);
+  const completedSpotJob = (status?.renderJobs || []).find(
+    (job) => job.id === spotPreviewJobId && job.status === "completed",
+  );
+  const activeMediaAsset: "source" | "preview" = completedSpotJob ? "preview" : "source";
+  const hasLiveCaptionPreview = !completedSpotJob;
   const timelineDuration = useMemo(() => {
     if (playerDuration > 0) return playerDuration;
     if (analysis?.media.durationSeconds) {
@@ -1499,10 +1634,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [timelineDuration, timelineScale]);
 
   const videoMediaSrc = useMemo(() => {
-    if (analysis) return `/api/davinci-free/media?planId=${analysis.id}&asset=${activeMediaAsset}`;
+    if (completedSpotJob) return `/api/davinci-free/media?jobId=${completedSpotJob.id}`;
+    if (analysis) return `/api/davinci-free/media?planId=${analysis.id}&asset=${useProxyPreview && proxyPath ? "preview" : "source"}`;
     if (!form.sourcePath) return "";
     return `/api/davinci-free/media?sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
-  }, [activeMediaAsset, analysis, form.sourcePath]);
+  }, [analysis, completedSpotJob, form.sourcePath, proxyPath, useProxyPreview]);
   const sourceCutEvents = useMemo(
     () => analysis?.events.filter((event) => event.kind === "remove") || pendingSourceCuts,
     [analysis, pendingSourceCuts],
@@ -1581,7 +1717,9 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setWaveformBusy(true);
     const load = async (asset: "source" | "preview" | "music") => {
       const query = analysis
-        ? `planId=${analysis.id}&asset=${asset}`
+        ? asset === "preview" && completedSpotJob
+          ? `jobId=${completedSpotJob.id}`
+          : `planId=${analysis.id}&asset=${asset === "preview" ? useProxyPreview && proxyPath ? "preview" : "source" : asset}`
         : `sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
       const response = await fetch(
         `/api/davinci-free/media?${query}&waveform=true&points=${waveformPointCount}`,
@@ -1610,7 +1748,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         if (!controller.signal.aborted) setWaveformBusy(false);
       });
     return () => controller.abort();
-  }, [activeMediaAsset, analysis, form.sourcePath, onStatusMessage, waveformPointCount]);
+  }, [activeMediaAsset, analysis, completedSpotJob, form.sourcePath, onStatusMessage, proxyPath, useProxyPreview, waveformPointCount]);
 
   function eventPlayerTime(event: EditEvent, sourceTime: number) {
     if (activeMediaAsset !== "preview") return sourceTime;
@@ -2505,6 +2643,47 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const selectedEvent = useMemo(() => {
     return analysis?.events.find((e) => e.id === selectedEventId) || null;
   }, [analysis, selectedEventId]);
+  const effectivePreviewEvents = useMemo(() => (analysis?.events || []).map((event) => {
+    const change = review.events.find((item) => item.id === event.id);
+    return change ? { ...event, ...change } as EditEvent & { enabled?: boolean } : event;
+  }).filter((event) => event.enabled !== false), [analysis?.events, review.events]);
+  const activeZoom = effectivePreviewEvents.find((event) =>
+    (event.kind === "zoom" || event.kind === "cut")
+    && captionPlaybackTime >= event.start
+    && captionPlaybackTime <= event.start + event.duration,
+  );
+  const activeLowerThird = effectivePreviewEvents.find((event) =>
+    event.kind === "lower-third" && captionPlaybackTime >= event.start && captionPlaybackTime <= event.start + event.duration,
+  );
+  const activeImpactText = effectivePreviewEvents.find((event) =>
+    event.kind === "impact-text" && captionPlaybackTime >= event.start && captionPlaybackTime <= event.start + event.duration,
+  );
+  const activeCursor = effectivePreviewEvents.find((event) =>
+    event.kind === "cursor" && captionPlaybackTime >= event.start && captionPlaybackTime <= event.start + event.duration,
+  );
+  const transitionOpacity = effectivePreviewEvents.reduce((opacity, event) => {
+    if (event.kind !== "transition") return opacity;
+    const half = Math.max(0.12, event.duration / 2);
+    const distance = Math.abs(captionPlaybackTime - event.start);
+    return Math.max(opacity, distance <= half ? 1 - distance / half : 0);
+  }, 0);
+  const planRenderJobs = (status?.renderJobs || []).filter((job) => job.planId === analysis?.id);
+  const latestExportJob = planRenderJobs.find((job) => job.kind === "export");
+  const activeRenderJob = planRenderJobs.find((job) => job.status === "running" || job.status === "queued");
+  const sourceLongestEdge = analysis ? Math.max(analysis.media.width, analysis.media.height) : 0;
+  const maximumExportResolution: VideoExportProfile["resolution"] = sourceLongestEdge >= 2_560
+    ? "2k"
+    : sourceLongestEdge >= 1_920
+      ? "1080p"
+      : "720p";
+  const maximumExportFps: VideoExportProfile["fps"] = (analysis?.media.fps || 30) >= 59.5
+    ? 60
+    : (analysis?.media.fps || 30) >= 29.5
+      ? 30
+      : 24;
+  const estimatedExportBytes = analysis
+    ? Math.ceil(analysis.media.durationSeconds * (exportProfile.bitrateKbps * 1_000 + 192_000) / 8)
+    : 0;
   const centerWorkspaceColumns = leftPanelCollapsed && rightPanelCollapsed
     ? "lg:col-span-10"
     : leftPanelCollapsed || rightPanelCollapsed
@@ -3101,8 +3280,17 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onError={() => {
                       setPlayerError("Não foi possível reproduzir esta mídia no player.");
                       setIsPlaying(false);
+                      if (analysis && !proxyPath) {
+                        void requestProxy(analysis.id, "O navegador não conseguiu reproduzir o codec da fonte.")
+                          .catch(() => undefined);
+                      }
                     }}
-                    className="w-full h-full object-contain bg-black"
+                    className="w-full h-full object-contain bg-black transition-transform duration-150"
+                    style={{
+                      transform: activeMediaAsset === "source" && activeZoom ? `scale(${Math.max(1.025, Math.min(1.14, activeZoom.scale || 1.09))})` : "scale(1)",
+                      transformOrigin: `${Math.max(0, Math.min(1, activeZoom?.x ?? 0.5)) * 100}% ${Math.max(0, Math.min(1, activeZoom?.y ?? 0.5)) * 100}%`,
+                      filter: activeMediaAsset === "source" ? "contrast(1.025) saturate(1.05)" : undefined,
+                    }}
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center bg-[#101217]/90 p-6 text-center">
@@ -3134,7 +3322,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {videoMediaSrc && (
                   <div className="absolute left-3 top-3 flex items-center gap-2">
                     <span className="rounded-md border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-200">
-                      {activeMediaAsset === "preview" ? hasLiveCaptionPreview ? "Prévia dinâmica" : "Prévia renderizada" : "Vídeo carregado"}
+                      {completedSpotJob ? "Trecho exato" : useProxyPreview && proxyPath ? "Proxy 720p" : "Fonte"}
                     </span>
                     {previewStale && activeMediaAsset === "preview" && (
                       <span className="rounded-md border border-amber-500/40 bg-amber-950/80 px-2 py-1 text-[9px] font-bold text-amber-200">
@@ -3142,6 +3330,33 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       </span>
                     )}
                   </div>
+                )}
+
+                {!completedSpotJob && transitionOpacity > 0 && (
+                  <div className="pointer-events-none absolute inset-0 z-[5] bg-black" style={{ opacity: transitionOpacity * 0.62 }} />
+                )}
+
+                {!completedSpotJob && activeLowerThird && (
+                  <div className="pointer-events-none absolute bottom-[18%] left-[7%] z-10 max-w-[58%] border-l-4 border-violet-400 bg-black/80 px-4 py-2 text-left shadow-xl">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-300">{activeLowerThird.subtitle || analysis?.courseName || "Kaoz.1"}</p>
+                    <p className="text-sm font-black text-white">{activeLowerThird.label}</p>
+                  </div>
+                )}
+
+                {!completedSpotJob && activeImpactText && (
+                  <div className="pointer-events-none absolute left-1/2 top-[22%] z-10 max-w-[72%] -translate-x-1/2 rounded border border-cyan-300/50 bg-black/85 px-5 py-3 text-center text-lg font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(34,211,238,0.25)]">
+                    {activeImpactText.label}
+                  </div>
+                )}
+
+                {!completedSpotJob && activeCursor && activeCursor.x !== undefined && activeCursor.y !== undefined && (
+                  <div
+                    className="pointer-events-none absolute z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300 shadow-[0_0_16px_rgba(253,224,71,0.8)]"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, (activeCursor.x <= 1 ? activeCursor.x : activeCursor.x / (analysis?.media.width || 1)) * 100))}%`,
+                      top: `${Math.max(0, Math.min(100, (activeCursor.y <= 1 ? activeCursor.y : activeCursor.y / (analysis?.media.height || 1)) * 100))}%`,
+                    }}
+                  />
                 )}
 
                 {/* Live Dynamic Caption Overlay */}
@@ -3156,6 +3371,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                       />
                     </div>
                   </div>
+                )}
+
+                {videoMediaSrc && !completedSpotJob && proxyPath && (
+                  <div className="absolute right-3 top-3 z-20 flex overflow-hidden rounded border border-white/15 bg-black/75 text-[9px] font-bold uppercase tracking-wide">
+                    <button type="button" onClick={() => setUseProxyPreview(false)} className={`px-2 py-1 ${!useProxyPreview ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Fonte</button>
+                    <button type="button" onClick={() => setUseProxyPreview(true)} className={`px-2 py-1 ${useProxyPreview ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Proxy 720p</button>
+                  </div>
+                )}
+                {completedSpotJob && (
+                  <button type="button" onClick={() => setSpotPreviewJobId(null)} className="absolute right-3 top-3 z-20 rounded border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold text-white">
+                    Voltar ao editor
+                  </button>
                 )}
 
                 {playerError && (
@@ -5094,40 +5321,166 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </div>
       )}
 
+      {showExportModal && analysis && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-[#101217] p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-black text-white">Exportar vídeo</h3>
+                <p className="mt-1 text-[11px] text-zinc-400">A exportação final usa os mesmos cortes, legendas, efeitos, áudio e SFX do editor.</p>
+              </div>
+              <button type="button" onClick={() => setShowExportModal(false)} className="rounded p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"><X size={16} /></button>
+            </div>
+
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              {[
+                { label: "Rápido", profile: { resolution: "720p" as const, fps: 30 as const, bitrateMode: "recommended" as const, bitrateKbps: 4_000 } },
+                { label: "Recomendado", profile: { resolution: maximumExportResolution === "720p" ? "720p" as const : "1080p" as const, fps: Math.min(30, maximumExportFps) as 24 | 30, bitrateMode: "recommended" as const, bitrateKbps: maximumExportResolution === "720p" ? 4_000 : 8_000 } },
+                { label: "Máxima qualidade", profile: { resolution: maximumExportResolution, fps: maximumExportFps, bitrateMode: "high" as const, bitrateKbps: Math.round(recommendedExportBitrate(maximumExportResolution, maximumExportFps) * 1.5) } },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setExportProfile((current) => ({ ...current, ...preset.profile }))}
+                  className="rounded-lg border border-white/10 bg-[#171A21] px-3 py-2 text-xs font-bold text-zinc-200 hover:border-violet-400/60 hover:bg-violet-500/10"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Nome do arquivo
+                <input value={exportName} onChange={(event) => setExportName(event.target.value)} placeholder={analysis.lessonName || analysis.moduleName} className={`${fieldClass} mt-1 normal-case`} />
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Pasta de destino
+                <div className="mt-1 flex gap-2">
+                  <input value={exportDirectory} onChange={(event) => setExportDirectory(event.target.value)} placeholder={isDesktopRuntime ? "Escolher pasta..." : "Gerada no servidor"} className={`${fieldClass} normal-case`} />
+                  {isDesktopRuntime && <button type="button" onClick={chooseExportDirectory} className="rounded border border-white/10 px-2 text-zinc-300 hover:bg-white/10"><Folder size={15} /></button>}
+                </div>
+              </label>
+
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Resolução
+                <select
+                  value={exportProfile.resolution}
+                  onChange={(event) => {
+                    const resolution = event.target.value as VideoExportProfile["resolution"];
+                    const base = recommendedExportBitrate(resolution, exportProfile.fps);
+                    setExportProfile((current) => ({ ...current, resolution, bitrateKbps: current.bitrateMode === "custom" ? current.bitrateKbps : Math.round(base * (current.bitrateMode === "high" ? 1.5 : 1)) }));
+                  }}
+                  className={`${fieldClass} mt-1 normal-case`}
+                >
+                  <option value="720p">720p</option>
+                  <option value="1080p" disabled={maximumExportResolution === "720p"}>1080p</option>
+                  <option value="2k" disabled={maximumExportResolution !== "2k"}>2K</option>
+                </select>
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">FPS
+                <select
+                  value={exportProfile.fps}
+                  onChange={(event) => {
+                    const fps = Number(event.target.value) as VideoExportProfile["fps"];
+                    const base = recommendedExportBitrate(exportProfile.resolution, fps);
+                    setExportProfile((current) => ({ ...current, fps, bitrateKbps: current.bitrateMode === "custom" ? current.bitrateKbps : Math.round(base * (current.bitrateMode === "high" ? 1.5 : 1)) }));
+                  }}
+                  className={`${fieldClass} mt-1 normal-case`}
+                >
+                  <option value={24}>24</option>
+                  <option value={30} disabled={maximumExportFps < 30}>30</option>
+                  <option value={60} disabled={maximumExportFps < 60}>60</option>
+                </select>
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Bitrate
+                <select
+                  value={exportProfile.bitrateMode}
+                  onChange={(event) => {
+                    const bitrateMode = event.target.value as VideoExportProfile["bitrateMode"];
+                    const base = recommendedExportBitrate(exportProfile.resolution, exportProfile.fps);
+                    setExportProfile((current) => ({ ...current, bitrateMode, bitrateKbps: bitrateMode === "custom" ? current.bitrateKbps : Math.round(base * (bitrateMode === "high" ? 1.5 : 1)) }));
+                  }}
+                  className={`${fieldClass} mt-1 normal-case`}
+                >
+                  <option value="recommended">Recomendado</option><option value="high">Alta (1,5×)</option><option value="custom">Customizado</option>
+                </select>
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Encoder
+                <select value={exportProfile.videoEncoder} onChange={(event) => setExportProfile((current) => ({ ...current, videoEncoder: event.target.value as "auto" | "cpu" }))} className={`${fieldClass} mt-1 normal-case`}>
+                  <option value="auto">AMD AMF automático</option><option value="cpu">CPU · libx264 superfast</option>
+                </select>
+              </label>
+            </div>
+
+            {exportProfile.bitrateMode === "custom" && (
+              <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-zinc-400">Bitrate customizado · {(exportProfile.bitrateKbps / 1_000).toFixed(1)} Mbps
+                <input type="range" min={2_000} max={50_000} step={500} value={exportProfile.bitrateKbps} onChange={(event) => setExportProfile((current) => ({ ...current, bitrateKbps: Number(event.target.value) }))} className="mt-2 w-full accent-violet-500" />
+              </label>
+            )}
+
+            <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
+              <div className="text-[11px] text-zinc-400">
+                <p>{exportProfile.resolution} · {exportProfile.fps} fps · {(exportProfile.bitrateKbps / 1_000).toFixed(1)} Mbps</p>
+                <p className="mt-0.5">Tamanho estimado: {(estimatedExportBytes / 1024 ** 2).toFixed(0)} MB · MP4 H.264 + AAC 192 kbps</p>
+              </div>
+              <button type="button" onClick={startExport} disabled={!!busy} className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-500 disabled:opacity-40">
+                {busy === "start-export" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Iniciar exportação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sticky Bottom Workstation Footer (Stitch Footer) */}
       <footer className="fixed inset-x-0 bottom-0 z-50 flex min-h-[58px] items-center justify-between border-t border-white/[0.08] bg-[#101217]/95 px-4 py-2 shadow-[0_-12px_32px_rgba(0,0,0,0.32)] backdrop-blur-xl">
         <div className="flex flex-col">
           <span className="flex items-center gap-2 text-[11px] font-medium text-[#D5D8E0]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Projeto pronto · Kaoz.1 v{applicationVersion}</span>
-          {analysis?.artifacts.previewPath ? (
+          {activeRenderJob ? (
             <span className="text-[10px] font-mono text-emerald-400 truncate max-w-md">
-              Prévia: {analysis.artifacts.previewPath}
+              {activeRenderJob.stage} · {activeRenderJob.progress}%{activeRenderJob.etaSeconds ? ` · ETA ${clock(activeRenderJob.etaSeconds)}` : ""}
             </span>
           ) : (
-            <span className="text-[10px] text-zinc-500">Pronto para processamento e aprovação</span>
+            <span className="text-[10px] text-zinc-500">{proxyPath ? "Proxy 720p disponível · edição em tempo real" : "Fonte pronta para edição imediata"}</span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           <button
             disabled={!!busy || !analysis}
-            onClick={renderPreview}
+            onClick={renderExactSpot}
             className="flex items-center gap-2 rounded-[6px] bg-[#242832] px-3 py-2 text-xs font-medium text-[#D5D8E0] transition-colors hover:bg-[#303541] disabled:opacity-40"
           >
-            {busy === "render-preview" ? (
+            {busy === "start-spot-preview" ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <Film size={14} />
             )}
-            {analysis?.artifacts.previewPath ? "Atualizar prévia-base" : "Gerar prévia-base"}
+            Renderizar trecho exato
           </button>
 
           <button
-            disabled={!!busy || !analysis?.artifacts.previewPath || previewStale || !!status?.pendingPlan}
+            disabled={!!busy || !analysis}
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-2 rounded-[6px] bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+          >
+            {latestExportJob?.status === "running" || latestExportJob?.status === "queued" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            Exportar vídeo
+          </button>
+
+          {latestExportJob?.status === "completed" && (
+            <a
+              href={`/api/davinci-free/media?jobId=${latestExportJob.id}&download=true`}
+              className="flex items-center gap-2 rounded-[6px] bg-[#242832] px-3 py-2 text-xs font-medium text-[#D5D8E0] hover:bg-[#303541]"
+            >
+              <Download size={14} /> Baixar
+            </a>
+          )}
+
+          <button
+            disabled={!!busy || latestExportJob?.status !== "completed" || !!status?.pendingPlan}
             onClick={approve}
             className="kaoz-signal-action flex items-center gap-2 bg-[#7C6CF2] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8B7CF6] disabled:opacity-40"
           >
             {busy === "approve-intelligent" ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-            Finalizar para o DaVinci (opcional)
+            Enviar ao DaVinci
           </button>
         </div>
       </footer>
