@@ -1458,16 +1458,12 @@ export async function approveIntelligentEdit(
 ) {
   const planId = typeof rawInput.planId === "string" ? rawInput.planId.trim() : "";
   const plan = await readIntelligentEditPlan(planId || undefined);
-  if (!plan?.artifacts.previewPath) {
-    throw new Error("Renderize a prévia antes de enviá-la ao Resolve.");
-  }
-  await readFile(plan.artifacts.previewPath);
-  const rendered = await renderIntelligentEdit({
-    ...rawInput,
-    planId: plan.id,
-    renderMode: "final",
-  });
-  const finalPath = rendered.finalPath || rendered.previewPath;
+  if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const completedFinalPath = typeof rawInput.finalPath === "string" && path.isAbsolute(rawInput.finalPath)
+    ? path.resolve(rawInput.finalPath)
+    : undefined;
+  const finalPath = completedFinalPath || plan.artifacts.finalPath;
+  if (!finalPath) throw new Error("Exporte o vídeo antes de enviá-lo ao Resolve.");
   await readFile(finalPath);
   return createDavinciFreePlan({
     requestId:

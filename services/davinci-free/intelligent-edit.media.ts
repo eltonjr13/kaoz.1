@@ -11,6 +11,7 @@ import { editedVideoDuration } from "./video-cuts";
 import { lessonDownloadFileName } from "./lesson-download";
 import { getLocalDataDir } from "@/lib/runtime-paths";
 import { resolveLocalVideoSource } from "./video-source";
+import { readVideoRenderJob } from "./video-render-job.service";
 
 export type IntelligentMediaAsset = "source" | "preview" | "music" | "transcript";
 
@@ -98,9 +99,38 @@ function mediaDurationSeconds(
   plan: NonNullable<Awaited<ReturnType<typeof readIntelligentEditPlan>>>,
   asset: IntelligentMediaAsset,
 ) {
-  return asset === "preview"
-    ? editedVideoDuration(plan.events, plan.media.durationSeconds) + 8
-    : plan.media.durationSeconds;
+  if (asset !== "preview") return plan.media.durationSeconds;
+  const previewName = path.basename(plan.artifacts.previewPath || "").toLowerCase();
+  return previewName.startsWith("proxy-v1-")
+    ? plan.media.durationSeconds
+    : editedVideoDuration(plan.events, plan.media.durationSeconds) + 8;
+}
+
+export async function resolveVideoRenderMedia(jobId: string): Promise<IntelligentMediaDescriptor> {
+  const job = await readVideoRenderJob({ jobId });
+  if (job.status !== "completed" || !job.resultPath) {
+    throw new Error("A renderização ainda não foi concluída.");
+  }
+  const plan = await readIntelligentEditPlan(job.planId);
+  if (!plan) throw new Error("Plano inteligente não encontrado.");
+  const info = await stat(job.resultPath).catch(() => null);
+  if (!info?.isFile()) throw new Error("Arquivo renderizado não encontrado.");
+  const durationSeconds = job.kind === "spot-preview"
+    ? job.durationSeconds || 10
+    : job.kind === "proxy"
+      ? plan.media.durationSeconds
+      : editedVideoDuration(plan.events, plan.media.durationSeconds) + 8;
+  return {
+    asset: "preview",
+    filePath: job.resultPath,
+    fileName: path.basename(job.outputPath || job.resultPath),
+    contentType: contentType(job.resultPath),
+    size: info.size,
+    modifiedAt: info.mtimeMs,
+    durationSeconds,
+    hasAudio: plan.media.hasAudio,
+    cacheDirectory: path.dirname(job.resultPath),
+  };
 }
 
 export async function resolveIntelligentMedia(

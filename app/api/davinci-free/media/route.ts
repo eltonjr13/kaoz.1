@@ -6,6 +6,7 @@ import {
   readIntelligentAudioWaveform,
   resolveIntelligentMedia,
   resolveSourceMedia,
+  resolveVideoRenderMedia,
   type IntelligentMediaAsset,
 } from "@/services/davinci-free/intelligent-edit.media";
 import { parseMediaByteRange } from "@/services/davinci-free/media-range";
@@ -85,10 +86,13 @@ function streamResponse(
 
 export async function GET(request: NextRequest) {
   const planId = request.nextUrl.searchParams.get("planId") || "";
+  const jobId = request.nextUrl.searchParams.get("jobId") || "";
   const sourcePath = request.nextUrl.searchParams.get("sourcePath") || "";
   try {
     const asset = requestedAsset(request);
-    const descriptor = sourcePath && !planId
+    const descriptor = jobId
+      ? await resolveVideoRenderMedia(jobId)
+      : sourcePath && !planId
       ? await resolveSourceMedia(sourcePath)
       : await resolveIntelligentMedia(planId, asset);
     if (request.nextUrl.searchParams.get("waveform") === "true") {
