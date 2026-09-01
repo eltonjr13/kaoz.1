@@ -40,6 +40,7 @@ export type VideoRenderJob = {
   encoder?: string;
   encoderFallback?: boolean;
   cacheHit?: boolean;
+  cacheHits?: number;
   etaSeconds?: number;
   error?: string;
   createdAt: string;
@@ -197,6 +198,7 @@ async function executeJob(job: VideoRenderJob) {
     job.encoder = encoder?.used;
     job.encoderFallback = encoder?.fallback;
     job.cacheHit = result.cached === true;
+    job.cacheHits = Number(result.cacheHits) || (job.cacheHit ? 1 : 0);
     job.outputBytes = job.resultPath
       ? (await stat(job.resultPath).catch(() => null))?.size
       : undefined;

@@ -1072,26 +1072,82 @@ async function finalizeVideoFromSegments(
   await runFfmpeg(args, 60 * 60_000, undefined, signal);
 }
 
-async function renderSegments(
+function bodyChunkRanges(durationSeconds: number) {
+  const chunkCount = Math.max(1, Math.ceil(durationSeconds / 30));
+  const chunkDuration = durationSeconds / chunkCount;
+  return Array.from({ length: chunkCount }, (_, index) => ({
+    start: index * chunkDuration,
+    duration: index === chunkCount - 1 ? durationSeconds - index * chunkDuration : chunkDuration,
+  }));
+}
+
+async function renderCachedBodyChunks(
   plan: IntelligentEditPlan,
-  paths: { introAss: string; bodyAss: string; outroAss: string; intro: string; body: string; outro: string },
+  profile: Pick<ResolvedVideoExportProfile, "width" | "height" | "fps">,
+  cacheRoot: string,
+  temporaryDirectory: string,
   encoder: VideoEncoder,
+  encoderOptions: VideoEncoderOptions,
   onProgress?: (progress: number) => void,
-  encoderOptions?: VideoEncoderOptions,
   signal?: AbortSignal,
 ) {
-  const segmentProgress = { intro: 0, body: 0, outro: 0 };
-  const report = (segment: keyof typeof segmentProgress, value: number) => {
-    segmentProgress[segment] = value;
-    onProgress?.(
-      (segmentProgress.intro * 0.08) +
-      (segmentProgress.body * 0.84) +
-      (segmentProgress.outro * 0.08),
-    );
-  };
-  await renderCard(plan, "intro", paths.introAss, paths.intro, encoder, (value) => report("intro", value), encoderOptions, signal);
-  await renderBody(plan, paths.bodyAss, paths.body, encoder, (value) => report("body", value), encoderOptions, signal);
-  await renderCard(plan, "outro", paths.outroAss, paths.outro, encoder, (value) => report("outro", value), encoderOptions, signal);
+  const ranges = bodyChunkRanges(plan.media.durationSeconds);
+  const cacheDirectory = path.join(cacheRoot, plan.id, "chunks-v1");
+  await mkdir(cacheDirectory, { recursive: true });
+  const source = await stat(plan.sourcePath);
+  const paths: string[] = [];
+  let cacheHits = 0;
+  let fallbackUsed = false;
+  for (const [index, range] of ranges.entries()) {
+    if (signal?.aborted) throw new DOMException("Renderização cancelada.", "AbortError");
+    const rangePlan = shiftedRangePlan(plan, range.start, range.duration, profile);
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
+      rendererVersion: 1,
+      sourceHash: plan.sourceHash,
+      sourceSize: source.size,
+      sourceModifiedAt: source.mtimeMs,
+      start: range.start,
+      duration: range.duration,
+      events: rangePlan.events,
+      captions: rangePlan.captions,
+      design: rangePlan.design,
+      identity: rangePlan.courseIdentity,
+      motion: rangePlan.motion,
+      profile,
+      encoderOptions,
+    })).digest("hex");
+    const outputPath = path.join(cacheDirectory, `${fingerprint}.mp4`);
+    const cached = await stat(outputPath).catch(() => null);
+    if (cached?.isFile() && cached.size > 0) {
+      cacheHits += 1;
+      paths.push(outputPath);
+      onProgress?.((index + 1) / ranges.length);
+      continue;
+    }
+    const assPath = path.join(temporaryDirectory, `chunk-${index}-${fingerprint.slice(0, 10)}.ass`);
+    const partialPath = `${outputPath}.partial`;
+    await unlink(partialPath).catch(() => undefined);
+    await writeFile(assPath, bodyAss(rangePlan), "utf8");
+    try {
+      try {
+        await renderBody(rangePlan, assPath, partialPath, encoder, (value) => {
+          onProgress?.((index + value) / ranges.length);
+        }, encoderOptions, signal, range.start, false);
+      } catch (error) {
+        if ((error as Error).name === "AbortError" || encoder !== "amd-amf") throw error;
+        fallbackUsed = true;
+        await unlink(partialPath).catch(() => undefined);
+        await renderBody(rangePlan, assPath, partialPath, "libx264", (value) => {
+          onProgress?.((index + value) / ranges.length);
+        }, encoderOptions, signal, range.start, false);
+      }
+      await rename(partialPath, outputPath);
+      paths.push(outputPath);
+    } finally {
+      await Promise.all([partialPath, assPath].map((filePath) => unlink(filePath).catch(() => undefined)));
+    }
+  }
+  return { paths, cacheHits, fallbackUsed, chunkCount: ranges.length };
 }
 
 export async function renderIntelligentEdit(
@@ -1161,11 +1217,9 @@ export async function renderIntelligentEdit(
     : plan.artifacts.directory;
   const directory = path.join(requestedWorkingDirectory, plan.id, prefix);
   await mkdir(directory, { recursive: true });
-  const bodyAssPath = path.join(directory, `${prefix}-body.ass`);
   const introAssPath = path.join(directory, `${prefix}-intro.ass`);
   const outroAssPath = path.join(directory, `${prefix}-outro.ass`);
   const introPath = path.join(directory, `${prefix}-intro.mp4`);
-  const bodyPath = path.join(directory, `${prefix}-body.mp4`);
   const outroPath = path.join(directory, `${prefix}-outro.mp4`);
   const concatPath = path.join(directory, `${prefix}-concat.txt`);
   const requestedOutputPath = typeof rawInput.outputPath === "string" && path.isAbsolute(rawInput.outputPath)
@@ -1176,38 +1230,51 @@ export async function renderIntelligentEdit(
     renderMode === "live-preview" ? "live-preview-v1.mp4" : "preview-v4.mp4",
   );
   const partialPath = previewPath.replace(/\.mp4$/i, ".partial.mp4");
-  const temporaryPaths = [introPath, bodyPath, outroPath, concatPath, partialPath, bodyAssPath, introAssPath, outroAssPath];
+  const temporaryPaths = [introPath, outroPath, concatPath, partialPath, introAssPath, outroAssPath];
   await Promise.all(temporaryPaths.map((filePath) => unlink(filePath).catch(() => undefined)));
-  await writeFile(bodyAssPath, bodyAss(renderPlan), "utf8");
   await writeFile(introAssPath, titleAss(renderPlan, "intro"), "utf8");
   await writeFile(outroAssPath, titleAss(renderPlan, "outro"), "utf8");
-  const segmentPaths = {
-    introAss: introAssPath,
-    bodyAss: bodyAssPath,
-    outroAss: outroAssPath,
-    intro: introPath,
-    body: bodyPath,
-    outro: outroPath,
+  const outputProfile = {
+    width: outputDimensions.width,
+    height: outputDimensions.height,
+    fps: resolvedProfile?.fps || plan.media.fps,
   };
+  let cacheHits = 0;
+  let chunkCount = 0;
   try {
+    reportProgress(3, "Renderizando abertura...");
     try {
-      reportProgress(4, "Gerando cenas e efeitos...");
-      await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
-        reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-      }, encoderOptions, execution.signal);
+      await renderCard(renderPlan, "intro", introAssPath, introPath, encoder, (value) => reportProgress(3 + value * 5, "Renderizando abertura..."), encoderOptions, execution.signal);
     } catch (error) {
-      if ((error as Error).name === "AbortError") throw error;
-      if (encoder !== "amd-amf") throw error;
-      encoder = "libx264";
+      if ((error as Error).name === "AbortError" || encoder !== "amd-amf") throw error;
       encoderFallback = true;
-      await Promise.all([introPath, bodyPath, outroPath].map((filePath) => unlink(filePath).catch(() => undefined)));
-      reportProgress(4, "Aceleração AMD indisponível; continuando com CPU...");
-      await renderSegments(renderPlan, segmentPaths, encoder, (progress) => {
-        reportProgress(4 + progress * 82, "Renderizando cenas com FFmpeg...");
-      }, encoderOptions, execution.signal);
+      await unlink(introPath).catch(() => undefined);
+      await renderCard(renderPlan, "intro", introAssPath, introPath, "libx264", (value) => reportProgress(3 + value * 5, "Renderizando abertura com CPU..."), encoderOptions, execution.signal);
     }
-    reportProgress(88, "Unindo cenas e finalizando áudio...");
-    await finalizeVideoFromSegments(renderPlan, [introPath, bodyPath, outroPath], concatPath, partialPath, execution.signal);
+    const body = await renderCachedBodyChunks(
+      renderPlan,
+      outputProfile,
+      requestedWorkingDirectory,
+      directory,
+      encoder,
+      encoderOptions,
+      (progress) => reportProgress(8 + progress * 76, cacheHits > 0 ? "Reutilizando e renderizando chunks..." : "Renderizando chunks de até 30 segundos..."),
+      execution.signal,
+    );
+    cacheHits = body.cacheHits;
+    chunkCount = body.chunkCount;
+    encoderFallback ||= body.fallbackUsed;
+    reportProgress(84, "Renderizando encerramento...");
+    try {
+      await renderCard(renderPlan, "outro", outroAssPath, outroPath, encoder, (value) => reportProgress(84 + value * 4, "Renderizando encerramento..."), encoderOptions, execution.signal);
+    } catch (error) {
+      if ((error as Error).name === "AbortError" || encoder !== "amd-amf") throw error;
+      encoderFallback = true;
+      await unlink(outroPath).catch(() => undefined);
+      await renderCard(renderPlan, "outro", outroAssPath, outroPath, "libx264", (value) => reportProgress(84 + value * 4, "Renderizando encerramento com CPU..."), encoderOptions, execution.signal);
+    }
+    reportProgress(88, "Unindo chunks e finalizando áudio...");
+    await finalizeVideoFromSegments(renderPlan, [introPath, ...body.paths, outroPath], concatPath, partialPath, execution.signal);
     await unlink(previewPath).catch(() => undefined);
     await rename(partialPath, previewPath);
   } finally {
@@ -1249,6 +1316,8 @@ export async function renderIntelligentEdit(
       used: encoder,
       fallback: encoderFallback,
     },
+    cacheHits,
+    chunkCount,
     durationSeconds: editedVideoDuration(plan.events, plan.media.durationSeconds) + 8,
     effectsApplied: {
       intro: true,
@@ -1272,7 +1341,12 @@ export async function renderIntelligentEdit(
   };
 }
 
-function shiftedRangePlan(plan: IntelligentEditPlan, start: number, duration: number, profile: ResolvedVideoExportProfile) {
+function shiftedRangePlan(
+  plan: IntelligentEditPlan,
+  start: number,
+  duration: number,
+  profile: Pick<ResolvedVideoExportProfile, "width" | "height" | "fps">,
+) {
   const end = start + duration;
   const overlaps = (itemStart: number, itemDuration: number) => itemStart < end && itemStart + itemDuration > start;
   return {

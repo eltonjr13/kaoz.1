@@ -2643,7 +2643,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const selectedEvent = useMemo(() => {
     return analysis?.events.find((e) => e.id === selectedEventId) || null;
   }, [analysis, selectedEventId]);
-  const effectivePreviewEvents = useMemo(() => (analysis?.events || []).map((event) => {
+  const effectivePreviewEvents = useMemo(() => (analysis?.events || []).map<EditEvent & { enabled?: boolean }>((event) => {
     const change = review.events.find((item) => item.id === event.id);
     return change ? { ...event, ...change } as EditEvent & { enabled?: boolean } : event;
   }).filter((event) => event.enabled !== false), [analysis?.events, review.events]);
@@ -5443,6 +5443,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          {activeRenderJob && (
+            <button type="button" onClick={() => void action("cancel-render", { jobId: activeRenderJob.id }).then(() => refreshProgress())} className="flex items-center gap-1 rounded border border-red-500/30 px-2 py-2 text-[10px] font-bold text-red-300 hover:bg-red-500/10">
+              <X size={13} /> Cancelar
+            </button>
+          )}
+          {latestExportJob?.status === "failed" && (
+            <button type="button" onClick={() => void action("resume-render", { jobId: latestExportJob.id }).then(() => refreshProgress())} className="flex items-center gap-1 rounded border border-amber-500/30 px-2 py-2 text-[10px] font-bold text-amber-300 hover:bg-amber-500/10">
+              <RotateCcw size={13} /> Retomar
+            </button>
+          )}
           <button
             disabled={!!busy || !analysis}
             onClick={renderExactSpot}
