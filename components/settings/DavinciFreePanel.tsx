@@ -82,6 +82,10 @@ import type {
 } from "@/services/davinci-free/intelligent-edit.types";
 import { karaokeWordState } from "@/services/davinci-free/caption-karaoke";
 import { transitionEnvelope } from "@/services/davinci-free/video-motion-curves";
+import {
+  latestCompletedExportJob,
+  renderedPreviewSelection,
+} from "@/services/davinci-free/video-preview-state";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -141,6 +145,72 @@ type VideoRenderJob = {
   etaSeconds?: number;
   error?: string;
 };
+
+type RenderJobCompletion = "proxy" | "spot-preview" | "latest-export" | "export" | "failed" | null;
+
+function renderJobCompletion(
+  job: VideoRenderJob,
+  planId: string | undefined,
+  latestExportId: string | undefined,
+): RenderJobCompletion {
+  if (!planId || job.planId !== planId || !["completed", "failed", "cancelled"].includes(job.status)) return null;
+  if (job.status === "failed") return "failed";
+  if (job.status !== "completed") return null;
+  if (job.kind === "proxy") return "proxy";
+  if (job.kind === "spot-preview") return "spot-preview";
+  if (job.kind !== "export") return null;
+  return job.id === latestExportId ? "latest-export" : "export";
+}
+
+function videoPreviewBadge(
+  finalRendered: boolean,
+  spotRendered: boolean,
+  proxySelected: boolean,
+) {
+  if (finalRendered) return "Render final · efeitos aplicados";
+  if (spotRendered) return "Trecho exato";
+  if (proxySelected) return "Proxy 720p";
+  return "Fonte";
+}
+
+function canRequestProxyForPlayback(activeMediaAsset: "source" | "preview", proxyPath?: string) {
+  return activeMediaAsset === "source" && !proxyPath;
+}
+
+type VideoPreviewSwitcherProps = {
+  proxyAvailable: boolean;
+  proxySelected: boolean;
+  finalJobId?: string;
+  onSelectSource: () => void;
+  onSelectProxy: () => void;
+  onSelectFinal: (jobId: string) => void;
+};
+
+function VideoPreviewSwitcher({
+  proxyAvailable,
+  proxySelected,
+  finalJobId,
+  onSelectSource,
+  onSelectProxy,
+  onSelectFinal,
+}: VideoPreviewSwitcherProps) {
+  if (!proxyAvailable && !finalJobId) return null;
+  return (
+    <div className="absolute right-3 top-3 z-20 flex overflow-hidden rounded border border-white/15 bg-black/75 text-[9px] font-bold uppercase tracking-wide">
+      <button type="button" onClick={onSelectSource} className={`px-2 py-1 ${!proxySelected ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Fonte</button>
+      {proxyAvailable && <button type="button" onClick={onSelectProxy} className={`px-2 py-1 ${proxySelected ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Proxy 720p</button>}
+      {finalJobId && (
+        <button
+          type="button"
+          onClick={() => onSelectFinal(finalJobId)}
+          className="border-l border-white/15 px-2 py-1 text-emerald-300 hover:bg-emerald-500/20 hover:text-white"
+        >
+          Ver render final
+        </button>
+      )}
+    </div>
+  );
+}
 
 type VideoRenderSettings = { cacheDirectory: string; cacheBudgetGb: 5 | 20 | 50 | 100 };
 
@@ -517,6 +587,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const [previewStale, setPreviewStale] = useState<boolean>(false);
   const [useProxyPreview, setUseProxyPreview] = useState<boolean>(true);
   const [spotPreviewJobId, setSpotPreviewJobId] = useState<string | null>(null);
+  const [finalPreviewJobId, setFinalPreviewJobId] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [exportDirectory, setExportDirectory] = useState<string>("");
   const [exportName, setExportName] = useState<string>("");
@@ -712,11 +783,13 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   useEffect(() => {
     const jobs = status?.renderJobs || [];
     const active = jobs.some((job) => job.status === "queued" || job.status === "running");
+    const latestCompletedExport = latestCompletedExportJob(jobs, analysis?.id);
     for (const job of jobs) {
-      if (!analysis || job.planId !== analysis.id || !["completed", "failed", "cancelled"].includes(job.status)) continue;
+      const completion = renderJobCompletion(job, analysis?.id, latestCompletedExport?.id);
+      if (!completion) continue;
       if (handledRenderJobsRef.current.has(job.id)) continue;
       handledRenderJobsRef.current.add(job.id);
-      if (job.status === "completed" && job.kind === "proxy") {
+      if (completion === "proxy") {
         fetch("/api/davinci-free?analysis=1", { cache: "no-store" })
           .then((response) => response.json())
           .then((data) => {
@@ -728,13 +801,19 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
             }
           })
           .catch(() => undefined);
-      } else if (job.status === "completed" && job.kind === "spot-preview") {
+      } else if (completion === "spot-preview") {
+        setFinalPreviewJobId(null);
         setSpotPreviewJobId(job.id);
         addLog("success", "Trecho exato pronto.", job.resultPath);
-      } else if (job.status === "completed" && job.kind === "export") {
+      } else if (completion === "latest-export") {
+        setSpotPreviewJobId(null);
+        setFinalPreviewJobId(job.id);
+        setPreviewStale(false);
         addLog("success", "Exportação final concluída.", job.resultPath);
-        onStatusMessage({ text: "Vídeo exportado com sucesso.", type: "success" });
-      } else if (job.status === "failed") {
+        onStatusMessage({ text: "Vídeo exportado e aberto no player com todos os efeitos.", type: "success" });
+      } else if (completion === "export") {
+        addLog("success", "Exportação final concluída.", job.resultPath);
+      } else if (completion === "failed") {
         addLog("error", "Falha em uma renderização.", job.error);
       }
     }
@@ -1072,6 +1151,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       lessonName: inferredLessonName || current.lessonName,
     }));
     setAnalysis(null);
+    setSpotPreviewJobId(null);
+    setFinalPreviewJobId(null);
     setReview({ events: [], captions: [] });
     setPendingSourceCuts([]);
     setCutStartTime(null);
@@ -1097,6 +1178,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
       await action("clear-cache", {});
 
       setAnalysis(null);
+      setSpotPreviewJobId(null);
+      setFinalPreviewJobId(null);
       setReview({ events: [], captions: [] });
       setPendingSourceCuts([]);
       setCutStartTime(null);
@@ -1635,11 +1718,16 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
 
   const proxyPath = analysis?.artifacts.proxyPath
     || (analysis?.artifacts.previewPath?.replaceAll("\\", "/").includes("/proxy-v1-") ? analysis.artifacts.previewPath : undefined);
-  const completedSpotJob = (status?.renderJobs || []).find(
-    (job) => job.id === spotPreviewJobId && job.status === "completed",
-  );
-  const activeMediaAsset: "source" | "preview" = completedSpotJob ? "preview" : "source";
-  const hasLiveCaptionPreview = !completedSpotJob;
+  const renderJobs = status?.renderJobs || [];
+  const {
+    finalJob: completedFinalJob,
+    spotJob: completedSpotJob,
+    activeJob: renderedPreviewJob,
+  } = renderedPreviewSelection(renderJobs, finalPreviewJobId, spotPreviewJobId);
+  const latestCompletedFinalJob = latestCompletedExportJob(renderJobs, analysis?.id);
+  const activeRenderedJobId = renderedPreviewJob?.id;
+  const activeMediaAsset: "source" | "preview" = renderedPreviewJob ? "preview" : "source";
+  const hasLiveCaptionPreview = !renderedPreviewJob;
   const timelineDuration = useMemo(() => {
     if (playerDuration > 0) return playerDuration;
     if (analysis?.media.durationSeconds) {
@@ -1670,11 +1758,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, [timelineDuration, timelineScale]);
 
   const videoMediaSrc = useMemo(() => {
-    if (completedSpotJob) return `/api/davinci-free/media?jobId=${completedSpotJob.id}`;
+    if (activeRenderedJobId) return `/api/davinci-free/media?jobId=${activeRenderedJobId}`;
     if (analysis) return `/api/davinci-free/media?planId=${analysis.id}&asset=${useProxyPreview && proxyPath ? "preview" : "source"}`;
     if (!form.sourcePath) return "";
     return `/api/davinci-free/media?sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
-  }, [analysis, completedSpotJob, form.sourcePath, proxyPath, useProxyPreview]);
+  }, [activeRenderedJobId, analysis, form.sourcePath, proxyPath, useProxyPreview]);
   const sourceCutEvents = useMemo(
     () => analysis?.events.filter((event) => event.kind === "remove") || pendingSourceCuts,
     [analysis, pendingSourceCuts],
@@ -1753,8 +1841,8 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     setWaveformBusy(true);
     const load = async (asset: "source" | "preview" | "music") => {
       const query = analysis
-        ? asset === "preview" && completedSpotJob
-          ? `jobId=${completedSpotJob.id}`
+        ? asset === "preview" && activeRenderedJobId
+          ? `jobId=${activeRenderedJobId}`
           : `planId=${analysis.id}&asset=${asset === "preview" ? useProxyPreview && proxyPath ? "preview" : "source" : asset}`
         : `sourcePath=${encodeURIComponent(form.sourcePath)}&asset=source`;
       const response = await fetch(
@@ -1784,7 +1872,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         if (!controller.signal.aborted) setWaveformBusy(false);
       });
     return () => controller.abort();
-  }, [activeMediaAsset, analysis, completedSpotJob, form.sourcePath, onStatusMessage, proxyPath, useProxyPreview, waveformPointCount]);
+  }, [activeMediaAsset, activeRenderedJobId, analysis, form.sourcePath, onStatusMessage, proxyPath, useProxyPreview, waveformPointCount]);
 
   function eventPlayerTime(event: EditEvent, sourceTime: number) {
     if (activeMediaAsset !== "preview") return sourceTime;
@@ -3314,7 +3402,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                     onError={() => {
                       setPlayerError("Não foi possível reproduzir esta mídia no player.");
                       setIsPlaying(false);
-                      if (analysis && !proxyPath) {
+                      if (analysis && canRequestProxyForPlayback(activeMediaAsset, proxyPath)) {
                         void requestProxy(analysis.id, "O navegador não conseguiu reproduzir o codec da fonte.")
                           .catch(() => undefined);
                       }
@@ -3356,7 +3444,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                 {videoMediaSrc && (
                   <div className="absolute left-3 top-3 flex items-center gap-2">
                     <span className="rounded-md border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-200">
-                      {completedSpotJob ? "Trecho exato" : useProxyPreview && proxyPath ? "Proxy 720p" : "Fonte"}
+                      {videoPreviewBadge(Boolean(completedFinalJob), Boolean(completedSpotJob), useProxyPreview && Boolean(proxyPath))}
                     </span>
                     {previewStale && activeMediaAsset === "preview" && (
                       <span className="rounded-md border border-amber-500/40 bg-amber-950/80 px-2 py-1 text-[9px] font-bold text-amber-200">
@@ -3366,24 +3454,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
-                {!completedSpotJob && transitionOpacity > 0 && (
+                {!renderedPreviewJob && transitionOpacity > 0 && (
                   <div className="pointer-events-none absolute inset-0 z-[5] bg-black" style={{ opacity: transitionOpacity * 0.62 }} />
                 )}
 
-                {!completedSpotJob && activeLowerThird && (
+                {!renderedPreviewJob && activeLowerThird && (
                   <div className="pointer-events-none absolute bottom-[18%] left-[7%] z-10 max-w-[58%] border-l-4 border-violet-400 bg-black/80 px-4 py-2 text-left shadow-xl">
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-300">{activeLowerThird.subtitle || analysis?.courseName || "Kaoz.1"}</p>
                     <p className="text-sm font-black text-white">{activeLowerThird.label}</p>
                   </div>
                 )}
 
-                {!completedSpotJob && activeImpactText && (
+                {!renderedPreviewJob && activeImpactText && (
                   <div className="pointer-events-none absolute left-1/2 top-[22%] z-10 max-w-[72%] -translate-x-1/2 rounded border border-cyan-300/50 bg-black/85 px-5 py-3 text-center text-lg font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(34,211,238,0.25)]">
                     {activeImpactText.label}
                   </div>
                 )}
 
-                {!completedSpotJob && activeCursor && activeCursor.x !== undefined && activeCursor.y !== undefined && (
+                {!renderedPreviewJob && activeCursor && activeCursor.x !== undefined && activeCursor.y !== undefined && (
                   <div
                     className="pointer-events-none absolute z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300 shadow-[0_0_16px_rgba(253,224,71,0.8)]"
                     style={{
@@ -3407,14 +3495,28 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   </div>
                 )}
 
-                {videoMediaSrc && !completedSpotJob && proxyPath && (
-                  <div className="absolute right-3 top-3 z-20 flex overflow-hidden rounded border border-white/15 bg-black/75 text-[9px] font-bold uppercase tracking-wide">
-                    <button type="button" onClick={() => setUseProxyPreview(false)} className={`px-2 py-1 ${!useProxyPreview ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Fonte</button>
-                    <button type="button" onClick={() => setUseProxyPreview(true)} className={`px-2 py-1 ${useProxyPreview ? "bg-violet-500 text-white" : "text-zinc-300"}`}>Proxy 720p</button>
-                  </div>
+                {videoMediaSrc && !renderedPreviewJob && (
+                  <VideoPreviewSwitcher
+                    proxyAvailable={Boolean(proxyPath)}
+                    proxySelected={useProxyPreview && Boolean(proxyPath)}
+                    finalJobId={latestCompletedFinalJob?.id}
+                    onSelectSource={() => setUseProxyPreview(false)}
+                    onSelectProxy={() => setUseProxyPreview(true)}
+                    onSelectFinal={(jobId) => {
+                      setSpotPreviewJobId(null);
+                      setFinalPreviewJobId(jobId);
+                    }}
+                  />
                 )}
-                {completedSpotJob && (
-                  <button type="button" onClick={() => setSpotPreviewJobId(null)} className="absolute right-3 top-3 z-20 rounded border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold text-white">
+                {renderedPreviewJob && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpotPreviewJobId(null);
+                      setFinalPreviewJobId(null);
+                    }}
+                    className="absolute right-3 top-3 z-20 rounded border border-white/15 bg-black/75 px-2 py-1 text-[9px] font-bold text-white"
+                  >
                     Voltar ao editor
                   </button>
                 )}

@@ -76,6 +76,10 @@ import { createVideoSourceFingerprint } from "../services/davinci-free/video-sou
 import { motionRampTiming, transitionEnvelope } from "../services/davinci-free/video-motion-curves.ts";
 import { cleanupVideoRenderPartials, pruneVideoRenderCache } from "../services/davinci-free/video-render-cache.ts";
 import {
+  latestCompletedExportJob,
+  renderedPreviewSelection,
+} from "../services/davinci-free/video-preview-state.ts";
+import {
   INTELLIGENT_CAPTION_PRESETS,
   isIntelligentCaptionPreset,
   isKaraokeCaptionPreset,
@@ -1353,5 +1357,22 @@ test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportaç�
   assert.match(panel, /Renderizar trecho exato/);
   assert.match(panel, /Exportar vídeo/);
   assert.match(panel, /Enviar ao DaVinci/);
+  assert.match(panel, /setFinalPreviewJobId\(job\.id\)/);
+  assert.match(panel, /Render final · efeitos aplicados/);
+  assert.match(panel, /Ver render final/);
+  assert.match(panel, /jobId=\$\{activeRenderedJobId\}/);
+  assert.match(panel, /!renderedPreviewJob && activeLowerThird/);
+});
+
+test("player abre o render final concluído e mantém o trecho exato como alternativa", () => {
+  const jobs = [
+    { id: "export-new", planId: "plan-a", kind: "export" as const, status: "completed" as const, resultPath: "new.mp4" },
+    { id: "export-old", planId: "plan-a", kind: "export" as const, status: "completed" as const, resultPath: "old.mp4" },
+    { id: "spot", planId: "plan-a", kind: "spot-preview" as const, status: "completed" as const, resultPath: "spot.mp4" },
+  ];
+  assert.equal(latestCompletedExportJob(jobs, "plan-a")?.id, "export-new");
+  assert.equal(renderedPreviewSelection(jobs, "export-new", "spot").activeJob?.id, "export-new");
+  assert.equal(renderedPreviewSelection(jobs, null, "spot").activeJob?.id, "spot");
+  assert.equal(renderedPreviewSelection(jobs, "missing", null).activeJob, undefined);
 });
 
