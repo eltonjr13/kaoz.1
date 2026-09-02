@@ -67,6 +67,15 @@ import {
 import { karaokeCaptionSlices, karaokeWordState } from "../services/davinci-free/caption-karaoke.ts";
 import { fastVideoFingerprint } from "../services/davinci-free/video-source.ts";
 import {
+  estimateVideoExportBytes,
+  normalizeVideoExportProfile,
+  resolveVideoExportProfile,
+  shouldCreateVideoProxy,
+} from "../services/davinci-free/video-export-profile.ts";
+import { createVideoSourceFingerprint } from "../services/davinci-free/video-source-fingerprint.ts";
+import { motionRampTiming, transitionEnvelope } from "../services/davinci-free/video-motion-curves.ts";
+import { cleanupVideoRenderPartials, pruneVideoRenderCache } from "../services/davinci-free/video-render-cache.ts";
+import {
   INTELLIGENT_CAPTION_PRESETS,
   isIntelligentCaptionPreset,
   isKaraokeCaptionPreset,
@@ -579,7 +588,8 @@ test("lote do curso usa ordem natural, identidade compartilhada e fila persisten
   assert.match(batch, /activeJobs/);
   assert.match(batch, /__kaozDavinciBatchJobs/);
   assert.match(batch, /item\.status = "failed"/);
-  assert.match(batch, /item\.previewPath = rendered\.previewPath/);
+  assert.match(batch, /item\.previewPath = await renderBatchPlan/);
+  assert.match(batch, /startVideoRenderJob/);
   assert.match(batch, /analyzeBatchItems/);
   assert.match(batch, /resolveBatchIdentity/);
   assert.match(batch, /applyCourseIdentity/);
@@ -804,7 +814,8 @@ test("edição inteligente usa áudio segmentado, agente sem ferramentas e prév
   assert.match(renderer, /timeoutMs = 60 \* 60_000/);
   assert.match(renderer, /ensureSfxLibrary/);
   assert.match(renderer, /adelay/);
-  assert.match(renderer, /Promise\.allSettled/);
+  assert.doesNotMatch(renderer, /Promise\.allSettled/);
+  assert.match(renderer, /renderCachedBodyChunks/);
   assert.match(renderer, /"-c:v", "copy"/);
   assert.match(renderer, /selectVideoEncoder/);
   assert.doesNotMatch(renderer, /\[vbase\]/);
@@ -972,11 +983,13 @@ test("revisão editorial preserva o plano automático e reaplica apenas regras s
   assert.match(panel, /timeline-caption-/);
   assert.match(panel, /activeMediaAsset === "source" \|\| hasLiveCaptionPreview/);
   assert.match(panel, /sourceVideoTime\(analysis\.events, analysis\.media\.durationSeconds, bodyTime\)/);
-  assert.match(panel, /renderMode: "live-preview"/);
+  assert.match(panel, /action\("start-spot-preview"/);
+  assert.match(panel, /action: "start-proxy"/);
   assert.match(panel, /Alterações salvas automaticamente/);
   assert.match(renderer, /renderMode === "live-preview"/);
   assert.match(renderer, /live-preview-v1\.mp4/);
-  assert.match(renderer, /renderMode: "final"/);
+  assert.match(renderer, /const renderMode = rawInput\.renderMode/);
+  assert.match(renderer, /finalPath/);
   assert.match(review, /review\.captionPreset/);
   assert.match(panel, /editedVideoTime\(analysis\.events, rawDuration, sourceStart\) \+ 4/);
   assert.match(panel, /justify-start gap-0\.5 pl-2 font-mono text-\[9px\]/);
@@ -1233,5 +1246,112 @@ test("pipeline de análise usa âncora visual estabilizada real, cortes de silê
 
   // Verifies pedagogical analysis concurrency
   assert.match(pedagogy, /Promise\.all\(\s*chunks\.map/);
+});
+
+test("perfil de exportação limita resolução e FPS à fonte sem upscale", () => {
+  const landscape = resolveVideoExportProfile({ resolution: "2k", fps: 60, bitrateMode: "recommended" }, {
+    width: 1920,
+    height: 1080,
+    fps: 29.97,
+  });
+  assert.equal(landscape.width, 1920);
+  assert.equal(landscape.height, 1080);
+  assert.equal(landscape.fps, 24);
+  assert.equal(landscape.bitrateKbps, 14_000);
+  assert.equal(landscape.sourceLimitedResolution, true);
+  assert.equal(landscape.sourceLimitedFps, true);
+
+  const portrait = resolveVideoExportProfile({ resolution: "720p", fps: 30, bitrateMode: "high" }, {
+    width: 1080,
+    height: 1920,
+    fps: 60,
+  });
+  assert.deepEqual([portrait.width, portrait.height, portrait.fps], [720, 1280, 30]);
+  assert.equal(portrait.bitrateKbps, 6_000);
+
+  const custom = normalizeVideoExportProfile({ resolution: "1080p", fps: 60, bitrateMode: "custom", bitrateKbps: 99_000 });
+  assert.equal(custom.bitrateKbps, 50_000);
+  assert.equal(estimateVideoExportBytes(10, custom), 62_740_000);
+});
+
+test("proxy é solicitado somente por resolução, FPS, bitrate ou codec incompatível", () => {
+  assert.equal(shouldCreateVideoProxy({ width: 1280, height: 720, fps: 30, bitrate: 8_000_000, codec: "h264", sourcePath: "a.mp4" }), false);
+  assert.equal(shouldCreateVideoProxy({ width: 1920, height: 1080, fps: 30, codec: "h264", sourcePath: "a.mp4" }), true);
+  assert.equal(shouldCreateVideoProxy({ width: 1280, height: 720, fps: 60, codec: "h264", sourcePath: "a.mp4" }), true);
+  assert.equal(shouldCreateVideoProxy({ width: 1280, height: 720, fps: 30, bitrate: 11_000_000, codec: "h264", sourcePath: "a.mp4" }), true);
+  assert.equal(shouldCreateVideoProxy({ width: 1280, height: 720, fps: 30, codec: "hevc", sourcePath: "a.mp4" }), true);
+});
+
+test("fingerprint rápido combina caminho canônico, metadados e amostras do início e fim", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "kaoz-render-fingerprint-"));
+  try {
+    const filePath = path.join(directory, "aula.mp4");
+    await writeFile(filePath, Buffer.concat([Buffer.alloc(1_100_000, 1), Buffer.alloc(1_100_000, 2)]));
+    const first = await createVideoSourceFingerprint(filePath);
+    const second = await createVideoSourceFingerprint(filePath);
+    assert.equal(first.fingerprint, second.fingerprint);
+    assert.equal(first.canonicalPath, second.canonicalPath);
+    await writeFile(filePath, Buffer.concat([Buffer.alloc(1_100_000, 1), Buffer.alloc(1_100_000, 3)]));
+    const changed = await createVideoSourceFingerprint(filePath);
+    assert.notEqual(first.quickHash, changed.quickHash);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("curvas puras mantêm preview e expressões do renderer na mesma janela temporal", () => {
+  const event = { start: 10, duration: 2 };
+  assert.deepEqual(motionRampTiming(event), { start: 10, rampEnd: 10.56, holdEnd: 11.52, end: 12, entry: 0.56, exit: 0.48 });
+  assert.equal(transitionEnvelope(event, 9), 0);
+  assert.equal(transitionEnvelope(event, 10), 1);
+  assert.equal(transitionEnvelope(event, 11), 0);
+});
+
+test("cache LRU remove arquivos antigos, protege projeto ativo e limpa partials", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "kaoz-render-cache-"));
+  try {
+    const oldDirectory = path.join(directory, "old-plan", "chunks-v1");
+    const activeDirectory = path.join(directory, "active-plan", "chunks-v1");
+    await mkdir(oldDirectory, { recursive: true });
+    await mkdir(activeDirectory, { recursive: true });
+    const oldPath = path.join(oldDirectory, "old.mp4");
+    const activePath = path.join(activeDirectory, "active.mp4");
+    const partialPath = path.join(oldDirectory, "broken.partial.mp4");
+    await writeFile(oldPath, Buffer.alloc(1024));
+    await writeFile(activePath, Buffer.alloc(1024));
+    await writeFile(partialPath, Buffer.alloc(64));
+    await cleanupVideoRenderPartials(directory);
+    assert.equal(await readFile(partialPath).then(() => true).catch(() => false), false);
+    const result = await pruneVideoRenderCache(directory, 0.0000005, new Set(["active-plan"]));
+    assert.equal(result.removedFiles, 1);
+    assert.equal(await readFile(oldPath).then(() => true).catch(() => false), false);
+    assert.equal(await readFile(activePath).then(() => true).catch(() => false), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportação separada do DaVinci", async () => {
+  const [renderer, jobs, route, batch, panel] = await Promise.all([
+    readFile(path.join(process.cwd(), "services", "davinci-free", "intelligent-edit.renderer.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "services", "davinci-free", "video-render-job.service.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "app", "api", "davinci-free", "route.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "services", "davinci-free", "course-batch.service.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "components", "settings", "DavinciFreePanel.tsx"), "utf8"),
+  ]);
+  assert.match(renderer, /bodyChunkRanges/);
+  assert.match(renderer, /chunks-v1/);
+  assert.match(renderer, /finalizeVideoFromSegments/);
+  assert.doesNotMatch(renderer, /joined\.mp4/);
+  assert.match(jobs, /queued[\s\S]*running[\s\S]*completed[\s\S]*failed[\s\S]*cancelled/);
+  assert.match(jobs, /Proxy pausado para uma exportação prioritária/);
+  assert.match(route, /"start-proxy"/);
+  assert.match(route, /"start-spot-preview"/);
+  assert.match(route, /"start-export"/);
+  assert.match(batch, /version: 3/);
+  assert.match(batch, /kind: "batch-export"/);
+  assert.match(panel, /Renderizar trecho exato/);
+  assert.match(panel, /Exportar vídeo/);
+  assert.match(panel, /Enviar ao DaVinci/);
 });
 

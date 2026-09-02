@@ -17,6 +17,7 @@ import {
   type VideoExportProfile,
 } from "./video-export-profile";
 import { readVideoRenderSettings } from "./video-render-settings";
+import { cleanupVideoRenderPartials, pruneVideoRenderCache } from "./video-render-cache";
 
 export type VideoRenderJobKind = "proxy" | "spot-preview" | "export" | "batch-export";
 export type VideoRenderJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -111,9 +112,12 @@ async function loadJobs() {
 }
 
 async function recoverInterruptedJobs() {
+  const settings = await readVideoRenderSettings();
+  await cleanupVideoRenderPartials(settings.cacheDirectory);
   const jobs = await loadJobs();
   await Promise.all(jobs.map(async (job) => {
     if (job.status !== "running") return;
+    if (job.outputPath) await unlink(job.outputPath.replace(/\.mp4$/i, ".partial.mp4")).catch(() => undefined);
     job.status = "queued";
     job.progress = 0;
     job.stage = "Retomando após reinício do Kaoz.1...";
@@ -228,6 +232,15 @@ async function executeJob(job: VideoRenderJob) {
     await atomicWrite(job);
   } finally {
     activeControllers.delete(job.id);
+    const settings = await readVideoRenderSettings().catch(() => null);
+    if (settings) {
+      const recentThreshold = Date.now() - 6 * 60 * 60_000;
+      const protectedPlanIds = new Set((await loadJobs())
+        .filter((candidate) => ["queued", "running"].includes(candidate.status) || Date.parse(candidate.updatedAt) >= recentThreshold)
+        .map((candidate) => candidate.planId));
+      protectedPlanIds.add(job.planId);
+      await pruneVideoRenderCache(settings.cacheDirectory, settings.cacheBudgetGb, protectedPlanIds).catch(() => undefined);
+    }
   }
 }
 
@@ -288,7 +301,7 @@ export async function startVideoRenderJob(rawInput: Record<string, unknown>) {
     kind === "spot-preview" ? Math.min(30, Number(rawInput.durationSeconds) || 10) : plan.media.durationSeconds + (kind.includes("export") ? 8 : 0),
     resolvedProfile,
   );
-  await assertDiskSpace(settings.cacheDirectory, Math.max(5 * 1024 ** 3, Math.ceil(estimatedBytes * 2.2 + 2 * 1024 ** 3)));
+  await assertDiskSpace(settings.cacheDirectory, Math.ceil(estimatedBytes * 2.2 + 2 * 1024 ** 3));
   let outputPath: string | undefined;
   if (kind === "export" || kind === "batch-export") {
     const directory = typeof rawInput.destinationDirectory === "string" && path.isAbsolute(rawInput.destinationDirectory)

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 
@@ -38,6 +38,8 @@ import {
   type VideoExportProfile,
 } from "./video-export-profile";
 import { formattedLessonNumber } from "./lesson-download";
+import { createVideoSourceFingerprint } from "./video-source-fingerprint";
+import { motionRampTiming, transitionTiming } from "./video-motion-curves";
 import { karaokeCaptionSlices } from "./caption-karaoke";
 import {
   editedVideoDuration,
@@ -633,12 +635,12 @@ function scaleExpression(events: IntelligentEditEvent[]) {
     .map((event) => {
       const peak = Math.max(1.025, Math.min(1.14, event.scale || (event.kind === "cut" ? 1.055 : 1.09)));
       const delta = peak - 1;
-      const entry = Math.max(0.4, Math.min(0.8, event.duration * 0.28));
-      const exit = Math.max(0.35, Math.min(0.65, event.duration * 0.24));
-      const start = event.start.toFixed(3);
-      const rampEnd = (event.start + entry).toFixed(3);
-      const holdEnd = (event.start + Math.max(entry, event.duration - exit)).toFixed(3);
-      const end = (event.start + event.duration).toFixed(3);
+      const timing = motionRampTiming(event);
+      const { entry, exit } = timing;
+      const start = timing.start.toFixed(3);
+      const rampEnd = timing.rampEnd.toFixed(3);
+      const holdEnd = timing.holdEnd.toFixed(3);
+      const end = timing.end.toFixed(3);
       const enterProgress = `(t-${start})/${entry.toFixed(3)}`;
       const exitProgress = `(t-${holdEnd})/${exit.toFixed(3)}`;
       const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
@@ -660,12 +662,12 @@ function focalExpression(events: IntelligentEditEvent[], axis: "x" | "y") {
   for (const event of [...candidates, ...zoomEvents].reverse()) {
     const coordinate = Math.max(0, Math.min(1, event[axis] ?? 0.5)).toFixed(4);
     const focused = `${coordinate}*${inputSize}-${outputSize}/2`;
-    const entry = Math.max(0.4, Math.min(0.8, event.duration * 0.28));
-    const exit = Math.max(0.35, Math.min(0.65, event.duration * 0.24));
-    const start = event.start.toFixed(3);
-    const rampEnd = (event.start + entry).toFixed(3);
-    const holdEnd = (event.start + Math.max(entry, event.duration - exit)).toFixed(3);
-    const end = (event.start + event.duration).toFixed(3);
+    const timing = motionRampTiming(event);
+    const { entry, exit } = timing;
+    const start = timing.start.toFixed(3);
+    const rampEnd = timing.rampEnd.toFixed(3);
+    const holdEnd = timing.holdEnd.toFixed(3);
+    const end = timing.end.toFixed(3);
     const enterProgress = `(t-${start})/${entry.toFixed(3)}`;
     const exitProgress = `(t-${holdEnd})/${exit.toFixed(3)}`;
     const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
@@ -681,10 +683,7 @@ function transitionExpression(events: IntelligentEditEvent[]) {
   const expressions = events
     .filter((event) => event.kind === "transition")
     .map((event) => {
-      const half = Math.max(0.12, event.duration / 2);
-      const start = Math.max(0, event.start - half);
-      const middle = event.start;
-      const end = event.start + half;
+      const { half, start, middle, end } = transitionTiming(event);
       const enterProgress = `(t-${start.toFixed(3)})/${half.toFixed(3)}`;
       const exitProgress = `(t-${middle.toFixed(3)})/${half.toFixed(3)}`;
       const enterEase = `(${enterProgress})*(${enterProgress})*(3-2*(${enterProgress}))`;
@@ -1083,7 +1082,7 @@ function bodyChunkRanges(durationSeconds: number) {
 
 async function renderCachedBodyChunks(
   plan: IntelligentEditPlan,
-  profile: Pick<ResolvedVideoExportProfile, "width" | "height" | "fps">,
+  profile: { width: number; height: number; fps: number },
   cacheRoot: string,
   temporaryDirectory: string,
   encoder: VideoEncoder,
@@ -1094,7 +1093,7 @@ async function renderCachedBodyChunks(
   const ranges = bodyChunkRanges(plan.media.durationSeconds);
   const cacheDirectory = path.join(cacheRoot, plan.id, "chunks-v1");
   await mkdir(cacheDirectory, { recursive: true });
-  const source = await stat(plan.sourcePath);
+  const source = await createVideoSourceFingerprint(plan.sourcePath);
   const paths: string[] = [];
   let cacheHits = 0;
   let fallbackUsed = false;
@@ -1104,8 +1103,7 @@ async function renderCachedBodyChunks(
     const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
       rendererVersion: 1,
       sourceHash: plan.sourceHash,
-      sourceSize: source.size,
-      sourceModifiedAt: source.mtimeMs,
+      sourceFingerprint: source.fingerprint,
       start: range.start,
       duration: range.duration,
       events: rangePlan.events,
@@ -1120,6 +1118,7 @@ async function renderCachedBodyChunks(
     const cached = await stat(outputPath).catch(() => null);
     if (cached?.isFile() && cached.size > 0) {
       cacheHits += 1;
+      await utimes(outputPath, new Date(), new Date()).catch(() => undefined);
       paths.push(outputPath);
       onProgress?.((index + 1) / ranges.length);
       continue;
@@ -1345,7 +1344,7 @@ function shiftedRangePlan(
   plan: IntelligentEditPlan,
   start: number,
   duration: number,
-  profile: Pick<ResolvedVideoExportProfile, "width" | "height" | "fps">,
+  profile: { width: number; height: number; fps: number },
 ) {
   const end = start + duration;
   const overlaps = (itemStart: number, itemDuration: number) => itemStart < end && itemStart + itemDuration > start;
@@ -1389,11 +1388,10 @@ export async function renderIntelligentProxy(
   const plan = await readIntelligentEditPlan(planId || undefined);
   if (!plan) throw new Error("Plano inteligente não encontrado.");
   const profile = proxyVideoProfile(plan.media);
-  const source = await stat(plan.sourcePath);
+  const source = await createVideoSourceFingerprint(plan.sourcePath);
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
     sourceHash: plan.sourceHash,
-    sourceSize: source.size,
-    sourceModifiedAt: source.mtimeMs,
+    sourceFingerprint: source.fingerprint,
     profile,
     version: 1,
   })).digest("hex");
@@ -1405,6 +1403,7 @@ export async function renderIntelligentProxy(
   const proxyPath = path.join(proxyDirectory, `proxy-v1-${fingerprint.slice(0, 12)}.mp4`);
   const cached = await stat(proxyPath).catch(() => null);
   if (cached?.isFile() && cached.size > 0) {
+    await utimes(proxyPath, new Date(), new Date()).catch(() => undefined);
     await recordEditorialPreview(plan, proxyPath);
     return {
       planId: plan.id,
@@ -1489,7 +1488,10 @@ export async function renderIntelligentSpotPreview(
   await mkdir(spotDirectory, { recursive: true });
   const outputPath = path.join(spotDirectory, `spot-preview-v1-${fingerprint.slice(0, 12)}.mp4`);
   const cached = await stat(outputPath).catch(() => null);
-  if (cached?.isFile() && cached.size > 0) return { planId: plan.id, spotPreviewPath: outputPath, fingerprint, cached: true, start, duration, exportProfile: profile };
+  if (cached?.isFile() && cached.size > 0) {
+    await utimes(outputPath, new Date(), new Date()).catch(() => undefined);
+    return { planId: plan.id, spotPreviewPath: outputPath, fingerprint, cached: true, start, duration, exportProfile: profile };
+  }
   const assPath = path.join(spotDirectory, `spot-preview-${fingerprint.slice(0, 12)}.ass`);
   const partialPath = outputPath.replace(/\.mp4$/i, ".partial.mp4");
   await writeFile(assPath, bodyAss(rangePlan), "utf8");
@@ -1536,8 +1538,11 @@ export async function approveIntelligentEdit(
   const completedFinalPath = typeof rawInput.finalPath === "string" && path.isAbsolute(rawInput.finalPath)
     ? path.resolve(rawInput.finalPath)
     : undefined;
-  const finalPath = completedFinalPath || plan.artifacts.finalPath;
-  if (!finalPath) throw new Error("Exporte o vídeo antes de enviá-lo ao Resolve.");
+  let finalPath = completedFinalPath || plan.artifacts.finalPath;
+  if (!finalPath) {
+    const legacyRender = await renderIntelligentEdit({ ...rawInput, planId: plan.id, renderMode: "final" });
+    finalPath = legacyRender.finalPath || legacyRender.previewPath;
+  }
   await readFile(finalPath);
   return createDavinciFreePlan({
     requestId:

@@ -81,6 +81,7 @@ import type {
   IntelligentSoundEffect,
 } from "@/services/davinci-free/intelligent-edit.types";
 import { karaokeWordState } from "@/services/davinci-free/caption-karaoke";
+import { transitionEnvelope } from "@/services/davinci-free/video-motion-curves";
 import type {
   GoogleDriveConnectionStatus,
   GoogleDriveCourseManifest,
@@ -140,6 +141,8 @@ type VideoRenderJob = {
   etaSeconds?: number;
   error?: string;
 };
+
+type VideoRenderSettings = { cacheDirectory: string; cacheBudgetGb: 5 | 20 | 50 | 100 };
 
 type VideoSpeechModel = {
   id: string;
@@ -278,6 +281,8 @@ type Analysis = {
     height: number;
     fps: number;
     hasAudio: boolean;
+    bitrate?: number;
+    codec?: string;
     musicPath?: string;
     musicDb: number;
   };
@@ -522,6 +527,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     bitrateKbps: 8_000,
     videoEncoder: "auto",
   });
+  const [renderSettings, setRenderSettings] = useState<VideoRenderSettings | null>(null);
   const [captionSaveState, setCaptionSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pendingSourceCuts, setPendingSourceCuts] = useState<EditEvent[]>([]);
   const [cutStartTime, setCutStartTime] = useState<number | null>(null);
@@ -677,8 +683,24 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   }, []);
 
   useEffect(() => {
+    fetch("/api/davinci-free", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "get-render-settings" }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.cacheDirectory) setRenderSettings(data as VideoRenderSettings);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (!analysis || analysis.artifacts.previewPath) return;
-    const needsProxy = analysis.media.width * analysis.media.height > 1280 * 720 || analysis.media.fps > 30.01;
+    const needsProxy = analysis.media.width * analysis.media.height > 1280 * 720
+      || analysis.media.fps > 30.01
+      || (analysis.media.bitrate || 0) > 10_000_000
+      || Boolean(analysis.media.codec && analysis.media.codec !== "h264");
     if (!needsProxy) {
       setUseProxyPreview(false);
       return;
@@ -1203,6 +1225,18 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (selected?.folderPath) setExportDirectory(String(selected.folderPath));
   }
 
+  async function saveRenderSettings(patch: Partial<VideoRenderSettings>) {
+    const next = { ...renderSettings, ...patch };
+    if (!next.cacheDirectory || !next.cacheBudgetGb) return;
+    const saved = await action("save-render-settings", next);
+    if (saved?.cacheDirectory) setRenderSettings(saved as VideoRenderSettings);
+  }
+
+  async function chooseCacheDirectory() {
+    const selected = await action("choose-folder", {});
+    if (selected?.folderPath) await saveRenderSettings({ cacheDirectory: String(selected.folderPath) });
+  }
+
   async function startExport() {
     if (!analysis) return;
     const saved = await action("save-editorial-review", { planId: analysis.id, review });
@@ -1508,6 +1542,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         downloadFolder: downloadFolder || undefined,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
+        exportProfile,
         transcriptionRuntime: transcriptionMode === "local" ? "desktop" : "web",
         transcriptionMode,
         transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
@@ -1557,6 +1592,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         selectedRelativePaths: selectedPaths,
         outputResolution: form.outputResolution,
         videoEncoder: form.videoEncoder,
+        exportProfile,
         transcriptionRuntime: transcriptionMode === "local" ? "desktop" : "web",
         transcriptionMode,
         transcriptionModelId: transcriptionMode === "local" ? form.transcriptionModelId : undefined,
@@ -2663,9 +2699,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   );
   const transitionOpacity = effectivePreviewEvents.reduce((opacity, event) => {
     if (event.kind !== "transition") return opacity;
-    const half = Math.max(0.12, event.duration / 2);
-    const distance = Math.abs(captionPlaybackTime - event.start);
-    return Math.max(opacity, distance <= half ? 1 - distance / half : 0);
+    return Math.max(opacity, transitionEnvelope(event, captionPlaybackTime));
   }, 0);
   const planRenderJobs = (status?.renderJobs || []).filter((job) => job.planId === analysis?.id);
   const latestExportJob = planRenderJobs.find((job) => job.kind === "export");
@@ -5414,6 +5448,23 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-zinc-400">Bitrate customizado · {(exportProfile.bitrateKbps / 1_000).toFixed(1)} Mbps
                 <input type="range" min={2_000} max={50_000} step={500} value={exportProfile.bitrateKbps} onChange={(event) => setExportProfile((current) => ({ ...current, bitrateKbps: Number(event.target.value) }))} className="mt-2 w-full accent-violet-500" />
               </label>
+            )}
+
+            {renderSettings && (
+              <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="min-w-0 flex-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Cache de vídeo
+                    <input value={renderSettings.cacheDirectory} readOnly className={`${fieldClass} mt-1 normal-case`} />
+                  </label>
+                  {isDesktopRuntime && <button type="button" onClick={chooseCacheDirectory} className="rounded border border-white/10 px-3 py-2 text-[10px] font-bold text-zinc-300 hover:bg-white/10"><Folder size={14} className="mr-1 inline" />Alterar</button>}
+                  <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Limite
+                    <select value={renderSettings.cacheBudgetGb} onChange={(event) => void saveRenderSettings({ cacheBudgetGb: Number(event.target.value) as VideoRenderSettings["cacheBudgetGb"] })} className={`${fieldClass} mt-1 w-24 normal-case`}>
+                      {[5, 20, 50, 100].map((value) => <option key={value} value={value}>{value} GB</option>)}
+                    </select>
+                  </label>
+                </div>
+                <p className="mt-2 text-[10px] text-zinc-500">Metadados ficam no AppData; proxies e chunks pesados ficam nesta pasta. Nesta máquina, prefira o disco D:.</p>
+              </div>
             )}
 
             <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">

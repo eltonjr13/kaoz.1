@@ -95,6 +95,8 @@ type MediaInfo = {
   height: number;
   fps: number;
   hasAudio: boolean;
+  bitrate?: number;
+  codec?: string;
 };
 
 type SemanticDecision = {
@@ -266,6 +268,9 @@ async function inspectMedia(sourcePath: string): Promise<MediaInfo> {
     throw new Error("Não foi possível identificar duração, resolução e FPS do vídeo.");
   }
   const match = videoMatch || tbrMatch!;
+  const videoLine = output.match(/Video:[^\r\n]*/i)?.[0] || "";
+  const codec = videoLine.match(/Video:\s*([^,\s]+)/i)?.[1]?.toLowerCase();
+  const bitrateKbps = Number(videoLine.match(/(\d+(?:\.\d+)?)\s*kb\/s/i)?.[1]);
   return {
     durationSeconds:
       Number(durationMatch[1]) * 3600 +
@@ -275,6 +280,8 @@ async function inspectMedia(sourcePath: string): Promise<MediaInfo> {
     height: Number(match[2]),
     fps: Math.min(60, Math.max(23.976, Number(match[3]))),
     hasAudio: /Audio:/i.test(output),
+    bitrate: Number.isFinite(bitrateKbps) ? Math.round(bitrateKbps * 1_000) : undefined,
+    codec,
   };
 }
 

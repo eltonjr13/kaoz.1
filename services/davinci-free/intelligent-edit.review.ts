@@ -9,6 +9,7 @@ import {
   sanitizeEditorialReviewTimestamp,
 } from "./editorial-review-metadata";
 import { isIntelligentCaptionPreset } from "./intelligent-edit.types";
+import { readVideoRenderSettingsSync } from "./video-render-settings";
 import type {
   IntelligentCourseEditorialStandard,
   IntelligentEditorialCaptionOverride,
@@ -246,6 +247,7 @@ function reviewFor(plan: IntelligentEditPlan, value: unknown): IntelligentEditor
   const previewPath = sanitizeEditorialPreviewPath(
     plan.artifacts.directory,
     raw.previewPath,
+    [readVideoRenderSettingsSync().cacheDirectory],
   );
   const review: IntelligentEditorialReview = {
     version: 1,

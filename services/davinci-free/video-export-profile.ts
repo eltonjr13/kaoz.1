@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { normalizeVideoEncoderPreference, type VideoEncoderPreference } from "./video-encoder";
+import { normalizeVideoEncoderPreference, type VideoEncoderPreference } from "./video-encoder.ts";
 
 export const VIDEO_EXPORT_RESOLUTIONS = ["720p", "1080p", "2k"] as const;
 export const VIDEO_EXPORT_FRAME_RATES = [24, 30, 60] as const;

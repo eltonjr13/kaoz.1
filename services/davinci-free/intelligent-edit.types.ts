@@ -300,6 +300,8 @@ export interface IntelligentEditPlan {
     height: number;
     fps: number;
     hasAudio: boolean;
+    bitrate?: number;
+    codec?: string;
     musicPath?: string;
     musicDb: number;
     autoDucking?: boolean;

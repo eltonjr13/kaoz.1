@@ -327,7 +327,8 @@ test("interface mantém Drive e DaVinci como destinos independentes", async () =
   const settings = await readFile(path.join(process.cwd(), "components", "settings", "ConnectorsSettingsPanel.tsx"), "utf8");
   assert.match(settings, /GoogleDriveSettingsCard/);
   assert.match(editor, /GoogleDriveVideoControls/);
-  assert.match(editor, /(?:Preparar|Finalizar) para o DaVinci \(opcional\)/);
+  assert.match(editor, /Exportar vídeo/);
+  assert.match(editor, /Enviar ao DaVinci/);
   assert.match(editor, /previewStale/);
   assert.match(driveControls, /Enviar render ao Drive/);
   assert.match(driveControls, /Importar vídeo/);
