@@ -881,6 +881,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         setReview(loadedReview);
         setForm((current) => ({
           ...current,
+          sourcePath: loadedAnalysis.sourcePath || current.sourcePath,
+          courseName: loadedAnalysis.courseName || current.courseName,
+          moduleName: loadedAnalysis.moduleName || current.moduleName,
+          lessonNumber: loadedAnalysis.lessonNumber || current.lessonNumber,
+          lessonName: loadedAnalysis.lessonName || current.lessonName,
           motionPace: loadedReview.motionPace || loadedAnalysis.motion?.pace || current.motionPace,
           captionsEnabled: loadedReview.captionsEnabled ?? loadedAnalysis.design?.captionsEnabled ?? current.captionsEnabled,
           captionPreset: loadedReview.captionPreset || loadedAnalysis.design?.captionPreset || current.captionPreset,
@@ -3376,9 +3381,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
                   ) : (
                     <WandSparkles size={15} />
                   )}
-                  Analisar áudio e planejar edição
+                  {analysis ? "Refazer análise e planejamento" : "Analisar áudio e planejar edição"}
                 </button>
-                <InfoTooltip text="Analisa áudio, roteiro e identidade visual antes de gerar a prévia." />
+                <InfoTooltip text={analysis
+                  ? "Cria um novo plano com as configurações atuais, sem apagar o vídeo nem a exportação anterior."
+                  : "Analisa áudio, roteiro e identidade visual antes de gerar a prévia."} />
               </div>
             </div>
           </aside>

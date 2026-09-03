@@ -1361,6 +1361,8 @@ test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportaç�
   assert.match(batch, /kind: "batch-export"/);
   assert.match(panel, /Renderizar trecho exato/);
   assert.match(panel, /Exportar vídeo/);
+  assert.match(panel, /Refazer análise e planejamento/);
+  assert.match(panel, /sourcePath: loadedAnalysis\.sourcePath/);
   assert.match(panel, /Enviar ao DaVinci/);
   assert.match(panel, /setFinalPreviewJobId\(job\.id\)/);
   assert.match(panel, /Render final · efeitos aplicados/);
