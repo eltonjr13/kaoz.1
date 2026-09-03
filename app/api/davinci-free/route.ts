@@ -112,7 +112,7 @@ export async function GET(request: Request) {
         readIntelligentRenderStatus(),
         listVideoRenderJobs(planId ? { planId } : {}),
       ]);
-      return NextResponse.json({ analysisStatus, renderStatus, ...renderJobs });
+      return NextResponse.json({ analysisStatus, renderStatus, renderJobs: renderJobs.jobs });
     }
 
     const status = await execute("status", {});

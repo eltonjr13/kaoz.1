@@ -1356,6 +1356,7 @@ test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportaç�
   assert.match(route, /"start-proxy"/);
   assert.match(route, /"start-spot-preview"/);
   assert.match(route, /"start-export"/);
+  assert.match(route, /renderJobs: renderJobs\.jobs/);
   assert.match(batch, /version: 3/);
   assert.match(batch, /kind: "batch-export"/);
   assert.match(panel, /Renderizar trecho exato/);
@@ -1365,6 +1366,8 @@ test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportaç�
   assert.match(panel, /Render final · efeitos aplicados/);
   assert.match(panel, /Ver render final/);
   assert.match(panel, /jobId=\$\{activeRenderedJobId\}/);
+  assert.match(panel, /pendingBrowserDownloadJobRef/);
+  assert.match(panel, /Baixa na pasta configurada no Chrome/);
   assert.match(panel, /!renderedPreviewJob && activeLowerThird/);
 });
 

@@ -611,6 +611,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
   const initialAnalysisLoadedRef = useRef<boolean>(false);
   const proxyRequestedPlansRef = useRef<Set<string>>(new Set());
   const handledRenderJobsRef = useRef<Set<string>>(new Set());
+  const pendingBrowserDownloadJobRef = useRef<string | null>(null);
   const [silenceThreshold, setSilenceThreshold] = useState<number>(0.045);
   const [silenceMinDuration, setSilenceMinDuration] = useState<number>(0.4);
   const [silencePadding, setSilencePadding] = useState<number>(0.08);
@@ -810,6 +811,15 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
         setFinalPreviewJobId(job.id);
         setPreviewStale(false);
         addLog("success", "Exportação final concluída.", job.resultPath);
+        if (!isDesktopRuntime && pendingBrowserDownloadJobRef.current === job.id) {
+          const link = document.createElement("a");
+          link.href = `/api/davinci-free/media?jobId=${job.id}&download=true`;
+          link.hidden = true;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          pendingBrowserDownloadJobRef.current = null;
+        }
         onStatusMessage({ text: "Vídeo exportado e aberto no player com todos os efeitos.", type: "success" });
       } else if (completion === "export") {
         addLog("success", "Exportação final concluída.", job.resultPath);
@@ -820,7 +830,7 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     if (!active) return;
     const timer = window.setInterval(() => void refreshProgress().catch(() => undefined), 750);
     return () => window.clearInterval(timer);
-  }, [addLog, analysis, onStatusMessage, refreshProgress, status?.renderJobs]);
+  }, [addLog, analysis, isDesktopRuntime, onStatusMessage, refreshProgress, status?.renderJobs]);
 
   useEffect(() => {
     const bridge = window.kaoz1Desktop;
@@ -1328,11 +1338,12 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
     const job = await action("start-export", {
       requestId: `export-${analysis.id}-${crypto.randomUUID()}`,
       planId: analysis.id,
-      destinationDirectory: exportDirectory || undefined,
+      destinationDirectory: isDesktopRuntime ? exportDirectory || undefined : undefined,
       outputName: exportName || analysis.lessonName || analysis.moduleName,
       exportProfile,
     }) as VideoRenderJob | null;
     if (job?.id) {
+      pendingBrowserDownloadJobRef.current = isDesktopRuntime ? null : job.id;
       setShowExportModal(false);
       addLog("info", "Exportação final enviada para a fila.", "O editor permanece disponível durante o processamento.");
       await refreshProgress();
@@ -5491,10 +5502,11 @@ export function DavinciFreePanel({ onStatusMessage }: Props) {
               </label>
               <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Pasta de destino
                 <div className="mt-1 flex gap-2">
-                  <input value={exportDirectory} onChange={(event) => setExportDirectory(event.target.value)} placeholder={isDesktopRuntime ? "Escolher pasta..." : "Gerada no servidor"} className={`${fieldClass} normal-case`} />
+                  <input value={exportDirectory} onChange={(event) => setExportDirectory(event.target.value)} disabled={!isDesktopRuntime} placeholder={isDesktopRuntime ? "Escolher pasta..." : "Baixa na pasta configurada no Chrome"} className={`${fieldClass} normal-case disabled:cursor-not-allowed disabled:opacity-60`} />
                   {isDesktopRuntime && <button type="button" onClick={chooseExportDirectory} className="rounded border border-white/10 px-2 text-zinc-300 hover:bg-white/10"><Folder size={15} /></button>}
                 </div>
               </label>
+              {!isDesktopRuntime && <p className="-mt-2 text-[10px] text-zinc-500 sm:col-span-2">No navegador, o arquivo será baixado automaticamente na pasta definida pelo Chrome ao concluir.</p>}
 
               <label className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Resolução
                 <select

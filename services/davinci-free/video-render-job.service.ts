@@ -55,6 +55,7 @@ export type VideoRenderJob = {
 const JOB_ROOT = path.join(getRuntimeJobsDir(), "davinci-video");
 const activeControllers = new Map<string, AbortController>();
 const preemptedJobs = new Set<string>();
+const jobWriteQueues = new Map<string, Promise<void>>();
 let recovery: Promise<void> | undefined;
 let queueRunning = false;
 
@@ -88,13 +89,46 @@ function priorityFor(kind: VideoRenderJobKind) {
   return 40;
 }
 
-async function atomicWrite(job: VideoRenderJob) {
+function waitForJobWriteRetry(delayMs: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+}
+
+function isTransientWindowsRenameError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(code || "");
+}
+
+async function writeJobSnapshot(job: VideoRenderJob) {
   await mkdir(JOB_ROOT, { recursive: true });
-  job.updatedAt = new Date().toISOString();
   const destination = jobPath(job.id);
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(job, null, 2)}\n`, "utf8");
-  await rename(temporary, destination);
+  try {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rename(temporary, destination);
+        return;
+      } catch (error) {
+        if (!isTransientWindowsRenameError(error) || attempt === 4) throw error;
+        await waitForJobWriteRetry(25 * 2 ** attempt);
+      }
+    }
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
+}
+
+function atomicWrite(job: VideoRenderJob) {
+  job.updatedAt = new Date().toISOString();
+  const snapshot = { ...job };
+  const previous = jobWriteQueues.get(job.id) || Promise.resolve();
+  const queued = previous.catch(() => undefined).then(() => writeJobSnapshot(snapshot));
+  jobWriteQueues.set(job.id, queued);
+  void queued.then(
+    () => { if (jobWriteQueues.get(job.id) === queued) jobWriteQueues.delete(job.id); },
+    () => { if (jobWriteQueues.get(job.id) === queued) jobWriteQueues.delete(job.id); },
+  );
+  return queued;
 }
 
 async function loadJob(id: string) {
