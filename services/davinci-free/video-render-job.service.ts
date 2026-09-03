@@ -377,6 +377,10 @@ export async function resumeVideoRenderJob(rawInput: Record<string, unknown>) {
   job.stage = "Na fila de renderização...";
   job.error = undefined;
   job.completedAt = undefined;
+  // Uma retomada começa uma nova medição; manter o relógio da tentativa
+  // anterior transforma a ETA em um valor artificialmente alto.
+  job.startedAt = undefined;
+  job.etaSeconds = undefined;
   await atomicWrite(job);
   launchQueue();
   return job;

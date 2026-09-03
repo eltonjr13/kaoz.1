@@ -1345,6 +1345,10 @@ test("motor CapCut expõe fila por job, chunks, proxy, trecho exato e exportaç�
   ]);
   assert.match(renderer, /bodyChunkRanges/);
   assert.match(renderer, /chunks-v1/);
+  assert.match(renderer, /outputPath\.replace\(/);
+  assert.doesNotMatch(renderer, /const partialPath = `\$\{outputPath\}\.partial`/);
+  assert.match(renderer, /"-t",\s*plan\.media\.durationSeconds\.toFixed\(3\)/);
+  assert.match(renderer, /\$\{prefix\}-\$\{crypto\.randomUUID\(\)\}/);
   assert.match(renderer, /finalizeVideoFromSegments/);
   assert.doesNotMatch(renderer, /joined\.mp4/);
   assert.match(jobs, /queued[\s\S]*running[\s\S]*completed[\s\S]*failed[\s\S]*cancelled/);

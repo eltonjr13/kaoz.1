@@ -901,7 +901,10 @@ async function renderBody(
     ...(sourceStart > 0 ? ["-ss", sourceStart.toFixed(3)] : []),
     "-i",
     plan.sourcePath,
-    ...(sourceStart > 0 ? ["-t", plan.media.durationSeconds.toFixed(3)] : []),
+    // O primeiro chunk começa em zero, mas ainda precisa do limite. Sem `-t`,
+    // ele codifica a aula inteira antes de os demais chunks serem concatenados.
+    "-t",
+    plan.media.durationSeconds.toFixed(3),
     "-map",
     "0:v:0",
     "-map",
@@ -1101,7 +1104,9 @@ async function renderCachedBodyChunks(
     if (signal?.aborted) throw new DOMException("Renderização cancelada.", "AbortError");
     const rangePlan = shiftedRangePlan(plan, range.start, range.duration, profile);
     const fingerprint = crypto.createHash("sha256").update(JSON.stringify({
-      rendererVersion: 1,
+      // A v2 corrige o limite do primeiro chunk; não reutilize artefatos
+      // gerados quando ele ainda codificava a aula inteira.
+      rendererVersion: 2,
       sourceHash: plan.sourceHash,
       sourceFingerprint: source.fingerprint,
       start: range.start,
@@ -1124,7 +1129,9 @@ async function renderCachedBodyChunks(
       continue;
     }
     const assPath = path.join(temporaryDirectory, `chunk-${index}-${fingerprint.slice(0, 10)}.ass`);
-    const partialPath = `${outputPath}.partial`;
+    // FFmpeg seleciona o muxer pela última extensão. Preserve `.mp4` como
+    // extensão final enquanto o chunk ainda é temporário.
+    const partialPath = outputPath.replace(/\.mp4$/i, ".partial.mp4");
     await unlink(partialPath).catch(() => undefined);
     await writeFile(assPath, bodyAss(rangePlan), "utf8");
     try {
@@ -1214,7 +1221,9 @@ export async function renderIntelligentEdit(
   const requestedWorkingDirectory = typeof rawInput.workingDirectory === "string" && path.isAbsolute(rawInput.workingDirectory)
     ? path.resolve(rawInput.workingDirectory)
     : plan.artifacts.directory;
-  const directory = path.join(requestedWorkingDirectory, plan.id, prefix);
+  // Cartões, ASS e listas de concatenação são descartáveis. Isolá-los por
+  // invocação impede que a limpeza de um cancelamento apague a retomada.
+  const directory = path.join(requestedWorkingDirectory, plan.id, `${prefix}-${crypto.randomUUID()}`);
   await mkdir(directory, { recursive: true });
   const introAssPath = path.join(directory, `${prefix}-intro.ass`);
   const outroAssPath = path.join(directory, `${prefix}-outro.ass`);

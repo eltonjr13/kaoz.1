@@ -116,9 +116,10 @@ export async function GET(request: Request) {
     }
 
     const status = await execute("status", {});
-    const [analysisStatus, renderStatus] = await Promise.all([
+    const [analysisStatus, renderStatus, renderJobs] = await Promise.all([
       readIntelligentAnalysisStatus(),
       readIntelligentRenderStatus(),
+      listVideoRenderJobs(),
     ]);
     const includeAnalysis = searchParams.get("analysis") === "1";
     const storedPlan = includeAnalysis ? await loadIntelligentEditPlan() : null;
@@ -126,6 +127,7 @@ export async function GET(request: Request) {
       ...status,
       analysisStatus,
       renderStatus,
+      renderJobs: renderJobs.jobs,
       ...(includeAnalysis ? {
         analysis: await readIntelligentEditPlan(),
         editorialReview: storedPlan ? await readEditorialReview(storedPlan) : null,
