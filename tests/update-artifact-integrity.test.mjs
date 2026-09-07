@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+test("metadados aceitam o instalador correto e rejeitam bytes ou tamanho alterados", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaoz-integrity-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "release"));
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "1.0.0" }));
+  const name = "Kaoz.1-Setup-1.0.0.exe";
+  const bytes = Buffer.from("installer fixture");
+  const sha512 = crypto.createHash("sha512").update(bytes).digest("base64");
+  const manifest = { version: "1.0.0", path: name, sha512, files: [{ url: name, sha512, size: bytes.length }] };
+  fs.writeFileSync(path.join(root, "release", name), bytes);
+  fs.writeFileSync(path.join(root, "release", `${name}.blockmap`), "fixture");
+  const manifestPath = path.join(root, "release", "latest.yml");
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  const script = fileURLToPath(new URL("../scripts/verify-update-artifacts.mjs", import.meta.url));
+  const check = () => spawnSync(process.execPath, [script], { cwd: root, encoding: "utf8" });
+  assert.equal(check().status, 0);
+  fs.writeFileSync(path.join(root, "release", name), "corrupted fixture");
+  assert.match(check().stderr, /SHA512/);
+  fs.writeFileSync(path.join(root, "release", name), bytes);
+  manifest.files[0].size++;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.match(check().stderr, /SHA512/);
+});

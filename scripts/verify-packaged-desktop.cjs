@@ -41,14 +41,13 @@ function verifyEntry(relative, expected, found) {
     }
 }
 
-function verifyUnpacked(resources, entries) {
+function verifyUnpacked(resources, unpackedEntries) {
   const unpacked = path.join(resources, "app.asar.unpacked");
   if (fs.existsSync(unpacked)) {
-    const archived = new Set(entries.map((entry) => entry.replaceAll("\\", "/").replace(/^\//, "")));
     for (const file of fs.readdirSync(unpacked, { recursive: true, withFileTypes: true })) {
       if (!file.isFile()) continue;
       const relative = path.relative(unpacked, path.join(file.parentPath, file.name)).replaceAll("\\", "/");
-      if (!archived.has(relative)) throw new Error(`Arquivo externo inesperado: ${relative}`);
+      if (!unpackedEntries.has(relative)) throw new Error(`Arquivo externo inesperado: ${relative}`);
     }
   }
 }
@@ -62,17 +61,21 @@ async function verifyPackagedDesktop(context) {
   requireFile(resources, "app.asar");
   const entries = asar.listPackage(archive);
   const found = new Set();
+  const unpackedEntries = new Set();
   for (const entry of entries) {
     const relative = entry.replaceAll("\\", "/").replace(/^\//, "");
     const stat = asar.statFile(archive, entry.replace(/^[\\/]+/, ""));
     if (stat.files) continue;
     verifyEntry(relative, expected, found);
-    if (stat.unpacked) requireFile(path.join(resources, "app.asar.unpacked"), relative);
+    if (stat.unpacked) {
+      requireFile(path.join(resources, "app.asar.unpacked"), relative);
+      unpackedEntries.add(relative);
+    }
   }
   for (const dependency of expected) {
     if (!found.has(dependency)) throw new Error(`Dependencia ausente do app.asar: ${dependency}`);
   }
-  verifyUnpacked(resources, entries);
+  verifyUnpacked(resources, unpackedEntries);
   verifyResources(resources, process.env.REQUIRE_WHISPER_VULKAN === "1");
   console.log(`Pacote desktop validado: ${found.size} dependencias do shell e runtimes obrigatorios presentes.`);
 }

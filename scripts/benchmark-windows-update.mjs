@@ -4,6 +4,10 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const asar = require("@electron/asar");
 
 // These installers write HKCU registration and stop Kaoz.1 processes. A separate
 // directory alone is not isolation: only execute on an ephemeral hosted runner.
@@ -97,6 +101,26 @@ function assertPreserved() {
   assert.equal(fs.readFileSync(path.join(dataRoot, "benchmark-preserve.txt"), "utf8"), sentinel);
   assert.deepEqual(JSON.parse(fs.readFileSync(preferencesPath, "utf8")), preferences);
 }
+function assertInstalledVersion(expected) {
+  const resources = path.join(installRoot, "resources");
+  const shell = JSON.parse(asar.extractFile(path.join(resources, "app.asar"), "package.json").toString());
+  assert.equal(shell.version, expected);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(resources, "server", "package.json"), "utf8")).version, expected);
+  asar.uncacheAll();
+}
+function smokeVoiceRuntimes() {
+  const resources = path.join(installRoot, "resources");
+  const python = path.join(resources, "parakeet-runtime", "python", "python.exe");
+  const results = {};
+  results.python = execFileSync(python, ["-c", "import onnx_asr, onnxruntime, soundfile; print('voice imports OK')"],
+    { windowsHide: true, encoding: "utf8", timeout: 60_000 });
+  for (const backend of ["cpu", "vulkan"]) {
+    const directory = path.join(resources, "whisper-cpp-runtime", backend);
+    results[backend] = execFileSync(path.join(directory, "whisper-server.exe"), ["--help"],
+      { cwd: directory, windowsHide: true, encoding: "utf8", timeout: 60_000 }).slice(-5000);
+  }
+  fs.writeFileSync(path.join(evidence, "voice-runtime-smoke.json"), JSON.stringify(results, null, 2));
+}
 async function measureStartup() {
   const begin = performance.now();
   const child = launch();
@@ -135,7 +159,9 @@ async function measureUpgrade(from, to) {
   }
   assert.equal(digest(downloaded), digest(files.get(`Kaoz.1-Setup-${to}.exe`)));
   const installationSeconds = await runInstaller(downloaded);
+  assertInstalledVersion(to);
   assertPreserved();
+  if (to === version) smokeVoiceRuntimes();
   // Leave automatic updates enabled, but point at the installed version so the
   // startup timing cannot start another release download from GitHub.
   configureFeed();
