@@ -1,0 +1,67 @@
+name: Validar instalador e atualizacao Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/validate-update-package]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Preparar Vulkan SDK
+        shell: pwsh
+        run: |
+          $version = "1.4.350.0"
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan-sdk-$version.exe"
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK-$version"
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$version/windows/vulkan_sdk.exe" -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne "855b27ba05d2d8119c5114c5d4ff870ca38f2c632b11e1bb9923b9b7e6ecfe7b") {
+            throw "Checksum inesperado para o Vulkan SDK."
+          }
+          & $installer --root $sdkRoot --accept-licenses --default-answer --confirm-command install copy_only=1
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar Vulkan SDK." }
+          "VULKAN_SDK=$sdkRoot" >> $env:GITHUB_ENV
+          "VK_SDK_PATH=$sdkRoot" >> $env:GITHUB_ENV
+          "REQUIRE_WHISPER_VULKAN=1" >> $env:GITHUB_ENV
+          (Join-Path $sdkRoot "Bin") >> $env:GITHUB_PATH
+      - run: npm ci
+      - run: npm run test:updates
+      - run: npm run test:desktop
+      - name: Gerar instalador completo
+        run: npm run desktop:build
+      - run: npm run desktop:verify-release
+      - name: Baixar versoes anteriores para comparacao
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.2.43 --repo "$env:GITHUB_REPOSITORY" --pattern "Kaoz.1-Setup-0.2.43.exe*" --dir release/baseline
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar 0.2.43." }
+          gh release download v0.2.44 --repo "$env:GITHUB_REPOSITORY" --pattern "Kaoz.1-Setup-0.2.44.exe*" --dir release/baseline
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar 0.2.44." }
+      - name: Medir atualizacao no Windows descartavel
+        run: node scripts/benchmark-windows-update.mjs
+      - name: Guardar instalador e evidencias
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-update-validation
+          retention-days: 7
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/update-benchmark/**
