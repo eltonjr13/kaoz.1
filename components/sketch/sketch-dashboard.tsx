@@ -18,6 +18,7 @@ import {
   type BackgroundLayer,
   type GenerationHistoryItem,
   type SketchAspectRatio,
+  type FlowSupportedAspectRatio,
   type SketchProjectData,
   type TextLayer,
 } from '@/types/sketch';
@@ -26,7 +27,8 @@ import { SketchCopyEditor } from './sketch-copy-editor';
 import { SketchAttachmentsPanel } from './sketch-attachments-panel';
 import { SketchLayersPanel } from './sketch-layers-panel';
 import { SketchVersionManager } from './sketch-version-manager';
-import { downloadComposition, renderSketchOnlyDataUrl } from '@/lib/sketch/sketch-exporter';
+import { downloadComposition, renderSketchOnlyDataUrl, renderCompositeReferenceDataUrl } from '@/lib/sketch/sketch-exporter';
+import { prepareSketchCompositeReference } from '@/lib/sketch/sketch-composite-preparer';
 
 const DEFAULT_PROJECT: SketchProjectData = {
   id: 'sketch-default-project',
@@ -191,8 +193,9 @@ function applyGeneratedMedia(
 
 async function executeFlowApiCall(
   prompt: string,
-  aspectRatio: SketchAspectRatio,
-  refDataUrl?: string
+  aspectRatio: FlowSupportedAspectRatio,
+  refDataUrl?: string,
+  referenceKind?: import('@/src/providers/flow/ImageGenerationContract').ImageReferenceKind
 ): Promise<string> {
   const res = await fetch('/api/flow/generate', {
     method: 'POST',
@@ -203,6 +206,7 @@ async function executeFlowApiCall(
       aspectRatio,
       quantity: 1,
       operation: refDataUrl ? 'reference' : 'simple',
+      referenceKind,
       referenceImage: refDataUrl,
     }),
   });
@@ -521,8 +525,23 @@ export function SketchDashboard() {
     setGenerationSuccess(null);
 
     try {
-      const refDataUrl = resolveReferenceImage(project);
-      const rawPath = await executeFlowApiCall(project.prompt, project.aspectRatio, refDataUrl);
+      let compositeDataUrl: string | undefined;
+      try {
+        compositeDataUrl = await renderCompositeReferenceDataUrl(project);
+      } catch {
+        // Fallback para referência direta
+      }
+
+      const prep = prepareSketchCompositeReference(project, {
+        referenceDataUrlOverride: compositeDataUrl || resolveReferenceImage(project),
+      });
+
+      const rawPath = await executeFlowApiCall(
+        prep.preparedPrompt,
+        prep.providerAspectRatio,
+        prep.preparedReferenceImage,
+        prep.referenceKind
+      );
       const mediaUrl = `/api/flow/media?path=${encodeURIComponent(rawPath)}`;
       handleUpdateProject((prev) => applyGeneratedMedia(prev, mediaUrl, rawPath));
       setGenerationSuccess('Arte de fundo gerada e aplicada com sucesso!');

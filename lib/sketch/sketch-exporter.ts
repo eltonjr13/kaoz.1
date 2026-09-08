@@ -246,20 +246,32 @@ export async function preloadProjectImages(project: SketchProjectData): Promise<
   return imageMap;
 }
 
+function renderSketchDrawingLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: import('../../types/sketch.ts').SketchDrawingLayer,
+  preset: AspectRatioDimension,
+  excludeGuides: boolean
+) {
+  const scaleX = preset.width / 1080;
+  const scaleY = preset.height / 1080;
+  for (const path of layer.paths) {
+    if (excludeGuides && path.isGuide) continue;
+    drawSketchPath(ctx, path, scaleX, scaleY);
+  }
+}
+
 function renderSingleLayer(
   ctx: CanvasRenderingContext2D,
   layer: SketchLayer,
   preset: AspectRatioDimension,
-  loadedImages: Map<string, HTMLImageElement>
+  loadedImages: Map<string, HTMLImageElement>,
+  excludeGuides = false
 ) {
+  if (excludeGuides && layer.isGuide) return;
   if (layer.type === 'background') {
     drawBackgroundLayer(ctx, layer, preset.width, preset.height, loadedImages);
   } else if (layer.type === 'sketch' && layer.visible) {
-    const scaleX = preset.width / 1080;
-    const scaleY = preset.height / 1080;
-    for (const path of layer.paths) {
-      drawSketchPath(ctx, path, scaleX, scaleY);
-    }
+    renderSketchDrawingLayer(ctx, layer, preset, excludeGuides);
   } else if (layer.type === 'image') {
     drawImageLayer(ctx, layer, preset.width, preset.height, loadedImages);
   } else if (layer.type === 'text') {
@@ -269,7 +281,8 @@ function renderSingleLayer(
 
 export async function renderCompositionToCanvas(
   project: SketchProjectData,
-  canvas?: HTMLCanvasElement
+  canvas?: HTMLCanvasElement,
+  options?: { excludeGuides?: boolean }
 ): Promise<HTMLCanvasElement> {
   const targetCanvas = canvas || document.createElement('canvas');
   const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
@@ -280,12 +293,49 @@ export async function renderCompositionToCanvas(
   if (!ctx) throw new Error('Não foi possível inicializar o contexto 2D.');
 
   const loadedImages = await preloadProjectImages(project);
+  const excludeGuides = options ? Boolean(options.excludeGuides) : false;
 
   for (const layer of project.layers) {
-    renderSingleLayer(ctx, layer, preset, loadedImages);
+    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
   }
 
   return targetCanvas;
+}
+
+function shouldSkipLayerForComposite(
+  layer: SketchLayer,
+  excludeGuides: boolean,
+  excludeText: boolean
+): boolean {
+  if (!layer.visible) return true;
+  if (excludeGuides && layer.isGuide) return true;
+  if (excludeText && layer.type === 'text') return true;
+  return false;
+}
+
+export async function renderCompositeReferenceDataUrl(
+  project: SketchProjectData,
+  options: { excludeGuides?: boolean; excludeText?: boolean } = { excludeGuides: true, excludeText: true }
+): Promise<string> {
+  if (typeof document === 'undefined') return '';
+  const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
+  const canvas = document.createElement('canvas');
+  canvas.width = preset.width;
+  canvas.height = preset.height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const loadedImages = await preloadProjectImages(project);
+  const excludeGuides = options.excludeGuides !== false;
+  const excludeText = options.excludeText !== false;
+
+  for (const layer of project.layers) {
+    if (shouldSkipLayerForComposite(layer, excludeGuides, excludeText)) continue;
+    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
+  }
+
+  return canvas.toDataURL('image/png');
 }
 
 export function renderSketchOnlyDataUrl(paths: SketchPath[], width = 1080, height = 1080): string {

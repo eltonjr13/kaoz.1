@@ -101,6 +101,35 @@ export function checkUnplacedAttachments(
   return diagnostics;
 }
 
+function collectIncludedRoles(
+  hasSketch: boolean,
+  placedRoles: Set<SketchReferenceRole>
+): SketchReferenceRole[] {
+  const roles: SketchReferenceRole[] = [];
+  if (hasSketch) roles.push('composition');
+  for (const role of placedRoles) {
+    if (!roles.includes(role)) roles.push(role);
+  }
+  return roles;
+}
+
+function resolveReferenceKindWithoutSketch(
+  hasProductImage: boolean,
+  placedRoles: Set<SketchReferenceRole>,
+  activeRefRole?: SketchReferenceRole
+): { mode: 'none' | 'identity'; kind?: ImageReferenceKind } {
+  if (hasProductImage || activeRefRole === 'product') {
+    return { mode: 'identity', kind: 'identity' };
+  }
+  if (placedRoles.has('style') || activeRefRole === 'style') {
+    return { mode: 'identity', kind: 'style' };
+  }
+  if (placedRoles.size > 0 || Boolean(activeRefRole)) {
+    return { mode: 'identity', kind: 'identity' };
+  }
+  return { mode: 'none', kind: undefined };
+}
+
 export function detectReferenceModeAndKind(
   hasSketch: boolean,
   hasProductImage: boolean,
@@ -111,33 +140,17 @@ export function detectReferenceModeAndKind(
   referenceKind?: ImageReferenceKind;
   includedRoles: SketchReferenceRole[];
 } {
-  const includedRoles: SketchReferenceRole[] = [];
-  if (hasSketch) includedRoles.push('composition');
-  for (const role of placedRoles) {
-    if (!includedRoles.includes(role)) includedRoles.push(role);
-  }
+  const includedRoles = collectIncludedRoles(hasSketch, placedRoles);
 
   if (hasSketch && (hasProductImage || activeReferenceRole === 'product')) {
     return { referenceMode: 'composite', referenceKind: 'composite', includedRoles };
   }
-
   if (hasSketch) {
     return { referenceMode: 'sketch', referenceKind: 'sketch', includedRoles };
   }
 
-  if (hasProductImage || activeReferenceRole === 'product') {
-    return { referenceMode: 'identity', referenceKind: 'identity', includedRoles };
-  }
-
-  if (placedRoles.has('style') || activeReferenceRole === 'style') {
-    return { referenceMode: 'identity', referenceKind: 'style', includedRoles };
-  }
-
-  if (placedRoles.size > 0 || activeReferenceRole) {
-    return { referenceMode: 'identity', referenceKind: 'identity', includedRoles };
-  }
-
-  return { referenceMode: 'none', referenceKind: undefined, includedRoles };
+  const resolved = resolveReferenceKindWithoutSketch(hasProductImage, placedRoles, activeReferenceRole);
+  return { referenceMode: resolved.mode, referenceKind: resolved.kind, includedRoles };
 }
 
 export function buildCompositePreview(
@@ -164,25 +177,11 @@ export function buildCompositePreview(
   };
 }
 
-export interface PrepareSketchCompositeOptions {
-  referenceDataUrlOverride?: string;
-  quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
-  model?: string;
-}
-
-export function prepareSketchCompositeReference(
-  project: SketchProjectData,
-  options?: PrepareSketchCompositeOptions
-): SketchGenerationRequest {
-  const canvasAspectRatio = project.canvasAspectRatio || project.aspectRatio || '1:1';
-  const providerAspectRatio = resolveProviderAspectRatio(
-    canvasAspectRatio,
-    project.canvasDimensions?.width,
-    project.canvasDimensions?.height
-  );
-
-  const diagnostics: SketchReferenceDiagnostic[] = [];
-
+function collectAspectDiagnostics(
+  canvasAspectRatio: SketchCanvasAspectRatio,
+  providerAspectRatio: FlowSupportedAspectRatio,
+  diagnostics: SketchReferenceDiagnostic[]
+): void {
   if (canvasAspectRatio !== providerAspectRatio) {
     diagnostics.push({
       code: 'ASPECT_RATIO_ADAPTED',
@@ -190,14 +189,92 @@ export function prepareSketchCompositeReference(
       message: `A proporção da prancheta (${canvasAspectRatio}) foi adaptada para ${providerAspectRatio} no envio ao FlowProvider.`,
     });
   }
+}
 
-  const sketchInfo = detectSketchPresence(project.layers);
-  const placedInfo = detectPlacedImages(project.layers);
+function collectStructuralDiagnostics(
+  referenceMode: string,
+  guideCount: number,
+  diagnostics: SketchReferenceDiagnostic[]
+): void {
+  if (referenceMode === 'composite') {
+    diagnostics.push({
+      code: 'COMPOSITE_UNIFICATION',
+      severity: 'info',
+      message: 'Esboço de composição espacial e imagem de produto foram unificados em uma única referência composta para compatibilidade com o Flow.',
+    });
+  }
+  if (guideCount > 0) {
+    diagnostics.push({
+      code: 'GUIDES_EXCLUDED',
+      severity: 'info',
+      message: `${guideCount} anotação(ões)/guia(s) de layout foram isoladas e excluídas da referência visual enviada ao Flow.`,
+    });
+  }
+}
 
+function resolveActiveReference(
+  project: SketchProjectData,
+  overrideDataUrl?: string
+): { activeAtt?: SketchAttachment; preparedRefImage?: string } {
   const activeAtt = project.activeReferenceId
     ? project.attachments.find((a) => a.id === project.activeReferenceId)
     : undefined;
-  const activeRefRole = activeAtt?.role as SketchReferenceRole | undefined;
+  const preparedRefImage = overrideDataUrl || activeAtt?.dataUrl || undefined;
+  return { activeAtt, preparedRefImage };
+}
+
+export interface PrepareSketchCompositeOptions {
+  referenceDataUrlOverride?: string;
+  quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
+  model?: string;
+}
+
+function resolveCanvasRatio(project: SketchProjectData): SketchCanvasAspectRatio {
+  if (project.canvasAspectRatio) return project.canvasAspectRatio;
+  if (project.aspectRatio) return project.aspectRatio;
+  return '1:1';
+}
+
+function resolveProviderRatio(project: SketchProjectData, canvasRatio: SketchCanvasAspectRatio): FlowSupportedAspectRatio {
+  const dims = project.canvasDimensions;
+  return resolveProviderAspectRatio(canvasRatio, dims ? dims.width : undefined, dims ? dims.height : undefined);
+}
+
+function buildProviderOptions(
+  referenceMode: string,
+  referenceKind: ImageReferenceKind | undefined,
+  providerAspectRatio: FlowSupportedAspectRatio,
+  preparedRefImage: string | undefined,
+  options?: PrepareSketchCompositeOptions
+) {
+  const isRef = referenceMode !== 'none';
+  const qty = options && options.quantity ? options.quantity : 1;
+  const mdl = options ? options.model : undefined;
+  return {
+    operation: isRef ? ('reference' as const) : ('simple' as const),
+    referenceKind,
+    aspectRatio: providerAspectRatio,
+    quantity: qty,
+    model: mdl,
+    referenceImage: preparedRefImage,
+  };
+}
+
+export function prepareSketchCompositeReference(
+  project: SketchProjectData,
+  options?: PrepareSketchCompositeOptions
+): SketchGenerationRequest {
+  const canvasAspectRatio = resolveCanvasRatio(project);
+  const providerAspectRatio = resolveProviderRatio(project, canvasAspectRatio);
+
+  const diagnostics: SketchReferenceDiagnostic[] = [];
+  collectAspectDiagnostics(canvasAspectRatio, providerAspectRatio, diagnostics);
+
+  const sketchInfo = detectSketchPresence(project.layers);
+  const placedInfo = detectPlacedImages(project.layers);
+  const refOverride = options ? options.referenceDataUrlOverride : undefined;
+  const { activeAtt, preparedRefImage } = resolveActiveReference(project, refOverride);
+  const activeRefRole = activeAtt ? (activeAtt.role as SketchReferenceRole) : undefined;
 
   const unplacedDiag = checkUnplacedAttachments(
     project.attachments,
@@ -213,21 +290,7 @@ export function prepareSketchCompositeReference(
     activeRefRole
   );
 
-  if (referenceMode === 'composite') {
-    diagnostics.push({
-      code: 'COMPOSITE_UNIFICATION',
-      severity: 'info',
-      message: 'Esboço de composição espacial e imagem de produto foram unificados em uma única referência composta para compatibilidade com o Flow.',
-    });
-  }
-
-  if (sketchInfo.guideCount > 0) {
-    diagnostics.push({
-      code: 'GUIDES_EXCLUDED',
-      severity: 'info',
-      message: `${sketchInfo.guideCount} anotação(ões)/guia(s) de layout foram isoladas e excluídas da referência visual enviada ao Flow.`,
-    });
-  }
+  collectStructuralDiagnostics(referenceMode, sketchInfo.guideCount, diagnostics);
 
   const preparedPrompt = prepareFlowImagePrompt({
     prompt: project.prompt,
@@ -236,38 +299,37 @@ export function prepareSketchCompositeReference(
     referenceKind,
   });
 
-  const preparedReferenceImage = options?.referenceDataUrlOverride || activeAtt?.dataUrl || undefined;
-
   const compositePreview = buildCompositePreview(
     canvasAspectRatio,
     providerAspectRatio,
     includedRoles,
     sketchInfo.guideCount,
     diagnostics,
-    preparedReferenceImage
+    preparedRefImage
   );
+
+  const schemaVer = project.schemaVersion ? project.schemaVersion : 1;
 
   return {
     id: `req-${Date.now()}`,
     projectId: project.id,
-    schemaVersion: project.schemaVersion || 1,
+    schemaVersion: schemaVer,
     prompt: project.prompt,
     preparedPrompt,
     canvasAspectRatio,
     providerAspectRatio,
     referenceMode,
     referenceKind,
-    preparedReferenceImage,
+    preparedReferenceImage: preparedRefImage,
     compositePreview,
     diagnostics,
-    providerOptions: {
-      operation: referenceMode !== 'none' ? 'reference' : 'simple',
+    providerOptions: buildProviderOptions(
+      referenceMode,
       referenceKind,
-      aspectRatio: providerAspectRatio,
-      quantity: options?.quantity || 1,
-      model: options?.model,
-      referenceImage: preparedReferenceImage,
-    },
+      providerAspectRatio,
+      preparedRefImage,
+      options
+    ),
     createdAt: new Date().toISOString(),
   };
 }
