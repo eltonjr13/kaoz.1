@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-function childDependencies(pkg, manifest) {
+export function childDependencies(pkg, manifest) {
   const dependencies = { ...pkg.peerDependencies, ...pkg.dependencies, ...pkg.optionalDependencies };
   return Object.keys(dependencies).map((name) => ({ manifest, name,
     optional: Object.hasOwn(pkg.optionalDependencies ?? {}, name) ||

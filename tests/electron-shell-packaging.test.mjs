@@ -91,3 +91,26 @@ test("rejeita dependencia ausente do ASAR e arquivo externo nao autorizado", asy
   fs.writeFileSync(path.join(completeResources, "app.asar.unpacked", "extra.dll"), "fixture");
   await assert.rejects(verifyPackagedDesktop({ ...context, appOutDir: completeDir }), /Arquivo externo inesperado/);
 });
+
+test("aceita dependencias movidas pelo empacotador, mas rejeita a troca de versao", async (t) => {
+  const root = fixture(t);
+  pkg(root, ".", { name: "fixture" });
+  pkg(root, "node_modules/electron-updater", { name: "electron-updater", dependencies: { shared: "2.0.0", parent: "1.0.0" } });
+  pkg(root, "node_modules/electron-updater/node_modules/shared", { name: "shared", version: "2.0.0" });
+  pkg(root, "node_modules/parent", { name: "parent", dependencies: { shared: "1.0.0" } });
+  pkg(root, "node_modules/shared", { name: "shared", version: "1.0.0" });
+  const shell = path.join(root, "shell");
+  copyShellDependencies(root, shell);
+  fs.mkdirSync(path.join(shell, "node_modules/parent/node_modules"));
+  fs.renameSync(path.join(shell, "node_modules/shared"), path.join(shell, "node_modules/parent/node_modules/shared"));
+  fs.renameSync(path.join(shell, "node_modules/electron-updater/node_modules/shared"), path.join(shell, "node_modules/shared"));
+  const archive = path.join(root, "hoisted.asar");
+  await asar.createPackage(shell, archive);
+  const packages = await verifyPackagedDesktop.verifyArchiveDependencies(archive, root, asar.listPackage(archive));
+  assert.equal(packages.get("shared").version, "2.0.0");
+  assert.equal(packages.get("parent/node_modules/shared").version, "1.0.0");
+  pkg(shell, "node_modules/shared", { name: "shared", version: "1.0.0" });
+  const corrupted = path.join(root, "wrong-version.asar");
+  await asar.createPackage(shell, corrupted);
+  await assert.rejects(verifyPackagedDesktop.verifyArchiveDependencies(corrupted, root, asar.listPackage(corrupted)), /Versao incorreta/);
+});

@@ -40,8 +40,22 @@ jobs:
       - run: npm ci
       - run: npm run test:updates
       - run: npm run test:desktop
+      - name: Restaurar runtimes de validacao
+        id: runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/runtime
+          key: windows-validation-runtimes-${{ hashFiles('scripts/prepare-parakeet-runtime.mjs', 'scripts/prepare-whisper-cpp-runtime.mjs') }}
+      - run: npm run build
+      - run: npm run desktop:prepare
+      - name: Guardar runtimes compilados
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/runtime
+          key: ${{ steps.runtime-cache.outputs.cache-primary-key }}
       - name: Gerar instalador completo
-        run: npm run desktop:build
+        run: npx electron-builder --win nsis --publish never
       - run: npm run desktop:verify-release
       - name: Baixar versoes anteriores para comparacao
         shell: pwsh
@@ -64,4 +78,5 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest.yml
+            release/win-unpacked/resources/app.asar
             release/update-benchmark/**
