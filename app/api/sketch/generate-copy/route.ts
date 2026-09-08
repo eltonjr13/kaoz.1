@@ -95,10 +95,11 @@ export async function POST(request: Request) {
 
     let rawResult = '';
     try {
-      rawResult = await queryConfiguredAgentCli(prompt, {
+      const cliResult = await queryConfiguredAgentCli(prompt, {
         jsonMode: true,
         maxOutputTokens: 1000
       });
+      rawResult = cliResult || '';
     } catch (agentErr) {
       console.warn('[API SKETCH] Agente LLM CLI falhou, gerando resposta fallback:', agentErr);
     }
