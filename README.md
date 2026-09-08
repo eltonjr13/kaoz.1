@@ -1,201 +1,310 @@
-# 🤖 kaoz.1 — Agente de IA com Córtex Cognitivo e Orquestrador de Ferramentas (MCP)
+<div align="center">
 
-**kaoz.1** é uma **Agente Autônoma de IA e Assistente Cognitiva Pessoal**. Equipada com uma arquitetura de memória persistente inspirada na estrutura cerebral humana e integração com o **Model Context Protocol (MCP)**, ela é capaz de executar tarefas locais de CLI, interagir com serviços web, gerenciar dispositivos e aplicativos de uso diário (como o Spotify) e aprender continuamente com base nas suas preferências e feedback.
+# ⚡ Kaoz.1
+### Autonomous Neuro-Cognitive Operating System & Multi-Agent Creative Studio
+
+*Uma mente autônoma com memória persistente viva, enxame de agentes especializados e controle total do seu desktop, vídeo e comunidade.*
+
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![React 19](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[![Electron](https://img.shields.io/badge/Electron-Windows-47848F?style=for-the-badge&logo=electron)](https://www.electronjs.org/)
+[![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-purple?style=for-the-badge)](https://modelcontextprotocol.io/)
+[![DaVinci Resolve](https://img.shields.io/badge/DaVinci-Resolve_MCP-red?style=for-the-badge)](https://www.blackmagicdesign.com/products/davinciresolve)
+
+[Visão Geral](#-visão-geral) •
+[Arquitetura](#-arquitetura-do-sistema) •
+[Pilares](#-pilares-do-kaoz1) •
+[Navegação & Atalhos](#-navegação--produtividade) •
+[Instalação](#-instalação--execução) •
+[Documentação](#-documentação-técnica)
 
 ---
 
-## 🧠 Arquitetura do Córtex Cognitivo (Cognitive Memory)
+</div>
 
-A **kaoz.1** possui um sistema de aprendizado dinâmico e contínuo que armazena, associa e decai conceitos de acordo com o uso diário.
+## 🚀 Visão Geral
+
+O **Kaoz.1** não é um mero chatbot nem um wrapper superficial de APIs. É um **sistema operacional neurocognitivo pessoal e estúdio criativo autônomo**, projetado para rodar nativamente no Windows e orquestrar fluxos complexos de trabalho com inteligência, memória e ação real.
+
+Inspirado na neurobiologia humana e potencializado pelo **Model Context Protocol (MCP)**, o Kaoz.1 combina:
+
+1. **Memória Orgânica Contínua**: um córtex semântico em grafo 2D/3D que aprende preferências, sintetiza experiências no hipocampo e modula relevância via amígdala com feedback do usuário.
+2. **Enxame Multiagente (War Room)**: uma sala de guerra com agentes especializados (estratégia, audiência, governança de marca, copy, direção visual e auditoria) que debatem e constroem campanhas em consenso.
+3. **Model P (Personal Cognitive Engine)**: modelagem matemática e comportamental da persona do criador, com inspeção de evidências, scores de confiança e playground de alinhamento de tom.
+4. **Estúdio Audiovisual Completo**: integração direta com **DaVinci Resolve** via MCP, sincronização com **Google Drive**, lip-sync neural (**MuseTalk 1.5**), síntese vocal e timeline com atalhos profissionais (J-K-L).
+5. **Ecossistema Extensível de Skills**: habilidades modulares em `SKILL.md` + scripts executáveis com governança e testes integrados.
+6. **Conectores Omnichannel**: bots bidirecionais integrados para **Discord**, **Telegram** e **Bluesky** com cofre seguro de credenciais locais.
+7. **Privacidade e Custo Zero**: transcrição de voz local offline via **Parakeet** (PT-BR) e **Whisper.cpp**, sem depender de APIs pagas de STT.
+
+---
+
+## 🏛️ Arquitetura do Sistema
+
+O Kaoz.1 opera como uma cadeia coordenada e desacoplada, garantindo que nenhum executor monolítico centralize ou trave as operações:
 
 ```mermaid
-graph TD
-    User([Usuário]) -->|Mensagem de Chat| Extractor[Chat Memory Extractor]
-    Extractor -->|Regras / Preferências| ChatService[Chat Memory Service]
-    ChatService -->|Persistência| LocalStorage[(LocalStorage / JSON)]
-    
-    JobExecution[Execução de Tarefas / CLI] -->|Histórico e Logs| Hippocampus[Hipocampo - Episódico]
-    Hippocampus -->|Projeção Semântica| Cortex[Córtex Cerebral - Grafo Semântico]
-    
-    UserFeedback[Feedback do Usuário: Good/Bad] -->|Modulação Emocional| Amygdala[Amígdala]
-    Amygdala -->|Reforço ou Decaimento| Cortex
-    
-    subsystemBus[Event Bus] --> Conflict[Conflict Resolver]
-    subsystemBus --> Detector[Pattern Detector]
-    subsystemBus --> Pruner[Graph Pruner]
-    
-    Conflict -.-> Cortex
-    Detector -.-> Cortex
-    Pruner -.-> Cortex
-```
+flowchart TB
+    subgraph Inbound["Entradas & Interfaces"]
+        U["Usuário (Desktop / Web)"]
+        DC["Discord Bot"]
+        TG["Telegram Bot"]
+        MIC["Microfone (STT Local Parakeet / Whisper)"]
+    end
 
-### Subsistemas de Memória
-*   **Hipocampo (Episódico):** Registra as experiências em tempo de execução. Salva o histórico de tarefas criadas, roteiros gerados, prompts executados e os resultados das ferramentas em detalhes estruturados.
-*   **Córtex Cerebral (Grafo Semântico):** Organiza o conhecimento em nós e conexões (entidades, conceitos e relações). Cada conceito possui um nível de confiança e uma taxa de relevância.
-*   **Amígdala (Modulação de Importância):** Se você der um feedback positivo (`good`) ou negativo (`bad`) sobre a execução de uma tarefa ou resposta de chat, a Amígdala ajusta o peso emocional e a confiança daquela informação no grafo, reforçando acertos e esquecendo erros.
-*   **Barramento de Eventos (Conflict Resolver, Pattern Detector & Graph Pruner):**
-    *   **Conflict Resolver:** Resolve contradições lógicas criadas por mudanças nas preferências do usuário.
-    *   **Pattern Detector:** Identifica padrões de falha repetitivos em execuções de avatares ou comandos.
-    *   **Graph Pruner:** Executa a compressão e o decaimento gradual de conexões pouco utilizadas no grafo de memória para otimizar o consumo de contexto das LLMs.
+    subgraph Core["Orquestração Multiagente & Coordenação"]
+        CH["ChiefAgent (Coordenador)"]
+        EC["ExecutionClassifier"]
+        PL["PlannerAgent"]
+        TD["TaskDecomposerAgent"]
+        SC["Scheduler"]
+        MB["MessageBus & Blackboard"]
+        SV["SupervisorAgent"]
+    end
 
----
+    subgraph CreativeDomain["Sala de Guerra (War Room)"]
+        DIR["Direção Estratégica"]
+        AUD["Estratégia de Público"]
+        BRD["Governança de Marca"]
+        CPY["Copy e Roteiro"]
+        VIS["Direção Visual"]
+        REV["Auditoria Criativa"]
+    end
 
-## 💬 Extração Contínua de Preferências (Chat Memory Extractor)
+    subgraph Memory["Córtex Cognitivo & Model P"]
+        HIP["Hipocampo (Episódico)"]
+        CTX["Córtex (Grafo Semântico 2D/3D)"]
+        AMG["Amígdala (Modulação Emocional)"]
+        MDP["Model P (Persona & Evidências)"]
+        RED["Filtro Anti-Vazamento (Redaction)"]
+    end
 
-Durante o uso do Chat, a **kaoz.1** analisa e extrai regras implícitas e explícitas que você diz na conversa:
-*   **Detecção de Padrões:** Frases como *"não faça mais [X]"*, *"sempre que [Y], execute [Z]"*, *"prefiro usar [W]"* ou *"lembre-se que neste projeto [V]"* são detectadas imediatamente, categorizadas (como regras de workflow, preferências de estilo, correções ou fatos de projeto) e salvas em sua memória de longo prazo.
-*   **Redação Sensível Automatizada:** Um filtro ativo intercepta chaves de API, senhas, tokens de segurança, CPFs e dados financeiros nas mensagens, impedindo que dados críticos sejam registrados no Grafo Semântico.
+    subgraph Tooling["Execução, Mídia & Ferramentas"]
+        MCP["Hub MCP (Spotify, Web, FS)"]
+        DVR["DaVinci Resolve MCP"]
+        GDR["Google Drive Sync"]
+        SKL["Skills Registry (Scripts Locais)"]
+        VID["Pipeline de Vídeo (MuseTalk + FFmpeg)"]
+        TTS["Síntese de Voz (Fish Audio / Cartesia)"]
+    end
 
----
+    Inbound --> CH
+    CH --> EC
+    EC --> PL
+    PL --> TD
+    TD --> SC
+    SC --> CreativeDomain
+    CreativeDomain <--> MB
+    SC --> Tooling
+    MB --> SV
+    SV --> CH
 
-## 🔌 Orquestração de Ferramentas & Model Context Protocol (MCP)
-
-A Agente utiliza o **Model Context Protocol (MCP)** para se transformar em um hub de ferramentas unificado:
-*   **Integração Spotify:** Comandos diretos de reprodução em linguagem natural (ex: *"toca aquela música indie no Spotify"* ou *"cria uma playlist chamada Foco"*). A agente interage via MCP para listar dispositivos ativos, tocar, pausar, gerenciar volume, adicionar na fila e montar playlists.
-*   **Pesquisas Financeiras e Web:** Ferramentas integradas de scraping rápido na internet (`quick-web-search.ts`) e consultas dinâmicas de cotação de moedas (ex: cotação USD/BRL).
-*   **Execução de CLI Local:** Capacidade de gerar e gerenciar subprocessos de linha de comando no sistema operacional local de forma inteligente e monitorável.
-
----
-
-## 🎬 Estúdio de Criação UGC (Legacy Feature)
-
-Mesmo com foco em orquestração geral de tarefas, a suíte de vídeo original continua 100% ativa:
-*   **Cadastro de Avatares:** Permite registrar avatares autorizados com foto, vídeo base e voz customizada.
-*   **Pipeline de Vídeo em Background:**
-    *   Gera roteiro adaptado para a plataforma de destino.
-    *   Sintetiza voz realista via OmniVoice ou Fish Audio.
-    *   Executa sincronia labial (lip-sync) com MuseTalk 1.5.
-    *   Processa e recorta o fundo do expert com Python (`rembg`, `onnxruntime`).
-    *   Monta a renderização final no formato vertical via `ffmpeg`.
-
----
-
-## 🛠️ Stack Tecnológica
-
-*   **Frontend & API:** Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS + Framer Motion.
-*   **Agentes & Orquestração:** SDK do Model Context Protocol (MCP), Playwright para automação de navegadores em LLMs gratuitas, integração direta com Gemini e OpenAI.
-*   **Voz & Áudio:** Fish Audio TTS, Cartesia.js, OmniVoice (via Gradio Client).
-*   **Processamento de Mídia:** FFMpeg/FFProbe local, python-rembg (pillow e onnxruntime para remoção de fundos), `yt-dlp` para downloads de vídeos de referência.
-
----
-
-## ⚙️ Configuração e Instalação
-
-### 1. Instalar as dependências do Next.js
-```bash
-npm install
-```
-
-### 2. Configurar o ambiente
-Copie o arquivo `.env.example` para `.env.local`:
-```bash
-copy .env.example .env.local
-```
-
-Abra o arquivo `.env.local` e configure suas credenciais. Principais variáveis:
-```env
-# Workspace ID de teste padrão
-APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
-
-# Chaves de IA & LLMs
-OPENAI_API_KEY=
-# Configurações do Flow & Automação Web (Playwright)
-FLOW_HEADLESS=false # false é recomendado para que ChatGPT/Claude/DeepSeek contornem o Cloudflare Turnstile
-FLOW_URL=https://flow.google
-
-# Voz e Sintetização
-FISH_AUDIO_API_KEY=
-OMNIVOICE_API_URL=http://localhost:8000
-OMNIVOICE_API_KEY=
-
-# Lip-sync (MuseTalk)
-LIPSYNC_ENGINE=musetalk-v15
-LIPSYNC_API_URL=http://localhost:8010
-LIPSYNC_API_KEY=
-
-# Caminhos locais para renderizadores (Opcional - se não estiverem no PATH global)
-FFMPEG_PATH=
-FFPROBE_PATH=
-YTDLP_PATH=
-REMBG_PYTHON_PATH=
-```
-
-### 3. Configurar dependências Python (opcional, apenas para o recortador de vídeo)
-```bash
-python -m pip install rembg pillow onnxruntime
-```
-
-### 4. Rodar o servidor de desenvolvimento
-```bash
-npm run dev
-```
-Abra o navegador em `http://localhost:3000`.
-
----
-
-## 📂 Estrutura do Projeto
-
-```text
-app/
-  api/
-    agent-llm/              API de execução e configurações do agente
-    cortex/                 API de leitura e controle do Córtex Cognitivo
-    flow/chat/              Endpoint de stream do chat interativo da agente com MCP
-    fish-audio/             API de síntese de voz Fish Audio
-    mcp/                    Gerenciador de ferramentas e conexões MCP
-  (dashboard)/
-    cortex/                 Visualização interativa do grafo semântico em tempo real
-    flow/                   Chat principal de comando e interação com a agente kaoz.1
-    avatars/                Controle de avatares para o estúdio UGC
-    jobs/                   Status e gerenciamento dos renders de vídeos
-components/
-  cortex/                   Visualizador gráfico 2D/3D da memória do Córtex
-lib/
-  cognitive-memory/         Núcleo do Córtex Cognitivo (Hippocampus, Cortex, Amygdala)
-  ai/                       Provedores de inteligência (Gemini, OpenAI, Cartesia)
-  videos/                   Motores de render, downloader e pipeline de vídeo UGC
-services/
-  agent-llm/                Serviço de gerenciamento do agente, processos e CLI
-  mcp/                      Gerenciamento e comunicação com servidores MCP externos
-  spotify/                  Formatador de respostas e mapeamento de comandos Spotify
-  web-search/               Mecanismo de busca online integrado
+    Inbound -.-> RED
+    RED -.-> HIP
+    HIP -.-> CTX
+    CTX <--> AMG
+    MDP <--> CH
 ```
 
 ---
 
-## Aplicativo para Windows (Electron)
+## ⚡ Pilares do Kaoz.1
 
-Para abrir a versão desktop durante o desenvolvimento:
+### 🧠 1. Córtex Cognitivo (Memória Viva Persistente)
+O cérebro do Kaoz.1 não apaga seu contexto quando a conversa encerra. Ele processa e organiza continuamente tudo o que você ensina:
+* **Hipocampo (Memória Episódica):** Registra cada tarefa executada, comandos de terminal, roteiros montados e retornos de ferramentas.
+* **Córtex Cerebral (Grafo Semântico 2D/3D):** Transforma conhecimento em uma malha relacional viva visível em `/cortex`. Nós e arestas representam entidades, conceitos, decisões e regras.
+* **Amígdala (Modulação de Relevância e Feedback):** Ajusta pesos neurais a cada feedback (`good` / `bad`). Acertos são reforçados; abordagens inadequadas sofrem decaimento gradual.
+* **Resolutor de Conflitos & Poda (Graph Pruner):** Identifica contradições lógicas quando suas preferências mudam e comprime conexões frias para manter as chamadas de contexto das LLMs hiperotimizadas.
+* **Redação Ativa de Segredos:** Filtro em tempo real que bloqueia senhas, API keys, dados bancários e CPFs antes que qualquer nó de memória seja gravado.
+
+---
+
+### 🧬 2. Model P (Personal Cognitive Engine & Personas)
+Seu estilo, suas regras, sua voz. O **Model P** é o subsistema dedicado a manter a coerência da sua marca pessoal ou das suas personas de conteúdo:
+* **Perfis de Persona (ex: Lorenzo Ancestral):** Define tom de voz (firme, provocativo, empático, técnico), jargões característicos, crenças fundamentais, regras de audiência e limites éticos estritos.
+* **Score de Confiança & Inspeção de Evidências:** Cada fato memorizado sobre a persona possui um percentual de confiança (Alta, Média, Baixa) com rastro de auditoria — você inspeciona exatamente qual interação gerou aquele aprendizado.
+* **Persona Playground:** Ambiente interativo em `/model-p` para testar cenários, simular reações e ajustar o comportamento do agente em tempo real antes de enviar para produção.
+
+---
+
+### ⚔️ 3. Sala de Guerra Multiagente (War Room & Supervisão)
+Criação estratégica de conteúdo não deve ser feita por um prompt único. O Kaoz.1 invoca uma banca de agentes especializados operando sob o **CreativeDomain**:
+* 👑 **Direção Estratégica (`campaign-director`):** Define objetivos de campanha, posicionamento e tom geral.
+* 🎯 **Estratégia de Público (`audience-strategist`):** Mapeia dores, personas-alvo e ganchos de retenção.
+* 🛡️ **Governança de Marca (`brand-governance`):** Valida conformidade com diretrizes do criador, tom de voz e regras éticas.
+* ✍️ **Copy e Roteiro (`copywriter`):** Elabora scripts magnéticos, ganchos de 3 segundos e chamadas para ação (CTA).
+* 🎨 **Direção Visual (`visual-director`):** Define estilo estético, sugestões de enquadramento, cortes e ritmo de edição.
+* 🔍 **Auditoria Criativa (`creative-reviewer`):** Avalia os artefatos gerados, aprova consenso (*"Consenso alcançado"*) ou solicita refinamento direcionado.
+
+Acompanhe todo o debate ao vivo, com histórico de decisões e artefatos gerados na tela de **Supervisão** (`/supervision`).
+
+---
+
+### 🎬 4. Estúdio de Vídeo & DaVinci Resolve MCP
+Uma suíte audiovisual completa, unindo automação com controle fino:
+* **Integração Nativa DaVinci Resolve:** Controle o DaVinci Resolve direto pelo Kaoz.1 via MCP (criação de projetos, timelines, inserção de clipes, exportações automatizadas).
+* **Controle de Mídias via Google Drive:** Listagem, download e sincronização em lote de assets de vídeo e b-rolls direto da nuvem.
+* **Controles de Ilha Profissional:** Player com atalhos clássicos de transporte (`J` retrocede, `K` pausa, `L` avança, `Espaço`, navegação por frames e marcadores).
+* **Pipeline de Lip-Sync Neural:** Geração de voz ultra-realista + sincronização labial via **MuseTalk 1.5**, recorte de fundo assistido por IA (`rembg` + ONNX) e render vertical FFmpeg resiliente contra locks de disco do OneDrive/Dropbox.
+
+---
+
+### 🧩 5. Ecossistema Extensível de Skills
+O Kaoz.1 é expansível através do seu padrão aberto de habilidades locais:
+* Cada skill reside em `skills/<nome-da-skill>/` e conta com:
+  * `SKILL.md`: Metadados em frontmatter YAML (nome, descrição, ferramentas, versão) e instruções de comportamento para o agente.
+  * `scripts/`: Implementações executáveis em TypeScript, JavaScript ou Python.
+* **Skills Nativas Inclusas:**
+  * `davinci.resolve`: Automação da API do DaVinci Resolve Studio & Free.
+  * `analisador-de-metricas`: Extração e análise profunda de retenção e métricas de engajamento.
+  * `gerador-de-hashtags`: Clusterização de tags virais por nicho e algoritmo.
+  * `criador-de-legendas-virais`: Formatação de descrições magnéticas com ganchos e CTAs.
+  * `criador-de-logos` & `logo-grid-preview`: Geração de conceitos visuais e grids de identidade.
+  * `pdf-document-builder`: Compilação de relatórios e documentos estruturados em PDF.
+  * `trend-hunter` & `research.web-research`: Mineração ativa de tendências e referências online.
+* **Gerenciador Visual:** Visualize, ative, configure e crie novas skills direto na aba **Skills** em `/settings`.
+
+---
+
+### 📡 6. Conectores Omnichannel Nativos (Discord, Telegram & Bluesky)
+Leve seu agente para onde sua comunidade está:
+* **Discord Inbound & Gateway:** Conexão direta via WebSocket Gateway, suporte a slash commands, respostas em threads e formatação rica de mensagens.
+* **Telegram Polling & Media:** Conexão contínua sem necessidade de webhooks públicos, processamento de áudios, imagens e comandos diretos.
+* **ConnectorVault Criptografado:** Chaves e tokens das plataformas são salvos com cifragem local, garantindo que suas credenciais permaneçam seguras.
+
+---
+
+### 🎙️ 7. Áudio Expressivo & Transcrição Local Offline
+* **Parakeet Local STT (PT-BR):** Transcrição de fala local de altíssima precisão treinada para o português brasileiro. Modelo de ~670 MB baixado sob demanda e executado totalmente offline na sua máquina — **sem custos de API e com máxima privacidade**.
+* **Whisper.cpp Runtime:** Alternativa C++ ultra-rápida e leve para transcrição imediata de áudios.
+* **Síntese Vocal Avançada:** Suporte integrado a **Fish Audio**, **Cartesia** e **OmniVoice** com controle de entonação e timing.
+
+---
+
+## 🗺️ Navegação & Produtividade
+
+### Rotas da Aplicação
+
+| Rota | Módulo | Descrição |
+| :--- | :--- | :--- |
+| `/flow` | **Kaoz.1 (Flow)** | Chat conversacional principal com Live Canvas, execução de comandos e artefatos. |
+| `/supervision` | **Supervisor** | Sala de Guerra multiagente, debate criativo de campanhas e supervisão de tarefas. |
+| `/cortex` | **Córtex Cognitivo** | Visualização interativa 2D/3D do Grafo Semântico, memórias do chat e hipocampo. |
+| `/model-p` | **Model P** | Painel da Persona, inspetor de evidências, scores de confiança e playground. |
+| `/video` | **Edição de Vídeo** | Console audiovisual, integração DaVinci Resolve, Google Drive e lip-sync. |
+| `/settings` | **Configurações** | Provedores LLM, servidores MCP, catálogo de Skills, bots e sessões web. |
+
+### Atalhos de Teclado Essenciais
+
+| Atalho | Ação |
+| :--- | :--- |
+| `Alt + 1` | Navegar para o **Kaoz.1 (Flow)** |
+| `Alt + 2` | Navegar para o **Supervisor (War Room)** |
+| `Alt + 3` | Navegar para o **Córtex Cognitivo** |
+| `Alt + 4` | Navegar para a **Edição de Vídeo** |
+| `Alt + 5` | Navegar para as **Configurações** |
+| `Alt + 6` | Navegar para o **Model P** |
+| `Ctrl + K` / `Cmd + K` | Abrir a **Command Palette** global |
+| `Ctrl + B` / `Cmd + B` | Recolher / Expandir barra lateral |
+| `?` | Exibir o painel de atalhos rápidos (Cheatsheet) |
+| `J` / `K` / `L` | *(Na tela de Vídeo)* Shuttle reverso / Pausa / Shuttle avanço rápido |
+| `Espaço` | *(Na tela de Vídeo)* Play / Pause |
+
+---
+
+## ⚙️ Instalação & Execução
+
+### Pré-requisitos
+* **Node.js**: v20+ ou v22 LTS
+* **Python** (opcional, para renderização local e remoção de fundo): v3.10+
+* **FFmpeg / FFprobe**: no PATH do sistema operacional (ou configurado no `.env.local`)
+* **DaVinci Resolve Studio ou Free** (opcional, para recursos de edição automatizada)
+
+---
+
+### Modo de Desenvolvimento (Web)
 
 ```powershell
+# 1. Instale as dependências
+npm install
+
+# 2. Configure o ambiente
+copy .env.example .env.local
+
+# 3. Inicie o servidor de desenvolvimento
+npm run dev
+```
+Acesse `http://localhost:3000`.
+
+---
+
+### Aplicativo Nativo para Windows (Desktop Electron)
+
+Para rodar a versão desktop com integração total ao sistema operacional:
+
+```powershell
+# Iniciar em modo de desenvolvimento desktop
 npm run desktop:dev
 ```
 
-Para gerar o instalador do Windows:
+Para gerar o executável/instalador final do Windows:
 
 ```powershell
 npm run desktop:build
 ```
 
-O instalador será criado em `release/Kaoz.1-Setup-<versão>.exe`. A versão
-desktop incorpora o servidor Next.js e, portanto, o computador de destino não
-precisa ter Node.js nem executar `npm install` ou `npx playwright install`.
-As automações usam o Google Chrome instalado no Windows.
+O instalador será gerado em `release/Kaoz.1-Setup-<versão>.exe`. A versão standalone já embute o servidor Next.js compilado — o computador de destino não precisa ter Node.js instalado.
 
-Configurações, sessões e arquivos gerados são mantidos em
-`%APPDATA%/Kaoz.1`. Na primeira execução, o aplicativo cria ali um
-`.env.local` baseado no `.env.example`; as credenciais também podem ser
-configuradas pela tela de Configurações do próprio aplicativo.
+---
 
-Nos campos **Endpoint**, informe preferencialmente a URL base do provedor. Se
-for colada uma rota completa como `/v1/chat/completions` ou `/v1/models`, o
-Kaoz.1 remove automaticamente a parte final para evitar rotas duplicadas.
+### 🔑 Configurações do `.env.local`
 
-## 📝 Notas de Desenvolvimento e Automação
+Copie `.env.example` para `.env.local` e configure as credenciais necessárias:
 
-1.  **Sessões do Playwright (Navegador):** A agente usa um Chromium persistente para simular o navegador. Para realizar login em plataformas de chat gratuitas (Gemini, ChatGPT, Claude e DeepSeek) e contornar os desafios do Cloudflare, acesse a página de **Configurações** na aplicação e use a seção de gerenciamento de sessões para fazer o login manual inicial. Os cookies serão gravados localmente em `storage/browser-profile/`.
-2.  **OneDrive e Lock de Arquivos (Windows):** O pipeline de vídeo UGC implementa rotinas resilientes com até 5 retentativas no acesso a arquivos locais para contornar problemas de lock temporário causados pela sincronização ativa do OneDrive ou Dropbox.
-3.  **Desconexões SSE:** Para garantir o bom uso de memória, as chamadas via SSE Client abertas com os microsserviços são explicitamente terminadas ao fim de cada requisição.
-# Transcricao local Parakeet
+```env
+# Workspace padrão
+APP_WORKSPACE_ID=00000000-0000-4000-8000-000000000001
 
-No aplicativo Windows, escolha **Parakeet Local** em **Configuracoes > Transcricao de voz** para usar transcricao PT-BR offline e sem chave de API. Na primeira ativacao, o app baixa o modelo local (cerca de 670 MB), mostra o andamento e o armazena no perfil do usuario. Depois disso, a transcricao funciona sem internet.
+# Provedores de Inteligência Artificial
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+
+# Automação Web & Login Assistido (Playwright)
+FLOW_HEADLESS=false # Mantenha false para contornar desafios do Cloudflare no primeiro login
+
+# Voz & Lipsync
+FISH_AUDIO_API_KEY=your_fish_audio_key
+LIPSYNC_ENGINE=musetalk-v15
+LIPSYNC_API_URL=http://localhost:8010
+
+# Caminhos Opcionais de Binários Locais
+FFMPEG_PATH=
+FFPROBE_PATH=
+YTDLP_PATH=
+
+# Conectores (opcional, configuráveis também via interface)
+DISCORD_BOT_TOKEN=
+TELEGRAM_BOT_TOKEN=
+```
+
+---
+
+## 📚 Documentação Técnica
+
+Para se aprofundar na engenharia de cada componente, consulte a pasta [`docs/`](./docs/):
+* [`docs/MULTIAGENT_ARCHITECTURE.md`](./docs/MULTIAGENT_ARCHITECTURE.md) — O protocolo de coordenação entre ChiefAgent, Planner, Scheduler e Supervisor.
+* [`docs/CREATIVE_DOMAIN.md`](./docs/CREATIVE_DOMAIN.md) — Contratos e dinâmicas da Sala de Guerra (War Room) e agentes criativos.
+* [`docs/WORKFLOW_FACTORY.md`](./docs/WORKFLOW_FACTORY.md) — Fábrica de pipelines de execução e máquinas de estado.
+* [`docs/EXECUTION_CLASSIFIER.md`](./docs/EXECUTION_CLASSIFIER.md) — Classificação determinística de intenções e modos de sessão.
+* [`docs/lipsync-musetalk.md`](./docs/lipsync-musetalk.md) — Configuração do motor neural de sincronia labial.
+
+---
+
+<div align="center">
+
+Desenvolvido com foco em alta performance, privacidade, autonomia criativa e arquitetura neurocognitiva.
+
+**Kaoz.1 — The Creative Swarm OS**
+
+</div>
