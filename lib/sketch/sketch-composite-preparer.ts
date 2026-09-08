@@ -12,9 +12,9 @@ import {
   type SketchDrawingLayer,
   resolveProviderAspectRatio,
   ASPECT_RATIO_PRESETS,
-} from '../../types/sketch';
-import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering';
-import type { ImageReferenceKind } from '@/src/providers/flow/ImageGenerationContract';
+} from '../../types/sketch.ts';
+import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
+import type { ImageReferenceKind } from '../../src/providers/flow/ImageGenerationContract.ts';
 
 interface SketchAnalysis {
   hasSketch: boolean;

@@ -24,17 +24,33 @@ interface SketchAttachmentsPanelProps {
 }
 
 const ROLE_LABELS: Record<AttachmentRole, { label: string; desc: string }> = {
-  reference: {
-    label: 'Referência IA',
-    desc: 'Enviada como referência visual única ao FlowProvider na geração',
+  product: {
+    label: 'Produto',
+    desc: 'Imagem do produto/embalagem para destaque e composição',
+  },
+  person: {
+    label: 'Pessoa / Modelo',
+    desc: 'Modelo humano, porta-voz ou avatar para a cena',
   },
   logo: {
     label: 'Logo da Marca',
-    desc: 'Camada gráfica de logotipo sobreposta à arte final',
+    desc: 'Logotipo ou símbolo da marca',
   },
-  product: {
-    label: 'Produto / Recorte',
-    desc: 'Camada do produto com transparência posicionada no anúncio',
+  style: {
+    label: 'Estilo Visual',
+    desc: 'Referência estética de iluminação, cores e atmosfera',
+  },
+  composition: {
+    label: 'Composição / Layout',
+    desc: 'Enquadramento e posicionamento espacial dos elementos',
+  },
+  background: {
+    label: 'Fundo / Cenário',
+    desc: 'Imagem ou textura de fundo da cena comercial',
+  },
+  reference: {
+    label: 'Referência IA',
+    desc: 'Enviada como referência visual única ao FlowProvider na geração',
   },
   overlay: {
     label: 'Sobreposição / Badge',

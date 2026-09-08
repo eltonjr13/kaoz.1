@@ -4,11 +4,10 @@ import {
   type SketchLayer,
   type SketchAttachment,
   SKETCH_SCHEMA_VERSION,
-} from '../../types/sketch';
+} from '../../types/sketch.ts';
 import {
   prepareSketchCompositeReference,
-} from './sketch-composite-preparer';
-import { flowProvider } from '@/src/providers/flow/FlowProvider';
+} from './sketch-composite-preparer.ts';
 
 const SAMPLE_BASE64_PRODUCT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const SAMPLE_BASE64_STYLE = 'data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -142,6 +141,7 @@ async function tryExecuteFlow(
   providerOptions: import('../../types/sketch').SketchGenerationRequest['providerOptions']
 ) {
   try {
+    const { flowProvider } = await import('../../src/providers/flow/FlowProvider.ts');
     return await flowProvider.generateImage(preparedPrompt, providerOptions);
   } catch (err) {
     return {
