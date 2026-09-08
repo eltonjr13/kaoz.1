@@ -459,6 +459,18 @@ export const SHORTCUT_CATEGORIES: { id: ShortcutCategory; label: string }[] = [
   { id: "video", label: "Edição de Vídeo" },
 ];
 
+const MODIFIER_ALIAS_MAP: Record<string, string> = {
+  ctrl: "ctrl",
+  control: "ctrl",
+  cmd: "meta",
+  command: "meta",
+  meta: "meta",
+  alt: "alt",
+  opt: "alt",
+  option: "alt",
+  shift: "shift",
+};
+
 /**
  * Normalizes a key combo string (e.g. "ctrl+k", "Alt+1", "Escape") into a standardized format.
  */
@@ -468,42 +480,57 @@ export function normalizeKeyCombo(combo: string): string {
   let primaryKey = "";
 
   for (const part of parts) {
-    if (part === "ctrl" || part === "control") modifiers.add("ctrl");
-    else if (part === "cmd" || part === "command" || part === "meta") modifiers.add("meta");
-    else if (part === "alt" || part === "opt" || part === "option") modifiers.add("alt");
-    else if (part === "shift") modifiers.add("shift");
-    else primaryKey = part;
+    const canonicalMod = MODIFIER_ALIAS_MAP[part];
+    if (canonicalMod) {
+      modifiers.add(canonicalMod);
+    } else {
+      primaryKey = part;
+    }
   }
 
   const sortedMods = Array.from(modifiers).sort();
   return sortedMods.length > 0 ? `${sortedMods.join("+")}+${primaryKey}` : primaryKey;
 }
 
-/**
- * Converts a native KeyboardEvent to a normalized combo string.
- */
-export function eventToKeyCombo(event: KeyboardEvent): string {
+function extractEventModifiers(event: KeyboardEvent): string[] {
   const modifiers: string[] = [];
   if (event.ctrlKey) modifiers.push("ctrl");
   if (event.metaKey) modifiers.push("meta");
   if (event.altKey) modifiers.push("alt");
   if (event.shiftKey && event.key !== "Shift" && event.key !== "?") modifiers.push("shift");
+  return modifiers;
+}
 
-  let key = event.key.toLowerCase();
-  if (key === "escape") key = "escape";
-  else if (key === " ") key = "space";
-  else if (key === "enter") key = "enter";
+const SPECIAL_KEY_MAP: Record<string, string> = {
+  escape: "escape",
+  " ": "space",
+  enter: "enter",
+};
 
-  // If pressing '?' with shift, key is already '?'
+/**
+ * Converts a native KeyboardEvent to a normalized combo string.
+ */
+export function eventToKeyCombo(event: KeyboardEvent): string {
+  const modifiers = extractEventModifiers(event);
+  const rawKey = event.key.toLowerCase();
+  const key = SPECIAL_KEY_MAP[rawKey] || rawKey;
+
   if (key === "?") {
-    // Treat '?' as a direct single key trigger or shift+?
-    return modifiers.filter(m => m !== "shift").length > 0
-      ? `${modifiers.filter(m => m !== "shift").sort().join("+")}+?`
-      : "?";
+    const nonShift = modifiers.filter((m) => m !== "shift");
+    return nonShift.length > 0 ? `${nonShift.sort().join("+")}+?` : "?";
   }
 
   const sortedMods = modifiers.sort();
   return sortedMods.length > 0 ? `${sortedMods.join("+")}+${key}` : key;
+}
+
+const NON_TEXT_INPUT_TYPES = new Set(["checkbox", "radio", "button", "submit"]);
+
+function isFormInputElement(tagName: string, inputType?: string): boolean {
+  if (tagName !== "INPUT" && tagName !== "TEXTAREA" && tagName !== "SELECT") {
+    return false;
+  }
+  return !inputType || !NON_TEXT_INPUT_TYPES.has(inputType);
 }
 
 /**
@@ -518,14 +545,14 @@ export function isEditableElement(target: EventTarget | null): boolean {
     isContentEditable?: boolean;
     getAttribute?: (name: string) => string | null;
   };
+
   const tagName = element.tagName ? element.tagName.toUpperCase() : "";
-  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") {
-    const inputType = element.type?.toLowerCase();
-    if (inputType === "checkbox" || inputType === "radio" || inputType === "button" || inputType === "submit") {
-      return false;
-    }
+  const inputType = element.type?.toLowerCase();
+
+  if (isFormInputElement(tagName, inputType)) {
     return true;
   }
+
   return (
     Boolean(element.isContentEditable) ||
     (typeof element.getAttribute === "function" && element.getAttribute("contenteditable") === "true")

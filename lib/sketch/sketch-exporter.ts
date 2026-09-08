@@ -1,7 +1,9 @@
 import {
   ASPECT_RATIO_PRESETS,
+  type AspectRatioDimension,
   type BackgroundLayer,
   type ImageLayer,
+  type SketchLayer,
   type SketchPath,
   type SketchProjectData,
   type TextLayer,
@@ -17,6 +19,29 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const imgRatio = img.width / img.height;
+  const canvasRatio = width / height;
+  let renderW = width;
+  let renderH = height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (imgRatio > canvasRatio) {
+    renderW = height * imgRatio;
+    offsetX = (width - renderW) / 2;
+  } else {
+    renderH = width / imgRatio;
+    offsetY = (height - renderH) / 2;
+  }
+  ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
+}
+
 function drawBackgroundLayer(
   ctx: CanvasRenderingContext2D,
   layer: BackgroundLayer,
@@ -28,29 +53,9 @@ function drawBackgroundLayer(
   ctx.save();
   ctx.globalAlpha = layer.opacity;
 
-  if (layer.fillType === 'image' && layer.imageUrl) {
-    const img = loadedImages.get(layer.imageUrl);
-    if (img) {
-      // Cover fit
-      const imgRatio = img.width / img.height;
-      const canvasRatio = width / height;
-      let renderW = width;
-      let renderH = height;
-      let offsetX = 0;
-      let offsetY = 0;
-
-      if (imgRatio > canvasRatio) {
-        renderW = height * imgRatio;
-        offsetX = (width - renderW) / 2;
-      } else {
-        renderH = width / imgRatio;
-        offsetY = (height - renderH) / 2;
-      }
-      ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
-    } else {
-      ctx.fillStyle = layer.color || '#090a0f';
-      ctx.fillRect(0, 0, width, height);
-    }
+  const img = layer.fillType === 'image' && layer.imageUrl ? loadedImages.get(layer.imageUrl) : null;
+  if (img) {
+    drawCoverImage(ctx, img, width, height);
   } else {
     ctx.fillStyle = layer.color || '#0d1117';
     ctx.fillRect(0, 0, width, height);
@@ -59,40 +64,49 @@ function drawBackgroundLayer(
   ctx.restore();
 }
 
+function drawBoxPath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: number, scaleY: number) {
+  if (!path.boxRect) return;
+  const rx = path.boxRect.x * scaleX;
+  const ry = path.boxRect.y * scaleY;
+  const rw = path.boxRect.width * scaleX;
+  const rh = path.boxRect.height * scaleY;
+
+  ctx.strokeStyle = path.color || '#6366f1';
+  ctx.lineWidth = Math.max(2, path.size * scaleX);
+  ctx.strokeRect(rx, ry, rw, rh);
+
+  if (path.boxLabel) {
+    ctx.fillStyle = path.color || '#6366f1';
+    ctx.font = `600 ${Math.max(14, 16 * scaleX)}px sans-serif`;
+    ctx.fillText(path.boxLabel, rx + 8, ry + 24);
+  }
+}
+
+function drawStrokePath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: number, scaleY: number) {
+  if (path.points.length === 0) return;
+  ctx.strokeStyle = path.tool === 'eraser' ? '#ffffff' : path.color;
+  ctx.lineWidth = Math.max(1, path.size * scaleX);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  const first = path.points[0];
+  ctx.moveTo(first.x * scaleX, first.y * scaleY);
+  for (let i = 1; i < path.points.length; i++) {
+    const p = path.points[i];
+    ctx.lineTo(p.x * scaleX, p.y * scaleY);
+  }
+  ctx.stroke();
+}
+
 function drawSketchPath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: number, scaleY: number) {
-  if (path.points.length === 0 && !path.boxRect) return;
   ctx.save();
   ctx.globalAlpha = path.opacity;
 
-  if (path.tool === 'box' && path.boxRect) {
-    const rx = path.boxRect.x * scaleX;
-    const ry = path.boxRect.y * scaleY;
-    const rw = path.boxRect.width * scaleX;
-    const rh = path.boxRect.height * scaleY;
-
-    ctx.strokeStyle = path.color || '#6366f1';
-    ctx.lineWidth = Math.max(2, path.size * scaleX);
-    ctx.strokeRect(rx, ry, rw, rh);
-
-    if (path.boxLabel) {
-      ctx.fillStyle = path.color || '#6366f1';
-      ctx.font = `600 ${Math.max(14, 16 * scaleX)}px sans-serif`;
-      ctx.fillText(path.boxLabel, rx + 8, ry + 24);
-    }
-  } else if (path.points.length > 0) {
-    ctx.strokeStyle = path.tool === 'eraser' ? '#ffffff' : path.color;
-    ctx.lineWidth = Math.max(1, path.size * scaleX);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    const first = path.points[0];
-    ctx.moveTo(first.x * scaleX, first.y * scaleY);
-    for (let i = 1; i < path.points.length; i++) {
-      const p = path.points[i];
-      ctx.lineTo(p.x * scaleX, p.y * scaleY);
-    }
-    ctx.stroke();
+  if (path.tool === 'box') {
+    drawBoxPath(ctx, path, scaleX, scaleY);
+  } else {
+    drawStrokePath(ctx, path, scaleX, scaleY);
   }
 
   ctx.restore();
@@ -128,6 +142,12 @@ function drawImageLayer(
   ctx.restore();
 }
 
+function computeTextBgX(textAlign: string, posX: number, bgW: number, padding: number): number {
+  if (textAlign === 'center') return posX - bgW / 2;
+  if (textAlign === 'right') return posX - bgW + padding;
+  return posX - padding;
+}
+
 function drawTextBackground(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
@@ -140,14 +160,7 @@ function drawTextBackground(
   const radius = layer.borderRadius ?? 8;
   const bgW = metrics.textWidth + padding * 2;
   const bgH = metrics.totalHeight + padding * 2;
-  let bgX = posX - padding;
-
-  if (layer.textAlign === 'center') {
-    bgX = posX - bgW / 2;
-  } else if (layer.textAlign === 'right') {
-    bgX = posX - bgW + padding;
-  }
-
+  const bgX = computeTextBgX(layer.textAlign || 'left', posX, bgW, padding);
   const bgY = posY - padding - metrics.actualFontSize * 0.8;
 
   ctx.save();
@@ -173,6 +186,15 @@ function drawTextLines(
   }
 }
 
+function computeMaxLineWidth(ctx: CanvasRenderingContext2D, lines: string[]): number {
+  let maxWidth = 0;
+  for (const line of lines) {
+    const w = ctx.measureText(line).width;
+    if (w > maxWidth) maxWidth = w;
+  }
+  return maxWidth;
+}
+
 function drawTextLayer(ctx: CanvasRenderingContext2D, layer: TextLayer, width: number, height: number) {
   if (!layer.visible || !layer.text.trim()) return;
 
@@ -190,13 +212,9 @@ function drawTextLayer(ctx: CanvasRenderingContext2D, layer: TextLayer, width: n
   const posY = (layer.y / 100) * height;
   const padding = layer.backgroundPadding ? (layer.backgroundPadding / 1080) * width : 12;
 
-  let maxLineWidth = 0;
-  for (const line of lines) {
-    const lineW = ctx.measureText(line).width;
-    if (lineW > maxLineWidth) maxLineWidth = lineW;
-  }
-
+  const maxLineWidth = computeMaxLineWidth(ctx, lines);
   const totalHeight = lines.length * actualFontSize * 1.25;
+
   drawTextBackground(ctx, layer, posX, posY, { textWidth: maxLineWidth, totalHeight, actualFontSize }, padding);
   drawTextLines(ctx, lines, posX, posY, actualFontSize, layer.color || '#ffffff');
 
@@ -228,6 +246,27 @@ export async function preloadProjectImages(project: SketchProjectData): Promise<
   return imageMap;
 }
 
+function renderSingleLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: SketchLayer,
+  preset: AspectRatioDimension,
+  loadedImages: Map<string, HTMLImageElement>
+) {
+  if (layer.type === 'background') {
+    drawBackgroundLayer(ctx, layer, preset.width, preset.height, loadedImages);
+  } else if (layer.type === 'sketch' && layer.visible) {
+    const scaleX = preset.width / 1080;
+    const scaleY = preset.height / 1080;
+    for (const path of layer.paths) {
+      drawSketchPath(ctx, path, scaleX, scaleY);
+    }
+  } else if (layer.type === 'image') {
+    drawImageLayer(ctx, layer, preset.width, preset.height, loadedImages);
+  } else if (layer.type === 'text') {
+    drawTextLayer(ctx, layer, preset.width, preset.height);
+  }
+}
+
 export async function renderCompositionToCanvas(
   project: SketchProjectData,
   canvas?: HTMLCanvasElement
@@ -243,19 +282,7 @@ export async function renderCompositionToCanvas(
   const loadedImages = await preloadProjectImages(project);
 
   for (const layer of project.layers) {
-    if (layer.type === 'background') {
-      drawBackgroundLayer(ctx, layer, preset.width, preset.height, loadedImages);
-    } else if (layer.type === 'sketch' && layer.visible) {
-      const scaleX = preset.width / 1080;
-      const scaleY = preset.height / 1080;
-      for (const path of layer.paths) {
-        drawSketchPath(ctx, path, scaleX, scaleY);
-      }
-    } else if (layer.type === 'image') {
-      drawImageLayer(ctx, layer, preset.width, preset.height, loadedImages);
-    } else if (layer.type === 'text') {
-      drawTextLayer(ctx, layer, preset.width, preset.height);
-    }
+    renderSingleLayer(ctx, layer, preset, loadedImages);
   }
 
   return targetCanvas;
@@ -269,7 +296,6 @@ export function renderSketchOnlyDataUrl(paths: SketchPath[], width = 1080, heigh
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
-  // Background branco limpo para o FlowProvider interpretar o rascunho com clareza
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
 

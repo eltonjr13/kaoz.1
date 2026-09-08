@@ -21,11 +21,17 @@ function buildFallbackCopy(product: string): GenerateCopyResponse {
   const cleanProduct = product.slice(0, 40) || 'Produto';
   return {
     headline: `Descubra a Nova Era de ${cleanProduct}`,
-    subheadline: `Qualidade premium e resultados reais pensados exclusivamente para transformar a sua rotina.`,
+    subheadline: 'Qualidade premium e resultados reais pensados exclusivamente para transformar a sua rotina.',
     cta: 'Garantir com Desconto',
     badge: 'Oferta Especial',
     suggestedVisualPrompt: `Clean modern advertisement photograph of ${cleanProduct}, professional studio lighting, warm elegant tones, minimal aesthetic background, sharp product focus.`
   };
+}
+
+function getField(obj: Record<string, unknown> | null, key: string, fallback: string): string {
+  if (!obj) return fallback;
+  const val = obj[key];
+  return typeof val === 'string' && val.trim() ? val.trim() : fallback;
 }
 
 function parseGeneratedCopy(rawOutput: string, product: string): GenerateCopyResponse {
@@ -33,21 +39,15 @@ function parseGeneratedCopy(rawOutput: string, product: string): GenerateCopyRes
   if (!parsed) return buildFallbackCopy(product);
 
   return {
-    headline: typeof parsed.headline === 'string' && parsed.headline.trim()
-      ? parsed.headline.trim()
-      : `Descubra ${product.slice(0, 30)}`,
-    subheadline: typeof parsed.subheadline === 'string' && parsed.subheadline.trim()
-      ? parsed.subheadline.trim()
-      : 'Qualidade comprovada para resultados extraordinários.',
-    cta: typeof parsed.cta === 'string' && parsed.cta.trim()
-      ? parsed.cta.trim()
-      : 'Compre Agora',
-    badge: typeof parsed.badge === 'string' && parsed.badge.trim()
-      ? parsed.badge.trim()
-      : 'Destaque',
-    suggestedVisualPrompt: typeof parsed.suggestedVisualPrompt === 'string' && parsed.suggestedVisualPrompt.trim()
-      ? parsed.suggestedVisualPrompt.trim()
-      : `Studio commercial shot of ${product}, crisp lighting, high quality advertising photography.`
+    headline: getField(parsed, 'headline', `Descubra ${product.slice(0, 30)}`),
+    subheadline: getField(parsed, 'subheadline', 'Qualidade comprovada para resultados extraordinários.'),
+    cta: getField(parsed, 'cta', 'Compre Agora'),
+    badge: getField(parsed, 'badge', 'Destaque'),
+    suggestedVisualPrompt: getField(
+      parsed,
+      'suggestedVisualPrompt',
+      `Studio commercial shot of ${product}, crisp lighting, high quality advertising photography.`
+    )
   };
 }
 
@@ -74,37 +74,48 @@ Retorne ESTRITAMENTE um objeto JSON válido (sem markdown em volta) no formato:
 }`;
 }
 
+async function requestAgentCopy(prompt: string): Promise<string> {
+  try {
+    const cliResult = await queryConfiguredAgentCli(prompt, {
+      jsonMode: true,
+      maxOutputTokens: 1000
+    });
+    return cliResult || '';
+  } catch (agentErr) {
+    console.warn('[API SKETCH] Agente LLM CLI falhou, gerando resposta fallback:', agentErr);
+    return '';
+  }
+}
+
+function extractCopyRequest(body: unknown): GenerateCopyRequest | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  const productDescription = typeof b.productDescription === 'string' ? b.productDescription.trim() : '';
+  if (!productDescription) return null;
+
+  return {
+    productDescription,
+    audience: typeof b.audience === 'string' ? b.audience.trim() : undefined,
+    goal: typeof b.goal === 'string' ? b.goal.trim() : undefined,
+    tone: typeof b.tone === 'string' ? b.tone.trim() : undefined,
+  };
+}
+
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => null)) as GenerateCopyRequest | null;
-    const productDescription = body?.productDescription?.trim();
+    const body = await request.json().catch(() => null);
+    const copyReq = extractCopyRequest(body);
 
-    if (!productDescription) {
+    if (!copyReq) {
       return NextResponse.json(
         { error: 'A descrição do produto ou anúncio é obrigatória.' },
         { status: 400 }
       );
     }
 
-    const prompt = buildPrompt({
-      productDescription,
-      audience: body?.audience?.trim(),
-      goal: body?.goal?.trim(),
-      tone: body?.tone?.trim()
-    });
-
-    let rawResult = '';
-    try {
-      const cliResult = await queryConfiguredAgentCli(prompt, {
-        jsonMode: true,
-        maxOutputTokens: 1000
-      });
-      rawResult = cliResult || '';
-    } catch (agentErr) {
-      console.warn('[API SKETCH] Agente LLM CLI falhou, gerando resposta fallback:', agentErr);
-    }
-
-    const response = parseGeneratedCopy(rawResult, productDescription);
+    const prompt = buildPrompt(copyReq);
+    const rawResult = await requestAgentCopy(prompt);
+    const response = parseGeneratedCopy(rawResult, copyReq.productDescription);
     return NextResponse.json(response);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
