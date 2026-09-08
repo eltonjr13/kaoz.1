@@ -1,4 +1,8 @@
-export type SketchAspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4';
+export const SKETCH_SCHEMA_VERSION = '1.0.0';
+
+export type FlowSupportedAspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4';
+export type SketchCanvasAspectRatio = FlowSupportedAspectRatio | '4:5' | 'custom';
+export type SketchAspectRatio = FlowSupportedAspectRatio;
 
 export interface AspectRatioDimension {
   width: number;
@@ -7,7 +11,7 @@ export interface AspectRatioDimension {
   description: string;
 }
 
-export const ASPECT_RATIO_PRESETS: Record<SketchAspectRatio, AspectRatioDimension> = {
+export const ASPECT_RATIO_PRESETS: Record<FlowSupportedAspectRatio, AspectRatioDimension> = {
   '1:1': { width: 1080, height: 1080, label: '1:1 Quadrado', description: 'Feed Instagram, Facebook e LinkedIn' },
   '9:16': { width: 1080, height: 1920, label: '9:16 Vertical', description: 'Stories, Reels e TikTok' },
   '16:9': { width: 1920, height: 1080, label: '16:9 Horizontal', description: 'Banners, YouTube e Display' },
@@ -15,15 +19,72 @@ export const ASPECT_RATIO_PRESETS: Record<SketchAspectRatio, AspectRatioDimensio
   '3:4': { width: 1080, height: 1440, label: '3:4 Retrato', description: 'Feed vertical ampliado' },
 };
 
-export type AttachmentRole = 'reference' | 'logo' | 'product' | 'overlay' | 'inspiration';
+export const CANVAS_ASPECT_RATIO_PRESETS: Record<SketchCanvasAspectRatio, AspectRatioDimension> = {
+  ...ASPECT_RATIO_PRESETS,
+  '4:5': { width: 1080, height: 1350, label: '4:5 Retrato Feed', description: 'Feed vertical Instagram clássico' },
+  'custom': { width: 1080, height: 1080, label: 'Personalizado', description: 'Dimensões livres da prancheta' },
+};
+
+const DIRECT_FLOW_RATIOS = new Set<FlowSupportedAspectRatio>(['1:1', '9:16', '16:9', '4:3', '3:4']);
+
+function resolveRatioFromDimensions(width: number, height: number): FlowSupportedAspectRatio {
+  const ratio = width / height;
+  if (ratio >= 1.5) return '16:9';
+  if (ratio >= 1.2) return '4:3';
+  if (ratio >= 0.85) return '1:1';
+  if (ratio >= 0.65) return '3:4';
+  return '9:16';
+}
+
+export function resolveProviderAspectRatio(
+  canvasRatio: SketchCanvasAspectRatio,
+  width?: number,
+  height?: number
+): FlowSupportedAspectRatio {
+  if (DIRECT_FLOW_RATIOS.has(canvasRatio as FlowSupportedAspectRatio)) {
+    return canvasRatio as FlowSupportedAspectRatio;
+  }
+  if (canvasRatio === '4:5') {
+    return '3:4';
+  }
+  if (width && height && height > 0) {
+    return resolveRatioFromDimensions(width, height);
+  }
+  return '1:1';
+}
+
+/**
+ * Funções de referência estritas:
+ * - produto: Imagem do produto/item comercial
+ * - pessoa: Modelo humano, porta-voz ou avatar
+ * - logo: Logotipo da marca
+ * - estilo: Referência de estilo, luz e estética (não transfere rabiscos nem layout)
+ * - composição: Layout espacial, wireframe e enquadramento
+ * - fundo: Imagem de cenário/background
+ */
+export type SketchReferenceRole =
+  | 'product'
+  | 'person'
+  | 'logo'
+  | 'style'
+  | 'composition'
+  | 'background';
+
+export type AttachmentRole =
+  | SketchReferenceRole
+  | 'reference'
+  | 'overlay'
+  | 'inspiration';
 
 export interface SketchAttachment {
   id: string;
   name: string;
   dataUrl: string;
+  filePath?: string;
   role: AttachmentRole;
   width?: number;
   height?: number;
+  mimeType?: string;
   createdAt: string;
 }
 
@@ -48,6 +109,7 @@ export interface SketchPath {
   points: SketchStrokePoint[];
   boxLabel?: string;
   boxRect?: SketchBoxRect;
+  isGuide?: boolean;
 }
 
 export interface BaseLayer {
@@ -56,6 +118,8 @@ export interface BaseLayer {
   visible: boolean;
   opacity: number; // 0 to 1
   locked?: boolean;
+  isGuide?: boolean;
+  exportToProvider?: boolean;
 }
 
 export interface BackgroundLayer extends BaseLayer {
@@ -75,7 +139,7 @@ export interface ImageLayer extends BaseLayer {
   type: 'image';
   attachmentId?: string;
   imageUrl: string;
-  role?: 'logo' | 'product' | 'overlay';
+  role?: AttachmentRole;
   x: number; // in percentage of canvas width (0 to 100)
   y: number; // in percentage of canvas height (0 to 100)
   width: number; // in percentage of canvas width
@@ -83,7 +147,7 @@ export interface ImageLayer extends BaseLayer {
   rotation?: number;
 }
 
-export type TextRole = 'headline' | 'subheadline' | 'cta' | 'badge' | 'custom';
+export type TextRole = 'headline' | 'subheadline' | 'cta' | 'badge' | 'disclaimer' | 'custom';
 
 export interface TextLayer extends BaseLayer {
   type: 'text';
@@ -105,11 +169,40 @@ export interface TextLayer extends BaseLayer {
 
 export type SketchLayer = BackgroundLayer | SketchDrawingLayer | ImageLayer | TextLayer;
 
+export interface SketchGuide {
+  id: string;
+  orientation: 'horizontal' | 'vertical';
+  position: number;
+  label?: string;
+}
+
+export interface SketchDocumentData {
+  dimensions: { width: number; height: number; unit: 'px' };
+  canvasAspectRatio: SketchCanvasAspectRatio;
+  layers: SketchLayer[];
+  guides?: SketchGuide[];
+}
+
+export interface SketchBriefingData {
+  productDescription: string;
+  brandName?: string;
+  targetAudience?: string;
+  objective?: string;
+  tone?: string;
+  keyBenefits?: string[];
+  restrictions?: string[];
+  colorPalette?: string[];
+  suggestedVisualPrompt?: string;
+  additionalNotes?: string;
+}
+
 export interface SketchCopyData {
   headline: string;
   subheadline: string;
   cta: string;
   badge: string;
+  disclaimer?: string;
+  suggestedVisualPrompt?: string;
 }
 
 export interface GenerationHistoryItem {
@@ -118,22 +211,33 @@ export interface GenerationHistoryItem {
   imageUrl: string;
   flowPath?: string;
   aspectRatio: SketchAspectRatio;
+  providerAspectRatio?: FlowSupportedAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+  referenceMode?: 'none' | 'sketch' | 'identity' | 'composite';
   createdAt: string;
 }
 
 export interface SketchProjectData {
+  schemaVersion?: number;
+  version?: string;
   id: string;
   title: string;
   description: string;
   aspectRatio: SketchAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+  canvasDimensions?: { width: number; height: number; unit: 'px' };
   prompt: string;
   useSketchAsReference: boolean;
   activeReferenceId?: string;
+  referenceMode?: 'none' | 'sketch' | 'identity' | 'composite';
+  briefing?: SketchBriefingData;
+  copy: SketchCopyData;
+  document?: SketchDocumentData;
   attachments: SketchAttachment[];
   layers: SketchLayer[];
-  copy: SketchCopyData;
   generationHistory: GenerationHistoryItem[];
   updatedAt: string;
+  createdAt?: string;
 }
 
 export interface SketchVersionSnapshot {
@@ -142,6 +246,69 @@ export interface SketchVersionSnapshot {
   label: string;
   timestamp: string;
   project: SketchProjectData;
+}
+
+export interface SketchReferenceDiagnostic {
+  code: string;
+  severity: 'info' | 'warning' | 'error';
+  message: string;
+  attachmentId?: string;
+  layerId?: string;
+  role?: string;
+}
+
+export interface SketchCompositePreview {
+  width: number;
+  height: number;
+  canvasAspectRatio: SketchCanvasAspectRatio;
+  providerAspectRatio: FlowSupportedAspectRatio;
+  dataUrl?: string;
+  includedReferencesCount: number;
+  includedRoles: SketchReferenceRole[];
+  excludedGuidesCount: number;
+  diagnostics: SketchReferenceDiagnostic[];
+  createdAt: string;
+}
+
+export interface SketchGenerationRequest {
+  id: string;
+  projectId: string;
+  schemaVersion: number;
+  prompt: string;
+  preparedPrompt: string;
+  canvasAspectRatio: SketchCanvasAspectRatio;
+  providerAspectRatio: FlowSupportedAspectRatio;
+  referenceMode: 'none' | 'sketch' | 'identity' | 'composite';
+  referenceKind?: import('@/src/providers/flow/ImageGenerationContract').ImageReferenceKind;
+  preparedReferenceImage?: string;
+  compositePreview?: SketchCompositePreview;
+  diagnostics: SketchReferenceDiagnostic[];
+  providerOptions: import('@/src/providers/flow/FlowTypes').ImageGenerationOptions;
+  createdAt: string;
+}
+
+export type SketchExecutionStatus =
+  | 'completed_real'
+  | 'mock_validated_contract_pending_live_flow'
+  | 'failed';
+
+export interface SketchGenerationResult {
+  id: string;
+  requestId: string;
+  projectId: string;
+  createdAt: string;
+  isRealExecution: boolean;
+  executionStatus: SketchExecutionStatus;
+  pendingReason?: string;
+  generatedImages: Array<{
+    path: string;
+    filename: string;
+    pdfPath?: string;
+    url?: string;
+  }>;
+  providerResult?: import('@/src/providers/flow/FlowTypes').ImageGenerationResult;
+  diagnostics: SketchReferenceDiagnostic[];
+  notes?: string;
 }
 
 export interface GenerateCopyRequest {

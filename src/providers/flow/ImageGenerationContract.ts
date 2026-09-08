@@ -1,5 +1,12 @@
 export type ImageGenerationOperation = 'simple' | 'reference' | 'turnaround3d' | 'edit';
 
+export type ImageReferenceKind =
+  | 'identity'
+  | 'sketch'
+  | 'style'
+  | 'composition'
+  | 'composite';
+
 export type ImageReferenceSource =
   | 'none'
   | 'upload'

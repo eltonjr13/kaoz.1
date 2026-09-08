@@ -1,6 +1,10 @@
-import type { ImageGenerationOperation } from "@/src/providers/flow/ImageGenerationContract";
+import type {
+  ImageGenerationOperation,
+  ImageReferenceKind,
+} from "@/src/providers/flow/ImageGenerationContract";
 
 export type FlowImageAspectRatio = "16:9" | "4:3" | "1:1" | "3:4" | "9:16";
+export type FlowReferenceKind = ImageReferenceKind;
 
 const MAX_CORE_PROMPT_WORDS = 260;
 const MAX_FINAL_PROMPT_WORDS = 320;
@@ -111,9 +115,29 @@ function appendOnce(segments: string[], segment: string, prompt: string, marker:
   if (!marker.test(prompt)) segments.push(segment);
 }
 
+function getOperationInstruction(
+  operation: ImageGenerationOperation,
+  referenceKind?: FlowReferenceKind,
+): string {
+  if (operation !== "reference") {
+    return OPERATION_INSTRUCTIONS[operation];
+  }
+  if (referenceKind === "sketch" || referenceKind === "composition") {
+    return "The attached image is a layout sketch or spatial composition guide. Use it strictly for camera framing, placement, and spatial balance. Do NOT keep sketch lines, pencil scribbles, or wireframes; render a finished commercial image.";
+  }
+  if (referenceKind === "composite") {
+    return "The attached image is a composite layout combining spatial guide and placed reference product/subject. Preserve product identity and details while interpreting the overall layout into a finished advertising image without sketch artifacts.";
+  }
+  if (referenceKind === "style") {
+    return "The attached image is a style and aesthetic reference. Adopt its color palette, mood, and lighting tone without copying subjects or layout.";
+  }
+  return OPERATION_INSTRUCTIONS.reference;
+}
+
 export function buildFlowImagePromptInstructions(input: {
   operation?: ImageGenerationOperation;
   aspectRatio?: FlowImageAspectRatio;
+  referenceKind?: FlowReferenceKind;
 } = {}): string {
   const operation = input.operation || "simple";
   const aspectRatioInstruction = input.aspectRatio
@@ -130,7 +154,7 @@ Apply these rules only to action.optimizedPrompt when flow is "image" and to eac
 - If visible wording is requested, preserve it exactly, inside quotation marks, with deliberate placement and a general typography style. Do not translate, paraphrase, shorten, or add other wording. Short copy is more reliable, but never silently alter the user's copy.
 - Do not add unrequested text, captions, watermarks, signatures, logos, UI, borders, or decorative frames.
 - Resolve conflicts in favor of the latest explicit user request. Do not describe the instructions or the optimization process.
-Operation: ${OPERATION_INSTRUCTIONS[operation]}
+Operation: ${getOperationInstruction(operation, input.referenceKind)}
 ${aspectRatioInstruction}`;
 }
 
@@ -201,50 +225,99 @@ export function buildLocalFlowImagePrompt(rawPrompt: string): string {
   return `${cleaned}. ${craftDirection}`;
 }
 
-export function prepareFlowImagePrompt(input: {
-  prompt: string;
-  operation?: ImageGenerationOperation;
-  aspectRatio?: FlowImageAspectRatio;
-}): string {
-  const operation = input.operation || "simple";
-  let core = cleanPromptEnvelope(input.prompt);
-  if (!core) return "";
+function appendEditSegments(segments: string[], core: string, assembledCore: string): void {
+  segments[0] = /^edit\b/i.test(core)
+    ? core
+    : `Edit the attached source image. Apply this requested change: ${core}`;
+  appendOnce(
+    segments,
+    "Keep every unrequested subject identity, pose, camera angle, crop, composition, lighting, color, material, and background detail unchanged.",
+    assembledCore,
+    /\bevery unrequested\b|\bkeep all other\b|\bpreserve all other\b/i,
+  );
+}
 
-  core = truncateWords(core, MAX_CORE_PROMPT_WORDS);
-  const segments = [core];
-  const assembledCore = core;
+function appendSketchReference(segments: string[], assembledCore: string): void {
+  if (!hasReferenceLanguage(assembledCore)) {
+    segments.push("The attached image is a layout sketch and spatial composition guide.");
+  }
+  appendOnce(
+    segments,
+    "Use the layout sketch strictly for framing, camera angle, subject positioning, and spatial balance; render a finished, fully photorealistic commercial scene and do not keep or reproduce rough sketch lines, scribbles, pencil marks, or wireframe boxes.",
+    assembledCore,
+    /\bdo not keep or reproduce rough sketch lines\b|\bspatial composition guide\b/i,
+  );
+}
 
-  if (operation === "edit") {
-    segments[0] = /^edit\b/i.test(core)
-      ? core
-      : `Edit the attached source image. Apply this requested change: ${core}`;
+function appendCompositeReference(segments: string[], assembledCore: string): void {
+  if (!hasReferenceLanguage(assembledCore)) {
+    segments.push("The attached image is a prepared layout composition combining spatial placement and visual reference elements.");
+  }
+  appendOnce(
+    segments,
+    "Preserve the identity, colors, materials, and defining details of the placed subject or product, while rendering a cohesive, polished, professional final advertising photograph without sketch lines, wireframes, or rough marks.",
+    assembledCore,
+    /\bwithout sketch lines\b|\bprepared layout composition\b/i,
+  );
+}
+
+function appendStyleReference(segments: string[], assembledCore: string): void {
+  if (!hasReferenceLanguage(assembledCore)) {
+    segments.push("Use the attached image strictly as a style and aesthetic reference.");
+  }
+  appendOnce(
+    segments,
+    "Adopt the color palette, lighting mood, and overall visual tone of the attached image, without copying its specific subjects, layout, or shapes.",
+    assembledCore,
+    /\badopt the color palette\b|\bstyle and aesthetic reference\b/i,
+  );
+}
+
+function appendIdentityReference(segments: string[], assembledCore: string): void {
+  if (!hasReferenceLanguage(assembledCore)) {
+    segments.push("Use the attached image as the visual reference for the main subject or product.");
+  }
+  appendOnce(
+    segments,
+    "Preserve its identity, silhouette, proportions, colors, materials, and defining details; change only what the request explicitly asks to change.",
+    assembledCore,
+    /\bpreserve\b[\s\S]{0,100}\b(identity|silhouette|proportions|defining details)\b/i,
+  );
+}
+
+function appendReferenceSegments(
+  segments: string[],
+  assembledCore: string,
+  referenceKind?: FlowReferenceKind,
+): void {
+  if (referenceKind === "sketch" || referenceKind === "composition") {
+    appendSketchReference(segments, assembledCore);
+  } else if (referenceKind === "composite") {
+    appendCompositeReference(segments, assembledCore);
+  } else if (referenceKind === "style") {
+    appendStyleReference(segments, assembledCore);
+  } else {
+    appendIdentityReference(segments, assembledCore);
+  }
+}
+
+function appendAspectSegments(
+  segments: string[],
+  assembledCore: string,
+  aspectRatio?: FlowImageAspectRatio,
+  operation?: ImageGenerationOperation,
+): void {
+  if (aspectRatio && operation !== "turnaround3d") {
     appendOnce(
       segments,
-      "Keep every unrequested subject identity, pose, camera angle, crop, composition, lighting, color, material, and background detail unchanged.",
+      ASPECT_RATIO_INSTRUCTIONS[aspectRatio],
       assembledCore,
-      /\bevery unrequested\b|\bkeep all other\b|\bpreserve all other\b/i,
-    );
-  } else if (operation === "reference") {
-    if (!hasReferenceLanguage(assembledCore)) {
-      segments.push("Use the attached image as the visual reference for the main subject or product.");
-    }
-    appendOnce(
-      segments,
-      "Preserve its identity, silhouette, proportions, colors, materials, and defining details; change only what the request explicitly asks to change.",
-      assembledCore,
-      /\bpreserve\b[\s\S]{0,100}\b(identity|silhouette|proportions|defining details)\b/i,
+      new RegExp(aspectRatio.replace(":", "\\:")),
     );
   }
+}
 
-  if (input.aspectRatio && operation !== "turnaround3d") {
-    appendOnce(
-      segments,
-      ASPECT_RATIO_INSTRUCTIONS[input.aspectRatio],
-      assembledCore,
-      new RegExp(input.aspectRatio.replace(":", "\\:")),
-    );
-  }
-
+function appendTextIntentSegments(segments: string[], assembledCore: string): void {
   if (hasExplicitTextIntent(assembledCore)) {
     appendOnce(
       segments,
@@ -260,6 +333,30 @@ export function prepareFlowImagePrompt(input: {
       /\bdo not add unrequested text\b|\bno unrequested text\b/i,
     );
   }
+}
+
+export function prepareFlowImagePrompt(input: {
+  prompt: string;
+  operation?: ImageGenerationOperation;
+  aspectRatio?: FlowImageAspectRatio;
+  referenceKind?: FlowReferenceKind;
+}): string {
+  const operation = input.operation || "simple";
+  let core = cleanPromptEnvelope(input.prompt);
+  if (!core) return "";
+
+  core = truncateWords(core, MAX_CORE_PROMPT_WORDS);
+  const segments = [core];
+  const assembledCore = core;
+
+  if (operation === "edit") {
+    appendEditSegments(segments, core, assembledCore);
+  } else if (operation === "reference") {
+    appendReferenceSegments(segments, assembledCore, input.referenceKind);
+  }
+
+  appendAspectSegments(segments, assembledCore, input.aspectRatio, operation);
+  appendTextIntentSegments(segments, assembledCore);
 
   const prepared = normalizePromptWhitespace(segments.join(" "));
   return countWords(prepared) > MAX_FINAL_PROMPT_WORDS

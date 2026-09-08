@@ -9,9 +9,17 @@ import {
 import {
   imageOperationRequiresReference,
   type ImageGenerationOperation,
+  type ImageReferenceKind,
 } from "@/src/providers/flow/ImageGenerationContract";
 
 const IMAGE_OPERATIONS = new Set<ImageGenerationOperation>(["simple", "reference", "turnaround3d", "edit"]);
+const VALID_REFERENCE_KINDS = new Set<ImageReferenceKind>([
+  "identity",
+  "sketch",
+  "style",
+  "composition",
+  "composite",
+]);
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -38,6 +46,7 @@ export async function POST(request: Request) {
       folderName?: unknown;
       originalFilename?: unknown;
       operation?: unknown;
+      referenceKind?: unknown;
     } | null;
 
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -112,8 +121,14 @@ export async function POST(request: Request) {
       return jsonError(`O modo de imagem '${operation}' exige uma referencia valida.`);
     }
 
+    const referenceKindRaw = typeof body?.referenceKind === "string" ? body.referenceKind.trim() : undefined;
+    const referenceKind = referenceKindRaw && VALID_REFERENCE_KINDS.has(referenceKindRaw as ImageReferenceKind)
+      ? (referenceKindRaw as ImageReferenceKind)
+      : undefined;
+
     const options = {
       operation,
+      referenceKind,
       aspectRatio: validatedAspectRatio,
       quantity: validatedQuantity,
       model: model || undefined,

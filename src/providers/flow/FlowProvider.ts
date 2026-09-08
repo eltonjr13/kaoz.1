@@ -95,6 +95,7 @@ export class FlowProvider {
           prompt,
           operation,
           aspectRatio: options?.aspectRatio,
+          referenceKind: options?.referenceKind,
         });
         logger.info('Prompt de imagem preparado para o Google Flow.', {
           operation,
