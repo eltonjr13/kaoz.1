@@ -27,6 +27,7 @@ import {
   type SketchAspectRatio,
   type SketchCanvasAspectRatio,
   type SketchProjectData,
+  type SketchTool,
 } from '@/types/sketch';
 import { SketchCanvas } from './sketch-canvas';
 import { SketchCopyEditor } from './sketch-copy-editor';
@@ -473,7 +474,7 @@ export function SketchDashboard() {
   const [centerView, setCenterView] = useState<CenterViewMode>('canvas');
 
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
-  const [activeTool, setActiveTool] = useState<'brush' | 'box' | 'eraser' | 'select'>('brush');
+  const [activeTool, setActiveTool] = useState<SketchTool>('select');
   const [strokeColor, setStrokeColor] = useState('#6366f1');
   const [strokeSize, setStrokeSize] = useState(6);
   const [boxLabel, setBoxLabel] = useState('Produto');
@@ -708,6 +709,7 @@ export function SketchDashboard() {
         <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
           {centerView === 'canvas' ? (
             <SketchCanvas
+              key={project.id}
               project={project}
               onUpdateProject={handleUpdateProject}
               selectedLayerId={selectedLayerId}
@@ -720,6 +722,28 @@ export function SketchDashboard() {
               setStrokeSize={setStrokeSize}
               boxLabel={boxLabel}
               setBoxLabel={setBoxLabel}
+              onApply={(appliedLayers) => {
+                if (project) {
+                  const toSave = {
+                    ...project,
+                    layers: appliedLayers || project.layers,
+                    updatedAt: new Date().toISOString(),
+                  };
+                  setProject(toSave);
+                  persistToBackend(toSave);
+                }
+              }}
+              onCancel={(restoredLayers) => {
+                if (project) {
+                  const toSave = {
+                    ...project,
+                    layers: restoredLayers || project.layers,
+                    updatedAt: new Date().toISOString(),
+                  };
+                  setProject(toSave);
+                  persistToBackend(toSave);
+                }
+              }}
             />
           ) : (
             <SketchCompositePreviewPanel project={project} />

@@ -114,6 +114,15 @@ export interface SketchPath {
   isGuide?: boolean;
 }
 
+export type SketchElementKind = 'final' | 'guide' | 'annotation';
+export type SketchTool = 'select' | 'brush' | 'eraser' | 'text' | 'rect' | 'circle' | 'line' | 'arrow';
+export type ShapeType = 'rect' | 'circle' | 'line' | 'arrow';
+
+export const MAX_SKETCH_ATTACHMENTS = 6;
+export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_IMAGE_DIMENSION = 8192;
+export const MAX_IMAGE_MEGAPIXELS = 40;
+
 export interface BaseLayer {
   schemaVersion?: number;
   id: string;
@@ -122,6 +131,7 @@ export interface BaseLayer {
   opacity: number; // 0 to 1
   locked?: boolean;
   isGuide?: boolean;
+  elementKind?: SketchElementKind;
   exportToProvider?: boolean;
 }
 
@@ -159,6 +169,7 @@ export interface TextLayer extends BaseLayer {
   x: number; // in percentage of canvas width (0 to 100)
   y: number; // in percentage of canvas height (0 to 100)
   width: number; // in percentage of canvas width
+  height?: number; // in percentage of canvas height
   fontSize: number; // in px at base reference size
   fontFamily: string;
   fontWeight: string;
@@ -168,9 +179,25 @@ export interface TextLayer extends BaseLayer {
   backgroundPadding?: number;
   borderRadius?: number;
   textTransform?: 'none' | 'uppercase' | 'capitalize';
+  rotation?: number;
 }
 
-export type SketchLayer = BackgroundLayer | SketchDrawingLayer | ImageLayer | TextLayer;
+export interface ShapeLayer extends BaseLayer {
+  type: 'shape';
+  shapeType: ShapeType;
+  x: number; // in percentage of canvas width (0 to 100)
+  y: number; // in percentage of canvas height (0 to 100)
+  width: number; // in percentage of canvas width
+  height: number; // in percentage of canvas height
+  strokeColor: string;
+  strokeWidth: number;
+  fillColor?: string;
+  rotation?: number;
+  endX?: number;
+  endY?: number;
+}
+
+export type SketchLayer = BackgroundLayer | SketchDrawingLayer | ImageLayer | TextLayer | ShapeLayer;
 
 export interface SketchGuide {
   id: string;

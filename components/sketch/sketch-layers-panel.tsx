@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   Pencil,
   Sliders,
+  Square,
 } from 'lucide-react';
 import type {
   ImageLayer,
@@ -124,6 +125,7 @@ export function SketchLayersPanel({
     if (type === 'background') return <Layers size={13} className="text-amber-400" />;
     if (type === 'sketch') return <Pencil size={13} className="text-indigo-400" />;
     if (type === 'image') return <ImageIcon size={13} className="text-emerald-400" />;
+    if (type === 'shape') return <Square size={13} className="text-violet-400" />;
     return <Type size={13} className="text-blue-400" />;
   };
 

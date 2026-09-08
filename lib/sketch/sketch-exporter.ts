@@ -6,6 +6,7 @@ import {
   type BackgroundLayer,
   type FlowSupportedAspectRatio,
   type ImageLayer,
+  type ShapeLayer,
   type SketchCanvasAspectRatio,
   type SketchLayer,
   type SketchPath,
@@ -88,7 +89,13 @@ function drawBoxPath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: nu
 
 function drawStrokePath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: number, scaleY: number) {
   if (path.points.length === 0) return;
-  ctx.strokeStyle = path.tool === 'eraser' ? '#ffffff' : path.color;
+  if (path.tool === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = path.color;
+  }
   ctx.lineWidth = Math.max(1, path.size * scaleX);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -101,6 +108,7 @@ function drawStrokePath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX:
     ctx.lineTo(p.x * scaleX, p.y * scaleY);
   }
   ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 function drawSketchPath(ctx: CanvasRenderingContext2D, path: SketchPath, scaleX: number, scaleY: number) {
@@ -258,9 +266,24 @@ function renderSketchDrawingLayer(
 ) {
   const scaleX = preset.width / 1080;
   const scaleY = preset.height / 1080;
+  let offCanvas: HTMLCanvasElement | null = null;
+  let drawCtx = ctx;
+
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    offCanvas = document.createElement('canvas');
+    offCanvas.width = preset.width;
+    offCanvas.height = preset.height;
+    const oCtx = offCanvas.getContext('2d');
+    if (oCtx) drawCtx = oCtx;
+  }
+
   for (const path of layer.paths) {
     if (excludeGuides && path.isGuide) continue;
-    drawSketchPath(ctx, path, scaleX, scaleY);
+    drawSketchPath(drawCtx, path, scaleX, scaleY);
+  }
+
+  if (offCanvas && drawCtx !== ctx) {
+    ctx.drawImage(offCanvas, 0, 0);
   }
 }
 
@@ -278,15 +301,169 @@ export function resolveCanvasDimensionPreset(project: SketchProjectData): Aspect
   return basePreset;
 }
 
-function renderSingleLayer(
+function drawArrowShape(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  strokeColor: string,
+  lineWidth: number
+) {
+  ctx.strokeStyle = strokeColor;
+  ctx.fillStyle = strokeColor;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  const headAngle = Math.atan2(y2 - y1, x2 - x1);
+  const headLen = Math.max(12, lineWidth * 3);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(
+    x2 - headLen * Math.cos(headAngle - Math.PI / 6),
+    y2 - headLen * Math.sin(headAngle - Math.PI / 6)
+  );
+  ctx.lineTo(
+    x2 - headLen * Math.cos(headAngle + Math.PI / 6),
+    y2 - headLen * Math.sin(headAngle + Math.PI / 6)
+  );
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawRectShape(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  strokeColor: string,
+  lineWidth: number,
+  fillColor?: string
+) {
+  if (fillColor && fillColor !== 'transparent') {
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(0, 0, w, h);
+  }
+  if (lineWidth > 0) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineWidth;
+    ctx.strokeRect(0, 0, w, h);
+  }
+}
+
+function drawCircleShape(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  strokeColor: string,
+  lineWidth: number,
+  fillColor?: string
+) {
+  const rx = w / 2;
+  const ry = h / 2;
+  ctx.beginPath();
+  ctx.ellipse(rx, ry, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2);
+  if (fillColor && fillColor !== 'transparent') {
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+  }
+  if (lineWidth > 0) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+}
+
+function drawLineShape(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  strokeColor: string,
+  lineWidth: number
+) {
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function drawLineOrArrowShape(
+  ctx: CanvasRenderingContext2D,
+  layer: ShapeLayer,
+  shapeW: number,
+  shapeH: number,
+  lineWidth: number
+) {
+  const isHoriz = layer.rotation !== undefined || layer.height <= 8;
+  const y1 = isHoriz ? shapeH / 2 : 0;
+  const y2 = isHoriz ? shapeH / 2 : shapeH;
+  if (layer.shapeType === 'arrow') {
+    drawArrowShape(ctx, 0, y1, shapeW, y2, layer.strokeColor, lineWidth);
+  } else {
+    drawLineShape(ctx, 0, y1, shapeW, y2, layer.strokeColor, lineWidth);
+  }
+}
+
+function renderShapeContent(
+  ctx: CanvasRenderingContext2D,
+  layer: ShapeLayer,
+  shapeW: number,
+  shapeH: number,
+  lineWidth: number
+) {
+  if (layer.shapeType === 'circle') {
+    drawCircleShape(ctx, shapeW, shapeH, layer.strokeColor, lineWidth, layer.fillColor);
+  } else if (layer.shapeType === 'rect') {
+    drawRectShape(ctx, shapeW, shapeH, layer.strokeColor, lineWidth, layer.fillColor);
+  } else {
+    drawLineOrArrowShape(ctx, layer, shapeW, shapeH, lineWidth);
+  }
+}
+
+function drawShapeLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: ShapeLayer,
+  width: number,
+  height: number
+) {
+  if (!layer.visible) return;
+  ctx.save();
+  ctx.globalAlpha = layer.opacity;
+
+  const posX = (layer.x / 100) * width;
+  const posY = (layer.y / 100) * height;
+  const shapeW = (layer.width / 100) * width;
+  const shapeH = (layer.height / 100) * height;
+  const lineWidth = Math.max(1, (layer.strokeWidth / 1080) * width);
+
+  ctx.translate(posX + shapeW / 2, posY + shapeH / 2);
+  if (layer.rotation) {
+    ctx.rotate((layer.rotation * Math.PI) / 180);
+  }
+  ctx.translate(-shapeW / 2, -shapeH / 2);
+
+  renderShapeContent(ctx, layer, shapeW, shapeH, lineWidth);
+
+  ctx.restore();
+}
+
+function isGuideOrAnnotation(layer: SketchLayer): boolean {
+  return Boolean(layer.isGuide || layer.elementKind === 'guide' || layer.elementKind === 'annotation');
+}
+
+function dispatchLayerDraw(
   ctx: CanvasRenderingContext2D,
   layer: SketchLayer,
   preset: AspectRatioDimension,
   loadedImages: Map<string, HTMLImageElement>,
-  excludeGuides = false
+  excludeGuides: boolean
 ) {
-  if (layer.exportToProvider === false) return;
-  if (excludeGuides && layer.isGuide) return;
   if (layer.type === 'background') {
     drawBackgroundLayer(ctx, layer, preset.width, preset.height, loadedImages);
   } else if (layer.type === 'sketch' && layer.visible) {
@@ -295,7 +472,21 @@ function renderSingleLayer(
     drawImageLayer(ctx, layer, preset.width, preset.height, loadedImages);
   } else if (layer.type === 'text') {
     drawTextLayer(ctx, layer, preset.width, preset.height);
+  } else if (layer.type === 'shape') {
+    drawShapeLayer(ctx, layer as ShapeLayer, preset.width, preset.height);
   }
+}
+
+function renderSingleLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: SketchLayer,
+  preset: AspectRatioDimension,
+  loadedImages: Map<string, HTMLImageElement>,
+  excludeGuides = false
+) {
+  if (layer.exportToProvider === false) return;
+  if (excludeGuides && isGuideOrAnnotation(layer)) return;
+  dispatchLayerDraw(ctx, layer, preset, loadedImages, excludeGuides);
 }
 
 export async function renderCompositionToCanvas(
@@ -328,7 +519,7 @@ function shouldSkipLayerForComposite(
 ): boolean {
   if (!layer.visible) return true;
   if (layer.exportToProvider === false) return true;
-  if (excludeGuides && layer.isGuide) return true;
+  if (excludeGuides && isGuideOrAnnotation(layer)) return true;
   if (excludeText && layer.type === 'text') return true;
   return false;
 }

@@ -23,6 +23,7 @@ import {
   type AttachmentRole,
   type BackgroundLayer,
   type ImageLayer,
+  type ShapeLayer,
   type SketchCanvasAspectRatio,
   type SketchLayer,
   type SketchProjectData,
@@ -260,6 +261,76 @@ function BackgroundLayerControls({
   );
 }
 
+function ShapeLayerControls({
+  layer,
+  onUpdate,
+}: {
+  layer: ShapeLayer;
+  onUpdate: (updater: (l: ShapeLayer) => ShapeLayer) => void;
+}) {
+  const isLineOrArrow = layer.shapeType === 'line' || layer.shapeType === 'arrow';
+
+  return (
+    <div className="flex flex-col gap-3 pt-1">
+      <div className="flex items-center justify-between text-[11px] text-zinc-300">
+        <span>Tipo de Forma</span>
+        <span className="font-semibold uppercase text-indigo-400 font-mono text-[10px]">{layer.shapeType}</span>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-zinc-300">Cor do Traço</span>
+        <input
+          type="color"
+          value={layer.strokeColor}
+          onChange={(e) => onUpdate((l) => ({ ...l, strokeColor: e.target.value }))}
+          className="h-6 w-8 cursor-pointer rounded border border-zinc-700 bg-transparent"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+          <span>Espessura ({layer.strokeWidth}px)</span>
+        </div>
+        <input
+          type="range"
+          min={1}
+          max={48}
+          value={layer.strokeWidth}
+          onChange={(e) => onUpdate((l) => ({ ...l, strokeWidth: Number(e.target.value) }))}
+          className="accent-indigo-500"
+        />
+      </div>
+
+      {!isLineOrArrow && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-zinc-300">Preenchimento</span>
+          <input
+            type="color"
+            value={layer.fillColor && layer.fillColor !== 'transparent' ? layer.fillColor : '#000000'}
+            onChange={(e) => onUpdate((l) => ({ ...l, fillColor: e.target.value }))}
+            className="h-6 w-8 cursor-pointer rounded border border-zinc-700 bg-transparent"
+          />
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+          <span>Rotação</span>
+          <span>{layer.rotation || 0}°</span>
+        </div>
+        <input
+          type="range"
+          min={-180}
+          max={180}
+          value={layer.rotation || 0}
+          onChange={(e) => onUpdate((l) => ({ ...l, rotation: Number(e.target.value) }))}
+          className="accent-indigo-500"
+        />
+      </div>
+    </div>
+  );
+}
+
 function CanvasDocumentProperties({
   project,
   onUpdateProject,
@@ -386,6 +457,10 @@ export function SketchPropertiesPanel({
 
       {selectedLayer.type === 'image' && (
         <ImageLayerControls layer={selectedLayer as ImageLayer} onUpdate={updateSelectedLayer} />
+      )}
+
+      {selectedLayer.type === 'shape' && (
+        <ShapeLayerControls layer={selectedLayer as ShapeLayer} onUpdate={updateSelectedLayer} />
       )}
 
       {selectedLayer.type === 'background' && (

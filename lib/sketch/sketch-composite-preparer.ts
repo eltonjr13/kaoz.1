@@ -70,7 +70,8 @@ function resolveImageLayerRole(layer: ImageLayer, attachments?: SketchAttachment
 
 function isEligibleImageLayer(layer: SketchLayer): layer is ImageLayer {
   if (layer.type !== 'image') return false;
-  if (!layer.visible || layer.isGuide || layer.exportToProvider === false) return false;
+  const isGuide = Boolean(layer.isGuide || layer.elementKind === 'guide' || layer.elementKind === 'annotation');
+  if (!layer.visible || isGuide || layer.exportToProvider === false) return false;
   return Boolean(layer.imageUrl);
 }
 

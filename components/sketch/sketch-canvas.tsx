@@ -1,372 +1,434 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { AlertCircle } from 'lucide-react';
 import {
-  Pencil,
-  Square,
-  Eraser,
-  RotateCcw,
-  RotateCw,
-  Trash2,
-  Eye,
-  EyeOff,
-  Move,
-  Type,
-} from 'lucide-react';
-import {
-  ASPECT_RATIO_PRESETS,
   CANVAS_ASPECT_RATIO_PRESETS,
+  MAX_SKETCH_ATTACHMENTS,
+  MAX_ATTACHMENT_SIZE_BYTES,
   type BackgroundLayer,
   type ImageLayer,
+  type ShapeLayer,
+  type ShapeType,
   type SketchDrawingLayer,
   type SketchLayer,
   type SketchPath,
-  type SketchProjectData,
+  type SketchTool,
   type TextLayer,
 } from '@/types/sketch';
+import type { HandleType, ShapeDraft, SketchCanvasProps } from './canvas/canvas-types';
+import { CanvasTopBar } from './canvas/canvas-top-bar';
+import { CanvasLateralBar } from './canvas/canvas-lateral-bar';
+import { CanvasBottomBar } from './canvas/canvas-bottom-bar';
+import { CanvasTransformBox } from './canvas/canvas-transform-box';
+import {
+  ImageOverlay,
+  ShapeOverlay,
+  TextOverlay,
+} from './canvas/canvas-layer-renderers';
+import {
+  calculateResizeBounds,
+  calculateRotationAngle,
+  duplicateLayerObject,
+  reorderLayers,
+} from './canvas/canvas-transform-math';
 
-interface SketchCanvasProps {
-  project: SketchProjectData;
-  onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
-  selectedLayerId: string | null;
-  onSelectLayer: (layerId: string | null) => void;
-  activeTool: 'brush' | 'box' | 'eraser' | 'select';
-  setActiveTool: (tool: 'brush' | 'box' | 'eraser' | 'select') => void;
-  strokeColor: string;
-  setStrokeColor: (color: string) => void;
-  strokeSize: number;
-  setStrokeSize: (size: number) => void;
-  boxLabel: string;
-  setBoxLabel: (label: string) => void;
+function isShapeTool(tool: SketchTool): tool is ShapeType {
+  return tool === 'rect' || tool === 'circle' || tool === 'line' || tool === 'arrow';
 }
 
-function drawCanvasBoxPath(ctx: CanvasRenderingContext2D, p: SketchPath, scaleX: number, scaleY: number) {
-  if (!p.boxRect) return;
-  const rx = p.boxRect.x * scaleX;
-  const ry = p.boxRect.y * scaleY;
-  const rw = p.boxRect.width * scaleX;
-  const rh = p.boxRect.height * scaleY;
-
-  ctx.strokeStyle = p.color;
-  ctx.lineWidth = Math.max(2, p.size * scaleX);
-  ctx.setLineDash([6, 4]);
-  ctx.strokeRect(rx, ry, rw, rh);
-  ctx.setLineDash([]);
-
-  if (p.boxLabel) {
-    ctx.fillStyle = p.color;
-    ctx.font = `600 ${Math.max(12, 14 * scaleX)}px sans-serif`;
-    ctx.fillText(p.boxLabel, rx + 6, ry + 18);
-  }
+function resolveRotatedPoint(
+  px: number,
+  py: number,
+  cx: number,
+  cy: number,
+  deg: number
+): { x: number; y: number } {
+  const rad = (-deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = px - cx;
+  const dy = py - cy;
+  return {
+    x: cx + (dx * cos - dy * sin),
+    y: cy + (dx * sin + dy * cos),
+  };
 }
 
-function drawCanvasStrokePath(ctx: CanvasRenderingContext2D, p: SketchPath, scaleX: number, scaleY: number) {
-  if (p.points.length === 0) return;
-  ctx.strokeStyle = p.tool === 'eraser' ? '#ffffff' : p.color;
-  ctx.lineWidth = Math.max(1, p.size * scaleX);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(p.points[0].x * scaleX, p.points[0].y * scaleY);
-  for (let i = 1; i < p.points.length; i++) {
-    ctx.lineTo(p.points[i].x * scaleX, p.points[i].y * scaleY);
-  }
-  ctx.stroke();
+function isInteractiveLayer(l: SketchLayer): boolean {
+  if (!l.visible) return false;
+  return l.type !== 'background' && l.type !== 'sketch';
 }
 
-function isLayerHit(layer: SketchLayer, pctX: number, pctY: number): boolean {
-  if ((layer.type !== 'text' && layer.type !== 'image') || !layer.visible) return false;
-  const lx = layer.x;
-  const ly = layer.y;
-  const lw = layer.width || 30;
-  const lh = layer.type === 'image' ? (layer as ImageLayer).height || 30 : 10;
-  return pctX >= lx && pctX <= lx + lw && pctY >= ly && pctY <= ly + lh;
+function isPointInBounds(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+  return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
-function hitTestLayer(layers: SketchLayer[], pctX: number, pctY: number): (ImageLayer | TextLayer) | null {
+function resolveLayerDimensions(target: ImageLayer | TextLayer | ShapeLayer): { w: number; h: number } {
+  const w = target.width || 30;
+  const defaultH = target.type === 'text' ? 12 : 30;
+  return { w, h: target.height || defaultH };
+}
+
+function isLayerHit(l: SketchLayer, pctX: number, pctY: number): boolean {
+  if (!isInteractiveLayer(l)) return false;
+  const target = l as ImageLayer | TextLayer | ShapeLayer;
+  const { w, h } = resolveLayerDimensions(target);
+
+  const pt = target.rotation
+    ? resolveRotatedPoint(pctX, pctY, target.x + w / 2, target.y + h / 2, target.rotation)
+    : { x: pctX, y: pctY };
+
+  return isPointInBounds(pt.x, pt.y, target.x, target.y, w, h);
+}
+
+function hitTestLayer(layers: SketchLayer[], pctX: number, pctY: number): SketchLayer | null {
   for (let i = layers.length - 1; i >= 0; i--) {
-    const layer = layers[i];
-    if (isLayerHit(layer, pctX, pctY)) return layer as ImageLayer | TextLayer;
+    if (isLayerHit(layers[i], pctX, pctY)) return layers[i];
   }
   return null;
 }
 
-function renderCanvasBackground(
+function drawPathsOnContext(
   ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  layer?: BackgroundLayer
+  paths: SketchPath[],
+  scaleX: number,
+  scaleY: number
 ) {
-  if (!layer?.visible || layer.fillType !== 'color') return;
-  ctx.save();
-  ctx.globalAlpha = layer.opacity;
-  ctx.fillStyle = layer.color || '#0b0d13';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.restore();
-}
-
-function renderCanvasSketch(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  layer?: SketchDrawingLayer,
-  currentPath?: SketchPath | null
-) {
-  if (!layer?.visible) return;
-  const scaleX = canvas.width / 1080;
-  const scaleY = canvas.height / 1080;
-  const allPaths = currentPath ? [...layer.paths, currentPath] : layer.paths;
-
-  ctx.save();
-  ctx.globalAlpha = layer.opacity;
-  for (const p of allPaths) {
-    if (p.tool === 'box') {
-      drawCanvasBoxPath(ctx, p, scaleX, scaleY);
+  for (const p of paths) {
+    if (p.points.length === 0) continue;
+    if (p.tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
     } else {
-      drawCanvasStrokePath(ctx, p, scaleX, scaleY);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = p.color;
     }
+    ctx.lineWidth = Math.max(1, p.size * scaleX);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p.points[0].x * scaleX, p.points[0].y * scaleY);
+    for (let i = 1; i < p.points.length; i++) {
+      ctx.lineTo(p.points[i].x * scaleX, p.points[i].y * scaleY);
+    }
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
   }
-  ctx.restore();
 }
 
-function ImageOverlay({
-  layer,
-  isSelected,
-  onSelect,
-}: {
-  layer: ImageLayer;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <div
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-      className={`absolute cursor-move transition-[outline] ${
-        isSelected ? 'ring-2 ring-indigo-500 shadow-lg' : 'hover:ring-1 hover:ring-zinc-500'
-      }`}
-      style={{
-        left: `${layer.x}%`,
-        top: `${layer.y}%`,
-        width: `${layer.width}%`,
-        height: `${layer.height}%`,
-        opacity: layer.opacity,
-        transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={layer.imageUrl}
-        alt={layer.name}
-        className="h-full w-full object-contain pointer-events-none"
-      />
-      {isSelected && (
-        <div className="absolute -top-5 left-0 rounded bg-indigo-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-          {layer.name}
-        </div>
-      )}
-    </div>
-  );
+function createLineOrArrowShape(
+  type: 'line' | 'arrow',
+  draft: ShapeDraft,
+  color: string,
+  size: number
+): ShapeLayer {
+  const dx = draft.currentX - draft.startX;
+  const dy = draft.currentY - draft.startY;
+  const length = Math.max(6, Math.hypot(dx, dy));
+  const angle = Math.round((Math.atan2(dy, dx) * 180) / Math.PI);
+  const thickness = Math.max(4, (size / 1080) * 100 * 2.5);
+  const cx = (draft.startX + draft.currentX) / 2;
+  const cy = (draft.startY + draft.currentY) / 2;
+
+  return {
+    id: `layer-shape-${Date.now()}`,
+    name: type === 'arrow' ? 'Seta' : 'Linha',
+    type: 'shape',
+    shapeType: type,
+    x: Math.max(0, Math.min(95, cx - length / 2)),
+    y: Math.max(0, Math.min(95, cy - thickness / 2)),
+    width: length,
+    height: thickness,
+    strokeColor: color,
+    strokeWidth: size,
+    fillColor: 'transparent',
+    rotation: angle,
+    visible: true,
+    opacity: 1,
+  };
 }
 
-function TextOverlay({
-  layer,
-  isSelected,
-  onSelect,
-}: {
-  layer: TextLayer;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <div
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-      className={`absolute cursor-move whitespace-pre-line rounded transition-[outline] ${
-        isSelected ? 'ring-2 ring-indigo-500 shadow-lg' : 'hover:ring-1 hover:ring-zinc-500'
-      }`}
-      style={{
-        left: `${layer.x}%`,
-        top: `${layer.y}%`,
-        width: `${layer.width}%`,
-        opacity: layer.opacity,
-        color: layer.color,
-        fontSize: `calc(${layer.fontSize}px * 0.45)`,
-        fontFamily: layer.fontFamily,
-        fontWeight: layer.fontWeight,
-        textAlign: layer.textAlign,
-        backgroundColor: layer.backgroundColor || 'transparent',
-        padding: layer.backgroundPadding ? `calc(${layer.backgroundPadding}px * 0.45)` : undefined,
-        borderRadius: layer.borderRadius ? `${layer.borderRadius}px` : undefined,
-        textTransform: layer.textTransform,
-        lineHeight: 1.25,
-      }}
-    >
-      {layer.text}
-      {isSelected && (
-        <div className="absolute -top-5 left-0 flex items-center gap-1 rounded bg-indigo-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-          <Type size={10} />
-          <span>{layer.name}</span>
-        </div>
-      )}
-    </div>
-  );
+function createShapeLayerFromDraft(
+  draft: ShapeDraft,
+  strokeColor: string,
+  strokeSize: number
+): ShapeLayer {
+  if (draft.type === 'line' || draft.type === 'arrow') {
+    return createLineOrArrowShape(draft.type, draft, strokeColor, strokeSize);
+  }
+
+  const minX = Math.min(draft.startX, draft.currentX);
+  const minY = Math.min(draft.startY, draft.currentY);
+  const w = Math.max(4, Math.abs(draft.currentX - draft.startX));
+  const h = Math.max(4, Math.abs(draft.currentY - draft.startY));
+
+  return {
+    id: `layer-shape-${Date.now()}`,
+    name: draft.type === 'circle' ? 'Círculo' : 'Retângulo',
+    type: 'shape',
+    shapeType: draft.type,
+    x: minX,
+    y: minY,
+    width: w,
+    height: h,
+    strokeColor,
+    strokeWidth: strokeSize,
+    fillColor: 'transparent',
+    rotation: 0,
+    visible: true,
+    opacity: 1,
+  };
 }
 
-function SketchCanvasToolbar({
-  activeTool,
-  setActiveTool,
+function ShapeDraftPreview({
+  draft,
   strokeColor,
-  setStrokeColor,
   strokeSize,
-  setStrokeSize,
-  boxLabel,
-  setBoxLabel,
-  hasSketch,
-  sketchVisible,
-  onToggleSketch,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
-  onClear,
 }: {
-  activeTool: 'brush' | 'box' | 'eraser' | 'select';
-  setActiveTool: (tool: 'brush' | 'box' | 'eraser' | 'select') => void;
+  draft: ShapeDraft;
   strokeColor: string;
-  setStrokeColor: (color: string) => void;
   strokeSize: number;
-  setStrokeSize: (size: number) => void;
-  boxLabel: string;
-  setBoxLabel: (label: string) => void;
-  hasSketch: boolean;
-  sketchVisible: boolean;
-  onToggleSketch: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
-  onClear: () => void;
+}) {
+  if (draft.type === 'line' || draft.type === 'arrow') {
+    const markerId = 'draft-arrow-head';
+    return (
+      <svg className="absolute inset-0 h-full w-full pointer-events-none z-30 overflow-visible">
+        {draft.type === 'arrow' && (
+          <defs>
+            <marker id={markerId} markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L9,3 z" fill={strokeColor} />
+            </marker>
+          </defs>
+        )}
+        <line
+          x1={`${draft.startX}%`}
+          y1={`${draft.startY}%`}
+          x2={`${draft.currentX}%`}
+          y2={`${draft.currentY}%`}
+          stroke={strokeColor}
+          strokeWidth={Math.max(2, strokeSize * 0.4)}
+          strokeDasharray="4 4"
+          markerEnd={draft.type === 'arrow' ? `url(#${markerId})` : undefined}
+        />
+      </svg>
+    );
+  }
+
+  const minX = Math.min(draft.startX, draft.currentX);
+  const minY = Math.min(draft.startY, draft.currentY);
+  const w = Math.abs(draft.currentX - draft.startX);
+  const h = Math.abs(draft.currentY - draft.startY);
+
+  return (
+    <div
+      className={`absolute pointer-events-none border-2 border-dashed border-indigo-400 z-30 ${
+        draft.type === 'circle' ? 'rounded-full' : 'rounded-sm'
+      }`}
+      style={{
+        left: `${minX}%`,
+        top: `${minY}%`,
+        width: `${w}%`,
+        height: `${h}%`,
+      }}
+    />
+  );
+}
+
+function validateFileBeforeUpload(file: File, currentCount: number): string | null {
+  if (currentCount >= MAX_SKETCH_ATTACHMENTS) {
+    return `Limite máximo de ${MAX_SKETCH_ATTACHMENTS} anexos atingido. Remova um anexo antes de adicionar outro.`;
+  }
+  if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+    return `Arquivo "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) excede o limite de 10 MB.`;
+  }
+  const type = file.type.toLowerCase();
+  const isAccepted = type === 'image/png' || type === 'image/jpeg' || type === 'image/webp' || type === 'image/jpg';
+  if (type && !isAccepted) {
+    return `Formato de arquivo não suportado. Utilize PNG, JPEG ou WebP.`;
+  }
+  return null;
+}
+
+async function uploadPastedOrDroppedFile(file: File, projectId?: string, currentCount?: number) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('role', 'product');
+  formData.append('name', file.name || 'pasted-image.png');
+  if (projectId) formData.append('projectId', projectId);
+  if (currentCount !== undefined) formData.append('currentAttachmentCount', String(currentCount));
+
+  const res = await fetch('/api/sketch/attachments', {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success || !data.attachment) {
+    throw new Error(data.error || 'Falha ao salvar anexo');
+  }
+  return data.attachment;
+}
+
+function isTypingInInput(target: HTMLElement | null): boolean {
+  if (!target) return false;
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+}
+
+function handleHistoryKeyShortcuts(e: KeyboardEvent, onUndo: () => void, onRedo: () => void): boolean {
+  if (!e.ctrlKey && !e.metaKey) return false;
+  const key = e.key.toLowerCase();
+  if (key === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) onRedo();
+    else onUndo();
+    return true;
+  }
+  if (key === 'y') {
+    e.preventDefault();
+    onRedo();
+    return true;
+  }
+  return false;
+}
+
+function handleDeleteKeyShortcut(
+  e: KeyboardEvent,
+  selectedId: string | null,
+  layers: SketchLayer[],
+  onDelete: (id: string) => void
+): boolean {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return false;
+  if (!selectedId) return false;
+  const target = layers.find((l) => l.id === selectedId);
+  if (target && target.type !== 'background' && target.type !== 'sketch' && !target.locked) {
+    e.preventDefault();
+    onDelete(selectedId);
+    return true;
+  }
+  return false;
+}
+
+function createNewTextLayer(x: number, y: number, color: string): TextLayer {
+  return {
+    id: `layer-text-${Date.now()}`,
+    name: 'Texto',
+    type: 'text',
+    role: 'custom',
+    text: 'Novo Texto',
+    x: Math.max(0, Math.min(80, x)),
+    y: Math.max(0, Math.min(90, y)),
+    width: 36,
+    fontSize: 32,
+    fontFamily: 'Inter, sans-serif',
+    fontWeight: '700',
+    color,
+    textAlign: 'left',
+    visible: true,
+    opacity: 1,
+  };
+}
+
+function startBrushStroke(
+  activeTool: 'brush' | 'eraser',
+  x: number,
+  y: number,
+  color: string,
+  size: number
+): SketchPath {
+  return {
+    id: `path-${Date.now()}`,
+    tool: activeTool,
+    color,
+    size,
+    opacity: 1,
+    points: [{ x: (x * 1080) / 100, y: (y * 1080) / 100 }],
+  };
+}
+
+function getPointerCoords(e: React.PointerEvent, artboard: HTMLDivElement | null) {
+  if (!artboard) return { pctX: 0, pctY: 0, clientX: e.clientX, clientY: e.clientY };
+  const rect = artboard.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+  return {
+    pctX: Math.max(0, Math.min(100, (clickX / rect.width) * 100)),
+    pctY: Math.max(0, Math.min(100, (clickY / rect.height) * 100)),
+    clientX: e.clientX,
+    clientY: e.clientY,
+  };
+}
+
+function resolveArtboardCursor(isCleanPreview: boolean, activeTool: SketchTool): string {
+  if (isCleanPreview) return 'default';
+  return activeTool === 'select' ? 'default' : 'crosshair';
+}
+
+function resolveArtboardBg(bg?: BackgroundLayer): string {
+  if (bg?.visible && bg.fillType === 'color' && bg.color) {
+    return bg.color;
+  }
+  return '#0d1117';
+}
+
+function CanvasArtboardBackground({ bg }: { bg?: BackgroundLayer }) {
+  if (!bg?.imageUrl || !bg.visible) return null;
+  return (
+    <img
+      src={bg.imageUrl}
+      alt="Fundo"
+      className="pointer-events-none absolute inset-0 h-full w-full object-cover select-none"
+      style={{ opacity: bg.opacity }}
+    />
+  );
+}
+
+function CanvasLayersList({
+  layers,
+  isCleanPreview,
+  onSelectLayer,
+}: {
+  layers: SketchLayer[];
+  isCleanPreview: boolean;
+  onSelectLayer: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] bg-[#0d1017] px-4 py-2 text-xs">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setActiveTool('select')}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors ${
-            activeTool === 'select' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-          }`}
-        >
-          <Move size={14} />
-          <span>Mover</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTool('brush')}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors ${
-            activeTool === 'brush' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-          }`}
-        >
-          <Pencil size={14} />
-          <span>Pincel</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTool('box')}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors ${
-            activeTool === 'box' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-          }`}
-        >
-          <Square size={14} />
-          <span>Bloco</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTool('eraser')}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors ${
-            activeTool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-          }`}
-        >
-          <Eraser size={14} />
-          <span>Borracha</span>
-        </button>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {activeTool === 'box' && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-zinc-400">Rótulo:</span>
-            <input
-              type="text"
-              value={boxLabel}
-              onChange={(e) => setBoxLabel(e.target.value)}
-              className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-white outline-none"
-            />
-          </div>
-        )}
-
-        {activeTool !== 'select' && (
-          <>
-            <div className="flex items-center gap-1.5">
-              <span className="text-zinc-400">Cor:</span>
-              <input
-                type="color"
-                value={strokeColor}
-                onChange={(e) => setStrokeColor(e.target.value)}
-                className="h-6 w-7 cursor-pointer rounded border border-zinc-700 bg-transparent"
+    <>
+      {layers
+        .filter((l) => l.visible && l.type !== 'background' && l.type !== 'sketch')
+        .map((layer) => {
+          if (layer.type === 'image') {
+            return (
+              <ImageOverlay
+                key={layer.id}
+                layer={layer as ImageLayer}
+                isCleanPreview={isCleanPreview}
+                onSelect={() => !isCleanPreview && onSelectLayer(layer.id)}
               />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-zinc-400">Tam:</span>
-              <input
-                type="range"
-                min="2"
-                max="24"
-                value={strokeSize}
-                onChange={(e) => setStrokeSize(Number(e.target.value))}
-                className="w-16 accent-indigo-500"
+            );
+          }
+          if (layer.type === 'text') {
+            return (
+              <TextOverlay
+                key={layer.id}
+                layer={layer as TextLayer}
+                isCleanPreview={isCleanPreview}
+                onSelect={() => !isCleanPreview && onSelectLayer(layer.id)}
               />
-            </div>
-          </>
-        )}
-
-        {hasSketch && (
-          <button
-            type="button"
-            onClick={onToggleSketch}
-            className={`p-1.5 rounded border border-zinc-700 ${sketchVisible ? 'text-indigo-400' : 'text-zinc-500'}`}
-          >
-            {sketchVisible ? <Eye size={14} /> : <EyeOff size={14} />}
-          </button>
-        )}
-
-        <div className="flex items-center gap-1 border-l border-zinc-700 pl-3">
-          <button
-            type="button"
-            onClick={onUndo}
-            disabled={!canUndo}
-            className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
-          >
-            <RotateCcw size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={onRedo}
-            disabled={!canRedo}
-            className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
-          >
-            <RotateCw size={14} />
-          </button>
-          <button type="button" onClick={onClear} className="p-1.5 text-zinc-400 hover:text-rose-400">
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
+            );
+          }
+          if (layer.type === 'shape') {
+            return (
+              <ShapeOverlay
+                key={layer.id}
+                layer={layer as ShapeLayer}
+                isCleanPreview={isCleanPreview}
+                onSelect={() => !isCleanPreview && onSelectLayer(layer.id)}
+              />
+            );
+          }
+          return null;
+        })}
+    </>
   );
 }
 
@@ -381,271 +443,557 @@ export function SketchCanvas({
   setStrokeColor,
   strokeSize,
   setStrokeSize,
-  boxLabel,
-  setBoxLabel,
+  onApply,
+  onCancel,
 }: SketchCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [zoom, setZoom] = useState(1.0);
+  const [isCleanPreview, setIsCleanPreview] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // History for Undo / Redo
+  const initialSnapshotRef = useRef<SketchLayer[]>(project.layers);
+  const latestLayersRef = useRef<SketchLayer[]>(project.layers);
+  const [history, setHistory] = useState<SketchLayer[][]>([project.layers]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Interactive drawing states
+  const [isDrawingBrush, setIsDrawingBrush] = useState(false);
   const [currentPath, setCurrentPath] = useState<SketchPath | null>(null);
-  const [undoStack, setUndoStack] = useState<SketchPath[][]>([]);
-  const [redoStack, setRedoStack] = useState<SketchPath[][]>([]);
-  const [isDraggingLayer, setIsDraggingLayer] = useState(false);
-  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null);
+
+  // Interactive transform states
+  const [transformMode, setTransformMode] = useState<'move' | 'resize' | 'rotate' | null>(null);
+  const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
+  const [dragStartCoords, setDragStartCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [layerStartSnapshot, setLayerStartSnapshot] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation?: number;
+  }>({ x: 0, y: 0, width: 0, height: 0 });
+
+  useEffect(() => {
+    latestLayersRef.current = project.layers;
+  }, [project.layers]);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, 4000);
+  }, []);
 
   const canvasRatio = project.canvasAspectRatio || project.aspectRatio || '1:1';
   const preset = CANVAS_ASPECT_RATIO_PRESETS[canvasRatio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
+
   const sketchLayer = project.layers.find((l) => l.type === 'sketch') as SketchDrawingLayer | undefined;
   const backgroundLayer = project.layers.find((l) => l.type === 'background') as BackgroundLayer | undefined;
+  const selectedLayer = project.layers.find((l) => l.id === selectedLayerId) as
+    | ImageLayer
+    | TextLayer
+    | ShapeLayer
+    | undefined;
 
-  const getCanvasCoords = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0, pctX: 0, pctY: 0 };
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-
-      return {
-        x: (clickX * 1080) / rect.width,
-        y: (clickY * 1080) / rect.height,
-        pctX: (clickX / rect.width) * 100,
-        pctY: (clickY / rect.height) * 100,
-      };
+  const commitLayers = useCallback(
+    (newLayers: SketchLayer[]) => {
+      latestLayersRef.current = newLayers;
+      onUpdateProject((prev) => ({ ...prev, layers: newLayers }));
+      setHistory((prev) => {
+        const sliced = prev.slice(0, historyIndex + 1);
+        return [...sliced, newLayers];
+      });
+      setHistoryIndex((prev) => prev + 1);
     },
-    []
+    [historyIndex, onUpdateProject]
   );
 
-  const renderVisuals = useCallback(() => {
+  const handleUndo = useCallback(() => {
+    if (historyIndex <= 0) return;
+    const targetIdx = historyIndex - 1;
+    const restored = history[targetIdx];
+    setHistoryIndex(targetIdx);
+    latestLayersRef.current = restored;
+    onUpdateProject((prev) => ({ ...prev, layers: restored }));
+  }, [history, historyIndex, onUpdateProject]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return;
+    const targetIdx = historyIndex + 1;
+    const restored = history[targetIdx];
+    setHistoryIndex(targetIdx);
+    latestLayersRef.current = restored;
+    onUpdateProject((prev) => ({ ...prev, layers: restored }));
+  }, [history, historyIndex, onUpdateProject]);
+
+  const handleCancelAction = () => {
+    const initial = initialSnapshotRef.current;
+    latestLayersRef.current = initial;
+    onUpdateProject((prev) => ({ ...prev, layers: initial }));
+    setHistory([initial]);
+    setHistoryIndex(0);
+    onSelectLayer(null);
+    onCancel?.(initial);
+  };
+
+  const handleApplyAction = () => {
+    initialSnapshotRef.current = latestLayersRef.current;
+    onApply?.(latestLayersRef.current);
+  };
+
+  const fitToScreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const cw = container.clientWidth - 48;
+    const ch = container.clientHeight - 80;
+    if (cw <= 0 || ch <= 0) return;
+    const scale = Math.min(cw / preset.width, ch / preset.height);
+    setZoom(Math.max(0.2, Math.min(1.5, Number(scale.toFixed(2)))));
+  }, [preset.width, preset.height]);
+
+  useEffect(() => {
+    fitToScreen();
+  }, [fitToScreen]);
+
+  // Redraw Canvas paths on transparent background
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    renderCanvasBackground(ctx, canvas, backgroundLayer);
-    renderCanvasSketch(ctx, canvas, sketchLayer, currentPath);
-  }, [backgroundLayer, sketchLayer, currentPath]);
+    if (sketchLayer?.visible) {
+      const scaleX = canvas.width / 1080;
+      const scaleY = canvas.height / 1080;
+      const paths = currentPath ? [...sketchLayer.paths, currentPath] : sketchLayer.paths;
+      drawPathsOnContext(ctx, paths, scaleX, scaleY);
+    }
+  }, [sketchLayer, currentPath]);
+
+  // Global Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y (redo), Delete/Backspace, Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingInInput(e.target as HTMLElement)) return;
+      if (handleHistoryKeyShortcuts(e, handleUndo, handleRedo)) return;
+      if (
+        handleDeleteKeyShortcut(e, selectedLayerId, project.layers, (id) => {
+          commitLayers(project.layers.filter((l) => l.id !== id));
+          onSelectLayer(null);
+        })
+      ) {
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (isCleanPreview) setIsCleanPreview(false);
+        else if (selectedLayerId) onSelectLayer(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commitLayers, handleRedo, handleUndo, isCleanPreview, onSelectLayer, project.layers, selectedLayerId]);
+
+  const startTransform = (
+    mode: 'move' | 'resize' | 'rotate',
+    handle: HandleType | null,
+    e: React.PointerEvent
+  ) => {
+    if (!selectedLayer || selectedLayer.locked || isCleanPreview) return;
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore
+    }
+    setTransformMode(mode);
+    setActiveHandle(handle);
+    const coords = getPointerCoords(e, artboardRef.current);
+    setDragStartCoords({ x: coords.pctX, y: coords.pctY });
+    setLayerStartSnapshot({
+      x: selectedLayer.x,
+      y: selectedLayer.y,
+      width: selectedLayer.width,
+      height: selectedLayer.height || 10,
+      rotation: selectedLayer.rotation || 0,
+    });
+  };
+
+  const handleSelectPointerDown = (coords: { pctX: number; pctY: number }, e: React.PointerEvent) => {
+    const hit = hitTestLayer(project.layers, coords.pctX, coords.pctY);
+    if (hit) {
+      onSelectLayer(hit.id);
+      if (!hit.locked) startTransform('move', null, e);
+    } else {
+      onSelectLayer(null);
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (isCleanPreview) return;
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore
+    }
+    const coords = getPointerCoords(e, artboardRef.current);
+
+    if (activeTool === 'select') {
+      handleSelectPointerDown(coords, e);
+      return;
+    }
+    if (activeTool === 'brush' || activeTool === 'eraser') {
+      setIsDrawingBrush(true);
+      setCurrentPath(startBrushStroke(activeTool, coords.pctX, coords.pctY, strokeColor, strokeSize));
+      return;
+    }
+    if (isShapeTool(activeTool)) {
+      setShapeDraft({ type: activeTool, startX: coords.pctX, startY: coords.pctY, currentX: coords.pctX, currentY: coords.pctY });
+      return;
+    }
+    if (activeTool === 'text') {
+      const newText = createNewTextLayer(coords.pctX, coords.pctY, strokeColor);
+      commitLayers([...project.layers, newText]);
+      onSelectLayer(newText.id);
+      setActiveTool('select');
+    }
+  };
+
+  const applyTransformMove = (
+    coords: { pctX: number; pctY: number },
+    e: React.PointerEvent
+  ) => {
+    if (!selectedLayer) return;
+    const dx = coords.pctX - dragStartCoords.x;
+    const dy = coords.pctY - dragStartCoords.y;
+
+    if (transformMode === 'move') {
+      const updated = project.layers.map((l) =>
+        l.id === selectedLayer.id
+          ? ({
+              ...l,
+              x: Math.max(0, Math.min(95, layerStartSnapshot.x + dx)),
+              y: Math.max(0, Math.min(95, layerStartSnapshot.y + dy)),
+            } as SketchLayer)
+          : l
+      );
+      latestLayersRef.current = updated;
+      onUpdateProject((prev) => ({ ...prev, layers: updated }));
+    } else if (transformMode === 'resize' && activeHandle) {
+      const bounds = calculateResizeBounds(activeHandle, layerStartSnapshot, dx, dy);
+      const updated = project.layers.map((l) =>
+        l.id === selectedLayer.id ? ({ ...l, ...bounds } as SketchLayer) : l
+      );
+      latestLayersRef.current = updated;
+      onUpdateProject((prev) => ({ ...prev, layers: updated }));
+    } else if (transformMode === 'rotate') {
+      const artboard = artboardRef.current;
+      if (!artboard) return;
+      const rect = artboard.getBoundingClientRect();
+      const centerX = rect.left + ((layerStartSnapshot.x + layerStartSnapshot.width / 2) / 100) * rect.width;
+      const centerY = rect.top + ((layerStartSnapshot.y + layerStartSnapshot.height / 2) / 100) * rect.height;
+      const angle = calculateRotationAngle(e.clientX, e.clientY, centerX, centerY);
+      const updated = project.layers.map((l) =>
+        l.id === selectedLayer.id ? ({ ...l, rotation: angle } as SketchLayer) : l
+      );
+      latestLayersRef.current = updated;
+      onUpdateProject((prev) => ({ ...prev, layers: updated }));
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (isCleanPreview) return;
+    const coords = getPointerCoords(e, artboardRef.current);
+
+    if (isDrawingBrush && currentPath) {
+      setCurrentPath({
+        ...currentPath,
+        points: [
+          ...currentPath.points,
+          { x: (coords.pctX * 1080) / 100, y: (coords.pctY * 1080) / 100 },
+        ],
+      });
+      return;
+    }
+
+    if (shapeDraft) {
+      setShapeDraft({ ...shapeDraft, currentX: coords.pctX, currentY: coords.pctY });
+      return;
+    }
+
+    if (transformMode && selectedLayer) {
+      applyTransformMove(coords, e);
+    }
+  };
+
+  const handlePointerUp = (e?: React.PointerEvent) => {
+    if (e) {
+      try {
+        e.currentTarget?.releasePointerCapture?.(e.pointerId);
+      } catch {
+        // Ignore
+      }
+    }
+
+    if (transformMode) {
+      setTransformMode(null);
+      setActiveHandle(null);
+      commitLayers(latestLayersRef.current);
+      return;
+    }
+
+    if (isDrawingBrush && currentPath && sketchLayer) {
+      setIsDrawingBrush(false);
+      const updatedSketchLayer: SketchDrawingLayer = {
+        ...sketchLayer,
+        paths: [...sketchLayer.paths, currentPath],
+      };
+      commitLayers(
+        project.layers.map((l) => (l.id === sketchLayer.id ? updatedSketchLayer : l))
+      );
+      setCurrentPath(null);
+      return;
+    }
+
+    if (shapeDraft) {
+      const newShapeLayer = createShapeLayerFromDraft(shapeDraft, strokeColor, strokeSize);
+      setShapeDraft(null);
+      commitLayers([...project.layers, newShapeLayer]);
+      onSelectLayer(newShapeLayer.id);
+      setActiveTool('select');
+    }
+  };
+
+  // Paste & Drop file handler with real backend persistence and limits
+  const handleInsertUploadedAttachment = useCallback(
+    (att: import('@/types/sketch').SketchAttachment) => {
+      const newImgLayer: ImageLayer = {
+        id: `layer-img-${Date.now()}`,
+        name: att.name.replace(/\.[^/.]+$/, ''),
+        type: 'image',
+        attachmentId: att.id,
+        imageUrl: att.dataUrl,
+        role: att.role,
+        x: 25,
+        y: 25,
+        width: 50,
+        height: 50,
+        rotation: 0,
+        visible: true,
+        opacity: 1,
+      };
+
+      const updatedLayers = [...project.layers, newImgLayer];
+      latestLayersRef.current = updatedLayers;
+      onUpdateProject((prev) => ({
+        ...prev,
+        attachments: [...prev.attachments, att],
+        layers: updatedLayers,
+      }));
+
+      setHistory((prev) => {
+        const sliced = prev.slice(0, historyIndex + 1);
+        return [...sliced, updatedLayers];
+      });
+      setHistoryIndex((prev) => prev + 1);
+      onSelectLayer(newImgLayer.id);
+    },
+    [historyIndex, onSelectLayer, onUpdateProject, project.layers]
+  );
 
   useEffect(() => {
-    renderVisuals();
-  }, [renderVisuals]);
-
-  const handlePointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const coords = getCanvasCoords(e);
-    if (activeTool === 'select') {
-      const hit = hitTestLayer(project.layers, coords.pctX, coords.pctY);
-      if (hit) {
-        onSelectLayer(hit.id);
-        setIsDraggingLayer(true);
-        setDragOffset({ x: coords.pctX - hit.x, y: coords.pctY - hit.y });
-      } else {
-        onSelectLayer(null);
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const preError = validateFileBeforeUpload(file, project.attachments.length);
+            if (preError) {
+              showToast(preError);
+              return;
+            }
+            try {
+              const att = await uploadPastedOrDroppedFile(file, project.id, project.attachments.length);
+              handleInsertUploadedAttachment(att);
+            } catch (err: unknown) {
+              showToast(err instanceof Error ? err.message : 'Falha ao processar colagem');
+            }
+          }
+        }
       }
-      return;
-    }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [handleInsertUploadedAttachment, project.attachments.length, project.id, showToast]);
 
-    setIsDrawing(true);
-    if (activeTool === 'box') {
-      setCurrentPath({
-        id: `box-${Date.now()}`,
-        tool: 'box',
-        color: strokeColor,
-        size: strokeSize,
-        opacity: 1,
-        points: [],
-        boxLabel: boxLabel || 'Layout',
-        boxRect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-      });
-    } else {
-      setCurrentPath({
-        id: `stroke-${Date.now()}`,
-        tool: activeTool,
-        color: strokeColor,
-        size: strokeSize,
-        opacity: 1,
-        points: [{ x: coords.x, y: coords.y }],
-      });
-    }
-  };
-
-  const handlePointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const coords = getCanvasCoords(e);
-    if (isDraggingLayer && selectedLayerId) {
-      onUpdateProject((prev) => ({
-        ...prev,
-        layers: prev.layers.map((l) =>
-          l.id === selectedLayerId
-            ? ({
-                ...l,
-                x: Math.max(0, Math.min(95, coords.pctX - dragOffset.x)),
-                y: Math.max(0, Math.min(95, coords.pctY - dragOffset.y)),
-              } as SketchLayer)
-            : l
-        ),
-      }));
-      return;
-    }
-
-    if (!isDrawing || !currentPath) return;
-    if (currentPath.tool === 'box' && currentPath.boxRect) {
-      const sx = currentPath.boxRect.x;
-      const sy = currentPath.boxRect.y;
-      setCurrentPath({
-        ...currentPath,
-        boxRect: {
-          x: Math.min(sx, coords.x),
-          y: Math.min(sy, coords.y),
-          width: Math.abs(coords.x - sx),
-          height: Math.abs(coords.y - sy),
-        },
-      });
-    } else {
-      setCurrentPath({
-        ...currentPath,
-        points: [...currentPath.points, { x: coords.x, y: coords.y }],
-      });
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const preError = validateFileBeforeUpload(file, project.attachments.length);
+        if (preError) {
+          showToast(preError);
+          return;
+        }
+        try {
+          const att = await uploadPastedOrDroppedFile(file, project.id, project.attachments.length);
+          handleInsertUploadedAttachment(att);
+        } catch (err: unknown) {
+          showToast(err instanceof Error ? err.message : 'Falha ao processar arquivo solto');
+        }
+      }
     }
   };
 
-  const handlePointerUp = () => {
-    if (isDraggingLayer) setIsDraggingLayer(false);
-    if (!isDrawing || !currentPath) return;
-    setIsDrawing(false);
-
-    if (sketchLayer) {
-      setUndoStack((prev) => [...prev, sketchLayer.paths]);
-      setRedoStack([]);
-      onUpdateProject((prev) => ({
-        ...prev,
-        layers: prev.layers.map((l) =>
-          l.id === sketchLayer.id
-            ? ({
-                ...l,
-                paths: [...(l as SketchDrawingLayer).paths, currentPath],
-              } as SketchLayer)
-            : l
-        ),
-      }));
-    }
-    setCurrentPath(null);
-  };
-
-  const handleUndo = () => {
-    if (undoStack.length === 0 || !sketchLayer) return;
-    const prevPaths = undoStack[undoStack.length - 1];
-    setRedoStack((prev) => [...prev, sketchLayer.paths]);
-    setUndoStack((prev) => prev.slice(0, -1));
-    onUpdateProject((prev) => ({
-      ...prev,
-      layers: prev.layers.map((l) => (l.id === sketchLayer.id ? { ...l, paths: prevPaths } : l)),
-    }));
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length === 0 || !sketchLayer) return;
-    const nextPaths = redoStack[redoStack.length - 1];
-    setUndoStack((prev) => [...prev, sketchLayer.paths]);
-    setRedoStack((prev) => prev.slice(0, -1));
-    onUpdateProject((prev) => ({
-      ...prev,
-      layers: prev.layers.map((l) => (l.id === sketchLayer.id ? { ...l, paths: nextPaths } : l)),
-    }));
-  };
+  const cursorStyle = resolveArtboardCursor(isCleanPreview, activeTool);
+  const artboardBgColor = resolveArtboardBg(backgroundLayer);
 
   return (
-    <div className="flex h-full w-full flex-col select-none overflow-hidden bg-[#090b10]">
-      <SketchCanvasToolbar
+    <div
+      ref={containerRef}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+      className="relative flex h-full w-full flex-col select-none overflow-hidden bg-[#07090e]"
+    >
+      {toastMessage && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/90 px-3.5 py-2 text-rose-200 shadow-2xl backdrop-blur-md text-xs">
+          <AlertCircle size={15} className="shrink-0 text-rose-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      <CanvasTopBar
         activeTool={activeTool}
         setActiveTool={setActiveTool}
-        strokeColor={strokeColor}
-        setStrokeColor={setStrokeColor}
-        strokeSize={strokeSize}
-        setStrokeSize={setStrokeSize}
-        boxLabel={boxLabel}
-        setBoxLabel={setBoxLabel}
-        hasSketch={Boolean(sketchLayer)}
-        sketchVisible={sketchLayer?.visible ?? true}
-        onToggleSketch={() =>
-          onUpdateProject((prev) => ({
-            ...prev,
-            layers: prev.layers.map((l) => (l.id === sketchLayer?.id ? { ...l, visible: !l.visible } : l)),
-          }))
-        }
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        zoom={zoom}
+        onZoomIn={() => setZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+        onZoomOut={() => setZoom((z) => Math.max(0.2, Number((z - 0.15).toFixed(2))))}
+        onFitToScreen={fitToScreen}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onClear={() => {
-          if (!sketchLayer) return;
-          setUndoStack((prev) => [...prev, sketchLayer.paths]);
-          onUpdateProject((prev) => ({
-            ...prev,
-            layers: prev.layers.map((l) => (l.id === sketchLayer.id ? { ...l, paths: [] } : l)),
-          }));
-        }}
+        isCleanPreview={isCleanPreview}
+        onToggleCleanPreview={() => setIsCleanPreview((v) => !v)}
+        onCancel={handleCancelAction}
+        onApply={handleApplyAction}
       />
 
+      <CanvasLateralBar
+        strokeSize={strokeSize}
+        setStrokeSize={setStrokeSize}
+        strokeColor={strokeColor}
+        isCleanPreview={isCleanPreview}
+      />
+
+      <CanvasBottomBar
+        strokeColor={strokeColor}
+        setStrokeColor={setStrokeColor}
+        isCleanPreview={isCleanPreview}
+      />
+
+      {/* Main Spacious Dark Workspace Surface */}
       <div
-        ref={containerRef}
-        className="relative flex flex-1 items-center justify-center overflow-auto p-6"
+        className="relative flex flex-1 items-center justify-center overflow-auto p-8"
+        onClick={() => {
+          if (!isCleanPreview) onSelectLayer(null);
+        }}
       >
         <div
-          className="relative shadow-2xl rounded-lg overflow-hidden border border-zinc-800 bg-[#0d1017]"
+          ref={artboardRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className="relative shadow-2xl rounded-lg overflow-hidden border border-zinc-800 transition-transform duration-75"
           style={{
-            aspectRatio: `${preset.width} / ${preset.height}`,
-            maxHeight: 'calc(100vh - 180px)',
-            maxWidth: '100%',
-            height: '100%',
+            width: `${preset.width * zoom}px`,
+            height: `${preset.height * zoom}px`,
+            cursor: cursorStyle,
+            backgroundColor: artboardBgColor,
           }}
         >
-          {backgroundLayer?.imageUrl && backgroundLayer.visible && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={backgroundLayer.imageUrl}
-              alt="Fundo"
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              style={{ opacity: backgroundLayer.opacity }}
-            />
-          )}
+          <CanvasArtboardBackground bg={backgroundLayer} />
 
           <canvas
             ref={canvasRef}
             width={preset.width}
             height={preset.height}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerUp}
-            onMouseLeave={handlePointerUp}
-            className={`absolute inset-0 h-full w-full ${
-              activeTool === 'select' ? 'cursor-default' : 'cursor-crosshair'
-            }`}
+            className="absolute inset-0 h-full w-full pointer-events-none"
           />
 
-          {project.layers
-            .filter((l) => l.visible && (l.type === 'image' || l.type === 'text'))
-            .map((layer) => {
-              const isSelected = layer.id === selectedLayerId;
-              if (layer.type === 'image') {
-                return (
-                  <ImageOverlay
-                    key={layer.id}
-                    layer={layer as ImageLayer}
-                    isSelected={isSelected}
-                    onSelect={() => onSelectLayer(layer.id)}
-                  />
-                );
+          <CanvasLayersList
+            layers={project.layers}
+            isCleanPreview={isCleanPreview}
+            onSelectLayer={onSelectLayer}
+          />
+
+          {/* Temporary shape draft preview while dragging */}
+          {shapeDraft && !isCleanPreview && (
+            <ShapeDraftPreview
+              draft={shapeDraft}
+              strokeColor={strokeColor}
+              strokeSize={strokeSize}
+            />
+          )}
+
+          {/* Transform Box for selected layer */}
+          {selectedLayer && !isCleanPreview && (
+            <CanvasTransformBox
+              layer={selectedLayer}
+              isSelected={Boolean(selectedLayerId)}
+              isCleanPreview={isCleanPreview}
+              onSelect={() => onSelectLayer(selectedLayer.id)}
+              onPointerDownBody={(e) => startTransform('move', null, e)}
+              onPointerDownHandle={(handle, e) =>
+                startTransform(handle === 'rot' ? 'rotate' : 'resize', handle, e)
               }
-              return (
-                <TextOverlay
-                  key={layer.id}
-                  layer={layer as TextLayer}
-                  isSelected={isSelected}
-                  onSelect={() => onSelectLayer(layer.id)}
-                />
-              );
-            })}
+              onToggleLock={() =>
+                commitLayers(
+                  project.layers.map((l) =>
+                    l.id === selectedLayer.id ? { ...l, locked: !l.locked } : l
+                  )
+                )
+              }
+              onToggleGuide={() =>
+                commitLayers(
+                  project.layers.map((l) =>
+                    l.id === selectedLayer.id
+                      ? {
+                          ...l,
+                          isGuide: !l.isGuide,
+                          elementKind: l.isGuide ? 'final' : 'guide',
+                        }
+                      : l
+                  )
+                )
+              }
+              onDuplicate={() => {
+                const dup = duplicateLayerObject(selectedLayer);
+                if (dup) {
+                  commitLayers([...project.layers, dup]);
+                  onSelectLayer(dup.id);
+                }
+              }}
+              onDelete={() => {
+                commitLayers(project.layers.filter((l) => l.id !== selectedLayer.id));
+                onSelectLayer(null);
+              }}
+              onReorder={(action) => {
+                const reordered = reorderLayers(project.layers, selectedLayer.id, action);
+                commitLayers(reordered);
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
