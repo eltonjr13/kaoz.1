@@ -8,6 +8,7 @@ export type ShortcutActionId =
   | "nav.flow"
   | "nav.supervision"
   | "nav.cortex"
+  | "nav.sketch"
   | "nav.modelP"
   | "nav.video"
   | "nav.settings"
@@ -155,6 +156,16 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     keys: ["alt+6"],
     displayKey: "Alt + 6",
     href: "/model-p",
+    allowInInput: false,
+  },
+  {
+    id: "nav.sketch",
+    label: "Ir para Sketch",
+    description: "Criar anúncios estáticos com IA, copy editável e desenho de composição",
+    category: "navigation",
+    keys: ["alt+7"],
+    displayKey: "Alt + 7",
+    href: "/sketch",
     allowInInput: false,
   },
 

@@ -16,6 +16,7 @@ import {
   Keyboard,
   Search,
   UserCheck,
+  Pencil,
 } from "lucide-react";
 import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/flow", label: "Kaoz.1", icon: Sparkles, shortcut: "Alt+1" },
   { href: "/supervision", label: "Supervisor", icon: Activity, shortcut: "Alt+2" },
   { href: "/cortex", label: "Córtex", icon: Brain, shortcut: "Alt+3" },
+  { href: "/sketch", label: "Sketch", icon: Pencil, shortcut: "Alt+7" },
   { href: "/model-p", label: "Model P", icon: UserCheck, shortcut: "Alt+6" },
   { href: "/video", label: "Edição de vídeo", icon: Video, shortcut: "Alt+4" },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: "Alt+5" },
@@ -50,6 +52,7 @@ export function AppShell({
   useHotkey(["alt+4"], () => router.push("/video"));
   useHotkey(["alt+5"], () => router.push("/settings"));
   useHotkey(["alt+6"], () => router.push("/model-p"));
+  useHotkey(["alt+7"], () => router.push("/sketch"));
 
   // Toggle sidebar hotkey (Ctrl+B / ⌘B)
   useHotkey(["ctrl+b", "meta+b"], () => {
