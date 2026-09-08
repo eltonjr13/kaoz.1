@@ -291,6 +291,8 @@ test('technical proof verifies sketch + product contract and identifies mock vs 
   const proofResult = await runSketchProductTechnicalProof();
 
   assert.ok(proofResult.id.startsWith('proof-res-'), 'Deve gerar ID único de resultado');
+  assert.equal(proofResult.schemaVersion, 1, 'Resultado deve possuir schemaVersion 1');
+  assert.equal(proofResult.version, SKETCH_SCHEMA_VERSION, 'Resultado deve possuir version 1.0.0');
   assert.equal(proofResult.isRealExecution, false, 'Execução em ambiente de testes deve ser identificada como mock/não-real');
   assert.equal(proofResult.executionStatus, 'mock_validated_contract_pending_live_flow');
   assert.ok(proofResult.pendingReason, 'Deve documentar explicitamente o motivo da pendência');
@@ -304,8 +306,123 @@ test('technical proof verifies sketch + product contract and identifies mock vs 
 test('renderSketchOnlyDataUrl and renderCompositeReferenceDataUrl handle Node environment gracefully', async () => {
   const sketchOnly = renderSketchOnlyDataUrl([]);
   assert.equal(typeof sketchOnly, 'string');
+  assert.ok(sketchOnly.startsWith('data:image/'), 'Deve retornar data URL de imagem válida');
 
   const project = createProofProject();
   const compositeDataUrl = await renderCompositeReferenceDataUrl(project);
   assert.equal(typeof compositeDataUrl, 'string');
+  assert.ok(compositeDataUrl.startsWith('data:image/'), 'Deve retornar data URL de imagem válida');
+});
+
+test('sketch contracts enforce versioning across all sub-contracts (document, briefing, copy, layers, attachments, results)', () => {
+  const briefing: import('../types/sketch.ts').SketchBriefingData = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    productDescription: 'Skincare serum',
+  };
+  const copy: import('../types/sketch.ts').SketchCopyData = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    headline: 'Brilho Natural',
+    subheadline: 'Subtitulo',
+    cta: 'Compre',
+    badge: 'Novo',
+  };
+  const doc: import('../types/sketch.ts').SketchDocumentData = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    dimensions: { width: 1080, height: 1350, unit: 'px' },
+    canvasAspectRatio: '4:5',
+    layers: [],
+  };
+  const att: import('../types/sketch.ts').SketchAttachment = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'att-x',
+    name: 'logo.png',
+    dataUrl: 'data:image/png;base64,sample',
+    role: 'logo',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(briefing.schemaVersion, 1);
+  assert.equal(briefing.version, '1.0.0');
+  assert.equal(copy.schemaVersion, 1);
+  assert.equal(doc.schemaVersion, 1);
+  assert.equal(att.schemaVersion, 1);
+});
+
+test('sketch presence respects useSketchAsReference flag and exportToProvider flag', () => {
+  const project = createProofProject();
+
+  // 1. Desabilitar explicitamente o sketch como referencia
+  project.useSketchAsReference = false;
+  const analysisWithoutSketch = detectSketchPresence(project.layers, project.useSketchAsReference);
+  assert.equal(analysisWithoutSketch.hasSketch, false, 'hasSketch deve ser false quando useSketchAsReference for false');
+  assert.equal(analysisWithoutSketch.pathCount, 1, 'pathCount deve continuar registrando os tracos locais');
+
+  const reqWithoutSketch = prepareSketchCompositeReference(project);
+  assert.equal(reqWithoutSketch.referenceMode, 'identity', 'Deve ser modo identity do produto, nao composite');
+  assert.equal(reqWithoutSketch.referenceKind, 'identity');
+
+  // 2. Respeito a exportToProvider = false
+  project.useSketchAsReference = true;
+  project.layers = project.layers.map((l) =>
+    l.type === 'sketch' ? { ...l, exportToProvider: false } : l
+  );
+  const analysisIgnored = detectSketchPresence(project.layers, project.useSketchAsReference);
+  assert.equal(analysisIgnored.hasSketch, false, 'Camadas com exportToProvider=false nao devem contar para o envio');
+});
+
+test('composite mode supports person and logo roles and resolves layer roles from attachments', () => {
+  const project = createProofProject();
+
+  // Testar resolucao automatica da role quando layer.role for omitido, mas attachmentId apontar para anexo
+  project.layers = project.layers.map((l) => {
+    if (l.type === 'image') {
+      const { role: _omitted, ...rest } = l;
+      return rest as import('../types/sketch.ts').ImageLayer;
+    }
+    return l;
+  });
+
+  const placed = detectPlacedImages(project.layers, project.attachments);
+  assert.equal(placed.hasProductImage, true, 'Deve resolver role=product a partir do anexo vinculado');
+  assert.equal(placed.hasSubjectImage, true);
+
+  // Testar com papel de pessoa (modelo)
+  const personProject = createProofProject();
+  personProject.attachments[0].role = 'person';
+  personProject.layers = personProject.layers.map((l) =>
+    l.type === 'image' ? { ...l, role: 'person' as const } : l
+  );
+  const personReq = prepareSketchCompositeReference(personProject);
+  assert.equal(personReq.referenceMode, 'composite', 'Pessoa + sketch deve ser composite');
+  assert.equal(personReq.referenceKind, 'composite');
+});
+
+test('composite diagnostics track multiple placed subjects and superseded references', () => {
+  const project = createProofProject();
+
+  // Adicionar segundo produto posicionado na prancheta
+  project.layers.push({
+    id: 'layer-second-product',
+    name: 'Segundo Produto',
+    type: 'image',
+    imageUrl: 'data:image/png;base64,sample2',
+    role: 'product',
+    x: 10,
+    y: 10,
+    width: 20,
+    height: 30,
+    visible: true,
+    opacity: 1,
+  });
+
+  const req = prepareSketchCompositeReference(project);
+  const multiDiag = req.diagnostics.find((d) => d.code === 'MULTIPLE_SUBJECTS_COMPOSITED');
+  assert.ok(multiDiag, 'Deve diagnosticar múltiplos elementos posicionados na prancheta');
+
+  const supersededDiag = req.diagnostics.find((d) => d.code === 'REFERENCE_SUPERSEDED_BY_COMPOSITE');
+  assert.ok(supersededDiag, 'Deve diagnosticar que a referência avulsa ativa foi incorporada na composição');
 });

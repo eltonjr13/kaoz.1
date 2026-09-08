@@ -1,8 +1,12 @@
 import {
   ASPECT_RATIO_PRESETS,
+  CANVAS_ASPECT_RATIO_PRESETS,
+  resolveProviderAspectRatio,
   type AspectRatioDimension,
   type BackgroundLayer,
+  type FlowSupportedAspectRatio,
   type ImageLayer,
+  type SketchCanvasAspectRatio,
   type SketchLayer,
   type SketchPath,
   type SketchProjectData,
@@ -260,6 +264,20 @@ function renderSketchDrawingLayer(
   }
 }
 
+function resolveCanvasDimensionPreset(project: SketchProjectData): AspectRatioDimension {
+  const canvasRatio: SketchCanvasAspectRatio = project.canvasAspectRatio || project.aspectRatio || '1:1';
+  const basePreset = CANVAS_ASPECT_RATIO_PRESETS[canvasRatio] || ASPECT_RATIO_PRESETS['1:1'];
+  if (project.canvasDimensions?.width && project.canvasDimensions?.height) {
+    return {
+      width: project.canvasDimensions.width,
+      height: project.canvasDimensions.height,
+      label: basePreset.label,
+      description: basePreset.description,
+    };
+  }
+  return basePreset;
+}
+
 function renderSingleLayer(
   ctx: CanvasRenderingContext2D,
   layer: SketchLayer,
@@ -267,6 +285,7 @@ function renderSingleLayer(
   loadedImages: Map<string, HTMLImageElement>,
   excludeGuides = false
 ) {
+  if (layer.exportToProvider === false) return;
   if (excludeGuides && layer.isGuide) return;
   if (layer.type === 'background') {
     drawBackgroundLayer(ctx, layer, preset.width, preset.height, loadedImages);
@@ -285,7 +304,7 @@ export async function renderCompositionToCanvas(
   options?: { excludeGuides?: boolean }
 ): Promise<HTMLCanvasElement> {
   const targetCanvas = canvas || document.createElement('canvas');
-  const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
+  const preset = resolveCanvasDimensionPreset(project);
   targetCanvas.width = preset.width;
   targetCanvas.height = preset.height;
 
@@ -308,23 +327,42 @@ function shouldSkipLayerForComposite(
   excludeText: boolean
 ): boolean {
   if (!layer.visible) return true;
+  if (layer.exportToProvider === false) return true;
   if (excludeGuides && layer.isGuide) return true;
   if (excludeText && layer.type === 'text') return true;
   return false;
 }
 
+export interface RenderCompositeOptions {
+  excludeGuides?: boolean;
+  excludeText?: boolean;
+  targetAspectRatio?: FlowSupportedAspectRatio;
+}
+
+const FALLBACK_COMPOSITE_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
 export async function renderCompositeReferenceDataUrl(
   project: SketchProjectData,
-  options: { excludeGuides?: boolean; excludeText?: boolean } = { excludeGuides: true, excludeText: true }
+  options: RenderCompositeOptions = { excludeGuides: true, excludeText: true }
 ): Promise<string> {
-  if (typeof document === 'undefined') return '';
-  const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
+  if (typeof document === 'undefined') {
+    return FALLBACK_COMPOSITE_PNG;
+  }
+  const targetRatio =
+    options.targetAspectRatio ||
+    resolveProviderAspectRatio(
+      project.canvasAspectRatio || project.aspectRatio,
+      project.canvasDimensions?.width,
+      project.canvasDimensions?.height
+    );
+  const preset = ASPECT_RATIO_PRESETS[targetRatio] || ASPECT_RATIO_PRESETS['1:1'];
   const canvas = document.createElement('canvas');
   canvas.width = preset.width;
   canvas.height = preset.height;
 
   const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  if (!ctx) return FALLBACK_COMPOSITE_PNG;
 
   const loadedImages = await preloadProjectImages(project);
   const excludeGuides = options.excludeGuides !== false;
@@ -339,12 +377,14 @@ export async function renderCompositeReferenceDataUrl(
 }
 
 export function renderSketchOnlyDataUrl(paths: SketchPath[], width = 1080, height = 1080): string {
-  if (typeof document === 'undefined') return '';
+  if (typeof document === 'undefined') {
+    return FALLBACK_COMPOSITE_PNG;
+  }
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  if (!ctx) return FALLBACK_COMPOSITE_PNG;
 
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);

@@ -77,6 +77,8 @@ export type AttachmentRole =
   | 'inspiration';
 
 export interface SketchAttachment {
+  schemaVersion?: number;
+  version?: string;
   id: string;
   name: string;
   dataUrl: string;
@@ -113,6 +115,7 @@ export interface SketchPath {
 }
 
 export interface BaseLayer {
+  schemaVersion?: number;
   id: string;
   name: string;
   visible: boolean;
@@ -177,6 +180,8 @@ export interface SketchGuide {
 }
 
 export interface SketchDocumentData {
+  schemaVersion?: number;
+  version?: string;
   dimensions: { width: number; height: number; unit: 'px' };
   canvasAspectRatio: SketchCanvasAspectRatio;
   layers: SketchLayer[];
@@ -184,6 +189,8 @@ export interface SketchDocumentData {
 }
 
 export interface SketchBriefingData {
+  schemaVersion?: number;
+  version?: string;
   productDescription: string;
   brandName?: string;
   targetAudience?: string;
@@ -197,6 +204,8 @@ export interface SketchBriefingData {
 }
 
 export interface SketchCopyData {
+  schemaVersion?: number;
+  version?: string;
   headline: string;
   subheadline: string;
   cta: string;
@@ -293,6 +302,8 @@ export type SketchExecutionStatus =
   | 'failed';
 
 export interface SketchGenerationResult {
+  schemaVersion?: number;
+  version?: string;
   id: string;
   requestId: string;
   projectId: string;

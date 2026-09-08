@@ -8,6 +8,9 @@ import {
 import {
   prepareSketchCompositeReference,
 } from './sketch-composite-preparer.ts';
+import {
+  renderCompositeReferenceDataUrl,
+} from './sketch-exporter.ts';
 
 const SAMPLE_BASE64_PRODUCT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const SAMPLE_BASE64_STYLE = 'data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -104,7 +107,7 @@ export function createProofProject(): SketchProjectData {
     id: 'proof-sketch-product-01',
     title: 'Prova Técnica: Sketch + Produto',
     description: 'Validação da viabilidade da geração guiada por sketch e produto com composição única.',
-    aspectRatio: '4:3',
+    aspectRatio: '3:4',
     canvasAspectRatio: '4:5',
     canvasDimensions: { width: 1080, height: 1350, unit: 'px' },
     prompt: 'Commercial advertising photograph of luxury face serum on a stone podium, soft warm backlight, crisp elegant finish.',
@@ -159,13 +162,23 @@ export async function runSketchProductTechnicalProof(
   options?: TechnicalProofExecutionOptions
 ): Promise<SketchGenerationResult> {
   const project = customProject || createProofProject();
-  const request = prepareSketchCompositeReference(project);
+  let compositeDataUrl: string | undefined;
+  try {
+    compositeDataUrl = await renderCompositeReferenceDataUrl(project);
+  } catch {
+    // Fallback gracioso
+  }
+  const request = prepareSketchCompositeReference(project, {
+    referenceDataUrlOverride: compositeDataUrl || undefined,
+  });
 
   const isReal = Boolean(options && options.forceRealExecution);
 
   if (isReal) {
     const flowResult = await tryExecuteFlow(request.preparedPrompt, request.providerOptions);
     return {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
       id: `proof-res-${Date.now()}`,
       requestId: request.id,
       projectId: project.id,
@@ -183,6 +196,8 @@ export async function runSketchProductTechnicalProof(
   }
 
   return {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
     id: `proof-res-${Date.now()}`,
     requestId: request.id,
     projectId: project.id,

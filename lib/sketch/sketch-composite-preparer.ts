@@ -23,21 +23,26 @@ interface SketchAnalysis {
   sketchLayer?: SketchDrawingLayer;
 }
 
-export function detectSketchPresence(layers: SketchLayer[]): SketchAnalysis {
+export function detectSketchPresence(
+  layers: SketchLayer[],
+  useSketchAsReference = true
+): SketchAnalysis {
   let hasSketch = false;
   let pathCount = 0;
   let guideCount = 0;
   let sketchLayer: SketchDrawingLayer | undefined;
 
   for (const layer of layers) {
-    if (layer.type === 'sketch' && layer.visible) {
+    if (layer.type === 'sketch' && layer.visible && layer.exportToProvider !== false) {
       sketchLayer = layer;
       for (const path of layer.paths) {
         if (path.isGuide) {
           guideCount++;
         } else {
           pathCount++;
-          hasSketch = true;
+          if (useSketchAsReference) {
+            hasSketch = true;
+          }
         }
       }
     }
@@ -51,29 +56,46 @@ export interface PlacedImagesAnalysis {
   placedAttachmentIds: Set<string>;
   roles: Set<SketchReferenceRole>;
   hasProductImage: boolean;
+  hasSubjectImage: boolean;
 }
 
-export function detectPlacedImages(layers: SketchLayer[]): PlacedImagesAnalysis {
+function resolveImageLayerRole(layer: ImageLayer, attachments?: SketchAttachment[]): SketchReferenceRole | undefined {
+  if (layer.role) return layer.role as SketchReferenceRole;
+  if (layer.attachmentId && attachments) {
+    const att = attachments.find((a) => a.id === layer.attachmentId);
+    if (att?.role) return att.role as SketchReferenceRole;
+  }
+  return undefined;
+}
+
+export function detectPlacedImages(
+  layers: SketchLayer[],
+  attachments?: SketchAttachment[]
+): PlacedImagesAnalysis {
   const placedImages: ImageLayer[] = [];
   const placedAttachmentIds = new Set<string>();
   const roles = new Set<SketchReferenceRole>();
   let hasProductImage = false;
+  let hasSubjectImage = false;
 
   for (const layer of layers) {
-    if (layer.type === 'image' && layer.visible && !layer.isGuide && layer.imageUrl) {
+    if (layer.type === 'image' && layer.visible && !layer.isGuide && layer.exportToProvider !== false && layer.imageUrl) {
       placedImages.push(layer);
       if (layer.attachmentId) {
         placedAttachmentIds.add(layer.attachmentId);
       }
-      const r = layer.role as SketchReferenceRole | undefined;
+      const r = resolveImageLayerRole(layer, attachments);
       if (r) {
         roles.add(r);
         if (r === 'product') hasProductImage = true;
+        if (r === 'product' || r === 'person' || r === 'logo') hasSubjectImage = true;
+      } else {
+        hasSubjectImage = true;
       }
     }
   }
 
-  return { placedImages, placedAttachmentIds, roles, hasProductImage };
+  return { placedImages, placedAttachmentIds, roles, hasProductImage, hasSubjectImage };
 }
 
 export function checkUnplacedAttachments(
@@ -114,11 +136,11 @@ function collectIncludedRoles(
 }
 
 function resolveReferenceKindWithoutSketch(
-  hasProductImage: boolean,
+  hasSubjectImage: boolean,
   placedRoles: Set<SketchReferenceRole>,
   activeRefRole?: SketchReferenceRole
 ): { mode: 'none' | 'identity'; kind?: ImageReferenceKind } {
-  if (hasProductImage || activeRefRole === 'product') {
+  if (hasSubjectImage || activeRefRole === 'product' || activeRefRole === 'person' || activeRefRole === 'logo') {
     return { mode: 'identity', kind: 'identity' };
   }
   if (placedRoles.has('style') || activeRefRole === 'style') {
@@ -130,9 +152,17 @@ function resolveReferenceKindWithoutSketch(
   return { mode: 'none', kind: undefined };
 }
 
+function hasAnySubject(
+  hasSubjectImage: boolean,
+  activeRefRole?: SketchReferenceRole
+): boolean {
+  if (hasSubjectImage) return true;
+  return activeRefRole === 'product' || activeRefRole === 'person' || activeRefRole === 'logo';
+}
+
 export function detectReferenceModeAndKind(
   hasSketch: boolean,
-  hasProductImage: boolean,
+  hasSubjectImage: boolean,
   placedRoles: Set<SketchReferenceRole>,
   activeReferenceRole?: SketchReferenceRole
 ): {
@@ -142,14 +172,14 @@ export function detectReferenceModeAndKind(
 } {
   const includedRoles = collectIncludedRoles(hasSketch, placedRoles);
 
-  if (hasSketch && (hasProductImage || activeReferenceRole === 'product')) {
+  if (hasSketch && hasAnySubject(hasSubjectImage, activeReferenceRole)) {
     return { referenceMode: 'composite', referenceKind: 'composite', includedRoles };
   }
   if (hasSketch) {
     return { referenceMode: 'sketch', referenceKind: 'sketch', includedRoles };
   }
 
-  const resolved = resolveReferenceKindWithoutSketch(hasProductImage, placedRoles, activeReferenceRole);
+  const resolved = resolveReferenceKindWithoutSketch(hasSubjectImage, placedRoles, activeReferenceRole);
   return { referenceMode: resolved.mode, referenceKind: resolved.kind, includedRoles };
 }
 
@@ -194,14 +224,30 @@ function collectAspectDiagnostics(
 function collectStructuralDiagnostics(
   referenceMode: string,
   guideCount: number,
+  placedCount: number,
+  hasActiveRef: boolean,
   diagnostics: SketchReferenceDiagnostic[]
 ): void {
   if (referenceMode === 'composite') {
     diagnostics.push({
       code: 'COMPOSITE_UNIFICATION',
       severity: 'info',
-      message: 'Esboço de composição espacial e imagem de produto foram unificados em uma única referência composta para compatibilidade com o Flow.',
+      message: 'Esboço de composição espacial e elemento(s) visual(is) foram unificados em uma única referência composta para compatibilidade com o Flow.',
     });
+    if (placedCount > 1) {
+      diagnostics.push({
+        code: 'MULTIPLE_SUBJECTS_COMPOSITED',
+        severity: 'info',
+        message: `${placedCount} elementos visuais posicionados foram combinados na prancheta para envio em imagem única ao Flow.`,
+      });
+    }
+    if (hasActiveRef && placedCount > 0) {
+      diagnostics.push({
+        code: 'REFERENCE_SUPERSEDED_BY_COMPOSITE',
+        severity: 'info',
+        message: 'O provedor aceita uma única referência visual. A composição unificada da prancheta é enviada como referência principal.',
+      });
+    }
   }
   if (guideCount > 0) {
     diagnostics.push({
@@ -214,12 +260,14 @@ function collectStructuralDiagnostics(
 
 function resolveActiveReference(
   project: SketchProjectData,
+  placedImages: ImageLayer[],
   overrideDataUrl?: string
 ): { activeAtt?: SketchAttachment; preparedRefImage?: string } {
   const activeAtt = project.activeReferenceId
     ? project.attachments.find((a) => a.id === project.activeReferenceId)
     : undefined;
-  const preparedRefImage = overrideDataUrl || activeAtt?.dataUrl || undefined;
+  const fallbackPlacedImage = placedImages.length > 0 ? placedImages[0].imageUrl : undefined;
+  const preparedRefImage = overrideDataUrl || activeAtt?.dataUrl || fallbackPlacedImage || undefined;
   return { activeAtt, preparedRefImage };
 }
 
@@ -270,10 +318,14 @@ export function prepareSketchCompositeReference(
   const diagnostics: SketchReferenceDiagnostic[] = [];
   collectAspectDiagnostics(canvasAspectRatio, providerAspectRatio, diagnostics);
 
-  const sketchInfo = detectSketchPresence(project.layers);
-  const placedInfo = detectPlacedImages(project.layers);
+  const sketchInfo = detectSketchPresence(project.layers, project.useSketchAsReference !== false);
+  const placedInfo = detectPlacedImages(project.layers, project.attachments);
   const refOverride = options ? options.referenceDataUrlOverride : undefined;
-  const { activeAtt, preparedRefImage } = resolveActiveReference(project, refOverride);
+  const { activeAtt, preparedRefImage } = resolveActiveReference(
+    project,
+    placedInfo.placedImages,
+    refOverride
+  );
   const activeRefRole = activeAtt ? (activeAtt.role as SketchReferenceRole) : undefined;
 
   const unplacedDiag = checkUnplacedAttachments(
@@ -285,12 +337,18 @@ export function prepareSketchCompositeReference(
 
   const { referenceMode, referenceKind, includedRoles } = detectReferenceModeAndKind(
     sketchInfo.hasSketch,
-    placedInfo.hasProductImage,
+    placedInfo.hasSubjectImage,
     placedInfo.roles,
     activeRefRole
   );
 
-  collectStructuralDiagnostics(referenceMode, sketchInfo.guideCount, diagnostics);
+  collectStructuralDiagnostics(
+    referenceMode,
+    sketchInfo.guideCount,
+    placedInfo.placedImages.length,
+    Boolean(activeAtt),
+    diagnostics
+  );
 
   const preparedPrompt = prepareFlowImagePrompt({
     prompt: project.prompt,
