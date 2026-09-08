@@ -5,7 +5,7 @@ import {
   type SketchPath,
   type SketchProjectData,
   type TextLayer,
-} from '@/types/sketch';
+} from '../../types/sketch.ts';
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
