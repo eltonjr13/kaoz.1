@@ -245,8 +245,23 @@ export interface SketchProjectData {
   attachments: SketchAttachment[];
   layers: SketchLayer[];
   generationHistory: GenerationHistoryItem[];
+  snapshots?: SketchVersionSnapshot[];
   updatedAt: string;
   createdAt?: string;
+}
+
+export interface SketchProjectSummary {
+  id: string;
+  title: string;
+  description: string;
+  aspectRatio: SketchAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+  layerCount: number;
+  attachmentCount: number;
+  updatedAt: string;
+  createdAt?: string;
+  schemaVersion?: number;
+  version?: string;
 }
 
 export interface SketchVersionSnapshot {

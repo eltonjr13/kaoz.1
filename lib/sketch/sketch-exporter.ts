@@ -264,10 +264,10 @@ function renderSketchDrawingLayer(
   }
 }
 
-function resolveCanvasDimensionPreset(project: SketchProjectData): AspectRatioDimension {
+export function resolveCanvasDimensionPreset(project: SketchProjectData): AspectRatioDimension {
   const canvasRatio: SketchCanvasAspectRatio = project.canvasAspectRatio || project.aspectRatio || '1:1';
   const basePreset = CANVAS_ASPECT_RATIO_PRESETS[canvasRatio] || ASPECT_RATIO_PRESETS['1:1'];
-  if (project.canvasDimensions?.width && project.canvasDimensions?.height) {
+  if (canvasRatio === 'custom' && project.canvasDimensions?.width && project.canvasDimensions?.height) {
     return {
       width: project.canvasDimensions.width,
       height: project.canvasDimensions.height,

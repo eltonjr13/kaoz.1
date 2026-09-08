@@ -18,6 +18,7 @@ import type {
 
 interface SketchVersionManagerProps {
   project: SketchProjectData;
+  onUpdateProject?: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
   onRestoreProject: (restored: SketchProjectData) => void;
 }
 
@@ -25,6 +26,7 @@ const STORAGE_KEY_PREFIX = 'kaoz1:sketch:versions:';
 
 export function SketchVersionManager({
   project,
+  onUpdateProject,
   onRestoreProject,
 }: SketchVersionManagerProps) {
   const [versions, setVersions] = useState<SketchVersionSnapshot[]>([]);
@@ -33,24 +35,36 @@ export function SketchVersionManager({
 
   const storageKey = `${STORAGE_KEY_PREFIX}${project.id}`;
 
-  // Load versions from localStorage
   useEffect(() => {
+    if (project.snapshots && project.snapshots.length > 0) {
+      setVersions(project.snapshots);
+      return;
+    }
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         setVersions(JSON.parse(stored));
       }
     } catch {
-      // Ignorar erro de leitura do storage
+      // Ignorar erro de leitura
     }
-  }, [storageKey]);
+  }, [project.id, project.snapshots, storageKey]);
 
-  const saveVersionsToStorage = (updated: SketchVersionSnapshot[]) => {
+  const saveVersions = (updated: SketchVersionSnapshot[]) => {
     setVersions(updated);
+
+    if (onUpdateProject) {
+      onUpdateProject((prev) => ({
+        ...prev,
+        snapshots: updated,
+      }));
+    }
+
     try {
       localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Erro ao salvar versoes no localStorage:', e);
+    } catch {
+      // Ignorar fallback
     }
   };
 
@@ -63,11 +77,11 @@ export function SketchVersionManager({
       versionNumber: nextNumber,
       label,
       timestamp: new Date().toISOString(),
-      project: JSON.parse(JSON.stringify(project)),
+      project: JSON.parse(JSON.stringify({ ...project, snapshots: [] })),
     };
 
     const updated = [newSnapshot, ...versions];
-    saveVersionsToStorage(updated);
+    saveVersions(updated);
     setVersionLabel('');
     setSavedFeedback(true);
     setTimeout(() => setSavedFeedback(false), 2000);
@@ -80,7 +94,7 @@ export function SketchVersionManager({
 
   const handleDeleteSnapshot = (id: string) => {
     const updated = versions.filter((v) => v.id !== id);
-    saveVersionsToStorage(updated);
+    saveVersions(updated);
   };
 
   const handleExportProjectJson = () => {
@@ -103,7 +117,7 @@ export function SketchVersionManager({
         if (parsed && parsed.layers && parsed.copy) {
           onRestoreProject(parsed);
         }
-      } catch (err) {
+      } catch {
         alert('Arquivo de projeto inválido.');
       }
     };
@@ -112,9 +126,14 @@ export function SketchVersionManager({
 
   return (
     <div className="flex flex-col gap-4 p-4 text-xs">
-      <div className="border-b border-[var(--line)] pb-3">
-        <h3 className="text-sm font-semibold text-white">Histórico e Versões</h3>
-        <p className="text-[11px] text-zinc-400">Salve marcos do projeto para reverter quando desejar</p>
+      <div className="border-b border-zinc-800 pb-3">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <History size={15} className="text-indigo-400" />
+          <span>Histórico e Versões</span>
+        </h3>
+        <p className="text-[11px] text-zinc-400 mt-0.5">
+          Salve marcos versionados do projeto gravados com atomicidade no backend.
+        </p>
       </div>
 
       {/* Create Version */}
@@ -141,7 +160,7 @@ export function SketchVersionManager({
 
       {/* Backup Import/Export */}
       <div className="flex items-center justify-between gap-2 border-y border-zinc-800/80 py-2.5">
-        <span className="text-zinc-400 text-[11px]">Backup em arquivo</span>
+        <span className="text-zinc-400 text-[11px]">Backup do Projeto</span>
         <div className="flex items-center gap-1.5">
           <button
             type="button"

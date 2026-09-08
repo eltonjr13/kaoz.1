@@ -1,643 +1,752 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Sparkles,
+  Pencil,
+  FolderOpen,
   Download,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Eye,
+  Sparkles,
   Layers,
   FileText,
-  Image as ImageIcon,
+  Sliders,
   History,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Pencil,
+  Image as ImageIcon,
+  Plus,
 } from 'lucide-react';
 import {
-  ASPECT_RATIO_PRESETS,
-  type BackgroundLayer,
-  type GenerationHistoryItem,
+  CANVAS_ASPECT_RATIO_PRESETS,
+  resolveProviderAspectRatio,
   type SketchAspectRatio,
-  type FlowSupportedAspectRatio,
+  type SketchCanvasAspectRatio,
   type SketchProjectData,
-  type TextLayer,
 } from '@/types/sketch';
 import { SketchCanvas } from './sketch-canvas';
 import { SketchCopyEditor } from './sketch-copy-editor';
 import { SketchAttachmentsPanel } from './sketch-attachments-panel';
 import { SketchLayersPanel } from './sketch-layers-panel';
 import { SketchVersionManager } from './sketch-version-manager';
-import { downloadComposition, renderSketchOnlyDataUrl, renderCompositeReferenceDataUrl } from '@/lib/sketch/sketch-exporter';
-import { prepareSketchCompositeReference } from '@/lib/sketch/sketch-composite-preparer';
+import { SketchBriefingPanel } from './sketch-briefing-panel';
+import { SketchPropertiesPanel } from './sketch-properties-panel';
+import { SketchProjectsModal } from './sketch-projects-modal';
+import { SketchCompositePreviewPanel } from './sketch-composite-preview-panel';
+import { downloadComposition } from '@/lib/sketch/sketch-exporter';
 
-const DEFAULT_PROJECT: SketchProjectData = {
-  id: 'sketch-default-project',
-  title: 'Novo Anúncio Estático',
-  description: 'Composição de anúncio criada no Kaoz.1 Sketch',
-  aspectRatio: '1:1',
-  prompt: 'Modern clean commercial ad photo, vibrant product lighting, aesthetic studio setup, sharp focus.',
-  useSketchAsReference: true,
-  attachments: [],
-  copy: {
-    headline: 'O Futuro Chegou Hoje',
-    subheadline: 'Descubra a tecnologia que transforma sua rotina com qualidade premium.',
-    cta: 'Garanta o Seu',
-    badge: 'Lançamento Exclusivo',
-  },
-  layers: [
-    {
-      id: 'layer-bg-root',
-      name: 'Fundo da Arte',
-      type: 'background',
-      fillType: 'color',
-      color: '#0d1117',
-      visible: true,
-      opacity: 1,
-    } as BackgroundLayer,
-    {
-      id: 'layer-sketch-root',
-      name: 'Esboço de Composição',
-      type: 'sketch',
-      paths: [],
-      visible: true,
-      opacity: 0.85,
-    },
-    {
-      id: 'layer-text-badge',
-      name: 'Selo (Badge)',
-      type: 'text',
-      role: 'badge',
-      text: 'LANÇAMENTO EXCLUSIVO',
-      x: 8,
-      y: 8,
-      width: 32,
-      fontSize: 22,
-      fontFamily: 'Inter, sans-serif',
-      fontWeight: '700',
-      color: '#f59e0b',
-      backgroundColor: 'rgba(245, 158, 11, 0.15)',
-      backgroundPadding: 8,
-      borderRadius: 6,
-      textAlign: 'center',
-      textTransform: 'uppercase',
-      visible: true,
-      opacity: 1,
-    } as TextLayer,
-    {
-      id: 'layer-text-headline',
-      name: 'Título (Headline)',
-      type: 'text',
-      role: 'headline',
-      text: 'O Futuro Chegou Hoje',
-      x: 8,
-      y: 65,
-      width: 84,
-      fontSize: 42,
-      fontFamily: 'Inter, sans-serif',
-      fontWeight: '800',
-      color: '#ffffff',
-      textAlign: 'left',
-      visible: true,
-      opacity: 1,
-    } as TextLayer,
-    {
-      id: 'layer-text-subheadline',
-      name: 'Subtítulo',
-      type: 'text',
-      role: 'subheadline',
-      text: 'Descubra a tecnologia que transforma sua rotina com qualidade premium.',
-      x: 8,
-      y: 76,
-      width: 84,
-      fontSize: 20,
-      fontFamily: 'Inter, sans-serif',
-      fontWeight: '500',
-      color: '#cbd5e1',
-      textAlign: 'left',
-      visible: true,
-      opacity: 1,
-    } as TextLayer,
-    {
-      id: 'layer-text-cta',
-      name: 'Botão CTA',
-      type: 'text',
-      role: 'cta',
-      text: 'Garanta o Seu Agora',
-      x: 8,
-      y: 86,
-      width: 40,
-      fontSize: 22,
-      fontFamily: 'Inter, sans-serif',
-      fontWeight: '700',
-      color: '#ffffff',
-      backgroundColor: '#4f46e5',
-      backgroundPadding: 12,
-      borderRadius: 8,
-      textAlign: 'center',
-      visible: true,
-      opacity: 1,
-    } as TextLayer,
-  ],
-  generationHistory: [],
-  updatedAt: new Date().toISOString(),
-};
+type LeftTab = 'briefing' | 'copy' | 'referencias';
+type RightTab = 'propriedades' | 'camadas' | 'versoes';
+type CenterViewMode = 'canvas' | 'preview';
+type SaveStatus = 'saved' | 'saving' | 'error';
 
-function resolveReferenceImage(project: SketchProjectData): string | undefined {
-  const sketch = project.layers.find((l) => l.type === 'sketch') as
-    | import('@/types/sketch').SketchDrawingLayer
-    | undefined;
-
-  if (project.useSketchAsReference && sketch && sketch.paths.length > 0) {
-    const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
-    return renderSketchOnlyDataUrl(sketch.paths, preset.width, preset.height);
+function SaveStatusIndicator({
+  status,
+  savedTime,
+  onRetry,
+}: {
+  status: SaveStatus;
+  savedTime: string;
+  onRetry: () => void;
+}) {
+  if (status === 'saving') {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-amber-400">
+        <Loader2 size={13} className="animate-spin" />
+        <span>Salvando...</span>
+      </div>
+    );
   }
 
-  if (project.activeReferenceId) {
-    const att = project.attachments.find((a) => a.id === project.activeReferenceId);
-    if (att) return att.dataUrl;
+  if (status === 'error') {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-rose-400">
+        <AlertCircle size={13} />
+        <span>Falha ao salvar</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="ml-1 underline hover:text-rose-300 font-medium"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
   }
 
-  return undefined;
-}
-
-function applyGeneratedMedia(
-  prev: SketchProjectData,
-  mediaUrl: string,
-  rawPath: string
-): SketchProjectData {
-  const historyItem: GenerationHistoryItem = {
-    id: `gen-${Date.now()}`,
-    prompt: prev.prompt,
-    imageUrl: mediaUrl,
-    flowPath: rawPath,
-    aspectRatio: prev.aspectRatio,
-    createdAt: new Date().toISOString(),
-  };
-
-  const layers = prev.layers.map((l) => {
-    if (l.type !== 'background') return l;
-    return {
-      ...l,
-      fillType: 'image',
-      imageUrl: mediaUrl,
-      flowMediaPath: rawPath,
-    } as BackgroundLayer;
-  });
-
-  return {
-    ...prev,
-    layers,
-    generationHistory: [historyItem, ...prev.generationHistory],
-  };
-}
-
-async function executeFlowApiCall(
-  prompt: string,
-  aspectRatio: FlowSupportedAspectRatio,
-  refDataUrl?: string,
-  referenceKind?: import('@/src/providers/flow/ImageGenerationContract').ImageReferenceKind
-): Promise<string> {
-  const res = await fetch('/api/flow/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'image',
-      prompt,
-      aspectRatio,
-      quantity: 1,
-      operation: refDataUrl ? 'reference' : 'simple',
-      referenceKind,
-      referenceImage: refDataUrl,
-    }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Falha na geração pelo FlowProvider.');
-  }
-
-  const rawPath = data.path || (data.paths && data.paths[0]);
-  if (!rawPath) throw new Error('Caminho não retornado pelo FlowProvider.');
-  return rawPath;
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+      <CheckCircle2 size={13} />
+      <span>Salvo {savedTime ? `(${savedTime})` : ''}</span>
+    </div>
+  );
 }
 
 function SketchTopBar({
   title,
-  aspectRatio,
+  canvasRatio,
+  saveStatus,
+  savedTime,
+  centerView,
+  isLeftOpen,
+  isRightOpen,
   isExporting,
   onUpdateTitle,
   onUpdateRatio,
+  onToggleLeft,
+  onToggleRight,
+  onChangeCenterView,
+  onOpenProjectsModal,
+  onRetrySave,
   onExport,
 }: {
   title: string;
-  aspectRatio: SketchAspectRatio;
+  canvasRatio: SketchCanvasAspectRatio;
+  saveStatus: SaveStatus;
+  savedTime: string;
+  centerView: CenterViewMode;
+  isLeftOpen: boolean;
+  isRightOpen: boolean;
   isExporting: boolean;
   onUpdateTitle: (title: string) => void;
-  onUpdateRatio: (ratio: SketchAspectRatio) => void;
+  onUpdateRatio: (ratio: SketchCanvasAspectRatio) => void;
+  onToggleLeft: () => void;
+  onToggleRight: () => void;
+  onChangeCenterView: (view: CenterViewMode) => void;
+  onOpenProjectsModal: () => void;
+  onRetrySave: () => void;
   onExport: (format: 'png' | 'jpeg') => void;
 }) {
-  const ratios = Object.keys(ASPECT_RATIO_PRESETS) as SketchAspectRatio[];
+  const quickRatios: SketchCanvasAspectRatio[] = ['1:1', '9:16', '16:9', '4:5'];
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--line)] bg-[#0d1017] px-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
-          <Pencil size={17} />
-        </div>
-        <div>
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d1017] px-3 sm:px-4 text-xs min-w-0 overflow-x-auto gap-2">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+        <button
+          type="button"
+          onClick={onToggleLeft}
+          title={isLeftOpen ? 'Recolher painel esquerdo' : 'Expandir painel esquerdo'}
+          className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+        >
+          {isLeftOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenProjectsModal}
+          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          title="Abrir gerenciador de projetos"
+        >
+          <FolderOpen size={14} className="text-indigo-400" />
+          <span className="hidden sm:inline">Projetos</span>
+        </button>
+
+        <div className="flex items-center gap-2 min-w-0">
           <input
             type="text"
             value={title}
             onChange={(e) => onUpdateTitle(e.target.value)}
-            className="bg-transparent text-sm font-semibold text-white outline-none hover:border-b hover:border-zinc-600 focus:border-b focus:border-indigo-500"
+            className="w-32 sm:w-44 lg:w-48 truncate bg-transparent font-semibold text-white outline-none hover:border-b hover:border-zinc-600 focus:border-b focus:border-indigo-500"
+            title="Clique para renomear o projeto"
           />
-          <span className="block text-[10px] text-zinc-400">Estúdio de Anúncios Estáticos com IA</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
-        {ratios.map((ratio) => (
+      {/* Formato e Visualização Central */}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
+          {quickRatios.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => onUpdateRatio(r)}
+              className={`rounded-lg px-2 py-1 text-[11px] font-medium transition-colors ${
+                canvasRatio === r
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
           <button
-            key={ratio}
             type="button"
-            onClick={() => onUpdateRatio(ratio)}
-            title={ASPECT_RATIO_PRESETS[ratio].description}
-            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-              aspectRatio === ratio
-                ? 'bg-indigo-600 text-white shadow'
+            onClick={() => onChangeCenterView('canvas')}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              centerView === 'canvas'
+                ? 'bg-zinc-700 text-white'
                 : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
             }`}
           >
-            {ratio}
+            <Pencil size={12} />
+            <span>Prancheta</span>
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => onChangeCenterView('preview')}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              centerView === 'preview'
+                ? 'bg-indigo-600 text-white'
+                : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            <Sparkles size={12} />
+            <span>Prévia Flow</span>
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Estado do Salvamento e Exportação */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <SaveStatusIndicator status={saveStatus} savedTime={savedTime} onRetry={onRetrySave} />
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onExport('jpeg')}
+            disabled={isExporting}
+            className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 sm:px-2.5 text-xs text-zinc-200 hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+          >
+            <Download size={12} />
+            <span>JPEG</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onExport('png')}
+            disabled={isExporting}
+            className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 sm:px-2.5 text-xs font-medium text-white shadow hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            <span>PNG</span>
+          </button>
+        </div>
+
         <button
           type="button"
-          onClick={() => onExport('jpeg')}
-          disabled={isExporting}
-          className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-50"
+          onClick={onToggleRight}
+          title={isRightOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
         >
-          <Download size={13} />
-          <span>Exportar JPEG</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onExport('png')}
-          disabled={isExporting}
-          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow hover:bg-indigo-500 transition-colors disabled:opacity-50"
-        >
-          {isExporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          <span>Exportar PNG</span>
+          {isRightOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
         </button>
       </div>
     </header>
   );
 }
 
-type TabKey = 'generation' | 'copy' | 'attachments' | 'layers' | 'versions';
-
-function SidebarNavTabs({
+function SketchLeftSidebar({
+  isOpen,
   activeTab,
+  project,
+  selectedLayerId,
   onSelectTab,
+  onUpdateProject,
+  onSelectLayer,
 }: {
-  activeTab: TabKey;
-  onSelectTab: (tab: TabKey) => void;
+  isOpen: boolean;
+  activeTab: LeftTab;
+  project: SketchProjectData;
+  selectedLayerId: string | null;
+  onSelectTab: (tab: LeftTab) => void;
+  onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
+  onSelectLayer: (layerId: string | null) => void;
 }) {
-  const tabs: { key: TabKey; label: string; icon: React.ComponentType<{ size: number }> }[] = [
-    { key: 'generation', label: 'Criação', icon: Sparkles },
-    { key: 'copy', label: 'Copy', icon: FileText },
-    { key: 'attachments', label: 'Anexos', icon: ImageIcon },
-    { key: 'layers', label: 'Camadas', icon: Layers },
-    { key: 'versions', label: 'Versões', icon: History },
-  ];
+  if (!isOpen) return null;
 
   return (
-    <div className="flex border-b border-[var(--line)] bg-[#090b10] px-2 py-1.5 gap-1">
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = activeTab === tab.key;
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => onSelectTab(tab.key)}
-            className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium ${
-              isActive ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-            }`}
-          >
-            <Icon size={13} />
-            <span>{tab.label}</span>
-          </button>
-        );
-      })}
+    <aside className="w-[280px] xl:w-[330px] shrink-0 border-r border-zinc-800 bg-[#0d1017] flex flex-col h-full overflow-hidden">
+      <div className="flex border-b border-zinc-800 bg-[#090b10] px-2 py-1.5 gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => onSelectTab('briefing')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'briefing' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <FileText size={13} />
+          <span>Briefing</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectTab('copy')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'copy' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <Sparkles size={13} />
+          <span>Copy</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectTab('referencias')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'referencias' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <ImageIcon size={13} />
+          <span>Referências</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'briefing' && (
+          <SketchBriefingPanel
+            project={project}
+            onUpdateProject={onUpdateProject}
+            onNavigateToCopy={() => onSelectTab('copy')}
+          />
+        )}
+        {activeTab === 'copy' && (
+          <SketchCopyEditor
+            project={project}
+            onUpdateProject={onUpdateProject}
+            selectedLayerId={selectedLayerId}
+            onSelectLayer={onSelectLayer}
+          />
+        )}
+        {activeTab === 'referencias' && (
+          <SketchAttachmentsPanel
+            project={project}
+            onUpdateProject={onUpdateProject}
+            onSelectLayer={onSelectLayer}
+          />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function SketchRightSidebar({
+  isOpen,
+  activeTab,
+  project,
+  selectedLayerId,
+  onSelectTab,
+  onUpdateProject,
+  onSelectLayer,
+  onRestoreProject,
+}: {
+  isOpen: boolean;
+  activeTab: RightTab;
+  project: SketchProjectData;
+  selectedLayerId: string | null;
+  onSelectTab: (tab: RightTab) => void;
+  onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
+  onSelectLayer: (layerId: string | null) => void;
+  onRestoreProject: (restored: SketchProjectData) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <aside className="w-[260px] xl:w-[310px] shrink-0 border-l border-zinc-800 bg-[#0d1017] flex flex-col h-full overflow-hidden">
+      <div className="flex border-b border-zinc-800 bg-[#090b10] px-2 py-1.5 gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => onSelectTab('propriedades')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'propriedades' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <Sliders size={13} />
+          <span>Propriedades</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectTab('camadas')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'camadas' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <Layers size={13} />
+          <span>Camadas</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectTab('versoes')}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+            activeTab === 'versoes' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <History size={13} />
+          <span>Versões</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'propriedades' && (
+          <SketchPropertiesPanel
+            project={project}
+            selectedLayerId={selectedLayerId}
+            onUpdateProject={onUpdateProject}
+            onSelectLayer={onSelectLayer}
+          />
+        )}
+        {activeTab === 'camadas' && (
+          <SketchLayersPanel
+            project={project}
+            selectedLayerId={selectedLayerId}
+            onUpdateProject={onUpdateProject}
+            onSelectLayer={onSelectLayer}
+          />
+        )}
+        {activeTab === 'versoes' && (
+          <SketchVersionManager
+            project={project}
+            onUpdateProject={onUpdateProject}
+            onRestoreProject={onRestoreProject}
+          />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function SketchEmptyState({
+  onCreateProject,
+}: {
+  onCreateProject: () => void;
+}) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center bg-[#07090e] p-6 text-center text-white">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 mb-4">
+        <Pencil size={32} />
+      </div>
+      <h2 className="text-xl font-bold">Nenhum projeto encontrado</h2>
+      <p className="max-w-md text-sm text-zinc-400 mt-2 mb-6">
+        Crie seu primeiro anúncio estático com IA. Utilize a prancheta de composição, gere copies de alta conversão e exporte artes completas.
+      </p>
+      <button
+        type="button"
+        onClick={onCreateProject}
+        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white shadow-lg hover:bg-indigo-500 transition-all"
+      >
+        <Plus size={16} />
+        <span>Criar Primeiro Projeto</span>
+      </button>
     </div>
   );
 }
 
-function GenerationPanel({
-  project,
-  isGenerating,
-  error,
-  success,
-  onUpdateProject,
-  onGenerate,
-}: {
-  project: SketchProjectData;
-  isGenerating: boolean;
-  error: string | null;
-  success: string | null;
-  onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
-  onGenerate: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-4 p-4 text-xs">
-      <div className="border-b border-[var(--line)] pb-3">
-        <h3 className="text-sm font-semibold text-white">Geração Visual (FlowProvider)</h3>
-        <p className="text-[11px] text-zinc-400">
-          Crie a arte de fundo combinando descrição em texto com seu esboço ou anexo.
-        </p>
-      </div>
+const ACTIVE_PROJECT_KEY = 'kaoz1:sketch:active-project-id';
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] font-medium text-zinc-300">Descrição Visual (Prompt) *</label>
-        <textarea
-          rows={4}
-          value={project.prompt}
-          onChange={(e) => onUpdateProject((prev) => ({ ...prev, prompt: e.target.value }))}
-          placeholder="Descreva o produto, estética, iluminação de estúdio..."
-          className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-xs text-white outline-none"
-        />
-      </div>
+function resolveTargetProjectId(projects: Array<{ id: string }>): string {
+  try {
+    const storedId = typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_PROJECT_KEY) : null;
+    if (storedId && projects.some((p) => p.id === storedId)) {
+      return storedId;
+    }
+  } catch {
+    // Ignorar erro de leitura
+  }
+  return projects[0].id;
+}
 
-      <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-[#10131c] p-3">
-        <span className="text-[11px] font-medium text-zinc-300">Condicionamento de Referência</span>
-        <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
-          <input
-            type="radio"
-            name="refMode"
-            checked={project.useSketchAsReference}
-            onChange={() =>
-              onUpdateProject((prev) => ({ ...prev, useSketchAsReference: true, activeReferenceId: undefined }))
-            }
-            className="accent-indigo-500"
-          />
-          <span>Usar Esboço do Canvas como Referência</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
-          <input
-            type="radio"
-            name="refMode"
-            checked={!project.useSketchAsReference && Boolean(project.activeReferenceId)}
-            onChange={() =>
-              onUpdateProject((prev) => ({
-                ...prev,
-                useSketchAsReference: false,
-                activeReferenceId: prev.attachments[0]?.id,
-              }))
-            }
-            disabled={project.attachments.length === 0}
-            className="accent-indigo-500 disabled:opacity-40"
-          />
-          <span>Usar Imagem Anexada de Referência</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
-          <input
-            type="radio"
-            name="refMode"
-            checked={!project.useSketchAsReference && !project.activeReferenceId}
-            onChange={() =>
-              onUpdateProject((prev) => ({ ...prev, useSketchAsReference: false, activeReferenceId: undefined }))
-            }
-            className="accent-indigo-500"
-          />
-          <span>Geração Direta (Sem imagem de referência)</span>
-        </label>
-      </div>
-
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-950/20 p-2.5 text-rose-300 text-[11px]">
-          <AlertCircle size={14} className="shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5 text-emerald-300 text-[11px]">
-          <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
-          <span>{success}</span>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={onGenerate}
-        disabled={isGenerating}
-        className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 font-semibold text-white shadow-lg hover:bg-indigo-500 transition-all disabled:opacity-50"
-      >
-        {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-        <span>{isGenerating ? 'Gerando arte no FlowProvider...' : 'Gerar Arte de Fundo'}</span>
-      </button>
-
-      {project.generationHistory.length > 0 && (
-        <div className="flex flex-col gap-2 pt-3 border-t border-zinc-800">
-          <span className="text-[11px] font-medium text-zinc-400">
-            Gerações Anteriores ({project.generationHistory.length})
-          </span>
-          <div className="grid grid-cols-3 gap-2">
-            {project.generationHistory.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  onUpdateProject((prev) => ({
-                    ...prev,
-                    layers: prev.layers.map((l) =>
-                      l.type === 'background'
-                        ? ({ ...l, fillType: 'image', imageUrl: item.imageUrl, flowMediaPath: item.flowPath } as BackgroundLayer)
-                        : l
-                    ),
-                  }));
-                }}
-                className="group relative aspect-square overflow-hidden rounded-lg border border-zinc-800 hover:border-indigo-500"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.imageUrl} alt="Histórico" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function storeActiveProjectId(id: string) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+    }
+  } catch {
+    // Ignorar erro de escrita
+  }
 }
 
 export function SketchDashboard() {
-  const [project, setProject] = useState<SketchProjectData>(DEFAULT_PROJECT);
-  const [activeTab, setActiveTab] = useState<TabKey>('generation');
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [project, setProject] = useState<SketchProjectData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEmpty, setIsEmpty] = useState(false);
 
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [savedTime, setSavedTime] = useState('');
+
+  const [isLeftOpen, setIsLeftOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(true);
+  const [leftTab, setLeftTab] = useState<LeftTab>('briefing');
+  const [rightTab, setRightTab] = useState<RightTab>('propriedades');
+  const [centerView, setCenterView] = useState<CenterViewMode>('canvas');
+
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<'brush' | 'box' | 'eraser' | 'select'>('brush');
   const [strokeColor, setStrokeColor] = useState('#6366f1');
   const [strokeSize, setStrokeSize] = useState(6);
   const [boxLabel, setBoxLabel] = useState('Produto');
 
-  const [isGeneratingFlow, setIsGeneratingFlow] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [generationSuccess, setGenerationSuccess] = useState<string | null>(null);
+  const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => {
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingProjectRef = useRef<SketchProjectData | null>(null);
+
+  const persistToBackend = useCallback(async (toSave: SketchProjectData) => {
+    setSaveStatus('saving');
     try {
-      const saved = localStorage.getItem('kaoz1:sketch:active-project');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.id && parsed?.layers) setProject(parsed);
+      const res = await fetch(`/api/sketch/projects/${toSave.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toSave),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao persistir');
       }
+      setSaveStatus('saved');
+      setSavedTime(new Date().toLocaleTimeString('pt-BR'));
     } catch {
-      // Ignorar
+      setSaveStatus('error');
     }
   }, []);
 
-  const handleUpdateProject = (updater: (prev: SketchProjectData) => SketchProjectData) => {
-    setProject((prev) => {
-      const next = updater(prev);
-      const updated = { ...next, updatedAt: new Date().toISOString() };
-      try {
-        localStorage.setItem('kaoz1:sketch:active-project', JSON.stringify(updated));
-      } catch {
-        // Ignorar
+  const handleUpdateProject = useCallback(
+    (updater: (prev: SketchProjectData) => SketchProjectData) => {
+      setProject((prev) => {
+        if (!prev) return prev;
+        const next = updater(prev);
+        const updated = { ...next, updatedAt: new Date().toISOString() };
+        pendingProjectRef.current = updated;
+
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          persistToBackend(updated);
+        }, 700);
+
+        return updated;
+      });
+    },
+    [persistToBackend]
+  );
+
+  const loadInitialProject = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/sketch/projects');
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.projects) || data.projects.length === 0) {
+        setProject(null);
+        setIsEmpty(true);
+        return;
       }
-      return updated;
-    });
+
+      const targetId = resolveTargetProjectId(data.projects);
+      const pRes = await fetch(`/api/sketch/projects/${targetId}`);
+      const pData = await pRes.json();
+      if (pData.success && pData.project) {
+        setProject(pData.project);
+        setIsEmpty(false);
+        storeActiveProjectId(pData.project.id);
+      } else {
+        setIsEmpty(true);
+      }
+    } catch {
+      setIsEmpty(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInitialProject();
+  }, [loadInitialProject]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1200) {
+      setIsRightOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const flushPending = () => {
+      if (pendingProjectRef.current) {
+        const payload = JSON.stringify(pendingProjectRef.current);
+        try {
+          fetch(`/api/sketch/projects/${pendingProjectRef.current.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {});
+        } catch {
+          // Ignore
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => flushPending();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      flushPending();
+    };
+  }, []);
+
+  const handleOpenProject = async (id: string) => {
+    if (pendingProjectRef.current) {
+      await persistToBackend(pendingProjectRef.current);
+    }
+    try {
+      const res = await fetch(`/api/sketch/projects/${id}`);
+      const data = await res.json();
+      if (data.success && data.project) {
+        setProject(data.project);
+        setSaveStatus('saved');
+        storeActiveProjectId(id);
+      }
+    } catch {
+      // Ignorar erro ao abrir
+    }
   };
 
-  const handleGenerateFlowImage = async () => {
-    if (!project.prompt.trim()) {
-      setGenerationError('Informe uma descrição / prompt.');
-      return;
+  const handleCreateNewProject = async (title: string, ratio: SketchAspectRatio) => {
+    const res = await fetch('/api/sketch/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, aspectRatio: ratio }),
+    });
+    const data = await res.json();
+    if (data.success && data.project) {
+      setProject(data.project);
+      setIsEmpty(false);
+      setSaveStatus('saved');
+      storeActiveProjectId(data.project.id);
     }
+  };
 
-    setIsGeneratingFlow(true);
-    setGenerationError(null);
-    setGenerationSuccess(null);
+  const handleRenameProject = async (id: string, newTitle: string) => {
+    await fetch(`/api/sketch/projects/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle }),
+    });
+    if (project && project.id === id) {
+      setProject((prev) => (prev ? { ...prev, title: newTitle } : prev));
+    }
+  };
 
-    try {
-      let compositeDataUrl: string | undefined;
-      try {
-        compositeDataUrl = await renderCompositeReferenceDataUrl(project);
-      } catch {
-        // Fallback para referência direta
-      }
-
-      const prep = prepareSketchCompositeReference(project, {
-        referenceDataUrlOverride: compositeDataUrl || resolveReferenceImage(project),
-      });
-
-      const rawPath = await executeFlowApiCall(
-        prep.preparedPrompt,
-        prep.providerAspectRatio,
-        prep.preparedReferenceImage,
-        prep.referenceKind
-      );
-      const mediaUrl = `/api/flow/media?path=${encodeURIComponent(rawPath)}`;
-      handleUpdateProject((prev) => applyGeneratedMedia(prev, mediaUrl, rawPath));
-      setGenerationSuccess('Arte de fundo gerada e aplicada com sucesso!');
-    } catch (err) {
-      setGenerationError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsGeneratingFlow(false);
+  const handleDeleteProject = async (id: string) => {
+    await fetch(`/api/sketch/projects/${id}`, { method: 'DELETE' });
+    if (project && project.id === id) {
+      await loadInitialProject();
     }
   };
 
   const handleExport = async (format: 'png' | 'jpeg') => {
+    if (!project) return;
     setIsExporting(true);
     try {
       await downloadComposition(project, format);
-    } catch (err) {
-      alert('Falha ao exportar.');
     } finally {
       setIsExporting(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#07090e] text-zinc-400 gap-2">
+        <Loader2 size={24} className="animate-spin text-indigo-500" />
+        <span className="text-sm">Carregando estúdio Sketch...</span>
+      </div>
+    );
+  }
+
+  if (isEmpty || !project) {
+    return <SketchEmptyState onCreateProject={() => handleCreateNewProject('Primeiro Anúncio', '1:1')} />;
+  }
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#07090e] text-white">
       <SketchTopBar
         title={project.title}
-        aspectRatio={project.aspectRatio}
+        canvasRatio={project.canvasAspectRatio || project.aspectRatio || '1:1'}
+        saveStatus={saveStatus}
+        savedTime={savedTime}
+        centerView={centerView}
+        isLeftOpen={isLeftOpen}
+        isRightOpen={isRightOpen}
         isExporting={isExporting}
         onUpdateTitle={(title) => handleUpdateProject((prev) => ({ ...prev, title }))}
-        onUpdateRatio={(ratio) => handleUpdateProject((prev) => ({ ...prev, aspectRatio: ratio }))}
+        onUpdateRatio={(ratio) => {
+          const preset = CANVAS_ASPECT_RATIO_PRESETS[ratio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
+          handleUpdateProject((prev) => ({
+            ...prev,
+            canvasAspectRatio: ratio,
+            aspectRatio: resolveProviderAspectRatio(ratio),
+            canvasDimensions: { width: preset.width, height: preset.height, unit: 'px' },
+          }));
+        }}
+        onToggleLeft={() => setIsLeftOpen((v) => !v)}
+        onToggleRight={() => setIsRightOpen((v) => !v)}
+        onChangeCenterView={setCenterView}
+        onOpenProjectsModal={() => setIsProjectsModalOpen(true)}
+        onRetrySave={() => {
+          const toSave = pendingProjectRef.current || project;
+          if (toSave) persistToBackend(toSave);
+        }}
         onExport={handleExport}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-w-0 h-full">
-          <SketchCanvas
-            project={project}
-            onUpdateProject={handleUpdateProject}
-            selectedLayerId={selectedLayerId}
-            onSelectLayer={setSelectedLayerId}
-            activeTool={activeTool}
-            setActiveTool={setActiveTool}
-            strokeColor={strokeColor}
-            setStrokeColor={setStrokeColor}
-            strokeSize={strokeSize}
-            setStrokeSize={setStrokeSize}
-            boxLabel={boxLabel}
-            setBoxLabel={setBoxLabel}
-          />
-        </div>
+        <SketchLeftSidebar
+          isOpen={isLeftOpen}
+          activeTab={leftTab}
+          project={project}
+          selectedLayerId={selectedLayerId}
+          onSelectTab={setLeftTab}
+          onUpdateProject={handleUpdateProject}
+          onSelectLayer={setSelectedLayerId}
+        />
 
-        <aside className="w-[360px] shrink-0 border-l border-[var(--line)] bg-[#0d1017] flex flex-col h-full overflow-hidden">
-          <SidebarNavTabs activeTab={activeTab} onSelectTab={setActiveTab} />
+        <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
+          {centerView === 'canvas' ? (
+            <SketchCanvas
+              project={project}
+              onUpdateProject={handleUpdateProject}
+              selectedLayerId={selectedLayerId}
+              onSelectLayer={setSelectedLayerId}
+              activeTool={activeTool}
+              setActiveTool={setActiveTool}
+              strokeColor={strokeColor}
+              setStrokeColor={setStrokeColor}
+              strokeSize={strokeSize}
+              setStrokeSize={setStrokeSize}
+              boxLabel={boxLabel}
+              setBoxLabel={setBoxLabel}
+            />
+          ) : (
+            <SketchCompositePreviewPanel project={project} />
+          )}
+        </main>
 
-          <div className="flex-1 overflow-y-auto">
-            {activeTab === 'generation' && (
-              <GenerationPanel
-                project={project}
-                isGenerating={isGeneratingFlow}
-                error={generationError}
-                success={generationSuccess}
-                onUpdateProject={handleUpdateProject}
-                onGenerate={handleGenerateFlowImage}
-              />
-            )}
-            {activeTab === 'copy' && (
-              <SketchCopyEditor
-                project={project}
-                onUpdateProject={handleUpdateProject}
-                selectedLayerId={selectedLayerId}
-                onSelectLayer={setSelectedLayerId}
-              />
-            )}
-            {activeTab === 'attachments' && (
-              <SketchAttachmentsPanel
-                project={project}
-                onUpdateProject={handleUpdateProject}
-                onSelectLayer={setSelectedLayerId}
-              />
-            )}
-            {activeTab === 'layers' && (
-              <SketchLayersPanel
-                project={project}
-                onUpdateProject={handleUpdateProject}
-                selectedLayerId={selectedLayerId}
-                onSelectLayer={setSelectedLayerId}
-              />
-            )}
-            {activeTab === 'versions' && (
-              <SketchVersionManager
-                project={project}
-                onRestoreProject={(restored) => setProject(restored)}
-              />
-            )}
-          </div>
-        </aside>
+        <SketchRightSidebar
+          isOpen={isRightOpen}
+          activeTab={rightTab}
+          project={project}
+          selectedLayerId={selectedLayerId}
+          onSelectTab={setRightTab}
+          onUpdateProject={handleUpdateProject}
+          onSelectLayer={setSelectedLayerId}
+          onRestoreProject={(restored) => handleUpdateProject(() => restored)}
+        />
       </div>
+
+      <SketchProjectsModal
+        isOpen={isProjectsModalOpen}
+        activeProjectId={project.id}
+        onClose={() => setIsProjectsModalOpen(false)}
+        onOpenProject={handleOpenProject}
+        onCreateNewProject={handleCreateNewProject}
+        onRenameProject={handleRenameProject}
+        onDeleteProject={handleDeleteProject}
+      />
     </div>
   );
 }

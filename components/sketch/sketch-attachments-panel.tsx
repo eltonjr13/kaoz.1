@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Upload,
   Plus,
   Trash2,
-  CheckCircle2,
   Image as ImageIcon,
-  Layers,
   Sparkles,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import type {
   AttachmentRole,
@@ -50,7 +50,7 @@ const ROLE_LABELS: Record<AttachmentRole, { label: string; desc: string }> = {
   },
   reference: {
     label: 'Referência IA',
-    desc: 'Enviada como referência visual única ao FlowProvider na geração',
+    desc: 'Enviada como referência visual ao FlowProvider',
   },
   overlay: {
     label: 'Sobreposição / Badge',
@@ -62,50 +62,78 @@ const ROLE_LABELS: Record<AttachmentRole, { label: string; desc: string }> = {
   },
 };
 
+async function uploadAttachmentFile(file: File, role: AttachmentRole): Promise<SketchAttachment | null> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('role', role);
+  formData.append('name', file.name);
+
+  const res = await fetch('/api/sketch/attachments', {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success || !data.attachment) {
+    throw new Error(data.error || 'Falha ao salvar anexo no servidor');
+  }
+  return data.attachment;
+}
+
+function createImageLayerFromAttachment(att: SketchAttachment): ImageLayer {
+  const layerId = `layer-img-${Date.now()}`;
+  const isLogo = att.role === 'logo';
+  return {
+    id: layerId,
+    name: isLogo ? 'Logo' : att.name.replace(/\.[^/.]+$/, ''),
+    type: 'image',
+    attachmentId: att.id,
+    imageUrl: att.dataUrl,
+    role: att.role === 'reference' || att.role === 'inspiration' ? 'overlay' : att.role,
+    visible: true,
+    opacity: 1,
+    x: isLogo ? 10 : 35,
+    y: isLogo ? 8 : 35,
+    width: isLogo ? 22 : 40,
+    height: isLogo ? 12 : 40,
+    rotation: 0,
+  };
+}
+
 export function SketchAttachmentsPanel({
   project,
   onUpdateProject,
   onSelectLayer,
 }: SketchAttachmentsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const handleFileUpload = (files: FileList | null) => {
+  const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    setIsUploading(true);
+    setUploadError(null);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file.type.startsWith('image/')) continue;
+    try {
+      const defaultRole = project.attachments.length === 0 ? 'product' : 'reference';
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        if (!dataUrl) return;
-
-        const newAttachment: SketchAttachment = {
-          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          name: file.name,
-          dataUrl,
-          role: project.attachments.length === 0 ? 'reference' : 'logo',
-          createdAt: new Date().toISOString(),
-        };
-
-        onUpdateProject((prev) => ({
-          ...prev,
-          attachments: [...prev.attachments, newAttachment],
-          // Se for a primeira imagem ou configurada como referência, marca como ativa
-          activeReferenceId:
-            !prev.activeReferenceId && newAttachment.role === 'reference'
-              ? newAttachment.id
-              : prev.activeReferenceId,
-        }));
-      };
-      reader.readAsDataURL(file);
+        const uploaded = await uploadAttachmentFile(file, defaultRole);
+        if (uploaded) {
+          onUpdateProject((prev) => ({
+            ...prev,
+            attachments: [...prev.attachments, uploaded],
+            activeReferenceId: prev.activeReferenceId || uploaded.id,
+          }));
+        }
+      }
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Falha no upload do arquivo');
+    } finally {
+      setIsUploading(false);
     }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    handleFileUpload(e.dataTransfer.files);
   };
 
   const updateAttachmentRole = (id: string, role: AttachmentRole) => {
@@ -122,38 +150,13 @@ export function SketchAttachmentsPanel({
     });
   };
 
-  const setAsActiveAiReference = (id: string) => {
-    onUpdateProject((prev) => ({
-      ...prev,
-      activeReferenceId: id,
-      useSketchAsReference: false,
-    }));
-  };
-
   const addAttachmentToComposition = (att: SketchAttachment) => {
-    const layerId = `layer-img-${Date.now()}`;
-    const newLayer: ImageLayer = {
-      id: layerId,
-      name: att.role === 'logo' ? 'Logo' : att.name.replace(/\.[^/.]+$/, ''),
-      type: 'image',
-      attachmentId: att.id,
-      imageUrl: att.dataUrl,
-      role: att.role === 'reference' || att.role === 'inspiration' ? 'overlay' : att.role,
-      visible: true,
-      opacity: 1,
-      x: att.role === 'logo' ? 10 : 35,
-      y: att.role === 'logo' ? 8 : 35,
-      width: att.role === 'logo' ? 22 : 40,
-      height: att.role === 'logo' ? 12 : 40,
-      rotation: 0,
-    };
-
+    const newLayer = createImageLayerFromAttachment(att);
     onUpdateProject((prev) => ({
       ...prev,
       layers: [...prev.layers, newLayer],
     }));
-
-    onSelectLayer(layerId);
+    onSelectLayer(newLayer.id);
   };
 
   const removeAttachment = (id: string) => {
@@ -166,23 +169,42 @@ export function SketchAttachmentsPanel({
 
   return (
     <div className="flex flex-col gap-4 p-4 text-xs">
-      <div className="border-b border-[var(--line)] pb-3">
-        <h3 className="text-sm font-semibold text-white">Anexos de Imagens</h3>
-        <p className="text-[11px] text-zinc-400">
-          Anexe imagens com papéis distintos: Referência IA (FlowProvider aceita 1 por vez), Logos e Camadas de Produto.
+      <div className="border-b border-zinc-800 pb-3">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <ImageIcon size={15} className="text-indigo-400" />
+          <span>Anexos e Referências</span>
+        </h3>
+        <p className="text-[11px] text-zinc-400 mt-0.5">
+          Armazenados no disco do runtime com papéis estritos: Produto, Modelo, Logo, Estilo e Composição.
         </p>
       </div>
+
+      {uploadError && (
+        <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-950/20 p-2.5 text-rose-300 text-[11px]">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{uploadError}</span>
+        </div>
+      )}
 
       {/* Upload Dropzone */}
       <div
         onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
+        onDrop={(e) => {
+          e.preventDefault();
+          handleFileUpload(e.dataTransfer.files);
+        }}
         onClick={() => fileInputRef.current?.click()}
         className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 p-5 text-center cursor-pointer hover:border-indigo-500 hover:bg-zinc-900/70 transition-colors"
       >
-        <Upload size={20} className="text-indigo-400 mb-1.5" />
-        <span className="font-medium text-zinc-200">Clique ou arraste imagens aqui</span>
-        <span className="text-[10px] text-zinc-500 mt-0.5">PNG, JPG, WebP ou SVG</span>
+        {isUploading ? (
+          <Loader2 size={22} className="animate-spin text-indigo-400 mb-1.5" />
+        ) : (
+          <Upload size={20} className="text-indigo-400 mb-1.5" />
+        )}
+        <span className="font-medium text-zinc-200">
+          {isUploading ? 'Gravando arquivo no runtime...' : 'Clique ou arraste imagens aqui'}
+        </span>
+        <span className="text-[10px] text-zinc-500 mt-0.5">PNG, JPG, WebP ou SVG (sem base64 no storage)</span>
         <input
           ref={fileInputRef}
           type="file"
@@ -204,9 +226,7 @@ export function SketchAttachmentsPanel({
               <div
                 key={att.id}
                 className={`rounded-xl border p-3 flex flex-col gap-2 transition-all ${
-                  isRef
-                    ? 'border-indigo-500/60 bg-indigo-950/20'
-                    : 'border-zinc-800 bg-[#10131c]'
+                  isRef ? 'border-indigo-500/60 bg-indigo-950/20' : 'border-zinc-800 bg-[#10131c]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -217,7 +237,7 @@ export function SketchAttachmentsPanel({
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-medium text-zinc-200 text-[11px]">{att.name}</p>
-                      <p className="text-[10px] text-zinc-500">{ROLE_LABELS[att.role].label}</p>
+                      <p className="text-[10px] text-zinc-500">{ROLE_LABELS[att.role]?.label || att.role}</p>
                     </div>
                   </div>
 
@@ -231,40 +251,45 @@ export function SketchAttachmentsPanel({
                   </button>
                 </div>
 
-                {/* Role selection & Actions */}
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-800/80">
                   <select
                     value={att.role}
                     onChange={(e) => updateAttachmentRole(att.id, e.target.value as AttachmentRole)}
                     className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] text-zinc-200 outline-none"
                   >
-                    <option value="reference">Referência IA (FlowProvider)</option>
-                    <option value="logo">Logo da Marca (Camada)</option>
-                    <option value="product">Produto / Recorte (Camada)</option>
-                    <option value="overlay">Sobreposição (Camada)</option>
-                    <option value="inspiration">Inspiração de Estilo</option>
+                    <option value="product">Produto / Comercial</option>
+                    <option value="person">Pessoa / Modelo</option>
+                    <option value="logo">Logo da Marca</option>
+                    <option value="style">Estilo Visual</option>
+                    <option value="composition">Composição / Layout</option>
+                    <option value="background">Fundo / Cenário</option>
+                    <option value="reference">Referência IA</option>
+                    <option value="overlay">Sobreposição</option>
+                    <option value="inspiration">Inspiração</option>
                   </select>
 
                   <div className="flex items-center gap-1.5">
-                    {att.role === 'reference' && (
-                      <button
-                        type="button"
-                        onClick={() => setAsActiveAiReference(att.id)}
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${
-                          isRef
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                        }`}
-                      >
-                        <Sparkles size={11} />
-                        <span>{isRef ? 'Referência Ativa' : 'Definir como Ref.'}</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateProject((prev) => ({
+                          ...prev,
+                          activeReferenceId: att.id,
+                          useSketchAsReference: false,
+                        }))
+                      }
+                      className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${
+                        isRef ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                      }`}
+                    >
+                      <Sparkles size={11} />
+                      <span>{isRef ? 'Ref. Ativa' : 'Definir Ref.'}</span>
+                    </button>
 
                     <button
                       type="button"
                       onClick={() => addAttachmentToComposition(att)}
-                      title="Inserir como camada na composição"
+                      title="Inserir como camada na prancheta"
                       className="flex items-center gap-1 rounded bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-200 hover:bg-zinc-700 hover:text-white"
                     >
                       <Plus size={11} />

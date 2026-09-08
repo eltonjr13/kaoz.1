@@ -31,3 +31,15 @@ export function getFlowGeneratedDir(): string {
 export function getFlowTempUploadsDir(): string {
   return path.join(getFlowStorageRoot(), "temp_uploads");
 }
+
+export function getSketchStorageDir(): string {
+  return path.join(getLocalDataDir(), "sketch");
+}
+
+export function getSketchProjectsDir(): string {
+  return path.join(getSketchStorageDir(), "projects");
+}
+
+export function getSketchAssetsDir(): string {
+  return path.join(getSketchStorageDir(), "assets");
+}

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import {
   ASPECT_RATIO_PRESETS,
+  CANVAS_ASPECT_RATIO_PRESETS,
   type BackgroundLayer,
   type ImageLayer,
   type SketchDrawingLayer,
@@ -393,7 +394,8 @@ export function SketchCanvas({
   const [isDraggingLayer, setIsDraggingLayer] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const preset = ASPECT_RATIO_PRESETS[project.aspectRatio] || ASPECT_RATIO_PRESETS['1:1'];
+  const canvasRatio = project.canvasAspectRatio || project.aspectRatio || '1:1';
+  const preset = CANVAS_ASPECT_RATIO_PRESETS[canvasRatio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
   const sketchLayer = project.layers.find((l) => l.type === 'sketch') as SketchDrawingLayer | undefined;
   const backgroundLayer = project.layers.find((l) => l.type === 'background') as BackgroundLayer | undefined;
 
@@ -406,13 +408,13 @@ export function SketchCanvas({
       const clickY = e.clientY - rect.top;
 
       return {
-        x: (clickX * preset.width * 1080) / (rect.width * preset.width),
-        y: (clickY * preset.height * 1080) / (rect.height * preset.height),
+        x: (clickX * 1080) / rect.width,
+        y: (clickY * 1080) / rect.height,
         pctX: (clickX / rect.width) * 100,
         pctY: (clickY / rect.height) * 100,
       };
     },
-    [preset.width, preset.height]
+    []
   );
 
   const renderVisuals = useCallback(() => {
@@ -610,8 +612,8 @@ export function SketchCanvas({
 
           <canvas
             ref={canvasRef}
-            width={1080}
-            height={Math.round((1080 * preset.height) / preset.width)}
+            width={preset.width}
+            height={preset.height}
             onMouseDown={handlePointerDown}
             onMouseMove={handlePointerMove}
             onMouseUp={handlePointerUp}

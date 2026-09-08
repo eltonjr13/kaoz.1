@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     const prompt = buildPrompt(copyReq);
     const rawResult = await requestAgentCopy(prompt);
     const response = parseGeneratedCopy(rawResult, copyReq.productDescription);
-    return NextResponse.json(response);
+    return NextResponse.json({ success: true, data: response, ...response });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[API SKETCH] Erro ao gerar copy:', err);
