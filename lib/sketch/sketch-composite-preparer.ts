@@ -68,6 +68,19 @@ function resolveImageLayerRole(layer: ImageLayer, attachments?: SketchAttachment
   return undefined;
 }
 
+function isEligibleImageLayer(layer: SketchLayer): layer is ImageLayer {
+  if (layer.type !== 'image') return false;
+  if (!layer.visible || layer.isGuide || layer.exportToProvider === false) return false;
+  return Boolean(layer.imageUrl);
+}
+
+function classifyRoleFlags(r?: SketchReferenceRole): { isProduct: boolean; isSubject: boolean } {
+  if (!r) return { isProduct: false, isSubject: true };
+  const isProduct = r === 'product';
+  const isSubject = isProduct || r === 'person' || r === 'logo';
+  return { isProduct, isSubject };
+}
+
 export function detectPlacedImages(
   layers: SketchLayer[],
   attachments?: SketchAttachment[]
@@ -79,20 +92,17 @@ export function detectPlacedImages(
   let hasSubjectImage = false;
 
   for (const layer of layers) {
-    if (layer.type === 'image' && layer.visible && !layer.isGuide && layer.exportToProvider !== false && layer.imageUrl) {
-      placedImages.push(layer);
-      if (layer.attachmentId) {
-        placedAttachmentIds.add(layer.attachmentId);
-      }
-      const r = resolveImageLayerRole(layer, attachments);
-      if (r) {
-        roles.add(r);
-        if (r === 'product') hasProductImage = true;
-        if (r === 'product' || r === 'person' || r === 'logo') hasSubjectImage = true;
-      } else {
-        hasSubjectImage = true;
-      }
-    }
+    if (!isEligibleImageLayer(layer)) continue;
+
+    placedImages.push(layer);
+    if (layer.attachmentId) placedAttachmentIds.add(layer.attachmentId);
+
+    const r = resolveImageLayerRole(layer, attachments);
+    if (r) roles.add(r);
+
+    const flags = classifyRoleFlags(r);
+    if (flags.isProduct) hasProductImage = true;
+    if (flags.isSubject) hasSubjectImage = true;
   }
 
   return { placedImages, placedAttachmentIds, roles, hasProductImage, hasSubjectImage };

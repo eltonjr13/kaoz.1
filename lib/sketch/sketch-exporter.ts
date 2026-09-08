@@ -342,6 +342,30 @@ export interface RenderCompositeOptions {
 const FALLBACK_COMPOSITE_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
+function resolveCompositeTargetRatio(
+  project: SketchProjectData,
+  targetAspectRatio?: FlowSupportedAspectRatio
+): FlowSupportedAspectRatio {
+  if (targetAspectRatio) return targetAspectRatio;
+  const ratio = project.canvasAspectRatio || project.aspectRatio;
+  const dims = project.canvasDimensions;
+  return resolveProviderAspectRatio(ratio, dims?.width, dims?.height);
+}
+
+function renderLayersToCompositeCanvas(
+  ctx: CanvasRenderingContext2D,
+  layers: SketchLayer[],
+  preset: AspectRatioDimension,
+  loadedImages: Map<string, HTMLImageElement>,
+  excludeGuides: boolean,
+  excludeText: boolean
+): void {
+  for (const layer of layers) {
+    if (shouldSkipLayerForComposite(layer, excludeGuides, excludeText)) continue;
+    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
+  }
+}
+
 export async function renderCompositeReferenceDataUrl(
   project: SketchProjectData,
   options: RenderCompositeOptions = { excludeGuides: true, excludeText: true }
@@ -349,18 +373,12 @@ export async function renderCompositeReferenceDataUrl(
   if (typeof document === 'undefined') {
     return FALLBACK_COMPOSITE_PNG;
   }
-  const targetRatio =
-    options.targetAspectRatio ||
-    resolveProviderAspectRatio(
-      project.canvasAspectRatio || project.aspectRatio,
-      project.canvasDimensions?.width,
-      project.canvasDimensions?.height
-    );
+  const targetRatio = resolveCompositeTargetRatio(project, options.targetAspectRatio);
   const preset = ASPECT_RATIO_PRESETS[targetRatio] || ASPECT_RATIO_PRESETS['1:1'];
+
   const canvas = document.createElement('canvas');
   canvas.width = preset.width;
   canvas.height = preset.height;
-
   const ctx = canvas.getContext('2d');
   if (!ctx) return FALLBACK_COMPOSITE_PNG;
 
@@ -368,11 +386,7 @@ export async function renderCompositeReferenceDataUrl(
   const excludeGuides = options.excludeGuides !== false;
   const excludeText = options.excludeText !== false;
 
-  for (const layer of project.layers) {
-    if (shouldSkipLayerForComposite(layer, excludeGuides, excludeText)) continue;
-    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
-  }
-
+  renderLayersToCompositeCanvas(ctx, project.layers, preset, loadedImages, excludeGuides, excludeText);
   return canvas.toDataURL('image/png');
 }
 

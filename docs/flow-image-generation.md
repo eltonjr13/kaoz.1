@@ -61,3 +61,35 @@ sozinho não é suficiente: `imageData` é obrigatório para que o Google Flow r
 - Cada aprovação envia `requestId`; a API reutiliza o job quando recebe a mesma chave novamente.
 - Toda operação que navega no perfil do Flow passa pela fila exclusiva do `FlowProvider`.
 - Uma falha depois do clique de geração é marcada como submetida e não é repetida automaticamente.
+
+## Capacidades Verificadas do FlowProvider (Google Flow / ImageFX)
+
+1. **Referências:**
+   - O composer do Google Flow suporta no máximo **1 imagem de referência por comando**.
+   - Aceita anexação via upload de arquivo temporário (`resolveReferenceAttachmentStrategy === 'upload'`) ou seleção de ativo existente no projeto (`'select-existing'`).
+   - Múltiplas referências nativas **não** são suportadas pelo provedor.
+
+2. **Proporções:**
+   - Suporte estrito a 5 proporções fixas: `1:1`, `9:16`, `16:9`, `4:3`, `3:4`.
+   - Proporções adicionais da prancheta (como `4:5` para feed do Instagram e `custom`) são mapeadas deterministicamente para a proporção mais próxima aceita pelo Flow (`resolveProviderAspectRatio`).
+
+3. **Quantidade:**
+   - Suporte a lotes de 1 a 4 imagens por requisição (`1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4'`).
+
+4. **Retorno dos Arquivos:**
+   - Arquivos são baixados para `getFlowGeneratedDir()` (`storage/generated/images/` ou pasta personalizada).
+   - Conversão automática para PDF (`pdfPaths`, `pdfFilenames`) para visualização e distribuição.
+   - Retorno estruturado com caminho absoluto, nome de arquivo e timestamp.
+
+5. **Exclusão Mútua do Navegador:**
+   - Garantida por fila serial baseada em Promises (`runBrowserTaskExclusive` com `browserTaskTail`) no `FlowProvider`.
+   - Impede concorrência ou conflito de digitação/clique no composer do Playwright.
+
+## Módulo Sketch e Composição Única
+
+- **Contratos Versionados:** Projeto (`SketchProjectData`), Briefing (`SketchBriefingData`), Copy (`SketchCopyData`), Documento (`SketchDocumentData`), Camadas (`BaseLayer`), Anexos (`SketchAttachment`), Requisição (`SketchGenerationRequest`) e Resultados (`SketchGenerationResult`) possuem campos explícitos de versão (`schemaVersion`, `version`).
+- **Funções de Referência:** `product`, `person`, `logo`, `style`, `composition`, `background`.
+- **Isolamento de Guias:** Elementos com `isGuide: true` ou `exportToProvider: false` são isolados e excluídos da referência visual enviada ao Flow.
+- **Preparação da Composição Única:** Para cenários combinados (ex: sketch de layout + imagem de produto), os ativos são unificados em uma referência composta única (`prepareSketchCompositeReference`), com prévia estruturada (`SketchCompositePreview`) e diagnóstico de anexos não posicionados para impedir descarte silencioso.
+- **Diferenciação de Sketch vs Identidade:** O modo `sketch` orienta a IA a usar a referência estritamente para enquadramento e proporção, proibindo a renderização de rabiscos ou wireframes. O modo `composite` instrui renderização comercial limpa preservando a identidade do produto/pessoa sem traços de rascunho. O modo `identity` mantém 100% de compatibilidade legada.
+- **Identificação de Execução Real vs Mock:** A prova técnica identifica formalmente execuções em ambiente de teste (`executionStatus: 'mock_validated_contract_pending_live_flow'`), registrando a pendência de fidelidade visual para sessões autenticadas ao vivo.
