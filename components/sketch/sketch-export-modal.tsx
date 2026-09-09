@@ -10,6 +10,7 @@ import {
   FileImage,
   Monitor,
   Globe,
+  AlertCircle,
 } from 'lucide-react';
 import type { ExportCompositionOptions, SketchProjectData } from '@/types/sketch';
 import {
@@ -170,6 +171,7 @@ function JpegOptionsBox({
 function ExportPreviewCard({
   previewUrl,
   isLoading,
+  error,
   targetWidth,
   targetHeight,
   isUpscale,
@@ -177,6 +179,7 @@ function ExportPreviewCard({
 }: {
   previewUrl: string | null;
   isLoading: boolean;
+  error?: string | null;
   targetWidth: number;
   targetHeight: number;
   isUpscale: boolean;
@@ -196,6 +199,12 @@ function ExportPreviewCard({
           <div className="flex flex-col items-center gap-2 text-zinc-400">
             <Loader2 size={24} className="animate-spin text-indigo-400" />
             <span className="text-[11px]">Gerando prévia final...</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center gap-2 text-rose-400 px-4 text-center">
+            <AlertCircle size={28} className="text-rose-400 shrink-0" />
+            <span className="text-xs font-semibold">Falha ao Carregar Recursos</span>
+            <span className="text-[10px] text-rose-300/80 line-clamp-3">{error}</span>
           </div>
         ) : previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -244,6 +253,7 @@ function ExportModalFooter({
   format,
   isElectron,
   isExporting,
+  isDownloadDisabled,
   onClose,
   onDownload,
 }: {
@@ -252,6 +262,7 @@ function ExportModalFooter({
   format: string;
   isElectron: boolean;
   isExporting: boolean;
+  isDownloadDisabled?: boolean;
   onClose: () => void;
   onDownload: () => void;
 }) {
@@ -274,7 +285,7 @@ function ExportModalFooter({
         <button
           type="button"
           onClick={onDownload}
-          disabled={isExporting}
+          disabled={isExporting || isDownloadDisabled}
           className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white shadow hover:bg-indigo-500 transition-all disabled:opacity-50"
         >
           {isExporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
@@ -291,6 +302,7 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
   const [quality, setQuality] = useState<number>(0.95);
   const [bgColor, setBgColor] = useState<string>('#ffffff');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -302,6 +314,7 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
     if (!isOpen) return;
     let cancelled = false;
     setIsLoadingPreview(true);
+    setErrorMessage(null);
 
     const opts: ExportCompositionOptions = {
       format,
@@ -309,14 +322,21 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
       quality,
       excludeGuides: true,
       backgroundColorForJpeg: bgColor,
+      strictResourceLoading: true,
     };
 
     exportCompositionDataUrl(project, opts)
       .then((url) => {
-        if (!cancelled) setPreviewUrl(url);
+        if (!cancelled) {
+          setPreviewUrl(url);
+          setErrorMessage(null);
+        }
       })
-      .catch(() => {
-        if (!cancelled) setPreviewUrl(null);
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setPreviewUrl(null);
+          setErrorMessage(err instanceof Error ? err.message : 'Falha ao carregar recurso da composição');
+        }
       })
       .finally(() => {
         if (!cancelled) setIsLoadingPreview(false);
@@ -331,6 +351,7 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
 
   const handleDownload = async () => {
     setIsExporting(true);
+    setErrorMessage(null);
     try {
       const opts: ExportCompositionOptions = {
         format,
@@ -338,9 +359,12 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
         quality,
         excludeGuides: true,
         backgroundColorForJpeg: bgColor,
+        strictResourceLoading: true,
       };
       await downloadComposition(project, opts);
       onClose();
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Falha ao exportar anúncio');
     } finally {
       setIsExporting(false);
     }
@@ -367,6 +391,7 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
           <ExportPreviewCard
             previewUrl={previewUrl}
             isLoading={isLoadingPreview}
+            error={errorMessage}
             targetWidth={targetWidth}
             targetHeight={targetHeight}
             isUpscale={isUpscale}
@@ -396,6 +421,7 @@ export function SketchExportModal({ isOpen, project, onClose }: SketchExportModa
           format={format}
           isElectron={isElectron}
           isExporting={isExporting}
+          isDownloadDisabled={Boolean(errorMessage) || isLoadingPreview}
           onClose={onClose}
           onDownload={handleDownload}
         />

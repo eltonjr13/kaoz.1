@@ -140,6 +140,8 @@ export function createDefaultLayers(): SketchLayer[] {
       color: '#0d1117',
       visible: true,
       opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
     } as BackgroundLayer,
     {
       id: 'layer-sketch-root',
@@ -148,6 +150,8 @@ export function createDefaultLayers(): SketchLayer[] {
       paths: [],
       visible: true,
       opacity: 0.85,
+      elementKind: 'annotation',
+      includeInFinalExport: false,
     },
     {
       id: 'layer-text-badge',
@@ -169,6 +173,8 @@ export function createDefaultLayers(): SketchLayer[] {
       textTransform: 'uppercase',
       visible: true,
       opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
     } as TextLayer,
     {
       id: 'layer-text-headline',
@@ -186,6 +192,8 @@ export function createDefaultLayers(): SketchLayer[] {
       textAlign: 'left',
       visible: true,
       opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
     } as TextLayer,
     {
       id: 'layer-text-subheadline',
@@ -203,6 +211,8 @@ export function createDefaultLayers(): SketchLayer[] {
       textAlign: 'left',
       visible: true,
       opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
     } as TextLayer,
     {
       id: 'layer-text-cta',
@@ -223,6 +233,8 @@ export function createDefaultLayers(): SketchLayer[] {
       textAlign: 'center',
       visible: true,
       opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
     } as TextLayer,
   ];
 }

@@ -14,6 +14,16 @@ import {
   type SketchProjectData,
   type TextLayer,
 } from '../../types/sketch.ts';
+import {
+  computeObjectContainFit,
+  computeTextPositions,
+  isLayerIncludedInFinalExport,
+  isLayerIncludedInProviderReference,
+  resolveLayerBoxMetrics,
+  wrapTextLines,
+  type LayerBoxMetrics,
+  type TextRenderPositions,
+} from './sketch-composition-rules.ts';
 
 export async function waitForFontsReady(): Promise<void> {
   if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.ready?.then === 'function') {
@@ -193,7 +203,7 @@ function drawImageLayer(
   width: number,
   height: number,
   loadedImages: Map<string, HTMLImageElement>
-) {
+): void {
   if (!layer.visible || !layer.imageUrl) return;
   const img = loadedImages.get(layer.imageUrl);
   if (!img) return;
@@ -201,123 +211,162 @@ function drawImageLayer(
   ctx.save();
   ctx.globalAlpha = layer.opacity;
 
-  const posX = (layer.x / 100) * width;
-  const posY = (layer.y / 100) * height;
-  const targetW = (layer.width / 100) * width;
-  const targetH = (layer.height / 100) * height;
+  const metrics = resolveLayerBoxMetrics(layer, width, height);
+  const fit = computeObjectContainFit(img.width, img.height, metrics.boxWidth, metrics.boxHeight);
 
-  if (layer.rotation) {
-    ctx.translate(posX + targetW / 2, posY + targetH / 2);
-    ctx.rotate((layer.rotation * Math.PI) / 180);
-    ctx.drawImage(img, -targetW / 2, -targetH / 2, targetW, targetH);
+  if (metrics.rotation) {
+    const centerX = metrics.boxX + metrics.boxWidth / 2;
+    const centerY = metrics.boxY + metrics.boxHeight / 2;
+    ctx.translate(centerX, centerY);
+    ctx.rotate((metrics.rotation * Math.PI) / 180);
+    ctx.drawImage(
+      img,
+      -metrics.boxWidth / 2 + fit.drawX,
+      -metrics.boxHeight / 2 + fit.drawY,
+      fit.drawW,
+      fit.drawH
+    );
   } else {
-    ctx.drawImage(img, posX, posY, targetW, targetH);
+    ctx.drawImage(img, metrics.boxX + fit.drawX, metrics.boxY + fit.drawY, fit.drawW, fit.drawH);
   }
 
   ctx.restore();
 }
 
-function computeTextBgX(textAlign: string, posX: number, bgW: number, padding: number): number {
-  if (textAlign === 'center') return posX - bgW / 2;
-  if (textAlign === 'right') return posX - bgW + padding;
-  return posX - padding;
-}
-
-function drawTextBackground(
+function drawTextBackgroundBox(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
-  posX: number,
-  posY: number,
-  metrics: { textWidth: number; totalHeight: number; actualFontSize: number },
-  padding: number
-) {
+  pos: TextRenderPositions,
+  borderRadius: number
+): void {
   if (!layer.backgroundColor || layer.backgroundColor === 'transparent') return;
-  const radius = layer.borderRadius ?? 8;
-  const bgW = metrics.textWidth + padding * 2;
-  const bgH = metrics.totalHeight + padding * 2;
-  const bgX = computeTextBgX(layer.textAlign || 'left', posX, bgW, padding);
-  const bgY = posY - padding - metrics.actualFontSize * 0.8;
-
   ctx.save();
   ctx.fillStyle = layer.backgroundColor;
   ctx.beginPath();
-  ctx.roundRect(bgX, bgY, bgW, bgH, radius);
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(pos.bgX, pos.bgY, pos.bgWidth, pos.bgHeight, borderRadius);
+  } else {
+    ctx.rect(pos.bgX, pos.bgY, pos.bgWidth, pos.bgHeight);
+  }
   ctx.fill();
   ctx.restore();
 }
 
-function drawTextLines(
+function renderTextLinesToContext(
   ctx: CanvasRenderingContext2D,
   lines: string[],
-  posX: number,
-  posY: number,
-  actualFontSize: number,
+  startX: number,
+  startY: number,
+  lineHeight: number,
   color: string
-) {
+): void {
   ctx.fillStyle = color;
-  const lineHeight = actualFontSize * 1.25;
   for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], posX, posY + i * lineHeight);
+    ctx.fillText(lines[i], startX, startY + i * lineHeight);
   }
 }
 
-function computeMaxLineWidth(ctx: CanvasRenderingContext2D, lines: string[]): number {
-  let maxWidth = 0;
-  for (const line of lines) {
-    const w = ctx.measureText(line).width;
-    if (w > maxWidth) maxWidth = w;
-  }
-  return maxWidth;
+function applyTextRotation(
+  ctx: CanvasRenderingContext2D,
+  pos: TextRenderPositions,
+  rotation: number
+): void {
+  if (!rotation) return;
+  const centerX = pos.bgX + pos.bgWidth / 2;
+  const centerY = pos.bgY + pos.bgHeight / 2;
+  ctx.translate(centerX, centerY);
+  ctx.rotate((rotation * Math.PI) / 180);
+  ctx.translate(-centerX, -centerY);
 }
 
-function drawTextLayer(ctx: CanvasRenderingContext2D, layer: TextLayer, width: number, height: number) {
+function resolveProcessedText(text: string, transform?: string): string {
+  if (transform === 'uppercase') return text.toUpperCase();
+  return text;
+}
+
+function resolveAvailableTextWidth(layer: TextLayer, metrics: LayerBoxMetrics): number {
+  const hasBg = Boolean(layer.backgroundColor && layer.backgroundColor !== 'transparent');
+  const paddingX = hasBg ? metrics.padding * 2 : 0;
+  return Math.max(20, metrics.boxWidth - paddingX);
+}
+
+function drawTextLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: TextLayer,
+  width: number,
+  height: number
+): void {
   if (!layer.visible || !layer.text.trim()) return;
 
   ctx.save();
   ctx.globalAlpha = layer.opacity;
 
-  const actualFontSize = Math.max(12, (layer.fontSize / 1080) * width);
-  ctx.font = `${layer.fontWeight || '700'} ${actualFontSize}px ${layer.fontFamily || 'sans-serif'}`;
+  const metrics = resolveLayerBoxMetrics(layer, width, height);
+  ctx.font = `${layer.fontWeight || '700'} ${metrics.actualFontSize}px ${layer.fontFamily || 'sans-serif'}`;
   ctx.textAlign = layer.textAlign || 'left';
   ctx.textBaseline = 'middle';
 
-  const processedText = layer.textTransform === 'uppercase' ? layer.text.toUpperCase() : layer.text;
-  const lines = processedText.split('\n');
-  const posX = (layer.x / 100) * width;
-  const posY = (layer.y / 100) * height;
-  const padding = layer.backgroundPadding ? (layer.backgroundPadding / 1080) * width : 12;
+  const processedText = resolveProcessedText(layer.text, layer.textTransform);
+  const availableWidth = resolveAvailableTextWidth(layer, metrics);
+  const lines = wrapTextLines(processedText, availableWidth, (str) => ctx.measureText(str).width);
+  const pos = computeTextPositions(layer, lines, metrics, height);
 
-  const maxLineWidth = computeMaxLineWidth(ctx, lines);
-  const totalHeight = lines.length * actualFontSize * 1.25;
-
-  drawTextBackground(ctx, layer, posX, posY, { textWidth: maxLineWidth, totalHeight, actualFontSize }, padding);
-  drawTextLines(ctx, lines, posX, posY, actualFontSize, layer.color || '#ffffff');
+  applyTextRotation(ctx, pos, metrics.rotation);
+  drawTextBackgroundBox(ctx, layer, pos, metrics.borderRadius);
+  renderTextLinesToContext(
+    ctx,
+    pos.lines,
+    pos.textStartX,
+    pos.textStartY,
+    pos.lineHeight,
+    layer.color || '#ffffff'
+  );
 
   ctx.restore();
 }
 
-export async function preloadProjectImages(project: SketchProjectData): Promise<Map<string, HTMLImageElement>> {
-  const imageMap = new Map<string, HTMLImageElement>();
-  const urlsToLoad = new Set<string>();
+function extractImageUrlsFromLayer(layer: SketchLayer): string | null {
+  if (layer.type === 'background' && layer.fillType === 'image' && layer.imageUrl) {
+    return layer.imageUrl;
+  }
+  if (layer.type === 'image' && layer.imageUrl) {
+    return layer.imageUrl;
+  }
+  return null;
+}
 
-  for (const layer of project.layers) {
-    if (layer.type === 'background' && layer.imageUrl) {
-      urlsToLoad.add(layer.imageUrl);
-    } else if (layer.type === 'image' && layer.imageUrl) {
-      urlsToLoad.add(layer.imageUrl);
+function resolvePreloadLayers(
+  project: SketchProjectData,
+  finalExportOnly: boolean,
+  includeSketches = false
+): SketchLayer[] {
+  if (!finalExportOnly) return project.layers;
+  return project.layers.filter((l) => isLayerIncludedInFinalExport(l, { includeSketches }));
+}
+
+export async function preloadProjectImages(
+  project: SketchProjectData,
+  options?: { strict?: boolean; finalExportOnly?: boolean; includeSketches?: boolean }
+): Promise<Map<string, HTMLImageElement>> {
+  const imageMap = new Map<string, HTMLImageElement>();
+  const isStrict = options?.strict !== false;
+  const layers = resolvePreloadLayers(project, Boolean(options?.finalExportOnly), options?.includeSketches);
+
+  for (const layer of layers) {
+    const url = extractImageUrlsFromLayer(layer);
+    if (url && !imageMap.has(url)) {
+      try {
+        const img = await loadImage(url);
+        imageMap.set(url, img);
+      } catch (err: unknown) {
+        if (isStrict) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`Falha ao carregar recurso visual da camada "${layer.name}": ${msg}`);
+        }
+      }
     }
   }
 
-  const promises = Array.from(urlsToLoad).map(async (url) => {
-    try {
-      const img = await loadImage(url);
-      imageMap.set(url, img);
-    } catch {
-      // Ignorar falhas de carregamento silenciosamente
-    }
-  });
-
-  await Promise.all(promises);
   return imageMap;
 }
 
@@ -540,15 +589,14 @@ function dispatchLayerDraw(
   }
 }
 
-function renderSingleLayer(
+export function renderSingleLayer(
   ctx: CanvasRenderingContext2D,
   layer: SketchLayer,
   preset: AspectRatioDimension,
   loadedImages: Map<string, HTMLImageElement>,
   excludeGuides = false
-) {
-  if (layer.exportToProvider === false) return;
-  if (excludeGuides && isGuideOrAnnotation(layer)) return;
+): void {
+  if (excludeGuides && !isLayerIncludedInFinalExport(layer)) return;
   dispatchLayerDraw(ctx, layer, preset, loadedImages, excludeGuides);
 }
 
@@ -600,7 +648,11 @@ export async function renderCompositionToCanvas(
 
   prepareExportBackground(ctx, width, height, project, options);
 
-  const loadedImages = await preloadProjectImages(project);
+  const loadedImages = await preloadProjectImages(project, {
+    strict: options?.strictResourceLoading !== false,
+    finalExportOnly: true,
+    includeSketches: options?.includeSketches,
+  });
   const excludeGuides = options?.excludeGuides !== false;
   const effectivePreset: AspectRatioDimension = {
     width,
@@ -610,22 +662,11 @@ export async function renderCompositionToCanvas(
   };
 
   for (const layer of project.layers) {
-    renderSingleLayer(ctx, layer, effectivePreset, loadedImages, excludeGuides);
+    if (!isLayerIncludedInFinalExport(layer, { includeSketches: options?.includeSketches })) continue;
+    dispatchLayerDraw(ctx, layer, effectivePreset, loadedImages, excludeGuides);
   }
 
   return targetCanvas;
-}
-
-function shouldSkipLayerForComposite(
-  layer: SketchLayer,
-  excludeGuides: boolean,
-  excludeText: boolean
-): boolean {
-  if (!layer.visible) return true;
-  if (layer.exportToProvider === false) return true;
-  if (excludeGuides && isGuideOrAnnotation(layer)) return true;
-  if (excludeText && layer.type === 'text') return true;
-  return false;
 }
 
 export interface RenderCompositeOptions {
@@ -656,8 +697,8 @@ function renderLayersToCompositeCanvas(
   excludeText: boolean
 ): void {
   for (const layer of layers) {
-    if (shouldSkipLayerForComposite(layer, excludeGuides, excludeText)) continue;
-    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
+    if (!isLayerIncludedInProviderReference(layer, excludeGuides, excludeText)) continue;
+    dispatchLayerDraw(ctx, layer, preset, loadedImages, excludeGuides);
   }
 }
 

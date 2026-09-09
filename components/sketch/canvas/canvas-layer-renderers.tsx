@@ -44,10 +44,12 @@ export function ImageOverlay({
 export function TextOverlay({
   layer,
   isCleanPreview,
+  artboardScale = 1,
   onSelect,
 }: {
   layer: TextLayer;
   isCleanPreview: boolean;
+  artboardScale?: number;
   onSelect: () => void;
 }) {
   const isGuide = Boolean(layer.isGuide || layer.elementKind === 'guide' || layer.elementKind === 'annotation');
@@ -66,15 +68,17 @@ export function TextOverlay({
         width: `${layer.width}%`,
         opacity: layer.opacity,
         color: layer.color,
-        fontSize: `calc(${layer.fontSize}px * 0.45)`,
+        fontSize: `${Math.max(10, layer.fontSize * artboardScale)}px`,
         fontFamily: layer.fontFamily,
         fontWeight: layer.fontWeight,
         textAlign: layer.textAlign,
         backgroundColor: layer.backgroundColor || 'transparent',
-        padding: layer.backgroundPadding ? `calc(${layer.backgroundPadding}px * 0.45)` : undefined,
-        borderRadius: layer.borderRadius ? `${layer.borderRadius}px` : undefined,
+        padding: layer.backgroundPadding ? `${layer.backgroundPadding * artboardScale}px` : undefined,
+        borderRadius: layer.borderRadius ? `${layer.borderRadius * artboardScale}px` : undefined,
         textTransform: layer.textTransform,
         lineHeight: 1.25,
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
         transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         transformOrigin: 'center center',
       }}
@@ -140,11 +144,13 @@ function SvgRectShape({ layer, strokeW, fill }: { layer: ShapeLayer; strokeW: nu
 function SvgShapeContent({
   layer,
   markerId,
+  artboardScale = 1,
 }: {
   layer: ShapeLayer;
   markerId: string;
+  artboardScale?: number;
 }) {
-  const strokeW = Math.max(1, layer.strokeWidth * 0.5);
+  const strokeW = Math.max(1, layer.strokeWidth * artboardScale);
   const fill = layer.fillColor || 'transparent';
 
   if (layer.shapeType === 'circle') {
@@ -162,10 +168,12 @@ function SvgShapeContent({
 export function ShapeOverlay({
   layer,
   isCleanPreview,
+  artboardScale = 1,
   onSelect,
 }: {
   layer: ShapeLayer;
   isCleanPreview: boolean;
+  artboardScale?: number;
   onSelect: () => void;
 }) {
   const isGuide = Boolean(layer.isGuide || layer.elementKind === 'guide' || layer.elementKind === 'annotation');
@@ -206,8 +214,9 @@ export function ShapeOverlay({
             </marker>
           </defs>
         )}
-        <SvgShapeContent layer={layer} markerId={markerId} />
+        <SvgShapeContent layer={layer} markerId={markerId} artboardScale={artboardScale} />
       </svg>
     </div>
   );
 }
+

@@ -133,6 +133,7 @@ export interface BaseLayer {
   isGuide?: boolean;
   elementKind?: SketchElementKind;
   exportToProvider?: boolean;
+  includeInFinalExport?: boolean;
 }
 
 export interface BackgroundLayer extends BaseLayer {
@@ -521,4 +522,6 @@ export interface ExportCompositionOptions {
   customHeight?: number;
   excludeGuides?: boolean; // default true
   backgroundColorForJpeg?: string; // default '#ffffff'
+  strictResourceLoading?: boolean; // default true: fail if final required image fails to load
+  includeSketches?: boolean; // default false: sketches are excluded from final export by default
 }

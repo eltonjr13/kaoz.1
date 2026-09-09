@@ -385,10 +385,12 @@ function CanvasArtboardBackground({ bg }: { bg?: BackgroundLayer }) {
 function CanvasLayersList({
   layers,
   isCleanPreview,
+  artboardScale = 1,
   onSelectLayer,
 }: {
   layers: SketchLayer[];
   isCleanPreview: boolean;
+  artboardScale?: number;
   onSelectLayer: (id: string) => void;
 }) {
   return (
@@ -412,6 +414,7 @@ function CanvasLayersList({
                 key={layer.id}
                 layer={layer as TextLayer}
                 isCleanPreview={isCleanPreview}
+                artboardScale={artboardScale}
                 onSelect={() => !isCleanPreview && onSelectLayer(layer.id)}
               />
             );
@@ -422,6 +425,7 @@ function CanvasLayersList({
                 key={layer.id}
                 layer={layer as ShapeLayer}
                 isCleanPreview={isCleanPreview}
+                artboardScale={artboardScale}
                 onSelect={() => !isCleanPreview && onSelectLayer(layer.id)}
               />
             );
@@ -934,6 +938,7 @@ export function SketchCanvas({
           <CanvasLayersList
             layers={project.layers}
             isCleanPreview={isCleanPreview}
+            artboardScale={(preset.width * zoom) / 1080}
             onSelectLayer={onSelectLayer}
           />
 
