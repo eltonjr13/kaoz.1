@@ -202,6 +202,83 @@ const builders = {
     addTone(sound, { start: 0.31, duration: 0.35, from: 1_174.66, to: 1_320, gain: 0.055, attack: 0.02, release: 0.3, panFrom: -0.42, panTo: 0.42 });
     return finalize(sound, 0.52);
   },
+  "app-open.wav": () => {
+    const sound = createSound(1.08);
+    addTone(sound, { start: 0.02, duration: 0.42, from: 82.41, to: 110, gain: 0.22, attack: 0.025, release: 0.28, wave: "triangle" });
+    addNoise(sound, { start: 0.015, duration: 0.24, gain: 0.06, cutoff: 1_300, attack: 0.015, release: 0.2, panFrom: -0.4, panTo: 0.4, seed: 505 });
+    [220, 293.66, 440, 587.33].forEach((frequency, index) => {
+      const start = 0.16 + index * 0.105;
+      addTone(sound, { start, duration: 0.62 - index * 0.055, from: frequency, gain: 0.115, attack: 0.02, release: 0.4, panFrom: -0.36 + index * 0.22, panTo: 0.24 - index * 0.12 });
+      addTone(sound, { start: start + 0.025, duration: 0.42, from: frequency * 2, gain: 0.022, attack: 0.015, release: 0.32, panFrom: 0.26, panTo: -0.2 });
+    });
+    addTone(sound, { start: 0.48, duration: 0.51, from: 880, to: 1_174.66, gain: 0.045, attack: 0.05, release: 0.42, panFrom: -0.5, panTo: 0.5 });
+    return finalize(sound, 0.5);
+  },
+  "navigate.wav": () => {
+    const sound = createSound(0.1);
+    addTone(sound, { duration: 0.075, from: 620, to: 780, gain: 0.19, attack: 0.003, release: 0.045, panFrom: -0.15, panTo: 0.15 });
+    addNoise(sound, { duration: 0.038, gain: 0.025, cutoff: 4_200, release: 0.03, panFrom: -0.1, panTo: 0.2, seed: 606 });
+    return finalize(sound, 0.3);
+  },
+  "toggle-on.wav": () => {
+    const sound = createSound(0.13);
+    addTone(sound, { start: 0.004, duration: 0.105, from: 540, to: 920, gain: 0.24, attack: 0.004, release: 0.055, panFrom: -0.18, panTo: 0.22 });
+    addTone(sound, { start: 0.047, duration: 0.065, from: 1_380, gain: 0.045, release: 0.05, panFrom: 0.05, panTo: 0.25 });
+    return finalize(sound, 0.32);
+  },
+  "toggle-off.wav": () => {
+    const sound = createSound(0.13);
+    addTone(sound, { start: 0.004, duration: 0.105, from: 820, to: 460, gain: 0.24, attack: 0.004, release: 0.055, panFrom: 0.18, panTo: -0.22 });
+    addTone(sound, { start: 0.012, duration: 0.06, from: 1_230, to: 940, gain: 0.04, release: 0.045, panFrom: 0.18, panTo: -0.05 });
+    return finalize(sound, 0.32);
+  },
+  "processing-start.wav": () => {
+    const sound = createSound(0.3);
+    addTone(sound, { duration: 0.25, from: 220, to: 660, gain: 0.21, attack: 0.01, release: 0.12, panFrom: -0.32, panTo: 0.32 });
+    addTone(sound, { start: 0.045, duration: 0.2, from: 440, to: 990, gain: 0.075, attack: 0.015, release: 0.11, panFrom: 0.2, panTo: -0.12 });
+    addNoise(sound, { start: 0.01, duration: 0.16, gain: 0.03, cutoff: 3_200, release: 0.12, panFrom: -0.25, panTo: 0.28, seed: 707 });
+    return finalize(sound, 0.36);
+  },
+  "progress-step.wav": () => {
+    const sound = createSound(0.12);
+    addTone(sound, { duration: 0.09, from: 880, to: 990, gain: 0.18, attack: 0.004, release: 0.06, panFrom: -0.1, panTo: 0.1 });
+    addTone(sound, { start: 0.018, duration: 0.065, from: 1_760, gain: 0.035, release: 0.05, panFrom: 0.12, panTo: -0.08 });
+    return finalize(sound, 0.27);
+  },
+  "warning.wav": () => {
+    const sound = createSound(0.4);
+    [0.015, 0.17].forEach((start, index) => {
+      addTone(sound, { start, duration: 0.19, from: 349.23, to: 329.63, gain: index ? 0.18 : 0.22, attack: 0.008, release: 0.12, panFrom: index ? 0.13 : -0.13, panTo: 0 });
+      addTone(sound, { start: start + 0.012, duration: 0.16, from: 523.25, gain: 0.055, release: 0.11, panFrom: 0, panTo: index ? -0.1 : 0.1 });
+    });
+    return finalize(sound, 0.4);
+  },
+  "cancel.wav": () => {
+    const sound = createSound(0.24);
+    addTone(sound, { duration: 0.2, from: 523.25, to: 196, gain: 0.23, attack: 0.004, release: 0.13, panFrom: 0.2, panTo: -0.2 });
+    addNoise(sound, { duration: 0.085, gain: 0.045, cutoff: 1_500, release: 0.07, seed: 808 });
+    return finalize(sound, 0.38);
+  },
+  "connected.wav": () => {
+    const sound = createSound(0.34);
+    addTone(sound, { start: 0.01, duration: 0.2, from: 392, to: 523.25, gain: 0.2, attack: 0.008, release: 0.12, panFrom: -0.3, panTo: 0 });
+    addTone(sound, { start: 0.11, duration: 0.2, from: 587.33, to: 783.99, gain: 0.17, attack: 0.008, release: 0.13, panFrom: 0, panTo: 0.3 });
+    return finalize(sound, 0.37);
+  },
+  "disconnected.wav": () => {
+    const sound = createSound(0.34);
+    addTone(sound, { start: 0.01, duration: 0.2, from: 783.99, to: 587.33, gain: 0.18, attack: 0.008, release: 0.12, panFrom: 0.3, panTo: 0 });
+    addTone(sound, { start: 0.11, duration: 0.2, from: 523.25, to: 349.23, gain: 0.2, attack: 0.008, release: 0.13, panFrom: 0, panTo: -0.3 });
+    return finalize(sound, 0.37);
+  },
+  "download-ready.wav": () => {
+    const sound = createSound(0.48);
+    addTone(sound, { start: 0.01, duration: 0.19, from: 740, to: 420, gain: 0.18, attack: 0.006, release: 0.11, panFrom: -0.28, panTo: 0 });
+    [523.25, 659.25, 783.99].forEach((frequency, index) => {
+      addTone(sound, { start: 0.14 + index * 0.05, duration: 0.27, from: frequency, gain: 0.12, attack: 0.01, release: 0.19, panFrom: -0.2 + index * 0.2, panTo: 0.15 });
+    });
+    return finalize(sound, 0.43);
+  },
 };
 
 const descriptions = {
@@ -213,6 +290,17 @@ const descriptions = {
   "mic-on.wav": "Varredura ascendente para o inicio da captura de voz.",
   "mic-off.wav": "Varredura descendente para o fim da captura de voz.",
   "task-complete.wav": "Assinatura sonora para o encerramento de tarefas importantes.",
+  "app-open.wav": "Assinatura expandida para a abertura do Kaoz.1.",
+  "navigate.wav": "Movimento discreto para navegacao entre areas principais.",
+  "toggle-on.wav": "Pulso ascendente para ativar um controle.",
+  "toggle-off.wav": "Pulso descendente para desativar um controle.",
+  "processing-start.wav": "Varredura crescente para o inicio de um processamento.",
+  "progress-step.wav": "Marcador curto para uma etapa relevante do progresso.",
+  "warning.wav": "Alerta moderado para uma condicao que merece revisao.",
+  "cancel.wav": "Queda curta para confirmar o cancelamento de uma operacao.",
+  "connected.wav": "Encaixe ascendente para uma conexao estabelecida.",
+  "disconnected.wav": "Encaixe descendente para uma conexao encerrada.",
+  "download-ready.wav": "Confirmacao melodica para um arquivo pronto para uso.",
 };
 
 await mkdir(OUTPUT_DIR, { recursive: true });
@@ -232,12 +320,12 @@ for (const [name, build] of Object.entries(builders)) {
 
 const manifest = {
   collection: "Kaoz.1 Sonic Identity — Dark Tech",
-  version: "1.0.0",
+  version: "1.1.0",
   author: "Kaoz.1",
   generatedOn: "2026-09-09",
   method: "Sintese procedural original e deterministica",
   generator: "scripts/generate-ui-sounds.mjs",
-  generatorVersion: "1.0.0",
+  generatorVersion: "1.1.0",
   thirdPartySamples: false,
   license: "Proprietary — Kaoz.1",
   format: { container: "WAV", encoding: "PCM signed 16-bit", sampleRate: SAMPLE_RATE, channels: CHANNELS },

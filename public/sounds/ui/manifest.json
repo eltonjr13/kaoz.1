@@ -1,11 +1,11 @@
 {
   "collection": "Kaoz.1 Sonic Identity — Dark Tech",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Kaoz.1",
   "generatedOn": "2026-09-09",
   "method": "Sintese procedural original e deterministica",
   "generator": "scripts/generate-ui-sounds.mjs",
-  "generatorVersion": "1.0.0",
+  "generatorVersion": "1.1.0",
   "thirdPartySamples": false,
   "license": "Proprietary — Kaoz.1",
   "format": {
@@ -70,6 +70,83 @@
       "description": "Assinatura sonora para o encerramento de tarefas importantes.",
       "durationMs": 720,
       "sha256": "40d027d527e1883ae3db9082c866e99a0615a1a35668df0d08e9c7f6147e9dbf"
+    },
+    {
+      "name": "app-open.wav",
+      "event": "app.open",
+      "description": "Assinatura expandida para a abertura do Kaoz.1.",
+      "durationMs": 1080,
+      "sha256": "1a60c1227802bb032ec43a95ed4435b1fa16fdbea3a235586913e7079cc4f21d"
+    },
+    {
+      "name": "navigate.wav",
+      "event": "navigate",
+      "description": "Movimento discreto para navegacao entre areas principais.",
+      "durationMs": 100,
+      "sha256": "5629b7c5d96c2b5a55910d14637e8ab526feb6a5f9ff4d39c8dc97f10c539f7d"
+    },
+    {
+      "name": "toggle-on.wav",
+      "event": "toggle.on",
+      "description": "Pulso ascendente para ativar um controle.",
+      "durationMs": 130,
+      "sha256": "b4d733c41ac11d42eb433d55ab1e0d6aca39198e8c9bbc642655e1f638f81e04"
+    },
+    {
+      "name": "toggle-off.wav",
+      "event": "toggle.off",
+      "description": "Pulso descendente para desativar um controle.",
+      "durationMs": 130,
+      "sha256": "e6c1e496bbe3a624edfc2fca07a834d9369c32e93872f23bd7a279cc66308186"
+    },
+    {
+      "name": "processing-start.wav",
+      "event": "processing.start",
+      "description": "Varredura crescente para o inicio de um processamento.",
+      "durationMs": 300,
+      "sha256": "4047622fd5b7918fa6811fddb171e443c8c895289d840fd57f74d3cdeefdc56f"
+    },
+    {
+      "name": "progress-step.wav",
+      "event": "progress.step",
+      "description": "Marcador curto para uma etapa relevante do progresso.",
+      "durationMs": 120,
+      "sha256": "071f38d773136991d36ac992f52f9ce73a6d29aeabdeb487aeb8ab51f51acc22"
+    },
+    {
+      "name": "warning.wav",
+      "event": "warning",
+      "description": "Alerta moderado para uma condicao que merece revisao.",
+      "durationMs": 400,
+      "sha256": "11bbcb3b1bbb1cf3f28d0caf2e8334443466ac1b7ce0cdb47915ed37ec033c05"
+    },
+    {
+      "name": "cancel.wav",
+      "event": "cancel",
+      "description": "Queda curta para confirmar o cancelamento de uma operacao.",
+      "durationMs": 240,
+      "sha256": "8e74e9b5915e6096e8ea85950fbf94d1ed8a4ff22d388ce630b2575e0d6f26f7"
+    },
+    {
+      "name": "connected.wav",
+      "event": "connected",
+      "description": "Encaixe ascendente para uma conexao estabelecida.",
+      "durationMs": 340,
+      "sha256": "a627ab9868f2a7ab51de8c7fec58cc736f989110a27894e87a217189126e98ce"
+    },
+    {
+      "name": "disconnected.wav",
+      "event": "disconnected",
+      "description": "Encaixe descendente para uma conexao encerrada.",
+      "durationMs": 340,
+      "sha256": "de02a4b73d268321bdf239e630208ade20163b570fc4296c8be6ba44abb892c7"
+    },
+    {
+      "name": "download-ready.wav",
+      "event": "download.ready",
+      "description": "Confirmacao melodica para um arquivo pronto para uso.",
+      "durationMs": 480,
+      "sha256": "d0b906232b30835899d6615f30477f4d1849e051a1b9739d2cd44a6b21cda762"
     }
   ]
 }
