@@ -10,7 +10,7 @@ import {
   ACTIVE_JOB_STEPS,
   TERMINAL_JOB_STEPS,
 } from '../lib/sketch/sketch-job-state.ts';
-import type { SketchJobData, SketchProjectData } from '../types/sketch.ts';
+import type { BackgroundLayer, SketchJobData, SketchProjectData } from '../types/sketch.ts';
 
 function createMockProject(id = 'proj-test-01', title = 'Projeto Teste'): SketchProjectData {
   return {
@@ -18,12 +18,19 @@ function createMockProject(id = 'proj-test-01', title = 'Projeto Teste'): Sketch
     version: '1.0.0',
     id,
     title,
+    description: 'Projeto de teste para sincronização',
     aspectRatio: '1:1',
     canvasAspectRatio: '1:1',
     canvasDimensions: { width: 1080, height: 1080, unit: 'px' },
     prompt: 'Mock prompt',
     useSketchAsReference: true,
     referenceMode: 'sketch',
+    copy: {
+      headline: 'Título Teste',
+      subheadline: 'Subtítulo Teste',
+      cta: 'Saiba Mais',
+      badge: 'Destaque',
+    },
     layers: [
       {
         id: 'layer-bg',
@@ -274,6 +281,7 @@ test('cenário 5: aplicar resultado sem que um autosave antigo desfaça a ação
   await new Promise((r) => setTimeout(r, 25));
 
   assert.equal(persistedStates.length, 1);
-  assert.equal(persistedStates[0].layers[0].fillType, 'image');
-  assert.equal(persistedStates[0].layers[0].imageUrl, '/api/sketch/assets/gen-result-123.png');
+  const bgLayer = persistedStates[0].layers[0] as BackgroundLayer;
+  assert.equal(bgLayer.fillType, 'image');
+  assert.equal(bgLayer.imageUrl, '/api/sketch/assets/gen-result-123.png');
 });
