@@ -37,6 +37,7 @@ import {
 import {
   renderCompositionToCanvas,
 } from '../lib/sketch/sketch-exporter.ts';
+import { isJobActive } from '../lib/sketch/sketch-job-state.ts';
 import {
   runSketchProductTechnicalProof,
 } from '../lib/sketch/sketch-technical-proof.ts';
@@ -584,7 +585,7 @@ test('cenário 7: falha de upload e falha de geração não causam perda de trab
     // 7B: Falha de Geração preserva trabalho
     const job = await manager.enqueueJob({ projectId: project.id });
     let failedJob = await manager.getJob(job.id);
-    for (let i = 0; i < 50 && failedJob && (failedJob.status === 'queued' || failedJob.status === 'preparing_reference' || failedJob.status === 'waiting_flow_lock' || failedJob.status === 'generating_with_flow' || failedJob.status === 'verifying_output'); i++) {
+    for (let i = 0; i < 50 && failedJob && isJobActive(failedJob.status); i++) {
       await new Promise((r) => setTimeout(r, 25));
       failedJob = await manager.getJob(job.id);
     }
