@@ -5,6 +5,7 @@ import { getSketchProjectsDir, getSketchAssetsDir } from '../runtime-paths.ts';
 import {
   CANVAS_ASPECT_RATIO_PRESETS,
   SKETCH_SCHEMA_VERSION,
+  resolveProviderAspectRatio,
   type BackgroundLayer,
   type ImageLayer,
   type CompositionIntent,
@@ -25,6 +26,8 @@ import {
   type SketchCreativeResult,
   type SketchChangeIntent,
   type ProvidedFacts,
+  type SellingAngle,
+  type LineageIterationType,
 } from '../../types/sketch.ts';
 
 const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -519,17 +522,57 @@ function normalizeOrderDrawing(drawing: unknown): SketchSimpleOrder['sketchDrawi
   };
 }
 
+const VALID_FLOW_ASPECT_RATIOS: FlowSupportedAspectRatio[] = ['1:1', '9:16', '16:9', '4:3', '3:4'];
+const VALID_CANVAS_ASPECT_RATIOS: SketchCanvasAspectRatio[] = [
+  '1:1',
+  '9:16',
+  '16:9',
+  '4:3',
+  '3:4',
+  '4:5',
+  'custom',
+];
+const VALID_SELLING_ANGLES: SellingAngle[] = [
+  'desire',
+  'objection',
+  'demonstration',
+  'contrast',
+  'curiosity',
+  'custom',
+];
+const VALID_ITERATION_TYPES: LineageIterationType[] = [
+  'initial',
+  'text_adjustment',
+  'visual_adjustment',
+  'new_concept',
+];
+const VALID_LAYOUT_TYPES: SketchCreativePlan['inferredCreativeDecisions']['composition']['layoutType'][] = [
+  'rule_of_thirds',
+  'centered_hero',
+  'diagonal_dynamic',
+  'sketch_guided',
+];
+const VALID_CHANGE_INTENT_TYPES: SketchChangeIntent['type'][] = [
+  'refine_text',
+  'refine_visual',
+  'new_concept',
+];
+
 function normalizeOrder(order: unknown): SketchSimpleOrder | undefined {
-  if (!order || typeof order !== 'object') return undefined;
+  if (!order || typeof order !== 'object' || Array.isArray(order)) return undefined;
   const o = order as Record<string, unknown>;
   if (typeof o.id !== 'string') return undefined;
+
+  const aspectRatio = VALID_FLOW_ASPECT_RATIOS.includes(o.aspectRatio as FlowSupportedAspectRatio)
+    ? (o.aspectRatio as FlowSupportedAspectRatio)
+    : '1:1';
 
   return {
     schemaVersion: typeof o.schemaVersion === 'number' ? o.schemaVersion : 1,
     version: asString(o.version, SKETCH_SCHEMA_VERSION),
     id: o.id,
     prompt: asString(o.prompt),
-    aspectRatio: (o.aspectRatio as FlowSupportedAspectRatio) || '1:1',
+    aspectRatio,
     canvasAspectRatio: o.canvasAspectRatio as SketchCanvasAspectRatio | undefined,
     canvasDimensions: o.canvasDimensions as SketchSimpleOrder['canvasDimensions'],
     selectedReferences: Array.isArray(o.selectedReferences)
@@ -576,9 +619,13 @@ function normalizeCreativePlanArt(art: unknown): SketchCreativePlan['inferredCre
 }
 
 function normalizeCreativePlanComposition(comp: unknown): SketchCreativePlan['inferredCreativeDecisions']['composition'] {
-  const c = (comp && typeof comp === 'object' ? comp : {}) as Record<string, unknown>;
+  const c = (comp && typeof comp === 'object' && !Array.isArray(comp) ? comp : {}) as Record<string, unknown>;
+  const layoutType = VALID_LAYOUT_TYPES.includes(c.layoutType as any)
+    ? (c.layoutType as SketchCreativePlan['inferredCreativeDecisions']['composition']['layoutType'])
+    : 'centered_hero';
+
   return {
-    layoutType: (c.layoutType as SketchCreativePlan['inferredCreativeDecisions']['composition']['layoutType']) || 'centered_hero',
+    layoutType,
     reservedCopyZones: Array.isArray(c.reservedCopyZones)
       ? (c.reservedCopyZones as SketchCreativePlan['inferredCreativeDecisions']['composition']['reservedCopyZones'])
       : [],
@@ -590,9 +637,13 @@ function normalizeCreativePlanComposition(comp: unknown): SketchCreativePlan['in
 }
 
 function normalizeInferredDecisions(raw: unknown): SketchCreativePlan['inferredCreativeDecisions'] {
-  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const d = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const selectedAngle = VALID_SELLING_ANGLES.includes(d.selectedAngle as SellingAngle)
+    ? (d.selectedAngle as SellingAngle)
+    : 'custom';
+
   return {
-    selectedAngle: (d.selectedAngle as SketchCreativePlan['inferredCreativeDecisions']['selectedAngle']) || 'custom',
+    selectedAngle,
     angleRationale: asString(d.angleRationale),
     alternativeConcepts: Array.isArray(d.alternativeConcepts)
       ? (d.alternativeConcepts as SketchCreativePlan['inferredCreativeDecisions']['alternativeConcepts'])
@@ -623,24 +674,32 @@ function normalizeCreativePlan(plan: unknown): SketchCreativePlan | undefined {
 }
 
 function normalizeResultLineage(lineage: unknown): SketchCreativeResult['lineage'] {
-  const l = (lineage && typeof lineage === 'object' ? lineage : {}) as Record<string, unknown>;
+  const l = (lineage && typeof lineage === 'object' && !Array.isArray(lineage) ? lineage : {}) as Record<string, unknown>;
+  const iterationType = VALID_ITERATION_TYPES.includes(l.iterationType as LineageIterationType)
+    ? (l.iterationType as LineageIterationType)
+    : 'initial';
+
   return {
     versionNumber: typeof l.versionNumber === 'number' ? l.versionNumber : 1,
     parentId: typeof l.parentId === 'string' ? l.parentId : undefined,
-    iterationType: (l.iterationType as SketchCreativeResult['lineage']['iterationType']) || 'initial',
+    iterationType,
     adjustmentPrompt: typeof l.adjustmentPrompt === 'string' ? l.adjustmentPrompt : undefined,
     timestamp: asString(l.timestamp, new Date().toISOString()),
   };
 }
 
 function normalizeFinalAsset(asset: unknown): SketchCreativeResult['finalAsset'] {
-  const a = (asset && typeof asset === 'object' ? asset : {}) as Record<string, unknown>;
+  const a = (asset && typeof asset === 'object' && !Array.isArray(asset) ? asset : {}) as Record<string, unknown>;
+  const aspectRatio = VALID_FLOW_ASPECT_RATIOS.includes(a.aspectRatio as FlowSupportedAspectRatio)
+    ? (a.aspectRatio as FlowSupportedAspectRatio)
+    : '1:1';
+
   return {
     imageUrl: asString(a.imageUrl),
     filePath: asString(a.filePath),
     width: typeof a.width === 'number' ? a.width : 1080,
     height: typeof a.height === 'number' ? a.height : 1080,
-    aspectRatio: (a.aspectRatio as FlowSupportedAspectRatio) || '1:1',
+    aspectRatio,
     fileSizeBytes: typeof a.fileSizeBytes === 'number' ? a.fileSizeBytes : 0,
     mimeType: asString(a.mimeType, 'image/png'),
     format: a.format === 'jpeg' ? 'jpeg' : 'png',
@@ -682,12 +741,13 @@ function normalizeCreativeResult(raw: unknown): SketchCreativeResult | null {
 }
 
 function normalizeChangeIntent(raw: unknown): SketchChangeIntent | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const c = raw as Record<string, unknown>;
   if (typeof c.id !== 'string') return null;
 
-  const validTypes: SketchChangeIntent['type'][] = ['refine_text', 'refine_visual', 'new_concept'];
-  const type = validTypes.includes(c.type as any) ? (c.type as SketchChangeIntent['type']) : 'refine_text';
+  const type = VALID_CHANGE_INTENT_TYPES.includes(c.type as any)
+    ? (c.type as SketchChangeIntent['type'])
+    : 'refine_text';
 
   return {
     schemaVersion: typeof c.schemaVersion === 'number' ? c.schemaVersion : 1,
@@ -706,8 +766,11 @@ function resolveProjectRatios(obj: Record<string, unknown>): {
   aspectRatio: SketchAspectRatio;
   canvasAspectRatio: SketchCanvasAspectRatio;
 } {
-  const aspectRatio: SketchAspectRatio = (obj.aspectRatio as SketchAspectRatio) || '1:1';
-  const canvasAspectRatio = (obj.canvasAspectRatio as SketchCanvasAspectRatio) || aspectRatio;
+  const rawCanvas = obj.canvasAspectRatio ?? obj.aspectRatio;
+  const canvasAspectRatio: SketchCanvasAspectRatio = VALID_CANVAS_ASPECT_RATIOS.includes(rawCanvas as any)
+    ? (rawCanvas as SketchCanvasAspectRatio)
+    : '1:1';
+  const aspectRatio = resolveProviderAspectRatio(canvasAspectRatio);
   return { aspectRatio, canvasAspectRatio };
 }
 
@@ -730,7 +793,7 @@ function resolveOptionalString(val: unknown): string | undefined {
 }
 
 export function normalizeProject(raw: unknown): SketchProjectData {
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('Project data must be a valid object');
   }
   const obj = raw as Record<string, unknown>;

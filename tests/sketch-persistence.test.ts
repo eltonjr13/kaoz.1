@@ -681,4 +681,294 @@ test('versioned contracts (order, plan, results, change intents) persist and rel
   }
 });
 
+test('normalizeProject rejects array inputs and non-object inputs', () => {
+  assert.throws(
+    () => normalizeProject([]),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'Project data must be a valid object');
+      return true;
+    }
+  );
+
+  assert.throws(
+    () => normalizeProject(['id', 'sketch-123']),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'Project data must be a valid object');
+      return true;
+    }
+  );
+
+  assert.throws(
+    () => normalizeProject(null),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'Project data must be a valid object');
+      return true;
+    }
+  );
+
+  assert.throws(
+    () => normalizeProject(undefined),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, 'Project data must be a valid object');
+      return true;
+    }
+  );
+});
+
+function assertSanitizedContracts(
+  project: SketchProjectData,
+  expectedAspectRatio: string,
+  expectedCanvasAspectRatio: string
+) {
+  assert.equal(project.aspectRatio, expectedAspectRatio);
+  assert.equal(project.canvasAspectRatio, expectedCanvasAspectRatio);
+
+  const order = project.currentOrder;
+  assert.ok(order);
+  assert.equal(order.aspectRatio, '1:1');
+
+  const plan = project.creativePlan;
+  assert.ok(plan);
+  assert.equal(plan.inferredCreativeDecisions.selectedAngle, 'custom');
+  assert.equal(plan.inferredCreativeDecisions.composition.layoutType, 'centered_hero');
+
+  const results = project.creativeResults;
+  assert.ok(results);
+  const result = results[0];
+  assert.ok(result);
+  assert.equal(result.lineage.iterationType, 'initial');
+  assert.equal(result.creativePlan.inferredCreativeDecisions.selectedAngle, 'custom');
+  assert.equal(result.creativePlan.inferredCreativeDecisions.composition.layoutType, 'centered_hero');
+  assert.equal(result.finalAsset.aspectRatio, '1:1');
+}
+
+test('runtime union fallbacks sanitize invalid order.aspectRatio, selectedAngle, lineage.iterationType, and composition.layoutType', () => {
+  const malformedPayload = {
+    id: 'proj-malformed-enums',
+    title: 'Adversarial Enum Test',
+    currentOrder: {
+      id: 'order-adv-1',
+      prompt: 'Test prompt',
+      aspectRatio: '21:9-invalid',
+      canvasAspectRatio: 'ultrawide',
+    },
+    creativePlan: {
+      id: 'plan-adv-1',
+      orderId: 'order-adv-1',
+      providedFacts: {
+        productOrService: 'Headphones',
+        rawUserPrompt: 'Test prompt',
+        mandatoryRestrictions: [],
+      },
+      inferredCreativeDecisions: {
+        selectedAngle: 'ultra_exotic_angle',
+        angleRationale: 'Test rationale',
+        visualConcept: 'Test visual',
+        copy: { headline: 'H', subheadline: 'S', cta: 'C' },
+        artDirection: { colorPalette: [], lighting: 'L', mood: 'M', backgroundStyle: 'B', avoidCliches: true },
+        composition: {
+          layoutType: 'non_existent_layout',
+          reservedCopyZones: [],
+          subjectPlacements: [],
+          textRenderingStrategy: 'layer',
+        },
+      },
+      compiledPrompt: 'Compiled',
+      validationIssues: [],
+    },
+    creativeResults: [
+      {
+        id: 'res-adv-1',
+        projectId: 'proj-malformed-enums',
+        originOrderId: 'order-adv-1',
+        planId: 'plan-adv-1',
+        lineage: {
+          versionNumber: 1,
+          iterationType: 'weird_iteration_type',
+        },
+        creativePlan: {
+          id: 'plan-adv-1',
+          orderId: 'order-adv-1',
+          providedFacts: { productOrService: 'Headphones', rawUserPrompt: 'Test prompt', mandatoryRestrictions: [] },
+          inferredCreativeDecisions: {
+            selectedAngle: 'invalid_angle',
+            angleRationale: 'R',
+            visualConcept: 'V',
+            copy: { headline: 'H', subheadline: 'S', cta: 'C' },
+            artDirection: { colorPalette: [], lighting: 'L', mood: 'M', backgroundStyle: 'B', avoidCliches: true },
+            composition: {
+              layoutType: 'invalid_layout',
+              reservedCopyZones: [],
+              subjectPlacements: [],
+              textRenderingStrategy: 'layer',
+            },
+          },
+          compiledPrompt: 'Compiled',
+          validationIssues: [],
+        },
+        finalAsset: {
+          imageUrl: '/final.png',
+          filePath: 'final.png',
+          width: 1080,
+          height: 1080,
+          aspectRatio: '32:9-extreme',
+          fileSizeBytes: 100,
+          mimeType: 'image/png',
+          format: 'png',
+        },
+        resourcesForAdjustments: {},
+        status: 'ready',
+      },
+    ],
+  };
+
+  const normalized = normalizeProject(malformedPayload);
+  assertSanitizedContracts(normalized, '1:1', '1:1');
+});
+
+test('resolveProjectRatios derives provider aspectRatio via resolveProviderAspectRatio and maps 4:5 to 3:4', () => {
+  // Legacy project with aspectRatio: '4:5'
+  const legacy45 = normalizeProject({
+    id: 'proj-legacy-45',
+    title: 'Legacy 4:5 Project',
+    aspectRatio: '4:5',
+  });
+  assert.equal(legacy45.canvasAspectRatio, '4:5');
+  assert.equal(legacy45.aspectRatio, '3:4');
+
+  // Explicit canvasAspectRatio: '4:5'
+  const explicitCanvas45 = normalizeProject({
+    id: 'proj-explicit-canvas-45',
+    title: 'Canvas 4:5 Project',
+    canvasAspectRatio: '4:5',
+  });
+  assert.equal(explicitCanvas45.canvasAspectRatio, '4:5');
+  assert.equal(explicitCanvas45.aspectRatio, '3:4');
+
+  // Valid flow ratio preserved
+  const validFlowRatio = normalizeProject({
+    id: 'proj-valid-169',
+    title: '16:9 Project',
+    canvasAspectRatio: '16:9',
+  });
+  assert.equal(validFlowRatio.canvasAspectRatio, '16:9');
+  assert.equal(validFlowRatio.aspectRatio, '16:9');
+
+  // Custom ratio maps to 1:1 default provider ratio
+  const customRatio = normalizeProject({
+    id: 'proj-custom-ratio',
+    title: 'Custom Ratio Project',
+    canvasAspectRatio: 'custom',
+  });
+  assert.equal(customRatio.canvasAspectRatio, 'custom');
+  assert.equal(customRatio.aspectRatio, '1:1');
+
+  // Completely invalid ratio falls back to 1:1
+  const invalidRatio = normalizeProject({
+    id: 'proj-invalid-ratio',
+    title: 'Invalid Ratio Project',
+    aspectRatio: '99:1-bogus',
+  });
+  assert.equal(invalidRatio.canvasAspectRatio, '1:1');
+  assert.equal(invalidRatio.aspectRatio, '1:1');
+});
+
+test('malformed enums written directly to disk are safely sanitized on getProject reload', async () => {
+  const { projectsDir, cleanup } = await createTestEnv();
+  try {
+    const rawMaliciousDiskContent = {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'proj-disk-adversarial',
+      title: 'Adversarial Disk Test',
+      aspectRatio: '4:5',
+      currentOrder: {
+        id: 'order-disk-1',
+        prompt: 'Clean prompt',
+        aspectRatio: '99:1-corrupt',
+      },
+      creativePlan: {
+        id: 'plan-disk-1',
+        orderId: 'order-disk-1',
+        providedFacts: {
+          productOrService: 'Disk item',
+          rawUserPrompt: 'Raw prompt',
+        },
+        inferredCreativeDecisions: {
+          selectedAngle: 'bogus_selling_angle',
+          visualConcept: 'Visual concept',
+          copy: { headline: 'H', subheadline: 'S', cta: 'C' },
+          artDirection: { colorPalette: [], lighting: 'L', mood: 'M', backgroundStyle: 'B', avoidCliches: true },
+          composition: {
+            layoutType: 'corrupt_layout_style',
+            reservedCopyZones: [],
+            subjectPlacements: [],
+            textRenderingStrategy: 'layer',
+          },
+        },
+        compiledPrompt: 'Compiled prompt',
+      },
+      creativeResults: [
+        {
+          id: 'res-disk-1',
+          projectId: 'proj-disk-adversarial',
+          originOrderId: 'order-disk-1',
+          planId: 'plan-disk-1',
+          lineage: {
+            versionNumber: 1,
+            iterationType: 'corrupt_iteration',
+          },
+          creativePlan: {
+            id: 'plan-disk-1',
+            orderId: 'order-disk-1',
+            providedFacts: { productOrService: 'Disk item', rawUserPrompt: 'Raw prompt' },
+            inferredCreativeDecisions: {
+              selectedAngle: 'bogus_angle',
+              angleRationale: 'R',
+              visualConcept: 'V',
+              copy: { headline: 'H', subheadline: 'S', cta: 'C' },
+              artDirection: { colorPalette: [], lighting: 'L', mood: 'M', backgroundStyle: 'B', avoidCliches: true },
+              composition: {
+                layoutType: 'corrupt_layout',
+                reservedCopyZones: [],
+                subjectPlacements: [],
+                textRenderingStrategy: 'layer',
+              },
+            },
+            compiledPrompt: 'Compiled',
+            validationIssues: [],
+          },
+          finalAsset: {
+            imageUrl: '/test.png',
+            filePath: 'test.png',
+            width: 1080,
+            height: 1080,
+            aspectRatio: 'bogus_asset_ratio',
+            fileSizeBytes: 10,
+            mimeType: 'image/png',
+            format: 'png',
+          },
+          resourcesForAdjustments: {},
+          status: 'ready',
+        },
+      ],
+      createdAt: '2026-09-09T22:30:00.000Z',
+      updatedAt: '2026-09-09T22:30:00.000Z',
+    };
+
+    const filePath = path.join(projectsDir, 'proj-disk-adversarial.json');
+    await fsp.writeFile(filePath, JSON.stringify(rawMaliciousDiskContent, null, 2), 'utf-8');
+
+    const loaded = await getProject('proj-disk-adversarial', projectsDir);
+    assert.ok(loaded);
+    assertSanitizedContracts(loaded, '3:4', '4:5');
+  } finally {
+    await cleanup();
+  }
+});
+
 
