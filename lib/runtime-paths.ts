@@ -43,3 +43,7 @@ export function getSketchProjectsDir(): string {
 export function getSketchAssetsDir(): string {
   return path.join(getSketchStorageDir(), "assets");
 }
+
+export function getSketchJobsDir(): string {
+  return path.join(getSketchStorageDir(), "jobs");
+}

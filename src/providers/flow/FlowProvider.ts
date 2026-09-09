@@ -81,14 +81,21 @@ export class FlowProvider {
   }
 
   /**
-   * Generates an image using Google Flow / ImageFX.
-   * 
+   * Generates an image using Google Flow / ImageFX with an optional callback when browser lock is acquired.
+   *
    * @param prompt Textual prompt describing the image.
+   * @param options Generation options.
+   * @param onLockAcquired Optional hook called when the browser lock is secured.
    */
-  async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  async generateImageWithProgress(
+    prompt: string,
+    options?: ImageGenerationOptions,
+    onLockAcquired?: () => void
+  ): Promise<ImageGenerationResult> {
     this.activeTasksCount++;
     try {
       return await this.runBrowserTaskExclusive(async () => {
+        onLockAcquired?.();
         const page = await this.session.getPage();
         const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
         const preparedPrompt = prepareFlowImagePrompt({
@@ -111,11 +118,25 @@ export class FlowProvider {
   }
 
   /**
+   * Generates an image using Google Flow / ImageFX.
+   * 
+   * @param prompt Textual prompt describing the image.
+   */
+  async generateImage(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
+    return this.generateImageWithProgress(prompt, options);
+  }
+
+  isBrowserBusy(): boolean {
+    return this.activeTasksCount > 0;
+  }
+
+  /**
    * Generates a video using Google Flow / VideoFX.
    * 
    * @param prompt Textual prompt describing the video.
    */
   async generateVideo(prompt: string, options?: VideoGenerationOptions): Promise<VideoGenerationResult> {
+
     this.activeTasksCount++;
     try {
       return await this.runBrowserTaskExclusive(async () => {

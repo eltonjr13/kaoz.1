@@ -439,3 +439,66 @@ export interface GenerateCopyResponse {
   badge: string;
   suggestedVisualPrompt: string;
 }
+
+export type SketchJobStep =
+  | 'queued'
+  | 'preparing_reference'
+  | 'waiting_flow_lock'
+  | 'generating_with_flow'
+  | 'verifying_output'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export interface SketchJobSnapshot {
+  projectId: string;
+  projectTitle: string;
+  briefing: SketchBriefingData;
+  copy: SketchCopyData;
+  layers: SketchLayer[];
+  attachments: SketchAttachment[];
+  canvasAspectRatio: SketchCanvasAspectRatio;
+  providerAspectRatio: FlowSupportedAspectRatio;
+  canvasDimensions?: { width: number; height: number; unit: 'px' };
+  prompt: string;
+  useSketchAsReference: boolean;
+  referenceMode: 'none' | 'sketch' | 'identity' | 'composite';
+  compositionIntent?: CompositionIntent;
+  textRenderingStrategy?: TextRenderingStrategy;
+  compiledPrompt: string;
+  diagnostics: SketchReferenceDiagnostic[];
+}
+
+export interface SketchJobResult {
+  imagePath: string;
+  imageUrl: string;
+  filename: string;
+  fileSizeBytes: number;
+  providerAspectRatio?: FlowSupportedAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+  versionNumber?: number;
+  snapshotId?: string;
+}
+
+export interface SketchJobData {
+  schemaVersion?: number;
+  version?: string;
+  id: string;
+  projectId: string;
+  idempotencyToken?: string;
+  status: SketchJobStep;
+  progressPercentage: number;
+  stepMessage: string;
+  snapshot: SketchJobSnapshot;
+  referenceImagePath?: string;
+  tempFilesToCleanup?: string[];
+  result?: SketchJobResult;
+  error?: string;
+  cancellationRequested?: boolean;
+  cancellationExplanation?: string;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
