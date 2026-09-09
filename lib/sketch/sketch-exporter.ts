@@ -4,6 +4,7 @@ import {
   resolveProviderAspectRatio,
   type AspectRatioDimension,
   type BackgroundLayer,
+  type ExportCompositionOptions,
   type FlowSupportedAspectRatio,
   type ImageLayer,
   type ShapeLayer,
@@ -13,6 +14,28 @@ import {
   type SketchProjectData,
   type TextLayer,
 } from '../../types/sketch.ts';
+
+declare global {
+  interface Window {
+    kaoz1Desktop?: {
+      saveFile?: (payload: {
+        defaultName: string;
+        buffer: ArrayBuffer;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<{ savedPath?: string } | null>;
+    };
+  }
+}
+
+export async function waitForFontsReady(): Promise<void> {
+  if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.ready?.then === 'function') {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // Graceful fallback for non-browser / headless environments
+    }
+  }
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -24,26 +47,60 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function computeContainDimensions(
+  imgRatio: number,
+  canvasRatio: number,
+  width: number,
+  height: number,
+  offsetXPercent: number,
+  offsetYPercent: number
+): { renderW: number; renderH: number; offsetX: number; offsetY: number } {
+  if (imgRatio > canvasRatio) {
+    const renderW = width;
+    const renderH = width / imgRatio;
+    const offsetY = (height - renderH) * (offsetYPercent / 100);
+    return { renderW, renderH, offsetX: 0, offsetY };
+  }
+  const renderH = height;
+  const renderW = height * imgRatio;
+  const offsetX = (width - renderW) * (offsetXPercent / 100);
+  return { renderW, renderH, offsetX, offsetY: 0 };
+}
+
+function computeCoverDimensions(
+  imgRatio: number,
+  canvasRatio: number,
+  width: number,
+  height: number,
+  offsetXPercent: number,
+  offsetYPercent: number
+): { renderW: number; renderH: number; offsetX: number; offsetY: number } {
+  if (imgRatio > canvasRatio) {
+    const renderW = height * imgRatio;
+    const offsetX = (width - renderW) * (offsetXPercent / 100);
+    return { renderW, renderH, offsetX, offsetY: 0 };
+  }
+  const renderH = width / imgRatio;
+  const offsetY = (height - renderH) * (offsetYPercent / 100);
+  return { renderW, renderH, offsetX: 0, offsetY };
+}
+
 function drawCoverImage(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
   width: number,
-  height: number
+  height: number,
+  offsetXPercent = 50,
+  offsetYPercent = 50,
+  fit: 'cover' | 'contain' = 'cover'
 ) {
   const imgRatio = img.width / img.height;
   const canvasRatio = width / height;
-  let renderW = width;
-  let renderH = height;
-  let offsetX = 0;
-  let offsetY = 0;
+  const { renderW, renderH, offsetX, offsetY } =
+    fit === 'contain'
+      ? computeContainDimensions(imgRatio, canvasRatio, width, height, offsetXPercent, offsetYPercent)
+      : computeCoverDimensions(imgRatio, canvasRatio, width, height, offsetXPercent, offsetYPercent);
 
-  if (imgRatio > canvasRatio) {
-    renderW = height * imgRatio;
-    offsetX = (width - renderW) / 2;
-  } else {
-    renderH = width / imgRatio;
-    offsetY = (height - renderH) / 2;
-  }
   ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
 }
 
@@ -60,7 +117,13 @@ function drawBackgroundLayer(
 
   const img = layer.fillType === 'image' && layer.imageUrl ? loadedImages.get(layer.imageUrl) : null;
   if (img) {
-    drawCoverImage(ctx, img, width, height);
+    if (layer.fit === 'contain' || layer.opacity < 1) {
+      ctx.fillStyle = layer.color || '#0d1117';
+      ctx.fillRect(0, 0, width, height);
+    }
+    const offX = typeof layer.offsetX === 'number' ? layer.offsetX : 50;
+    const offY = typeof layer.offsetY === 'number' ? layer.offsetY : 50;
+    drawCoverImage(ctx, img, width, height, offX, offY, layer.fit || 'cover');
   } else {
     ctx.fillStyle = layer.color || '#0d1117';
     ctx.fillRect(0, 0, width, height);

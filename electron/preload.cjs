@@ -15,6 +15,7 @@ if (process.platform === "win32") {
     setAutoDownloadUpdates: (enabled) => ipcRenderer.invoke("kaoz1-desktop:set-auto-download-updates", enabled),
     chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
     chooseVideoFile: () => ipcRenderer.invoke("kaoz1-desktop:choose-video-file"),
+    saveFile: (payload) => ipcRenderer.invoke("kaoz1-desktop:save-file", payload),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("kaoz1-update:download"),

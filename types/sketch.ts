@@ -141,6 +141,9 @@ export interface BackgroundLayer extends BaseLayer {
   color?: string;
   imageUrl?: string;
   flowMediaPath?: string;
+  offsetX?: number; // 0 to 100 percentage (default: 50 = center)
+  offsetY?: number; // 0 to 100 percentage (default: 50 = center)
+  fit?: 'cover' | 'contain';
 }
 
 export interface SketchDrawingLayer extends BaseLayer {
@@ -501,4 +504,14 @@ export interface SketchJobData {
   updatedAt: string;
   startedAt?: string;
   completedAt?: string;
+}
+
+export interface ExportCompositionOptions {
+  format?: 'png' | 'jpeg';
+  quality?: number; // 0.1 to 1.0 (default 0.95 for jpeg)
+  scale?: number; // 0.5, 1, 2 (default 1)
+  customWidth?: number;
+  customHeight?: number;
+  excludeGuides?: boolean; // default true
+  backgroundColorForJpeg?: string; // default '#ffffff'
 }

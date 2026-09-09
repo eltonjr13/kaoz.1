@@ -295,6 +295,22 @@ ipcMain.handle("kaoz1-desktop:choose-video-file", async (event) => {
   return selection.canceled ? null : selection.filePaths[0] || null;
 });
 
+ipcMain.handle("kaoz1-desktop:save-file", async (event, payload) => {
+  const target = getMainWindowForEvent(event);
+  if (!target || !payload) return null;
+  const { defaultName, buffer, filters } = payload;
+  const selection = await dialog.showSaveDialog(target, {
+    title: "Salvar anúncio exportado",
+    defaultPath: defaultName || "anuncio.png",
+    filters: filters || [{ name: "Imagens", extensions: ["png", "jpg", "jpeg"] }],
+  });
+  if (selection.canceled || !selection.filePath) return null;
+  const fsp = require("node:fs/promises");
+  const data = Buffer.from(buffer);
+  await fsp.writeFile(selection.filePath, data);
+  return { savedPath: selection.filePath };
+});
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {
