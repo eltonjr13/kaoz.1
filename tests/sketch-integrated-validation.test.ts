@@ -583,9 +583,12 @@ test('cenário 7: falha de upload e falha de geração não causam perda de trab
 
     // 7B: Falha de Geração preserva trabalho
     const job = await manager.enqueueJob({ projectId: project.id });
-    await new Promise((r) => setTimeout(r, 60));
+    let failedJob = await manager.getJob(job.id);
+    for (let i = 0; i < 50 && failedJob && (failedJob.status === 'queued' || failedJob.status === 'preparing_reference' || failedJob.status === 'waiting_flow_lock' || failedJob.status === 'generating_with_flow' || failedJob.status === 'verifying_output'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+      failedJob = await manager.getJob(job.id);
+    }
 
-    const failedJob = await manager.getJob(job.id);
     assert.ok(failedJob);
     assert.equal(failedJob.status, 'failed');
     assert.ok(failedJob.error?.includes('timeout'));
