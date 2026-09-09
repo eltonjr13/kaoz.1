@@ -552,24 +552,65 @@ function renderSingleLayer(
   dispatchLayerDraw(ctx, layer, preset, loadedImages, excludeGuides);
 }
 
+function resolveExportDimensions(
+  project: SketchProjectData,
+  options?: ExportCompositionOptions
+): { width: number; height: number } {
+  const preset = resolveCanvasDimensionPreset(project);
+  if (options?.customWidth && options?.customHeight) {
+    return { width: options.customWidth, height: options.customHeight };
+  }
+  const scale = options?.scale && options.scale > 0 ? options.scale : 1;
+  return {
+    width: Math.round(preset.width * scale),
+    height: Math.round(preset.height * scale),
+  };
+}
+
+function prepareExportBackground(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  project: SketchProjectData,
+  options?: ExportCompositionOptions
+): void {
+  if (options?.format !== 'jpeg') return;
+  const bgLayer = project.layers.find((l) => l.type === 'background') as BackgroundLayer | undefined;
+  const solidColor = options.backgroundColorForJpeg || bgLayer?.color || '#ffffff';
+  ctx.save();
+  ctx.fillStyle = solidColor;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
 export async function renderCompositionToCanvas(
   project: SketchProjectData,
   canvas?: HTMLCanvasElement,
-  options?: { excludeGuides?: boolean }
+  options?: ExportCompositionOptions
 ): Promise<HTMLCanvasElement> {
+  await waitForFontsReady();
+
   const targetCanvas = canvas || document.createElement('canvas');
-  const preset = resolveCanvasDimensionPreset(project);
-  targetCanvas.width = preset.width;
-  targetCanvas.height = preset.height;
+  const { width, height } = resolveExportDimensions(project, options);
+  targetCanvas.width = width;
+  targetCanvas.height = height;
 
   const ctx = targetCanvas.getContext('2d');
   if (!ctx) throw new Error('Não foi possível inicializar o contexto 2D.');
 
+  prepareExportBackground(ctx, width, height, project, options);
+
   const loadedImages = await preloadProjectImages(project);
-  const excludeGuides = options ? Boolean(options.excludeGuides) : false;
+  const excludeGuides = options?.excludeGuides !== false;
+  const effectivePreset: AspectRatioDimension = {
+    width,
+    height,
+    label: `${width}x${height}`,
+    description: 'Dimensões de exportação',
+  };
 
   for (const layer of project.layers) {
-    renderSingleLayer(ctx, layer, preset, loadedImages, excludeGuides);
+    renderSingleLayer(ctx, layer, effectivePreset, loadedImages, excludeGuides);
   }
 
   return targetCanvas;
@@ -666,13 +707,32 @@ export function renderSketchOnlyDataUrl(paths: SketchPath[], width = 1080, heigh
   return canvas.toDataURL('image/png');
 }
 
+function normalizeExportOptions(
+  optionsOrFormat?: ExportCompositionOptions | 'png' | 'jpeg',
+  quality?: number
+): ExportCompositionOptions {
+  if (typeof optionsOrFormat === 'string') {
+    return { format: optionsOrFormat, quality: quality ?? 0.95, excludeGuides: true };
+  }
+  return {
+    format: optionsOrFormat?.format ?? 'png',
+    quality: optionsOrFormat?.quality ?? quality ?? 0.95,
+    scale: optionsOrFormat?.scale ?? 1,
+    customWidth: optionsOrFormat?.customWidth,
+    customHeight: optionsOrFormat?.customHeight,
+    excludeGuides: optionsOrFormat?.excludeGuides ?? true,
+    backgroundColorForJpeg: optionsOrFormat?.backgroundColorForJpeg,
+  };
+}
+
 export async function exportCompositionBlob(
   project: SketchProjectData,
-  format: 'png' | 'jpeg' = 'png',
+  optionsOrFormat?: ExportCompositionOptions | 'png' | 'jpeg',
   quality = 0.95
 ): Promise<Blob> {
-  const canvas = await renderCompositionToCanvas(project);
-  const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const opts = normalizeExportOptions(optionsOrFormat, quality);
+  const canvas = await renderCompositionToCanvas(project, undefined, opts);
+  const mimeType = opts.format === 'jpeg' ? 'image/jpeg' : 'image/png';
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -681,31 +741,35 @@ export async function exportCompositionBlob(
         else reject(new Error('Falha ao gerar blob do canvas'));
       },
       mimeType,
-      quality
+      opts.quality
     );
   });
 }
 
 export async function exportCompositionDataUrl(
   project: SketchProjectData,
-  format: 'png' | 'jpeg' = 'png',
+  optionsOrFormat?: ExportCompositionOptions | 'png' | 'jpeg',
   quality = 0.95
 ): Promise<string> {
-  const canvas = await renderCompositionToCanvas(project);
-  const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
-  return canvas.toDataURL(mimeType, quality);
+  const opts = normalizeExportOptions(optionsOrFormat, quality);
+  const canvas = await renderCompositionToCanvas(project, undefined, opts);
+  const mimeType = opts.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+  return canvas.toDataURL(mimeType, opts.quality);
 }
 
-export async function downloadComposition(
-  project: SketchProjectData,
-  format: 'png' | 'jpeg' = 'png',
-  filename?: string
-): Promise<void> {
-  const blob = await exportCompositionBlob(project, format);
-  const url = URL.createObjectURL(blob);
+function buildDefaultExportFilename(title: string, format: 'png' | 'jpeg'): string {
+  const cleanTitle = title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'anuncio';
   const ext = format === 'jpeg' ? 'jpg' : 'png';
-  const name = filename || `anuncio-${project.title.toLowerCase().replace(/\s+/g, '-') || 'sketch'}-${Date.now()}.${ext}`;
+  return `${cleanTitle}-${Date.now()}.${ext}`;
+}
 
+function triggerBrowserDownload(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name;
@@ -713,4 +777,35 @@ export async function downloadComposition(
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+export async function downloadComposition(
+  project: SketchProjectData,
+  optionsOrFormat?: ExportCompositionOptions | 'png' | 'jpeg',
+  filename?: string
+): Promise<void> {
+  const opts = normalizeExportOptions(optionsOrFormat);
+  const format = opts.format || 'png';
+  const name = filename || buildDefaultExportFilename(project.title, format);
+  const blob = await exportCompositionBlob(project, opts);
+
+  if (typeof window !== 'undefined' && window.kaoz1Desktop?.saveFile) {
+    try {
+      const buffer = await blob.arrayBuffer();
+      const ext = format === 'jpeg' ? 'jpg' : 'png';
+      const result = await window.kaoz1Desktop.saveFile({
+        defaultName: name,
+        buffer,
+        filters: [
+          { name: format.toUpperCase(), extensions: [ext] },
+          { name: 'Imagens', extensions: ['png', 'jpg', 'jpeg'] },
+        ],
+      });
+      if (result) return;
+    } catch {
+      // Fallback para download web tradicional se Electron saveFile lançar erro
+    }
+  }
+
+  triggerBrowserDownload(blob, name);
 }
