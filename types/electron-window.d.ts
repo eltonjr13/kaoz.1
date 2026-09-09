@@ -27,6 +27,11 @@ declare global {
       setAutoDownloadUpdates: (enabled: boolean) => Promise<{ autoDownloadUpdates: boolean } | null>;
       chooseCourseFolder: () => Promise<string | null>;
       chooseVideoFile: () => Promise<string | null>;
+      saveFile?: (payload: {
+        defaultName: string;
+        buffer: ArrayBuffer;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<{ savedPath?: string } | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       onNavigationStateChanged: (listener: (state: Kaoz1NavigationState) => void) => () => void;
       getUpdateStatus: () => Promise<Kaoz1UpdateStatus>;

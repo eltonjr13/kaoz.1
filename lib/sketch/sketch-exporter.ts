@@ -15,18 +15,6 @@ import {
   type TextLayer,
 } from '../../types/sketch.ts';
 
-declare global {
-  interface Window {
-    kaoz1Desktop?: {
-      saveFile?: (payload: {
-        defaultName: string;
-        buffer: ArrayBuffer;
-        filters?: Array<{ name: string; extensions: string[] }>;
-      }) => Promise<{ savedPath?: string } | null>;
-    };
-  }
-}
-
 export async function waitForFontsReady(): Promise<void> {
   if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.ready?.then === 'function') {
     try {
@@ -76,10 +64,12 @@ function computeCoverDimensions(
   offsetYPercent: number
 ): { renderW: number; renderH: number; offsetX: number; offsetY: number } {
   if (imgRatio > canvasRatio) {
+    const renderH = height;
     const renderW = height * imgRatio;
     const offsetX = (width - renderW) * (offsetXPercent / 100);
     return { renderW, renderH, offsetX, offsetY: 0 };
   }
+  const renderW = width;
   const renderH = width / imgRatio;
   const offsetY = (height - renderH) * (offsetYPercent / 100);
   return { renderW, renderH, offsetX: 0, offsetY };

@@ -27,6 +27,7 @@ import {
   type SketchAspectRatio,
   type SketchCanvasAspectRatio,
   type SketchJobData,
+  type SketchLayer,
   type SketchProjectData,
   type SketchTool,
 } from '@/types/sketch';
@@ -41,7 +42,6 @@ import { SketchPropertiesPanel } from './sketch-properties-panel';
 import { SketchCompositePreviewPanel } from './sketch-composite-preview-panel';
 import { SketchProjectsModal } from './sketch-projects-modal';
 import { SketchExportModal } from './sketch-export-modal';
-import { downloadComposition } from '@/lib/sketch/sketch-exporter';
 
 type LeftTab = 'briefing' | 'copy' | 'referencias';
 type RightTab = 'propriedades' | 'camadas' | 'versoes';
@@ -586,6 +586,93 @@ function SketchLoadingState() {
   );
 }
 
+function getProjectCanvasRatio(project: SketchProjectData): SketchCanvasAspectRatio {
+  return project.canvasAspectRatio || (project.aspectRatio as SketchCanvasAspectRatio) || '1:1';
+}
+
+interface SketchCenterAreaProps {
+  centerView: CenterViewMode;
+  project: SketchProjectData;
+  activeJob: SketchJobData | null;
+  isGenerating: boolean;
+  selectedLayerId: string | null;
+  activeTool: SketchTool;
+  strokeColor: string;
+  strokeSize: number;
+  boxLabel: string;
+  onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
+  onSelectLayer: (id: string | null) => void;
+  setActiveTool: (tool: SketchTool) => void;
+  setStrokeColor: (color: string) => void;
+  setStrokeSize: (size: number) => void;
+  setBoxLabel: (label: string) => void;
+  onSaveLayers: (layers?: SketchLayer[]) => void;
+  onGenerateFlowImage: (referenceDataUrl?: string) => Promise<void>;
+  onCancelJob: (jobId: string) => Promise<void>;
+  onApplyResult: (imageUrl: string, flowPath?: string) => Promise<void>;
+}
+
+function SketchCenterArea({
+  centerView,
+  project,
+  activeJob,
+  isGenerating,
+  selectedLayerId,
+  activeTool,
+  strokeColor,
+  strokeSize,
+  boxLabel,
+  onUpdateProject,
+  onSelectLayer,
+  setActiveTool,
+  setStrokeColor,
+  setStrokeSize,
+  setBoxLabel,
+  onSaveLayers,
+  onGenerateFlowImage,
+  onCancelJob,
+  onApplyResult,
+}: SketchCenterAreaProps) {
+  if (centerView === 'canvas') {
+    return (
+      <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
+        <SketchCanvas
+          key={project.id}
+          project={project}
+          onUpdateProject={onUpdateProject}
+          selectedLayerId={selectedLayerId}
+          onSelectLayer={onSelectLayer}
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          strokeColor={strokeColor}
+          setStrokeColor={setStrokeColor}
+          strokeSize={strokeSize}
+          setStrokeSize={setStrokeSize}
+          boxLabel={boxLabel}
+          setBoxLabel={setBoxLabel}
+          onApply={onSaveLayers}
+          onCancel={onSaveLayers}
+        />
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
+      <SketchCompositePreviewPanel
+        project={project}
+        activeJob={activeJob}
+        isGenerating={isGenerating}
+        onGenerateFlowImage={onGenerateFlowImage}
+        onCancelJob={onCancelJob}
+        onApplyResult={onApplyResult}
+        onCreateVariation={() => onGenerateFlowImage()}
+        onRetryGeneration={() => onGenerateFlowImage()}
+      />
+    </main>
+  );
+}
+
 export function SketchDashboard() {
   const [project, setProject] = useState<SketchProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -840,21 +927,43 @@ export function SketchDashboard() {
     }
   };
 
-  const handleExport = async (format: 'png' | 'jpeg') => {
-    if (!project) return;
-    setIsExporting(true);
-    try {
-      await downloadComposition(project, format);
-    } finally {
-      setIsExporting(false);
-    }
-  };
+  const handleSaveLayers = useCallback(
+    (layers?: SketchLayer[]) => {
+      if (!project) return;
+      const toSave = {
+        ...project,
+        layers: layers || project.layers,
+        updatedAt: new Date().toISOString(),
+      };
+      setProject(toSave);
+      persistToBackend(toSave);
+    },
+    [project, persistToBackend]
+  );
+
+  const handleUpdateRatio = useCallback(
+    (ratio: SketchCanvasAspectRatio) => {
+      const preset = CANVAS_ASPECT_RATIO_PRESETS[ratio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
+      handleUpdateProject((prev) => ({
+        ...prev,
+        canvasAspectRatio: ratio,
+        aspectRatio: resolveProviderAspectRatio(ratio),
+        canvasDimensions: { width: preset.width, height: preset.height, unit: 'px' },
+      }));
+    },
+    [handleUpdateProject]
+  );
+
+  const handleRetrySave = useCallback(() => {
+    const toSave = pendingProjectRef.current || project;
+    if (toSave) persistToBackend(toSave);
+  }, [project, persistToBackend]);
 
   if (isLoading) {
     return <SketchLoadingState />;
   }
 
-  if (!project || hasNoProject(project, isEmpty)) {
+  if (!project || isEmpty) {
     return <SketchEmptyState onCreateProject={() => handleCreateNewProject('Primeiro Anúncio', '1:1')} />;
   }
 
@@ -862,7 +971,7 @@ export function SketchDashboard() {
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#07090e] text-white">
       <SketchTopBar
         title={project.title}
-        canvasRatio={project.canvasAspectRatio || project.aspectRatio || '1:1'}
+        canvasRatio={getProjectCanvasRatio(project)}
         saveStatus={saveStatus}
         savedTime={savedTime}
         centerView={centerView}
@@ -871,23 +980,12 @@ export function SketchDashboard() {
         isExporting={isExporting}
         activeJob={activeJob}
         onUpdateTitle={(title) => handleUpdateProject((prev) => ({ ...prev, title }))}
-        onUpdateRatio={(ratio) => {
-          const preset = CANVAS_ASPECT_RATIO_PRESETS[ratio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
-          handleUpdateProject((prev) => ({
-            ...prev,
-            canvasAspectRatio: ratio,
-            aspectRatio: resolveProviderAspectRatio(ratio),
-            canvasDimensions: { width: preset.width, height: preset.height, unit: 'px' },
-          }));
-        }}
+        onUpdateRatio={handleUpdateRatio}
         onToggleLeft={() => setIsLeftOpen((v) => !v)}
         onToggleRight={() => setIsRightOpen((v) => !v)}
         onChangeCenterView={setCenterView}
         onOpenProjectsModal={() => setIsProjectsModalOpen(true)}
-        onRetrySave={() => {
-          const toSave = pendingProjectRef.current || project;
-          if (toSave) persistToBackend(toSave);
-        }}
+        onRetrySave={handleRetrySave}
         onOpenExportModal={() => setIsExportModalOpen(true)}
       />
 
@@ -902,58 +1000,27 @@ export function SketchDashboard() {
           onSelectLayer={setSelectedLayerId}
         />
 
-        <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
-          {centerView === 'canvas' ? (
-            <SketchCanvas
-              key={project.id}
-              project={project}
-              onUpdateProject={handleUpdateProject}
-              selectedLayerId={selectedLayerId}
-              onSelectLayer={setSelectedLayerId}
-              activeTool={activeTool}
-              setActiveTool={setActiveTool}
-              strokeColor={strokeColor}
-              setStrokeColor={setStrokeColor}
-              strokeSize={strokeSize}
-              setStrokeSize={setStrokeSize}
-              boxLabel={boxLabel}
-              setBoxLabel={setBoxLabel}
-              onApply={(appliedLayers) => {
-                if (project) {
-                  const toSave = {
-                    ...project,
-                    layers: appliedLayers || project.layers,
-                    updatedAt: new Date().toISOString(),
-                  };
-                  setProject(toSave);
-                  persistToBackend(toSave);
-                }
-              }}
-              onCancel={(restoredLayers) => {
-                if (project) {
-                  const toSave = {
-                    ...project,
-                    layers: restoredLayers || project.layers,
-                    updatedAt: new Date().toISOString(),
-                  };
-                  setProject(toSave);
-                  persistToBackend(toSave);
-                }
-              }}
-            />
-          ) : (
-            <SketchCompositePreviewPanel
-              project={project}
-              activeJob={activeJob}
-              isGenerating={isGenerating}
-              onGenerateFlowImage={handleGenerateFlowImage}
-              onCancelJob={handleCancelJob}
-              onApplyResult={handleApplyResultAsBackground}
-              onCreateVariation={() => handleGenerateFlowImage()}
-              onRetryGeneration={() => handleGenerateFlowImage()}
-            />
-          )}
-        </main>
+        <SketchCenterArea
+          centerView={centerView}
+          project={project}
+          activeJob={activeJob}
+          isGenerating={isGenerating}
+          selectedLayerId={selectedLayerId}
+          activeTool={activeTool}
+          strokeColor={strokeColor}
+          strokeSize={strokeSize}
+          boxLabel={boxLabel}
+          onUpdateProject={handleUpdateProject}
+          onSelectLayer={setSelectedLayerId}
+          setActiveTool={setActiveTool}
+          setStrokeColor={setStrokeColor}
+          setStrokeSize={setStrokeSize}
+          setBoxLabel={setBoxLabel}
+          onSaveLayers={handleSaveLayers}
+          onGenerateFlowImage={handleGenerateFlowImage}
+          onCancelJob={handleCancelJob}
+          onApplyResult={handleApplyResultAsBackground}
+        />
 
         <SketchRightSidebar
           isOpen={isRightOpen}
