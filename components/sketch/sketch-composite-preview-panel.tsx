@@ -26,8 +26,8 @@ interface SketchCompositePreviewPanelProps {
   onGenerateFlowImage?: (referenceDataUrl?: string) => void;
   onCancelJob?: (jobId: string) => void;
   onApplyResult?: (imageUrl: string, flowPath?: string) => void;
-  onCreateVariation?: () => void;
-  onRetryGeneration?: () => void;
+  onCreateVariation?: (referenceDataUrl?: string) => void;
+  onRetryGeneration?: (referenceDataUrl?: string) => void;
   isGenerating?: boolean;
 }
 
@@ -237,8 +237,8 @@ export function SketchCompositePreviewPanel({
           job={activeJob}
           onCancel={onCancelJob}
           onApplyResult={onApplyResult}
-          onCreateVariation={onCreateVariation}
-          onRetry={onRetryGeneration}
+          onCreateVariation={() => onCreateVariation?.(renderedUrl || undefined)}
+          onRetry={() => onRetryGeneration?.(renderedUrl || undefined)}
         />
       )}
 

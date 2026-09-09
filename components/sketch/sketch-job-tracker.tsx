@@ -13,7 +13,7 @@ import {
   StopCircle,
 } from 'lucide-react';
 import type { SketchJobData, SketchJobResult, SketchJobStep } from '@/types/sketch';
-import { isJobActive } from '@/lib/sketch/sketch-job-manager';
+import { isJobActive } from '@/lib/sketch/sketch-job-state';
 
 interface SketchJobTrackerProps {
   job: SketchJobData;
