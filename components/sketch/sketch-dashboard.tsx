@@ -38,8 +38,9 @@ import { SketchLayersPanel } from './sketch-layers-panel';
 import { SketchVersionManager } from './sketch-version-manager';
 import { SketchBriefingPanel } from './sketch-briefing-panel';
 import { SketchPropertiesPanel } from './sketch-properties-panel';
-import { SketchProjectsModal } from './sketch-projects-modal';
 import { SketchCompositePreviewPanel } from './sketch-composite-preview-panel';
+import { SketchProjectsModal } from './sketch-projects-modal';
+import { SketchExportModal } from './sketch-export-modal';
 import { downloadComposition } from '@/lib/sketch/sketch-exporter';
 
 type LeftTab = 'briefing' | 'copy' | 'referencias';
@@ -105,7 +106,7 @@ function SketchTopBar({
   onChangeCenterView,
   onOpenProjectsModal,
   onRetrySave,
-  onExport,
+  onOpenExportModal,
   activeJob,
 }: {
   title: string;
@@ -123,7 +124,7 @@ function SketchTopBar({
   onChangeCenterView: (view: CenterViewMode) => void;
   onOpenProjectsModal: () => void;
   onRetrySave: () => void;
-  onExport: (format: 'png' | 'jpeg') => void;
+  onOpenExportModal: () => void;
   activeJob?: SketchJobData | null;
 }) {
   const quickRatios: SketchCanvasAspectRatio[] = ['1:1', '9:16', '16:9', '4:5'];
@@ -227,21 +228,13 @@ function SketchTopBar({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => onExport('jpeg')}
+            onClick={onOpenExportModal}
             disabled={isExporting}
-            className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 sm:px-2.5 text-xs text-zinc-200 hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-          >
-            <Download size={12} />
-            <span>JPEG</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onExport('png')}
-            disabled={isExporting}
-            className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 sm:px-2.5 text-xs font-medium text-white shadow hover:bg-indigo-500 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow hover:bg-indigo-500 transition-all disabled:opacity-50"
+            title="Configurar dimensões, escala, qualidade e exportar anúncio"
           >
             {isExporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-            <span>PNG</span>
+            <span>Exportar...</span>
           </button>
         </div>
 
@@ -614,6 +607,7 @@ export function SketchDashboard() {
   const [boxLabel, setBoxLabel] = useState('Produto');
 
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const [activeJob, setActiveJob] = useState<SketchJobData | null>(null);
@@ -894,7 +888,7 @@ export function SketchDashboard() {
           const toSave = pendingProjectRef.current || project;
           if (toSave) persistToBackend(toSave);
         }}
-        onExport={handleExport}
+        onOpenExportModal={() => setIsExportModalOpen(true)}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -981,6 +975,12 @@ export function SketchDashboard() {
         onCreateNewProject={handleCreateNewProject}
         onRenameProject={handleRenameProject}
         onDeleteProject={handleDeleteProject}
+      />
+
+      <SketchExportModal
+        isOpen={isExportModalOpen}
+        project={project}
+        onClose={() => setIsExportModalOpen(false)}
       />
     </div>
   );
