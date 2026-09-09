@@ -14,7 +14,11 @@ import {
 } from './sketch-storage.ts';
 import { prepareSketchCompositeReference } from './sketch-composite-preparer.ts';
 import { saveBase64ReferenceImage, cleanupTemporaryReference } from '../flow/reference-files.ts';
-import { flowProvider as defaultFlowProvider } from '../../src/providers/flow/FlowProvider.ts';
+
+async function resolveDefaultFlowProvider(): Promise<FlowImageProviderContract> {
+  const mod = await import('../../src/providers/flow/FlowProvider.ts');
+  return mod.flowProvider as unknown as FlowImageProviderContract;
+}
 import type {
   BackgroundLayer,
   GenerationHistoryItem,
@@ -118,7 +122,7 @@ export class DuplicateJobError extends Error {
 export class SketchJobManager {
   private jobsDir: string;
   private assetsDir: string;
-  private flowProvider: FlowImageProviderContract;
+  private flowProvider?: FlowImageProviderContract;
   private activeJobsMap = new Map<string, SketchJobData>();
   private queueProcessing = false;
   private executionQueue: string[] = [];
@@ -126,7 +130,14 @@ export class SketchJobManager {
   constructor(options?: SketchJobManagerOptions) {
     this.jobsDir = options?.jobsDir || getSketchJobsDir();
     this.assetsDir = options?.assetsDir || getSketchAssetsDir();
-    this.flowProvider = options?.flowProvider || (defaultFlowProvider as unknown as FlowImageProviderContract);
+    this.flowProvider = options?.flowProvider;
+  }
+
+  private async getEffectiveFlowProvider(): Promise<FlowImageProviderContract> {
+    if (!this.flowProvider) {
+      this.flowProvider = await resolveDefaultFlowProvider();
+    }
+    return this.flowProvider;
   }
 
   public getJobsDirectory(): string {
@@ -483,7 +494,8 @@ export class SketchJobManager {
       referenceKind: referenceImage ? 'composite' : undefined,
     };
 
-    return await this.flowProvider.generateImageWithProgress(
+    const provider = await this.getEffectiveFlowProvider();
+    return await provider.generateImageWithProgress(
       job.snapshot.compiledPrompt,
       flowOptions,
       () => {

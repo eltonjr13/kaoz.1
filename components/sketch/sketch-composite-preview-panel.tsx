@@ -14,13 +14,20 @@ import type {
   SketchReferenceDiagnostic,
   SketchGenerationRequest,
   SketchCompositePreview,
+  SketchJobData,
 } from '@/types/sketch';
 import { prepareSketchCompositeReference } from '@/lib/sketch/sketch-composite-preparer';
 import { renderCompositeReferenceDataUrl } from '@/lib/sketch/sketch-exporter';
+import { SketchJobTracker } from './sketch-job-tracker';
 
 interface SketchCompositePreviewPanelProps {
   project: SketchProjectData;
-  onGenerateFlowImage?: () => void;
+  activeJob?: SketchJobData | null;
+  onGenerateFlowImage?: (referenceDataUrl?: string) => void;
+  onCancelJob?: (jobId: string) => void;
+  onApplyResult?: (imageUrl: string, flowPath?: string) => void;
+  onCreateVariation?: () => void;
+  onRetryGeneration?: () => void;
   isGenerating?: boolean;
 }
 
@@ -166,7 +173,12 @@ function CompiledPromptCard({ prompt }: { prompt: string }) {
 
 export function SketchCompositePreviewPanel({
   project,
+  activeJob,
   onGenerateFlowImage,
+  onCancelJob,
+  onApplyResult,
+  onCreateVariation,
+  onRetryGeneration,
   isGenerating = false,
 }: SketchCompositePreviewPanelProps) {
   const [renderedUrl, setRenderedUrl] = useState<string | null>(null);
@@ -195,7 +207,7 @@ export function SketchCompositePreviewPanel({
   }, [project]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-y-auto p-5 text-xs text-zinc-300">
+    <div className="flex h-full w-full flex-col overflow-y-auto p-5 text-xs text-zinc-300 gap-4">
       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
         <div>
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -210,7 +222,7 @@ export function SketchCompositePreviewPanel({
         {onGenerateFlowImage && (
           <button
             type="button"
-            onClick={onGenerateFlowImage}
+            onClick={() => onGenerateFlowImage(renderedUrl || undefined)}
             disabled={isGenerating}
             className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 font-semibold text-white shadow hover:bg-indigo-500 transition-all disabled:opacity-50"
           >
@@ -220,7 +232,17 @@ export function SketchCompositePreviewPanel({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+      {activeJob && (
+        <SketchJobTracker
+          job={activeJob}
+          onCancel={onCancelJob}
+          onApplyResult={onApplyResult}
+          onCreateVariation={onCreateVariation}
+          onRetry={onRetryGeneration}
+        />
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <CompositeCanvasCard
           isRendering={isRendering}
           renderedUrl={renderedUrl}

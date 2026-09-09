@@ -26,9 +26,11 @@ import {
   resolveProviderAspectRatio,
   type SketchAspectRatio,
   type SketchCanvasAspectRatio,
+  type SketchJobData,
   type SketchProjectData,
   type SketchTool,
 } from '@/types/sketch';
+import { isJobActive } from '@/lib/sketch/sketch-job-manager';
 import { SketchCanvas } from './sketch-canvas';
 import { SketchCopyEditor } from './sketch-copy-editor';
 import { SketchAttachmentsPanel } from './sketch-attachments-panel';
@@ -104,6 +106,7 @@ function SketchTopBar({
   onOpenProjectsModal,
   onRetrySave,
   onExport,
+  activeJob,
 }: {
   title: string;
   canvasRatio: SketchCanvasAspectRatio;
@@ -121,6 +124,7 @@ function SketchTopBar({
   onOpenProjectsModal: () => void;
   onRetrySave: () => void;
   onExport: (format: 'png' | 'jpeg') => void;
+  activeJob?: SketchJobData | null;
 }) {
   const quickRatios: SketchCanvasAspectRatio[] = ['1:1', '9:16', '16:9', '4:5'];
 
@@ -206,6 +210,18 @@ function SketchTopBar({
 
       {/* Estado do Salvamento e Exportação */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {activeJob && isJobActive(activeJob.status) && (
+          <button
+            type="button"
+            onClick={() => onChangeCenterView('preview')}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-950/80 border border-indigo-500/40 px-2.5 py-1 text-[11px] text-indigo-200 hover:bg-indigo-900/60 transition-colors animate-pulse"
+            title="Acompanhar geração do Flow na aba Prévia"
+          >
+            <Loader2 size={12} className="animate-spin text-indigo-400" />
+            <span>Gerando no Flow ({activeJob.progressPercentage}%)</span>
+          </button>
+        )}
+
         <SaveStatusIndicator status={saveStatus} savedTime={savedTime} onRetry={onRetrySave} />
 
         <div className="flex items-center gap-1.5">
@@ -459,6 +475,124 @@ function storeActiveProjectId(id: string) {
   }
 }
 
+async function fetchActiveJobForProject(projectId: string): Promise<SketchJobData | null> {
+  try {
+    const res = await fetch(`/api/sketch/generate?projectId=${projectId}`);
+    const data = await res.json();
+    return data.success && data.activeJob ? data.activeJob : null;
+  } catch {
+    return null;
+  }
+}
+
+async function pollJobById(jobId: string): Promise<SketchJobData | null> {
+  try {
+    const res = await fetch(`/api/sketch/jobs/${jobId}`);
+    const data = await res.json();
+    return data.success && data.job ? data.job : null;
+  } catch {
+    return null;
+  }
+}
+
+async function cancelJobById(jobId: string): Promise<SketchJobData | null> {
+  try {
+    const res = await fetch(`/api/sketch/jobs/${jobId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' }),
+    });
+    const data = await res.json();
+    return data.success && data.job ? data.job : null;
+  } catch {
+    return null;
+  }
+}
+
+async function submitGenerateJob(
+  projectId: string,
+  referenceDataUrl?: string
+): Promise<{ success: boolean; job?: SketchJobData; activeJobId?: string }> {
+  try {
+    const res = await fetch('/api/sketch/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        idempotencyToken: `idemp-${projectId}-${Date.now()}`,
+        referenceDataUrl,
+      }),
+    });
+    const data = await res.json();
+    if (data.success && data.job) {
+      return { success: true, job: data.job };
+    }
+    if (data.duplicate && data.activeJobId) {
+      return { success: false, activeJobId: data.activeJobId };
+    }
+    return { success: false };
+  } catch {
+    return { success: false };
+  }
+}
+
+async function handleJobPollTick(
+  activeJobId: string,
+  projectId: string | undefined,
+  onJobUpdate: (job: SketchJobData) => void,
+  onProjectRefresh: (proj: SketchProjectData) => void
+): Promise<boolean> {
+  const updated = await pollJobById(activeJobId);
+  if (!updated) return false;
+  onJobUpdate(updated);
+  if (!isJobActive(updated.status)) {
+    if (updated.status === 'completed' && projectId) {
+      const pRes = await fetch(`/api/sketch/projects/${projectId}`);
+      const pData = await pRes.json();
+      if (pData.success && pData.project) {
+        onProjectRefresh(pData.project);
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+async function applyResultBackground(
+  projectId: string,
+  imageUrl: string,
+  flowPath?: string
+): Promise<SketchProjectData | null> {
+  try {
+    const res = await fetch('/api/sketch/apply-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        imageUrl,
+        flowMediaPath: flowPath,
+      }),
+    });
+    const data = await res.json();
+    return data.success && data.project ? data.project : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasNoProject(project: SketchProjectData | null, isEmpty: boolean): boolean {
+  return isEmpty || !project;
+}
+
+function SketchLoadingState() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#07090e] text-zinc-400 gap-2">
+      <Loader2 size={24} className="animate-spin text-indigo-500" />
+      <span className="text-sm">Carregando estúdio Sketch...</span>
+    </div>
+  );
+}
+
 export function SketchDashboard() {
   const [project, setProject] = useState<SketchProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -481,6 +615,45 @@ export function SketchDashboard() {
 
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const [activeJob, setActiveJob] = useState<SketchJobData | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    if (!project?.id) return;
+    let cancelled = false;
+
+    fetchActiveJobForProject(project.id).then((job) => {
+      if (!cancelled && job) {
+        setActiveJob(job);
+        setIsGenerating(isJobActive(job.status));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (!activeJob || !isJobActive(activeJob.status)) {
+      setIsGenerating(false);
+      return;
+    }
+
+    setIsGenerating(true);
+    const interval = setInterval(async () => {
+      const finished = await handleJobPollTick(
+        activeJob.id,
+        project?.id,
+        setActiveJob,
+        setProject
+      );
+      if (finished) setIsGenerating(false);
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [activeJob?.id, activeJob?.status, project?.id]);
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingProjectRef = useRef<SketchProjectData | null>(null);
@@ -640,6 +813,39 @@ export function SketchDashboard() {
     }
   };
 
+  const handleGenerateFlowImage = async (referenceDataUrl?: string) => {
+    if (!project || isGenerating) return;
+    setIsGenerating(true);
+    setCenterView('preview');
+
+    const res = await submitGenerateJob(project.id, referenceDataUrl);
+    if (res.success && res.job) {
+      setActiveJob(res.job);
+    } else if (res.activeJobId) {
+      const active = await pollJobById(res.activeJobId);
+      if (active) setActiveJob(active);
+    } else {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCancelJob = async (jobId: string) => {
+    const cancelled = await cancelJobById(jobId);
+    if (cancelled) {
+      setActiveJob(cancelled);
+      setIsGenerating(false);
+    }
+  };
+
+  const handleApplyResultAsBackground = async (imageUrl: string, flowPath?: string) => {
+    if (!project) return;
+    const updated = await applyResultBackground(project.id, imageUrl, flowPath);
+    if (updated) {
+      setProject(updated);
+      setCenterView('canvas');
+    }
+  };
+
   const handleExport = async (format: 'png' | 'jpeg') => {
     if (!project) return;
     setIsExporting(true);
@@ -651,15 +857,10 @@ export function SketchDashboard() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-[#07090e] text-zinc-400 gap-2">
-        <Loader2 size={24} className="animate-spin text-indigo-500" />
-        <span className="text-sm">Carregando estúdio Sketch...</span>
-      </div>
-    );
+    return <SketchLoadingState />;
   }
 
-  if (isEmpty || !project) {
+  if (hasNoProject(project, isEmpty)) {
     return <SketchEmptyState onCreateProject={() => handleCreateNewProject('Primeiro Anúncio', '1:1')} />;
   }
 
@@ -674,6 +875,7 @@ export function SketchDashboard() {
         isLeftOpen={isLeftOpen}
         isRightOpen={isRightOpen}
         isExporting={isExporting}
+        activeJob={activeJob}
         onUpdateTitle={(title) => handleUpdateProject((prev) => ({ ...prev, title }))}
         onUpdateRatio={(ratio) => {
           const preset = CANVAS_ASPECT_RATIO_PRESETS[ratio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
@@ -746,7 +948,16 @@ export function SketchDashboard() {
               }}
             />
           ) : (
-            <SketchCompositePreviewPanel project={project} />
+            <SketchCompositePreviewPanel
+              project={project}
+              activeJob={activeJob}
+              isGenerating={isGenerating}
+              onGenerateFlowImage={handleGenerateFlowImage}
+              onCancelJob={handleCancelJob}
+              onApplyResult={handleApplyResultAsBackground}
+              onCreateVariation={() => handleGenerateFlowImage()}
+              onRetryGeneration={() => handleGenerateFlowImage()}
+            />
           )}
         </main>
 
