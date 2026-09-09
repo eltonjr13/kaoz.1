@@ -5,6 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   createDefaultProject,
+  createCleanProject,
+  createCleanLayers,
   createProject,
   getProject,
   saveProject,
@@ -21,6 +23,10 @@ import {
 import {
   SKETCH_SCHEMA_VERSION,
   type SketchProjectData,
+  type SketchSimpleOrder,
+  type SketchCreativePlan,
+  type SketchCreativeResult,
+  type SketchChangeIntent,
   resolveProviderAspectRatio,
 } from '../types/sketch.ts';
 import { resolveCanvasDimensionPreset } from '../lib/sketch/sketch-exporter.ts';
@@ -413,3 +419,266 @@ test('empty state lifecycle: deleting all projects leaves empty list', async () 
     await cleanup();
   }
 });
+
+test('createCleanProject generates clean initial state with zero promotional layers and empty prompt', () => {
+  const project = createCleanProject({ title: 'Criativo Minimalista' });
+
+  assert.equal(project.title, 'Criativo Minimalista');
+  assert.equal(project.prompt, '', 'Prompt inicial deve ser vazio, sem texto pre-gravado');
+  assert.equal(project.copy.headline, '', 'Headline deve ser vazia');
+  assert.equal(project.copy.subheadline, '', 'Subheadline deve ser vazia');
+  assert.equal(project.copy.cta, '', 'CTA deve ser vazio');
+  assert.equal(project.copy.badge, '', 'Badge deve ser vazio');
+  assert.equal(project.copy.disclaimer, '', 'Disclaimer deve ser vazio');
+
+  // Camadas limpas: apenas 1 camada de fundo
+  assert.equal(project.layers.length, 1, 'Deve conter apenas 1 camada inicial de fundo');
+  assert.equal(project.layers[0].type, 'background');
+
+  // Proibição de camadas promocionais prontas
+  const textLayers = project.layers.filter((l) => l.type === 'text');
+  assert.equal(textLayers.length, 0, 'Não deve conter nenhuma camada de texto promocional pré-montada');
+  assert.equal(project.layers.some((l) => l.id === 'layer-text-badge'), false, 'Não deve conter camada de badge');
+  assert.equal(project.layers.some((l) => l.id === 'layer-text-cta'), false, 'Não deve conter camada de CTA');
+
+  // Coleções limpas
+  assert.equal(project.attachments.length, 0);
+  assert.equal(project.generationHistory.length, 0);
+  assert.equal(project.snapshots?.length, 0);
+  assert.deepEqual(project.creativeResults, []);
+  assert.deepEqual(project.changeIntents, []);
+  assert.equal(project.document?.layers.length, 1);
+});
+
+test('createDefaultProject maintains legacy layers and copy while clean flag activates clean factory', () => {
+  // Chamada legado: preserva textos e camadas preexistentes
+  const legacyProj = createDefaultProject({ title: 'Projeto Legado' });
+  assert.equal(legacyProj.copy.headline, 'O Futuro Chegou Hoje');
+  assert.equal(legacyProj.copy.cta, 'Garanta o Seu Agora');
+  assert.ok(legacyProj.layers.length >= 6);
+  assert.ok(legacyProj.layers.some((l) => l.id === 'layer-text-cta'));
+
+  // Chamada com clean: true ativa createCleanProject
+  const cleanProj = createDefaultProject({ title: 'Projeto Limpo', clean: true });
+  assert.equal(cleanProj.prompt, '');
+  assert.equal(cleanProj.copy.headline, '');
+  assert.equal(cleanProj.copy.cta, '');
+  assert.equal(cleanProj.layers.length, 1);
+  assert.equal(cleanProj.layers[0].type, 'background');
+  assert.equal(cleanProj.layers.some((l) => l.id === 'layer-text-cta'), false);
+});
+
+test('clean project persistence saves to disk, reloads atomically, and listProjects reflects summary', async () => {
+  const { projectsDir, cleanup } = await createTestEnv();
+  try {
+    const cleanProj = await createProject(
+      { id: 'clean-proj-01', title: 'Anúncio 100% Limpo', clean: true },
+      projectsDir
+    );
+
+    assert.equal(cleanProj.prompt, '');
+    assert.equal(cleanProj.layers.length, 1);
+
+    const reloaded = await getProject('clean-proj-01', projectsDir);
+    assert.ok(reloaded);
+    assert.equal(reloaded.id, 'clean-proj-01');
+    assert.equal(reloaded.title, 'Anúncio 100% Limpo');
+    assert.equal(reloaded.prompt, '');
+    assert.equal(reloaded.copy.headline, '');
+    assert.equal(reloaded.copy.cta, '');
+    assert.equal(reloaded.layers.length, 1);
+    assert.equal(reloaded.layers[0].type, 'background');
+    assert.deepEqual(reloaded.creativeResults, []);
+    assert.deepEqual(reloaded.changeIntents, []);
+
+    const list = await listProjects(projectsDir);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].id, 'clean-proj-01');
+    assert.equal(list[0].layerCount, 1);
+    assert.equal(list[0].resultCount, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('normalizeProject preserves legacy projects without injecting unintended defaults or corrupting structures', () => {
+  const legacyData = {
+    id: 'legacy-proj-complete',
+    title: 'Projeto Antigo com Camadas Manuais',
+    aspectRatio: '1:1',
+    prompt: 'Prompt legado original',
+    briefing: {
+      productDescription: 'Produto legado',
+      brandName: 'Marca Legada',
+    },
+    copy: {
+      headline: 'Headline Legada Customizada',
+      subheadline: 'Subheadline Customizada',
+      cta: 'CTA Customizado',
+      badge: 'Badge Customizado',
+    },
+    layers: [
+      { id: 'bg-custom', type: 'background', fillType: 'color', color: '#111111', visible: true, opacity: 1 },
+      { id: 'txt-head', type: 'text', role: 'headline', text: 'Headline Legada Customizada', visible: true, opacity: 1 },
+      { id: 'txt-cta', type: 'text', role: 'cta', text: 'CTA Customizado', visible: true, opacity: 1 },
+    ],
+    attachments: [],
+    generationHistory: [],
+    snapshots: [],
+  };
+
+  const normalized = normalizeProject(legacyData);
+
+  assert.equal(normalized.copy.headline, 'Headline Legada Customizada');
+  assert.equal(normalized.copy.cta, 'CTA Customizado');
+  assert.equal(normalized.layers.length, 3);
+  assert.equal(normalized.layers[1].id, 'txt-head');
+  assert.deepEqual(normalized.creativeResults, []);
+  assert.deepEqual(normalized.changeIntents, []);
+  assert.equal(normalized.currentOrder, undefined);
+  assert.equal(normalized.creativePlan, undefined);
+  assert.equal(normalized.activeResultId, undefined);
+});
+
+function assertPersistedContracts(reloaded: SketchProjectData) {
+  const order = reloaded.currentOrder!;
+  assert.equal(order.id, 'order-p1');
+  assert.equal(order.selectedReferences.length, 1);
+
+  const plan = reloaded.creativePlan!;
+  assert.equal(plan.providedFacts.explicitOffer, '30% OFF Hoje');
+  assert.equal(plan.providedFacts.explicitPrice, 'R$ 299,00');
+
+  const results = reloaded.creativeResults!;
+  assert.equal(results.length, 1);
+  assert.equal(results[0].id, 'res-p1');
+  assert.equal(results[0].lineage.versionNumber, 1);
+
+  assert.equal(reloaded.activeResultId, 'res-p1');
+
+  const intents = reloaded.changeIntents!;
+  assert.equal(intents.length, 1);
+  assert.equal(intents[0].userFeedback, 'Mudar a chamada para "Experimente por 30 Dias"');
+  assert.equal(intents[0].keepBaseImage, true);
+}
+
+test('versioned contracts (order, plan, results, change intents) persist and reload across disk cycles', async () => {
+  const { projectsDir, cleanup } = await createTestEnv();
+  try {
+    const sampleOrder: SketchSimpleOrder = {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'order-p1',
+      prompt: 'Fone sem fio premium com cancelamento de ruído',
+      aspectRatio: '1:1',
+      canvasAspectRatio: '1:1',
+      selectedReferences: [
+        { attachmentId: 'att-fone', role: 'product', name: 'fone.png' },
+      ],
+      sketchDrawing: { paths: [], hasDrawing: false },
+      createdAt: '2026-09-09T22:00:00.000Z',
+    };
+
+    const samplePlan: SketchCreativePlan = {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'plan-p1',
+      orderId: 'order-p1',
+      providedFacts: {
+        productOrService: 'Fone Sem Fio Pro',
+        brandName: 'Aura Sound',
+        explicitOffer: '30% OFF Hoje',
+        explicitPrice: 'R$ 299,00',
+        mandatoryRestrictions: ['Sem fundo preto'],
+        rawUserPrompt: 'Fone Sem Fio Pro por R$ 299,00 com 30% OFF Hoje',
+      },
+      inferredCreativeDecisions: {
+        selectedAngle: 'desire',
+        angleRationale: 'Foco na imersão acústica',
+        visualConcept: 'Fone levitando em cenário claro e minimalista',
+        copy: {
+          headline: 'Música Pura, Sem Ruídos',
+          subheadline: 'Cancelamento ativo que te isola do mundo.',
+          cta: 'Garanta 30% OFF Hoje',
+          badge: 'R$ 299,00',
+        },
+        artDirection: {
+          colorPalette: ['#3b82f6', '#ffffff'],
+          lighting: 'Soft bright studio light',
+          mood: 'Modern, airy',
+          backgroundStyle: 'Clean light gray gradient',
+          avoidCliches: true,
+        },
+        composition: {
+          layoutType: 'centered_hero',
+          reservedCopyZones: [],
+          subjectPlacements: [],
+          textRenderingStrategy: 'layer',
+        },
+      },
+      compiledPrompt: 'Wireless headphone suspended in bright clean minimalist studio',
+      validationIssues: [],
+      createdAt: '2026-09-09T22:01:00.000Z',
+    };
+
+    const sampleResult: SketchCreativeResult = {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'res-p1',
+      projectId: 'proj-versioned-disk',
+      originOrderId: 'order-p1',
+      planId: 'plan-p1',
+      lineage: {
+        versionNumber: 1,
+        iterationType: 'initial',
+        timestamp: '2026-09-09T22:05:00.000Z',
+      },
+      creativePlan: samplePlan,
+      finalAsset: {
+        imageUrl: '/api/sketch/assets/fone-final.png',
+        filePath: 'fone-final.png',
+        width: 1080,
+        height: 1080,
+        aspectRatio: '1:1',
+        fileSizeBytes: 102400,
+        mimeType: 'image/png',
+        format: 'png',
+      },
+      resourcesForAdjustments: {
+        baseImageUrl: '/api/sketch/assets/fone-base.png',
+        textLayers: [],
+        usedReferencePaths: ['fone.png'],
+      },
+      status: 'ready',
+      createdAt: '2026-09-09T22:05:00.000Z',
+    };
+
+    const sampleIntent: SketchChangeIntent = {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'intent-p1',
+      type: 'refine_text',
+      targetResultId: 'res-p1',
+      userFeedback: 'Mudar a chamada para "Experimente por 30 Dias"',
+      keepBaseImage: true,
+      createdAt: '2026-09-09T22:10:00.000Z',
+    };
+
+    const projectData = createCleanProject({ id: 'proj-versioned-disk', title: 'Projeto com Contratos' });
+    projectData.currentOrder = sampleOrder;
+    projectData.creativePlan = samplePlan;
+    projectData.creativeResults = [sampleResult];
+    projectData.activeResultId = 'res-p1';
+    projectData.changeIntents = [sampleIntent];
+
+    await saveProject(projectData, projectsDir);
+
+    const reloaded = await getProject('proj-versioned-disk', projectsDir);
+    assert.ok(reloaded);
+    assertPersistedContracts(reloaded);
+  } finally {
+    await cleanup();
+  }
+});
+
+

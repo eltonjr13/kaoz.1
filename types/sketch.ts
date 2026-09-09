@@ -306,6 +306,181 @@ export interface GenerationHistoryItem {
   createdAt: string;
 }
 
+/**
+ * Simple Order Contract (Phase 1+)
+ * Represents the clean, user-facing ad request.
+ */
+export interface SketchOrderReference {
+  attachmentId: string;
+  role?: SketchReferenceRole;
+  dataUrl?: string;
+  name?: string;
+  filePath?: string;
+}
+
+export interface SketchOrderDrawing {
+  paths: SketchPath[];
+  dataUrl?: string;
+  hasDrawing: boolean;
+}
+
+export interface SketchSimpleOrder {
+  schemaVersion: number;
+  version: string;
+  id: string;
+  prompt: string;
+  aspectRatio: FlowSupportedAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+  canvasDimensions?: { width: number; height: number; unit: 'px' };
+  selectedReferences: SketchOrderReference[];
+  sketchDrawing?: SketchOrderDrawing;
+  createdAt: string;
+}
+
+/**
+ * Creative Plan Contract (Phase 1+)
+ * Strictly separates provided facts (literal user inputs) from inferred creative decisions.
+ */
+export interface ProvidedFacts {
+  productOrService: string;
+  brandName?: string;
+  targetAudience?: string;
+  explicitOffer?: string; // Preserved literally (e.g. "50% OFF")
+  explicitPrice?: string; // Preserved literally (e.g. "R$ 149,90")
+  mandatoryRestrictions: string[];
+  rawUserPrompt: string; // Verbatim user input
+}
+
+export type SellingAngle =
+  | 'desire'
+  | 'objection'
+  | 'demonstration'
+  | 'contrast'
+  | 'curiosity'
+  | 'custom';
+
+export interface ConceptAlternative {
+  id: string;
+  angle: SellingAngle;
+  title: string;
+  description: string;
+  visualHook: string;
+}
+
+export interface CreativePlanCopy {
+  headline: string;
+  subheadline: string;
+  cta: string;
+  badge?: string;
+  disclaimer?: string;
+}
+
+export interface CreativePlanArtDirection {
+  colorPalette: string[];
+  lighting: string;
+  mood: string;
+  backgroundStyle: string;
+  avoidCliches: boolean;
+}
+
+export interface CreativePlanComposition {
+  layoutType: 'rule_of_thirds' | 'centered_hero' | 'diagonal_dynamic' | 'sketch_guided';
+  reservedCopyZones: CreativeReservedCopyZone[];
+  subjectPlacements: CreativeSubjectPlacement[];
+  textRenderingStrategy: TextRenderingStrategy;
+}
+
+export interface InferredCreativeDecisions {
+  selectedAngle: SellingAngle;
+  angleRationale: string;
+  alternativeConcepts?: ConceptAlternative[];
+  visualConcept: string;
+  copy: CreativePlanCopy;
+  artDirection: CreativePlanArtDirection;
+  composition: CreativePlanComposition;
+}
+
+export interface SketchCreativePlan {
+  schemaVersion: number;
+  version: string;
+  id: string;
+  orderId: string;
+  providedFacts: ProvidedFacts;
+  inferredCreativeDecisions: InferredCreativeDecisions;
+  compiledPrompt: string;
+  validationIssues: string[];
+  createdAt: string;
+}
+
+/**
+ * Creative Result Contract (Phase 1+)
+ * Captures the final asset, adjustment resources, and immutable version lineage.
+ */
+export interface FinalAssetResource {
+  imageUrl: string;
+  filePath: string;
+  width: number;
+  height: number;
+  aspectRatio: FlowSupportedAspectRatio;
+  fileSizeBytes: number;
+  mimeType: string;
+  format: 'png' | 'jpeg';
+}
+
+export interface ResourcesForAdjustment {
+  baseImageUrl?: string;
+  textLayers?: TextLayer[];
+  usedReferencePaths?: string[];
+  flowMediaPath?: string;
+}
+
+export type LineageIterationType =
+  | 'initial'
+  | 'text_adjustment'
+  | 'visual_adjustment'
+  | 'new_concept';
+
+export interface ResultLineage {
+  versionNumber: number;
+  parentId?: string;
+  iterationType: LineageIterationType;
+  adjustmentPrompt?: string;
+  timestamp: string;
+}
+
+export interface SketchCreativeResult {
+  schemaVersion: number;
+  version: string;
+  id: string;
+  projectId: string;
+  originOrderId: string;
+  planId: string;
+  lineage: ResultLineage;
+  creativePlan: SketchCreativePlan;
+  finalAsset: FinalAssetResource;
+  resourcesForAdjustments: ResourcesForAdjustment;
+  status: 'ready' | 'archived';
+  createdAt: string;
+}
+
+/**
+ * Change Intent Contract (Phase 1+)
+ * Formalizes how the user intends to iterate or adjust an existing result.
+ */
+export type ChangeIntentType = 'refine_text' | 'refine_visual' | 'new_concept';
+
+export interface SketchChangeIntent {
+  schemaVersion: number;
+  version: string;
+  id: string;
+  type: ChangeIntentType;
+  targetResultId: string;
+  userFeedback: string;
+  keepBaseImage: boolean;
+  updatedFacts?: Partial<ProvidedFacts>;
+  createdAt: string;
+}
+
 export interface SketchProjectData {
   schemaVersion?: number;
   version?: string;
@@ -330,6 +505,13 @@ export interface SketchProjectData {
   snapshots?: SketchVersionSnapshot[];
   updatedAt: string;
   createdAt?: string;
+
+  // Additive fields for minimalist ad pipeline (Phase 1+)
+  currentOrder?: SketchSimpleOrder;
+  creativePlan?: SketchCreativePlan;
+  creativeResults?: SketchCreativeResult[];
+  activeResultId?: string;
+  changeIntents?: SketchChangeIntent[];
 }
 
 export interface SketchProjectSummary {
@@ -344,6 +526,8 @@ export interface SketchProjectSummary {
   createdAt?: string;
   schemaVersion?: number;
   version?: string;
+  activeResultId?: string;
+  resultCount?: number;
 }
 
 export interface SketchVersionSnapshot {

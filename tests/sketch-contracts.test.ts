@@ -9,6 +9,10 @@ import {
   type SketchReferenceRole,
   type SketchProjectData,
   type SketchVersionSnapshot,
+  type SketchSimpleOrder,
+  type SketchCreativePlan,
+  type SketchCreativeResult,
+  type SketchChangeIntent,
   SKETCH_SCHEMA_VERSION,
 } from '../types/sketch.ts';
 import {
@@ -426,3 +430,303 @@ test('composite diagnostics track multiple placed subjects and superseded refere
   const supersededDiag = req.diagnostics.find((d) => d.code === 'REFERENCE_SUPERSEDED_BY_COMPOSITE');
   assert.ok(supersededDiag, 'Deve diagnosticar que a referência avulsa ativa foi incorporada na composição');
 });
+
+test('SketchSimpleOrder versioned contract serializes and validates complete order structure', () => {
+  const sampleOrder: SketchSimpleOrder = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'order-sample-01',
+    prompt: 'Anúncio de tênis esportivo amortecimento dinâmico estilo minimalista',
+    aspectRatio: '1:1',
+    canvasAspectRatio: '1:1',
+    canvasDimensions: { width: 1080, height: 1080, unit: 'px' },
+    selectedReferences: [
+      {
+        attachmentId: 'att-shoe-1',
+        role: 'product',
+        name: 'tenis-preto.png',
+        filePath: 'att-shoe-1.png',
+      },
+    ],
+    sketchDrawing: {
+      paths: [
+        {
+          id: 'path-1',
+          tool: 'brush',
+          color: '#ffffff',
+          size: 6,
+          opacity: 1,
+          points: [
+            { x: 100, y: 150 },
+            { x: 200, y: 250 },
+          ],
+        },
+      ],
+      dataUrl: 'data:image/png;base64,drawingfake',
+      hasDrawing: true,
+    },
+    createdAt: '2026-09-09T22:00:00.000Z',
+  };
+
+  const serialized = JSON.stringify(sampleOrder);
+  const deserialized: SketchSimpleOrder = JSON.parse(serialized);
+
+  assert.equal(deserialized.schemaVersion, 1);
+  assert.equal(deserialized.version, '1.0.0');
+  assert.equal(deserialized.id, 'order-sample-01');
+  assert.equal(deserialized.prompt, 'Anúncio de tênis esportivo amortecimento dinâmico estilo minimalista');
+  assert.equal(deserialized.aspectRatio, '1:1');
+  assert.equal(deserialized.selectedReferences.length, 1);
+  assert.equal(deserialized.selectedReferences[0].role, 'product');
+  assert.equal(deserialized.sketchDrawing?.hasDrawing, true);
+  assert.equal(deserialized.sketchDrawing?.paths.length, 1);
+  assert.equal(deserialized.sketchDrawing?.paths[0].points.length, 2);
+});
+
+test('SketchCreativePlan separates literal user facts from AI inferred creative choices', () => {
+  const samplePlan: SketchCreativePlan = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'plan-sample-01',
+    orderId: 'order-sample-01',
+    providedFacts: {
+      productOrService: 'Sérum Facial Vitamina C',
+      brandName: 'Aura Skin',
+      targetAudience: 'Público 25-45 anos interessado em skincare',
+      explicitOffer: 'Frete Grátis na Primeira Compra',
+      explicitPrice: 'R$ 149,90',
+      mandatoryRestrictions: ['Não usar luz neon', 'Sem promessas médicas milagrosas'],
+      rawUserPrompt: 'Quero um anúncio elegante para meu Sérum Facial Vitamina C da Aura Skin por R$ 149,90 com Frete Grátis na Primeira Compra',
+    },
+    inferredCreativeDecisions: {
+      selectedAngle: 'demonstration',
+      angleRationale: 'Destacar o brilho e textura líquida da fórmula',
+      alternativeConcepts: [
+        {
+          id: 'concept-1',
+          angle: 'desire',
+          title: 'Glow Radiante',
+          description: 'Aura dourada e frescor matinal',
+          visualHook: 'Gotas iluminadas refletindo o nascer do sol',
+        },
+        {
+          id: 'concept-2',
+          angle: 'objection',
+          title: 'Cuidado sem Oleosidade',
+          description: 'Absorção instantânea em pele real',
+          visualHook: 'Textura leve que desaparece ao toque',
+        },
+        {
+          id: 'concept-3',
+          angle: 'demonstration',
+          title: 'Pureza em Cada Gota',
+          description: 'Close macro no frasco de vidro âmbar',
+          visualHook: 'Pedra de mármore e reflexos aquáticos sutis',
+        },
+      ],
+      visualConcept: 'Frasco âmbar premium sobre pedestal mineral com luz suave de estúdio',
+      copy: {
+        headline: 'Luminosidade Natural em Cada Gota',
+        subheadline: 'Sérum com Vitamina C pura que revitaliza sua pele instantaneamente.',
+        cta: 'Garanta o Seu com Frete Grátis',
+        badge: 'R$ 149,90',
+        disclaimer: 'Oferta válida por tempo limitado.',
+      },
+      artDirection: {
+        colorPalette: ['#f59e0b', '#fef3c7', '#1e293b'],
+        lighting: 'Soft directional studio lighting from upper left',
+        mood: 'Sophisticated, clean and organic',
+        backgroundStyle: 'Warm neutral textured stone podium',
+        avoidCliches: true,
+      },
+      composition: {
+        layoutType: 'rule_of_thirds',
+        reservedCopyZones: [
+          {
+            role: 'headline',
+            label: 'Zona do Título',
+            zoneDescription: 'Espaço negativo no topo',
+            x: 10,
+            y: 10,
+            width: 80,
+          },
+        ],
+        subjectPlacements: [
+          {
+            role: 'product',
+            label: 'Frasco do Sérum',
+            zoneDescription: 'Centro inferior direito',
+            x: 50,
+            y: 40,
+            width: 40,
+            height: 50,
+          },
+        ],
+        textRenderingStrategy: 'layer',
+      },
+    },
+    compiledPrompt: 'Studio commercial photography of amber glass dropper bottle on warm stone pedestal, soft sunlight, clean negative space at top.',
+    validationIssues: [],
+    createdAt: '2026-09-09T22:01:00.000Z',
+  };
+
+  const serialized = JSON.stringify(samplePlan);
+  const deserialized: SketchCreativePlan = JSON.parse(serialized);
+
+  // Verificação de preservação literal dos fatos
+  assert.equal(deserialized.providedFacts.explicitOffer, 'Frete Grátis na Primeira Compra');
+  assert.equal(deserialized.providedFacts.explicitPrice, 'R$ 149,90');
+  assert.equal(deserialized.providedFacts.brandName, 'Aura Skin');
+  assert.equal(deserialized.providedFacts.mandatoryRestrictions.length, 2);
+
+  // Verificação das inferências criativas
+  assert.equal(deserialized.inferredCreativeDecisions.selectedAngle, 'demonstration');
+  assert.equal(deserialized.inferredCreativeDecisions.alternativeConcepts?.length, 3);
+  assert.equal(deserialized.inferredCreativeDecisions.artDirection.avoidCliches, true);
+  assert.equal(deserialized.inferredCreativeDecisions.copy.cta, 'Garanta o Seu com Frete Grátis');
+  assert.equal(deserialized.inferredCreativeDecisions.composition.layoutType, 'rule_of_thirds');
+});
+
+test('SketchCreativeResult encapsulates final asset, adjustment resources, and version lineage', () => {
+  const sampleResult: SketchCreativeResult = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'res-sample-01',
+    projectId: 'proj-sample-01',
+    originOrderId: 'order-sample-01',
+    planId: 'plan-sample-01',
+    lineage: {
+      versionNumber: 1,
+      iterationType: 'initial',
+      timestamp: '2026-09-09T22:05:00.000Z',
+    },
+    creativePlan: {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      id: 'plan-sample-01',
+      orderId: 'order-sample-01',
+      providedFacts: {
+        productOrService: 'Tênis de Corrida',
+        mandatoryRestrictions: [],
+        rawUserPrompt: 'Tênis de corrida veloz',
+      },
+      inferredCreativeDecisions: {
+        selectedAngle: 'desire',
+        angleRationale: 'Apelo à performance',
+        visualConcept: 'Pista de atletismo ao entardecer',
+        copy: {
+          headline: 'Supere Seus Limites',
+          subheadline: 'Amortecimento responsivo para treinos diários.',
+          cta: 'Compre Agora',
+        },
+        artDirection: {
+          colorPalette: ['#ef4444', '#18181b'],
+          lighting: 'Golden hour dramatic backlight',
+          mood: 'Energetic and focused',
+          backgroundStyle: 'Red running track with motion blur',
+          avoidCliches: true,
+        },
+        composition: {
+          layoutType: 'diagonal_dynamic',
+          reservedCopyZones: [],
+          subjectPlacements: [],
+          textRenderingStrategy: 'layer',
+        },
+      },
+      compiledPrompt: 'Sport shoe suspended above track during sunset',
+      validationIssues: [],
+      createdAt: '2026-09-09T22:02:00.000Z',
+    },
+    finalAsset: {
+      imageUrl: '/api/sketch/assets/final-shoe-ad.png',
+      filePath: 'final-shoe-ad.png',
+      width: 1080,
+      height: 1080,
+      aspectRatio: '1:1',
+      fileSizeBytes: 524288,
+      mimeType: 'image/png',
+      format: 'png',
+    },
+    resourcesForAdjustments: {
+      baseImageUrl: '/api/sketch/assets/base-shoe-clean.png',
+      textLayers: [
+        {
+          id: 'text-headline',
+          name: 'Título',
+          type: 'text',
+          role: 'headline',
+          text: 'Supere Seus Limites',
+          x: 10,
+          y: 70,
+          width: 80,
+          fontSize: 42,
+          fontFamily: 'Inter, sans-serif',
+          fontWeight: '800',
+          color: '#ffffff',
+          textAlign: 'left',
+          visible: true,
+          opacity: 1,
+        },
+      ],
+      usedReferencePaths: ['tenis-preto.png'],
+      flowMediaPath: 'gs://flow-storage/shoe-media.png',
+    },
+    status: 'ready',
+    createdAt: '2026-09-09T22:05:00.000Z',
+  };
+
+  const serialized = JSON.stringify(sampleResult);
+  const deserialized: SketchCreativeResult = JSON.parse(serialized);
+
+  assert.equal(deserialized.id, 'res-sample-01');
+  assert.equal(deserialized.lineage.versionNumber, 1);
+  assert.equal(deserialized.lineage.iterationType, 'initial');
+  assert.equal(deserialized.finalAsset.format, 'png');
+  assert.equal(deserialized.finalAsset.width, 1080);
+  assert.equal(deserialized.resourcesForAdjustments.baseImageUrl, '/api/sketch/assets/base-shoe-clean.png');
+  assert.equal(deserialized.resourcesForAdjustments.textLayers?.length, 1);
+  assert.equal(deserialized.status, 'ready');
+});
+
+test('SketchChangeIntent formalizes text adjustment, visual adjustment, and new concept types', () => {
+  const textAdjustmentIntent: SketchChangeIntent = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'intent-text-01',
+    type: 'refine_text',
+    targetResultId: 'res-sample-01',
+    userFeedback: 'Mudar o título para "Alcance Sua Melhor Marca"',
+    keepBaseImage: true,
+    createdAt: '2026-09-09T22:10:00.000Z',
+  };
+
+  const visualEditIntent: SketchChangeIntent = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'intent-visual-01',
+    type: 'refine_visual',
+    targetResultId: 'res-sample-01',
+    userFeedback: 'Trocar o fundo para um parque urbano arborizado',
+    keepBaseImage: false,
+    createdAt: '2026-09-09T22:12:00.000Z',
+  };
+
+  const newConceptIntent: SketchChangeIntent = {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id: 'intent-concept-01',
+    type: 'new_concept',
+    targetResultId: 'res-sample-01',
+    userFeedback: 'Outra ideia explorando superação de chuva e lama',
+    keepBaseImage: false,
+    createdAt: '2026-09-09T22:15:00.000Z',
+  };
+
+  assert.equal(textAdjustmentIntent.type, 'refine_text');
+  assert.equal(textAdjustmentIntent.keepBaseImage, true);
+  assert.equal(visualEditIntent.type, 'refine_visual');
+  assert.equal(visualEditIntent.keepBaseImage, false);
+  assert.equal(newConceptIntent.type, 'new_concept');
+  assert.equal(newConceptIntent.keepBaseImage, false);
+});
+

@@ -19,6 +19,12 @@ import {
   type SketchProjectSummary,
   type TextLayer,
   type TextRenderingStrategy,
+  type FlowSupportedAspectRatio,
+  type SketchSimpleOrder,
+  type SketchCreativePlan,
+  type SketchCreativeResult,
+  type SketchChangeIntent,
+  type ProvidedFacts,
 } from '../../types/sketch.ts';
 
 const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -128,6 +134,22 @@ function asStringArray(val: unknown): string[] {
 
 function asArrayLength(val: unknown): number {
   return Array.isArray(val) ? val.length : 0;
+}
+
+export function createCleanLayers(): SketchLayer[] {
+  return [
+    {
+      id: 'layer-bg-root',
+      name: 'Fundo da Arte',
+      type: 'background',
+      fillType: 'color',
+      color: '#0d1117',
+      visible: true,
+      opacity: 1,
+      elementKind: 'final',
+      includeInFinalExport: true,
+    } as BackgroundLayer,
+  ];
 }
 
 export function createDefaultLayers(): SketchLayer[] {
@@ -336,17 +358,120 @@ function resolveTextRenderingStrategy(val: unknown): TextRenderingStrategy {
   return val === 'baked' ? 'baked' : 'layer';
 }
 
+function resolveInitConfig(params?: {
+  id?: string;
+  title?: string;
+  aspectRatio?: FlowSupportedAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+}) {
+  const safeParams = params ?? {};
+  const aspectRatio: FlowSupportedAspectRatio = safeParams.aspectRatio ?? '1:1';
+  const canvasAspectRatio = safeParams.canvasAspectRatio ?? aspectRatio;
+  const preset = CANVAS_ASPECT_RATIO_PRESETS[canvasAspectRatio] ?? CANVAS_ASPECT_RATIO_PRESETS['1:1'];
+  const id = safeParams.id ?? `sketch-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const title = safeParams.title ?? 'Novo Anúncio Estático';
+  return { id, title, aspectRatio, canvasAspectRatio, preset };
+}
+
+function createEmptyBriefing(): SketchBriefingData {
+  return {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    productDescription: '',
+    brandName: '',
+    targetAudience: '',
+    objective: '',
+    tone: '',
+    keyBenefits: [],
+    restrictions: [],
+    colorPalette: [],
+    suggestedVisualPrompt: '',
+    additionalNotes: '',
+  };
+}
+
+function createEmptyCopy(): SketchCopyData {
+  return {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    headline: '',
+    subheadline: '',
+    cta: '',
+    badge: '',
+    disclaimer: '',
+    suggestedVisualPrompt: '',
+  };
+}
+
+function createDefaultCopy(): SketchCopyData {
+  return {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    headline: 'O Futuro Chegou Hoje',
+    subheadline: 'Descubra a tecnologia que transforma sua rotina com qualidade premium.',
+    cta: 'Garanta o Seu Agora',
+    badge: 'Lançamento Exclusivo',
+    disclaimer: '',
+    suggestedVisualPrompt: '',
+  };
+}
+
+export function createCleanProject(params?: {
+  id?: string;
+  title?: string;
+  aspectRatio?: FlowSupportedAspectRatio;
+  canvasAspectRatio?: SketchCanvasAspectRatio;
+}): SketchProjectData {
+  const { id, title, aspectRatio, canvasAspectRatio, preset } = resolveInitConfig(params);
+  const now = new Date().toISOString();
+  const cleanLayers = createCleanLayers();
+
+  return {
+    schemaVersion: 1,
+    version: SKETCH_SCHEMA_VERSION,
+    id,
+    title,
+    description: 'Composição de anúncio criada no Kaoz.1 Sketch',
+    aspectRatio,
+    canvasAspectRatio,
+    canvasDimensions: { width: preset.width, height: preset.height, unit: 'px' },
+    prompt: '',
+    useSketchAsReference: true,
+    compositionIntent: 'follow',
+    textRenderingStrategy: 'layer',
+    briefing: createEmptyBriefing(),
+    copy: createEmptyCopy(),
+    document: {
+      schemaVersion: 1,
+      version: SKETCH_SCHEMA_VERSION,
+      dimensions: { width: preset.width, height: preset.height, unit: 'px' },
+      canvasAspectRatio,
+      layers: cleanLayers,
+      guides: [],
+    },
+    attachments: [],
+    layers: cleanLayers,
+    generationHistory: [],
+    snapshots: [],
+    creativeResults: [],
+    changeIntents: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function createDefaultProject(params?: {
   id?: string;
   title?: string;
   aspectRatio?: SketchAspectRatio;
   canvasAspectRatio?: SketchCanvasAspectRatio;
+  clean?: boolean;
 }): SketchProjectData {
-  const id = params?.id || `sketch-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const title = params?.title || 'Novo Anúncio Estático';
-  const aspectRatio: SketchAspectRatio = params?.aspectRatio || '1:1';
-  const canvasAspectRatio = params?.canvasAspectRatio || aspectRatio;
-  const preset = CANVAS_ASPECT_RATIO_PRESETS[canvasAspectRatio] || CANVAS_ASPECT_RATIO_PRESETS['1:1'];
+  if (params?.clean) {
+    return createCleanProject(params);
+  }
+
+  const { id, title, aspectRatio, canvasAspectRatio, preset } = resolveInitConfig(params);
   const now = new Date().toISOString();
   const defaultLayers = createDefaultLayers();
 
@@ -363,30 +488,8 @@ export function createDefaultProject(params?: {
     useSketchAsReference: true,
     compositionIntent: 'follow',
     textRenderingStrategy: 'layer',
-    briefing: {
-      schemaVersion: 1,
-      version: SKETCH_SCHEMA_VERSION,
-      productDescription: '',
-      brandName: '',
-      targetAudience: '',
-      objective: '',
-      tone: '',
-      keyBenefits: [],
-      restrictions: [],
-      colorPalette: [],
-      suggestedVisualPrompt: '',
-      additionalNotes: '',
-    },
-    copy: {
-      schemaVersion: 1,
-      version: SKETCH_SCHEMA_VERSION,
-      headline: 'O Futuro Chegou Hoje',
-      subheadline: 'Descubra a tecnologia que transforma sua rotina com qualidade premium.',
-      cta: 'Garanta o Seu Agora',
-      badge: 'Lançamento Exclusivo',
-      disclaimer: '',
-      suggestedVisualPrompt: '',
-    },
+    briefing: createEmptyBriefing(),
+    copy: createDefaultCopy(),
     document: {
       schemaVersion: 1,
       version: SKETCH_SCHEMA_VERSION,
@@ -399,9 +502,231 @@ export function createDefaultProject(params?: {
     layers: defaultLayers,
     generationHistory: [],
     snapshots: [],
+    creativeResults: [],
+    changeIntents: [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function normalizeOrderDrawing(drawing: unknown): SketchSimpleOrder['sketchDrawing'] | undefined {
+  if (!drawing || typeof drawing !== 'object') return undefined;
+  const d = drawing as Record<string, unknown>;
+  return {
+    paths: Array.isArray(d.paths) ? (d.paths as import('../../types/sketch.ts').SketchPath[]) : [],
+    dataUrl: typeof d.dataUrl === 'string' ? d.dataUrl : undefined,
+    hasDrawing: Boolean(d.hasDrawing),
+  };
+}
+
+function normalizeOrder(order: unknown): SketchSimpleOrder | undefined {
+  if (!order || typeof order !== 'object') return undefined;
+  const o = order as Record<string, unknown>;
+  if (typeof o.id !== 'string') return undefined;
+
+  return {
+    schemaVersion: typeof o.schemaVersion === 'number' ? o.schemaVersion : 1,
+    version: asString(o.version, SKETCH_SCHEMA_VERSION),
+    id: o.id,
+    prompt: asString(o.prompt),
+    aspectRatio: (o.aspectRatio as FlowSupportedAspectRatio) || '1:1',
+    canvasAspectRatio: o.canvasAspectRatio as SketchCanvasAspectRatio | undefined,
+    canvasDimensions: o.canvasDimensions as SketchSimpleOrder['canvasDimensions'],
+    selectedReferences: Array.isArray(o.selectedReferences)
+      ? (o.selectedReferences as SketchSimpleOrder['selectedReferences'])
+      : [],
+    sketchDrawing: normalizeOrderDrawing(o.sketchDrawing),
+    createdAt: asString(o.createdAt, new Date().toISOString()),
+  };
+}
+
+function normalizeProvidedFacts(raw: unknown): ProvidedFacts {
+  const f = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    productOrService: asString(f.productOrService),
+    brandName: typeof f.brandName === 'string' ? f.brandName : undefined,
+    targetAudience: typeof f.targetAudience === 'string' ? f.targetAudience : undefined,
+    explicitOffer: typeof f.explicitOffer === 'string' ? f.explicitOffer : undefined,
+    explicitPrice: typeof f.explicitPrice === 'string' ? f.explicitPrice : undefined,
+    mandatoryRestrictions: asStringArray(f.mandatoryRestrictions),
+    rawUserPrompt: asString(f.rawUserPrompt),
+  };
+}
+
+function normalizeCreativePlanCopy(copy: unknown): SketchCreativePlan['inferredCreativeDecisions']['copy'] {
+  const c = (copy && typeof copy === 'object' ? copy : {}) as Record<string, unknown>;
+  return {
+    headline: asString(c.headline),
+    subheadline: asString(c.subheadline),
+    cta: asString(c.cta),
+    badge: typeof c.badge === 'string' ? c.badge : undefined,
+    disclaimer: typeof c.disclaimer === 'string' ? c.disclaimer : undefined,
+  };
+}
+
+function normalizeCreativePlanArt(art: unknown): SketchCreativePlan['inferredCreativeDecisions']['artDirection'] {
+  const a = (art && typeof art === 'object' ? art : {}) as Record<string, unknown>;
+  return {
+    colorPalette: asStringArray(a.colorPalette),
+    lighting: asString(a.lighting),
+    mood: asString(a.mood),
+    backgroundStyle: asString(a.backgroundStyle),
+    avoidCliches: Boolean(a.avoidCliches),
+  };
+}
+
+function normalizeCreativePlanComposition(comp: unknown): SketchCreativePlan['inferredCreativeDecisions']['composition'] {
+  const c = (comp && typeof comp === 'object' ? comp : {}) as Record<string, unknown>;
+  return {
+    layoutType: (c.layoutType as SketchCreativePlan['inferredCreativeDecisions']['composition']['layoutType']) || 'centered_hero',
+    reservedCopyZones: Array.isArray(c.reservedCopyZones)
+      ? (c.reservedCopyZones as SketchCreativePlan['inferredCreativeDecisions']['composition']['reservedCopyZones'])
+      : [],
+    subjectPlacements: Array.isArray(c.subjectPlacements)
+      ? (c.subjectPlacements as SketchCreativePlan['inferredCreativeDecisions']['composition']['subjectPlacements'])
+      : [],
+    textRenderingStrategy: (c.textRenderingStrategy as TextRenderingStrategy) || 'layer',
+  };
+}
+
+function normalizeInferredDecisions(raw: unknown): SketchCreativePlan['inferredCreativeDecisions'] {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    selectedAngle: (d.selectedAngle as SketchCreativePlan['inferredCreativeDecisions']['selectedAngle']) || 'custom',
+    angleRationale: asString(d.angleRationale),
+    alternativeConcepts: Array.isArray(d.alternativeConcepts)
+      ? (d.alternativeConcepts as SketchCreativePlan['inferredCreativeDecisions']['alternativeConcepts'])
+      : undefined,
+    visualConcept: asString(d.visualConcept),
+    copy: normalizeCreativePlanCopy(d.copy),
+    artDirection: normalizeCreativePlanArt(d.artDirection),
+    composition: normalizeCreativePlanComposition(d.composition),
+  };
+}
+
+function normalizeCreativePlan(plan: unknown): SketchCreativePlan | undefined {
+  if (!plan || typeof plan !== 'object') return undefined;
+  const p = plan as Record<string, unknown>;
+  if (typeof p.id !== 'string') return undefined;
+
+  return {
+    schemaVersion: typeof p.schemaVersion === 'number' ? p.schemaVersion : 1,
+    version: asString(p.version, SKETCH_SCHEMA_VERSION),
+    id: p.id,
+    orderId: asString(p.orderId),
+    providedFacts: normalizeProvidedFacts(p.providedFacts),
+    inferredCreativeDecisions: normalizeInferredDecisions(p.inferredCreativeDecisions),
+    compiledPrompt: asString(p.compiledPrompt),
+    validationIssues: asStringArray(p.validationIssues),
+    createdAt: asString(p.createdAt, new Date().toISOString()),
+  };
+}
+
+function normalizeResultLineage(lineage: unknown): SketchCreativeResult['lineage'] {
+  const l = (lineage && typeof lineage === 'object' ? lineage : {}) as Record<string, unknown>;
+  return {
+    versionNumber: typeof l.versionNumber === 'number' ? l.versionNumber : 1,
+    parentId: typeof l.parentId === 'string' ? l.parentId : undefined,
+    iterationType: (l.iterationType as SketchCreativeResult['lineage']['iterationType']) || 'initial',
+    adjustmentPrompt: typeof l.adjustmentPrompt === 'string' ? l.adjustmentPrompt : undefined,
+    timestamp: asString(l.timestamp, new Date().toISOString()),
+  };
+}
+
+function normalizeFinalAsset(asset: unknown): SketchCreativeResult['finalAsset'] {
+  const a = (asset && typeof asset === 'object' ? asset : {}) as Record<string, unknown>;
+  return {
+    imageUrl: asString(a.imageUrl),
+    filePath: asString(a.filePath),
+    width: typeof a.width === 'number' ? a.width : 1080,
+    height: typeof a.height === 'number' ? a.height : 1080,
+    aspectRatio: (a.aspectRatio as FlowSupportedAspectRatio) || '1:1',
+    fileSizeBytes: typeof a.fileSizeBytes === 'number' ? a.fileSizeBytes : 0,
+    mimeType: asString(a.mimeType, 'image/png'),
+    format: a.format === 'jpeg' ? 'jpeg' : 'png',
+  };
+}
+
+function normalizeAdjustmentResources(res: unknown): SketchCreativeResult['resourcesForAdjustments'] {
+  const r = (res && typeof res === 'object' ? res : {}) as Record<string, unknown>;
+  return {
+    baseImageUrl: typeof r.baseImageUrl === 'string' ? r.baseImageUrl : undefined,
+    textLayers: Array.isArray(r.textLayers) ? (r.textLayers as TextLayer[]) : undefined,
+    usedReferencePaths: asStringArray(r.usedReferencePaths),
+    flowMediaPath: typeof r.flowMediaPath === 'string' ? r.flowMediaPath : undefined,
+  };
+}
+
+function normalizeCreativeResult(raw: unknown): SketchCreativeResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string') return null;
+
+  const plan = normalizeCreativePlan(r.creativePlan);
+  if (!plan) return null;
+
+  return {
+    schemaVersion: typeof r.schemaVersion === 'number' ? r.schemaVersion : 1,
+    version: asString(r.version, SKETCH_SCHEMA_VERSION),
+    id: r.id,
+    projectId: asString(r.projectId),
+    originOrderId: asString(r.originOrderId),
+    planId: asString(r.planId),
+    lineage: normalizeResultLineage(r.lineage),
+    creativePlan: plan,
+    finalAsset: normalizeFinalAsset(r.finalAsset),
+    resourcesForAdjustments: normalizeAdjustmentResources(r.resourcesForAdjustments),
+    status: r.status === 'archived' ? 'archived' : 'ready',
+    createdAt: asString(r.createdAt, new Date().toISOString()),
+  };
+}
+
+function normalizeChangeIntent(raw: unknown): SketchChangeIntent | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.id !== 'string') return null;
+
+  const validTypes: SketchChangeIntent['type'][] = ['refine_text', 'refine_visual', 'new_concept'];
+  const type = validTypes.includes(c.type as any) ? (c.type as SketchChangeIntent['type']) : 'refine_text';
+
+  return {
+    schemaVersion: typeof c.schemaVersion === 'number' ? c.schemaVersion : 1,
+    version: asString(c.version, SKETCH_SCHEMA_VERSION),
+    id: c.id,
+    type,
+    targetResultId: asString(c.targetResultId),
+    userFeedback: asString(c.userFeedback),
+    keepBaseImage: Boolean(c.keepBaseImage),
+    updatedFacts: c.updatedFacts ? normalizeProvidedFacts(c.updatedFacts) : undefined,
+    createdAt: asString(c.createdAt, new Date().toISOString()),
+  };
+}
+
+function resolveProjectRatios(obj: Record<string, unknown>): {
+  aspectRatio: SketchAspectRatio;
+  canvasAspectRatio: SketchCanvasAspectRatio;
+} {
+  const aspectRatio: SketchAspectRatio = (obj.aspectRatio as SketchAspectRatio) || '1:1';
+  const canvasAspectRatio = (obj.canvasAspectRatio as SketchCanvasAspectRatio) || aspectRatio;
+  return { aspectRatio, canvasAspectRatio };
+}
+
+function resolveCreativeResults(raw: unknown): SketchCreativeResult[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeCreativeResult)
+    .filter((r): r is SketchCreativeResult => r !== null);
+}
+
+function resolveChangeIntents(raw: unknown): SketchChangeIntent[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeChangeIntent)
+    .filter((c): c is SketchChangeIntent => c !== null);
+}
+
+function resolveOptionalString(val: unknown): string | undefined {
+  return typeof val === 'string' ? val : undefined;
 }
 
 export function normalizeProject(raw: unknown): SketchProjectData {
@@ -413,8 +738,7 @@ export function normalizeProject(raw: unknown): SketchProjectData {
     throw new Error(`Invalid project ID: "${String(obj.id)}"`);
   }
 
-  const aspectRatio: SketchAspectRatio = (obj.aspectRatio as SketchAspectRatio) || '1:1';
-  const canvasAspectRatio = (obj.canvasAspectRatio as SketchCanvasAspectRatio) || aspectRatio;
+  const { aspectRatio, canvasAspectRatio } = resolveProjectRatios(obj);
   const now = new Date().toISOString();
   const defaultLayers = createDefaultLayers();
   const cols = resolveCollections(obj, defaultLayers);
@@ -430,7 +754,7 @@ export function normalizeProject(raw: unknown): SketchProjectData {
     canvasDimensions: resolveCanvasDimensions(obj.canvasDimensions, canvasAspectRatio),
     prompt: asString(obj.prompt),
     useSketchAsReference: obj.useSketchAsReference !== false,
-    activeReferenceId: typeof obj.activeReferenceId === 'string' ? obj.activeReferenceId : undefined,
+    activeReferenceId: resolveOptionalString(obj.activeReferenceId),
     referenceMode: (obj.referenceMode as SketchProjectData['referenceMode']) || 'none',
     compositionIntent: resolveCompositionIntent(obj.compositionIntent),
     textRenderingStrategy: resolveTextRenderingStrategy(obj.textRenderingStrategy),
@@ -441,6 +765,11 @@ export function normalizeProject(raw: unknown): SketchProjectData {
     layers: cols.layers,
     generationHistory: cols.generationHistory,
     snapshots: cols.snapshots,
+    currentOrder: normalizeOrder(obj.currentOrder),
+    creativePlan: normalizeCreativePlan(obj.creativePlan),
+    creativeResults: resolveCreativeResults(obj.creativeResults),
+    activeResultId: resolveOptionalString(obj.activeResultId),
+    changeIntents: resolveChangeIntents(obj.changeIntents),
     createdAt: asString(obj.createdAt, now),
     updatedAt: asString(obj.updatedAt, now),
   };
@@ -639,6 +968,8 @@ function buildProjectSummary(data: Record<string, unknown>): SketchProjectSummar
     createdAt: asString(data.createdAt, new Date(0).toISOString()),
     schemaVersion: typeof data.schemaVersion === 'number' ? data.schemaVersion : 1,
     version: asString(data.version, SKETCH_SCHEMA_VERSION),
+    activeResultId: typeof data.activeResultId === 'string' ? data.activeResultId : undefined,
+    resultCount: asArrayLength(data.creativeResults),
   };
 }
 
@@ -689,11 +1020,12 @@ export async function createProject(
     title?: string;
     aspectRatio?: SketchAspectRatio;
     canvasAspectRatio?: SketchCanvasAspectRatio;
+    clean?: boolean;
   },
   customDir?: string
 ): Promise<SketchProjectData> {
-  const defaultProject = createDefaultProject(params);
-  return await saveProject(defaultProject, customDir);
+  const project = params?.clean ? createCleanProject(params) : createDefaultProject(params);
+  return await saveProject(project, customDir);
 }
 
 export async function renameProject(id: string, newTitle: string, customDir?: string): Promise<SketchProjectData> {
