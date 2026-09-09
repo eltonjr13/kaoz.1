@@ -322,11 +322,105 @@ test('validador de prompt detecta e sinaliza contradições sem truncar briefing
   const layerIssues = validateCreativePrompt(layerContradictionPrompt, 'layer');
   assert.ok(layerIssues.length > 0, 'Deve acusar contradição quando modo layer contém diretiva explícita de texto impresso');
 
-  const bakedContradictionPrompt = 'A commercial ad with no text and without text in the background.';
+  const bakedContradictionPrompt = 'A commercial ad with no text in image and without text in the background.';
   const bakedIssues = validateCreativePrompt(bakedContradictionPrompt, 'baked');
   assert.ok(bakedIssues.length > 0, 'Deve acusar contradição quando modo baked proíbe texto');
 
-  const validPrompt = 'A commercial ad of premium headphones with clean negative space. Text rendering strategy: Layered typography overlay. No unrequested text.';
+  const validPrompt = 'A commercial ad of premium headphones with clean negative space. Text rendering strategy: Layered typography overlay. No unrequested text. INTEGRITY MANDATE: Do not hallucinate.';
   const validIssues = validateCreativePrompt(validPrompt, 'layer');
   assert.equal(validIssues.length, 0, 'Prompt válido em camadas não deve apresentar erros');
+});
+
+test('preparo final do prompt no FlowProvider não introduz contradição de texto em modo camada', () => {
+  const project = createSampleProject();
+  project.textRenderingStrategy = 'layer';
+
+  const compiled = compileCreativeGenerationRequest(project);
+  assert.equal(compiled.textRenderingStrategy, 'layer');
+
+  // Verifica que o prompt final preparado para o FlowProvider NÃO contradiz a estratégia de camadas
+  assert.doesNotMatch(
+    compiled.preparedPrompt,
+    /Render only the explicitly requested wording/i,
+    'Não deve mandar o Flow renderizar palavras quando a estratégia é camada vetorial'
+  );
+  assert.match(
+    compiled.preparedPrompt,
+    /No text in image\. Do NOT render, generate, or burn any typography/i,
+    'Deve proibir expressamente que a imagem venha com texto queimado'
+  );
+  assert.match(
+    compiled.preparedPrompt,
+    /Do not add unrequested text/i,
+    'Deve incluir instrução explícita de não adicionar texto'
+  );
+
+  // Validação do FlowProvider não deve ter contradições
+  const contradictionDiagnostics = compiled.diagnostics.filter(
+    (d) => d.message.toLowerCase().includes('contradição')
+  );
+  assert.equal(contradictionDiagnostics.length, 0, 'Nenhum diagnóstico de contradição deve ser gerado');
+});
+
+test('preservação literal da copy mantém disclaimer e campos preexistentes ao aplicar sugestões', () => {
+  const originalCopy: SketchCopyData = {
+    headline: 'Título Original',
+    subheadline: 'Subtítulo Original',
+    cta: 'Clique Aqui',
+    badge: 'Oferta',
+    disclaimer: 'Válido até domingo ou término dos estoques.',
+  };
+
+  const aiSuggestion = {
+    headline: 'Novo Título IA',
+    subheadline: 'Novo Subtítulo IA',
+    cta: 'Compre Agora',
+    badge: '50% OFF',
+    suggestedVisualPrompt: 'Studio lighting photo of product',
+  };
+
+  const updatedCopy: SketchCopyData = {
+    ...originalCopy,
+    headline: aiSuggestion.headline,
+    subheadline: aiSuggestion.subheadline,
+    cta: aiSuggestion.cta,
+    badge: aiSuggestion.badge,
+    suggestedVisualPrompt: aiSuggestion.suggestedVisualPrompt,
+  };
+
+  assert.equal(updatedCopy.disclaimer, 'Válido até domingo ou término dos estoques.');
+  assert.equal(updatedCopy.headline, 'Novo Título IA');
+  assert.equal(updatedCopy.cta, 'Compre Agora');
+});
+
+test('validador detecta risco de preservação de rabiscos e ausência de salvaguarda com sketch ativo', () => {
+  const scribblePrompt = 'A commercial ad with pencil sketch style and preserve scribbles. INTEGRITY MANDATE: Do not hallucinate.';
+  const issues = validateCreativePrompt(scribblePrompt, 'layer');
+  assert.ok(
+    issues.some((i) => i.includes('preservar o estilo de rabiscos')),
+    'Deve alertar contra instruções que peçam estilo de rabiscos'
+  );
+
+  const sketchWithoutSafeguard = 'A commercial photo of headphones on a table. INTEGRITY MANDATE: Do not hallucinate.';
+  const safeguardIssues = validateCreativePrompt(sketchWithoutSafeguard, 'layer', { hasSketch: true });
+  assert.ok(
+    safeguardIssues.some((i) => i.includes('sketch ativo como referência sem instrução explícita')),
+    'Deve exigir salvaguarda explícita contra rabiscos quando houver sketch'
+  );
+});
+
+test('validador detecta alertas de truncamento por aspas abertas ou estouro de palavras', () => {
+  const unclosedQuotePrompt = 'A commercial ad for "Product that is never closed. INTEGRITY MANDATE: Do not hallucinate.';
+  const quoteIssues = validateCreativePrompt(unclosedQuotePrompt, 'layer');
+  assert.ok(
+    quoteIssues.some((i) => i.includes('aspas não fechadas')),
+    'Deve detectar corte de texto indicado por aspas desbalanceadas'
+  );
+
+  const longPrompt = Array.from({ length: 350 }, () => 'detail').join(' ') + '. INTEGRITY MANDATE: Do not hallucinate.';
+  const lengthIssues = validateCreativePrompt(longPrompt, 'layer');
+  assert.ok(
+    lengthIssues.some((i) => i.includes('excede 320 palavras')),
+    'Deve alertar sobre risco de truncamento por excesso de palavras'
+  );
 });
