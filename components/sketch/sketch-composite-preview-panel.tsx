@@ -93,6 +93,10 @@ function GenerationContractSummary({
   req: SketchGenerationRequest;
   preview?: SketchCompositePreview;
 }) {
+  const isExplore = req.compositionIntent === 'explore';
+  const isBaked = req.textRenderingStrategy === 'baked';
+  const zonesCount = req.creativeCompilation?.reservedCopyZones.length || 0;
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#10131c] p-3.5 flex flex-col gap-2.5">
       <span className="font-semibold text-white text-xs">Resumo do Contrato de Geração</span>
@@ -106,18 +110,56 @@ function GenerationContractSummary({
           <span className="font-medium text-white">{req.providerAspectRatio}</span>
         </div>
         <div>
-          <span className="text-zinc-500 block">Referências Ativas:</span>
+          <span className="text-zinc-500 block">Composição:</span>
           <span className="font-medium text-white">
-            {preview?.includedReferencesCount || 0} papel(is)
+            {isExplore ? 'Explorar composição' : 'Seguir composição'}
           </span>
         </div>
         <div>
-          <span className="text-zinc-500 block">Guias Excluídos:</span>
+          <span className="text-zinc-500 block">Renderização de Texto:</span>
+          <span className={`font-medium ${isBaked ? 'text-amber-300' : 'text-emerald-400'}`}>
+            {isBaked ? 'Texto na imagem' : 'Camadas (Espaço negativo)'}
+          </span>
+        </div>
+        <div>
+          <span className="text-zinc-500 block">Zonas de Copy:</span>
+          <span className="font-medium text-white">{zonesCount} área(s)</span>
+        </div>
+        <div>
+          <span className="text-zinc-500 block">Guias Isolados:</span>
           <span className="font-medium text-emerald-400">
             {preview?.excludedGuidesCount || 0} isolado(s)
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CompiledPromptCard({ prompt }: { prompt: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-[#10131c] p-3">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-zinc-300 text-[11px]">Prompt Compilado Flow</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="text-[10px] text-indigo-400 hover:text-indigo-300"
+        >
+          {copied ? 'Copiado!' : 'Copiar'}
+        </button>
+      </div>
+      <p className="text-[10px] text-zinc-400 leading-relaxed max-h-28 overflow-y-auto font-mono bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/80">
+        {prompt}
+      </p>
     </div>
   );
 }
@@ -187,6 +229,7 @@ export function SketchCompositePreviewPanel({
 
         <div className="flex flex-col gap-4">
           <GenerationContractSummary req={req} preview={req.compositePreview} />
+          <CompiledPromptCard prompt={req.preparedPrompt} />
 
           <div className="flex flex-col gap-2">
             <span className="font-medium text-zinc-300 text-[11px]">

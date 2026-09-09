@@ -102,9 +102,19 @@ function hasReferenceLanguage(prompt: string): boolean {
   return /\b(attached|reference|ingredient|source image|input image|imagem anexada|imagem de referencia|imagem de referência)\b/i.test(prompt);
 }
 
+function hasExplicitNoTextIntent(normalized: string): boolean {
+  if (/\b(no text|without text|sem texto|sem palavras|no lettering|do not add unrequested text|no unrequested text)\b/.test(normalized)) {
+    return true;
+  }
+  if (/\bdo not render.*?(?:typography|text|words|lettering|letters)\b/.test(normalized)) {
+    return true;
+  }
+  return /\b(layered typography overlay|no text in image)\b/.test(normalized);
+}
+
 function hasExplicitTextIntent(prompt: string): boolean {
   const normalized = normalizeIntentText(prompt);
-  if (/\b(no text|without text|sem texto|sem palavras|no lettering|do not add unrequested text|no unrequested text)\b/.test(normalized)) {
+  if (hasExplicitNoTextIntent(normalized)) {
     return false;
   }
   return /["“”][^"“”]{1,120}["“”]/.test(prompt)

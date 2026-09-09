@@ -215,17 +215,66 @@ export interface SketchDocumentData {
   guides?: SketchGuide[];
 }
 
+export type CompositionIntent = 'follow' | 'explore';
+export type TextRenderingStrategy = 'layer' | 'baked';
+
+export interface CreativeReservedCopyZone {
+  role: TextRole;
+  label: string;
+  zoneDescription: string;
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+}
+
+export interface CreativeSubjectPlacement {
+  attachmentId?: string;
+  role: SketchReferenceRole;
+  label: string;
+  zoneDescription: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CreativeCompositionGuide {
+  id: string;
+  label: string;
+  instruction: string;
+  isAnnotation: boolean;
+}
+
+export interface CreativeGenerationCompiledRequest {
+  briefing: SketchBriefingData;
+  copy: SketchCopyData;
+  compositionIntent: CompositionIntent;
+  textRenderingStrategy: TextRenderingStrategy;
+  reservedCopyZones: CreativeReservedCopyZone[];
+  subjectPlacements: CreativeSubjectPlacement[];
+  compositionGuides: CreativeCompositionGuide[];
+  compiledPrompt: string;
+  validationIssues: string[];
+}
+
 export interface SketchBriefingData {
   schemaVersion?: number;
   version?: string;
   productDescription: string;
+  product?: string;
   brandName?: string;
   targetAudience?: string;
+  audience?: string;
   objective?: string;
   tone?: string;
+  offer?: string;
   keyBenefits?: string[];
+  benefits?: string[];
+  visualStyle?: string;
   restrictions?: string[];
   colorPalette?: string[];
+  colors?: string[];
   suggestedVisualPrompt?: string;
   additionalNotes?: string;
 }
@@ -266,6 +315,8 @@ export interface SketchProjectData {
   useSketchAsReference: boolean;
   activeReferenceId?: string;
   referenceMode?: 'none' | 'sketch' | 'identity' | 'composite';
+  compositionIntent?: CompositionIntent;
+  textRenderingStrategy?: TextRenderingStrategy;
   briefing?: SketchBriefingData;
   copy: SketchCopyData;
   document?: SketchDocumentData;
@@ -331,8 +382,11 @@ export interface SketchGenerationRequest {
   providerAspectRatio: FlowSupportedAspectRatio;
   referenceMode: 'none' | 'sketch' | 'identity' | 'composite';
   referenceKind?: import('@/src/providers/flow/ImageGenerationContract').ImageReferenceKind;
+  compositionIntent?: CompositionIntent;
+  textRenderingStrategy?: TextRenderingStrategy;
   preparedReferenceImage?: string;
   compositePreview?: SketchCompositePreview;
+  creativeCompilation?: CreativeGenerationCompiledRequest;
   diagnostics: SketchReferenceDiagnostic[];
   providerOptions: import('@/src/providers/flow/FlowTypes').ImageGenerationOptions;
   createdAt: string;
@@ -366,9 +420,16 @@ export interface SketchGenerationResult {
 
 export interface GenerateCopyRequest {
   productDescription: string;
+  brandName?: string;
   audience?: string;
+  targetAudience?: string;
   goal?: string;
+  objective?: string;
+  offer?: string;
+  keyBenefits?: string[];
   tone?: string;
+  visualStyle?: string;
+  colorPalette?: string[];
 }
 
 export interface GenerateCopyResponse {

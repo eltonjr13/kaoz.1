@@ -10,11 +10,19 @@ import {
   type SketchAttachment,
   type ImageLayer,
   type SketchDrawingLayer,
+  type CreativeGenerationCompiledRequest,
   resolveProviderAspectRatio,
   ASPECT_RATIO_PRESETS,
 } from '../../types/sketch.ts';
 import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 import type { ImageReferenceKind } from '../../src/providers/flow/ImageGenerationContract.ts';
+import {
+  compileCreativeGenerationPrompt,
+  validateCreativePrompt,
+  extractCopyZones,
+  extractSubjectPlacements,
+  extractCompositionGuides,
+} from './sketch-prompt-compiler.ts';
 
 interface SketchAnalysis {
   hasSketch: boolean;
@@ -319,6 +327,54 @@ function buildProviderOptions(
   };
 }
 
+function assembleCreativeCompilation(
+  project: SketchProjectData,
+  hasSketch: boolean,
+  diagnostics: SketchReferenceDiagnostic[]
+): {
+  compositionIntent: 'follow' | 'explore';
+  textRenderingStrategy: 'layer' | 'baked';
+  compiledPrompt: string;
+  creativeCompilation: CreativeGenerationCompiledRequest;
+} {
+  const compositionIntent = project.compositionIntent || 'follow';
+  const textRenderingStrategy = project.textRenderingStrategy || 'layer';
+
+  const compiledPrompt = compileCreativeGenerationPrompt({
+    prompt: project.prompt,
+    briefing: project.briefing,
+    copy: project.copy,
+    layers: project.layers,
+    attachments: project.attachments,
+    compositionIntent,
+    textRenderingStrategy,
+    hasSketch,
+  });
+
+  const promptIssues = validateCreativePrompt(compiledPrompt, textRenderingStrategy);
+  for (const issue of promptIssues) {
+    diagnostics.push({
+      code: 'PROMPT_QUALITY_ISSUE',
+      severity: 'warning',
+      message: issue,
+    });
+  }
+
+  const creativeCompilation: CreativeGenerationCompiledRequest = {
+    briefing: project.briefing || { productDescription: '' },
+    copy: project.copy,
+    compositionIntent,
+    textRenderingStrategy,
+    reservedCopyZones: extractCopyZones(project.layers),
+    subjectPlacements: extractSubjectPlacements(project.layers, project.attachments),
+    compositionGuides: extractCompositionGuides(project.layers),
+    compiledPrompt,
+    validationIssues: promptIssues,
+  };
+
+  return { compositionIntent, textRenderingStrategy, compiledPrompt, creativeCompilation };
+}
+
 export function prepareSketchCompositeReference(
   project: SketchProjectData,
   options?: PrepareSketchCompositeOptions
@@ -361,12 +417,37 @@ export function prepareSketchCompositeReference(
     diagnostics
   );
 
+  const creative = assembleCreativeCompilation(project, sketchInfo.hasSketch, diagnostics);
+
   const preparedPrompt = prepareFlowImagePrompt({
-    prompt: project.prompt,
+    prompt: creative.compiledPrompt,
     operation: referenceMode !== 'none' ? 'reference' : 'simple',
     aspectRatio: providerAspectRatio,
     referenceKind,
   });
+
+  const finalPromptIssues = validateCreativePrompt(
+    preparedPrompt,
+    creative.textRenderingStrategy,
+    {
+      hasSketch: sketchInfo.hasSketch,
+      briefing: project.briefing,
+      copy: project.copy,
+    }
+  );
+
+  for (const issue of finalPromptIssues) {
+    if (!diagnostics.some((d) => d.message === issue)) {
+      diagnostics.push({
+        code: 'PROMPT_QUALITY_ISSUE',
+        severity: 'warning',
+        message: issue,
+      });
+    }
+  }
+
+  creative.creativeCompilation.compiledPrompt = preparedPrompt;
+  creative.creativeCompilation.validationIssues = finalPromptIssues;
 
   const compositePreview = buildCompositePreview(
     canvasAspectRatio,
@@ -389,8 +470,11 @@ export function prepareSketchCompositeReference(
     providerAspectRatio,
     referenceMode,
     referenceKind,
+    compositionIntent: creative.compositionIntent,
+    textRenderingStrategy: creative.textRenderingStrategy,
     preparedReferenceImage: preparedRefImage,
     compositePreview,
+    creativeCompilation: creative.creativeCompilation,
     diagnostics,
     providerOptions: buildProviderOptions(
       referenceMode,
