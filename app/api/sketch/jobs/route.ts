@@ -7,14 +7,9 @@ import type { SketchJobStep } from '@/types/sketch';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-let hasRunInitialRecovery = false;
-
 export async function GET(req: Request) {
   try {
-    if (!hasRunInitialRecovery) {
-      hasRunInitialRecovery = true;
-      await sketchJobManager.recoverInterruptedJobs().catch(() => 0);
-    }
+    await sketchJobManager.ensureInitialized();
 
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get('projectId') || undefined;

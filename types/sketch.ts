@@ -497,6 +497,7 @@ export interface SketchJobData {
   version?: string;
   id: string;
   projectId: string;
+  processId?: string;
   idempotencyToken?: string;
   status: SketchJobStep;
   progressPercentage: number;

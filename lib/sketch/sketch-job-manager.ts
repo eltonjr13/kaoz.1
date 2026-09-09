@@ -253,12 +253,32 @@ export class SketchJobManager {
   private activeJobsMap = new Map<string, SketchJobData>();
   private queueProcessing = false;
   private executionQueue: string[] = [];
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
+  private processId = `proc-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
 
   constructor(options?: SketchJobManagerOptions) {
     this.jobsDir = options?.jobsDir || getSketchJobsDir();
     this.assetsDir = options?.assetsDir || getSketchAssetsDir();
     this.projectsDir = options?.projectsDir;
     this.flowProvider = options?.flowProvider;
+  }
+
+  public getProcessId(): string {
+    return this.processId;
+  }
+
+  public async ensureInitialized(): Promise<void> {
+    if (this.initialized) return;
+    if (!this.initPromise) {
+      this.initPromise = this.performInitialization();
+    }
+    await this.initPromise;
+  }
+
+  private async performInitialization(): Promise<void> {
+    await this.recoverInterruptedJobs();
+    this.initialized = true;
   }
 
   private async getEffectiveFlowProvider(): Promise<FlowImageProviderContract> {
@@ -289,17 +309,12 @@ export class SketchJobManager {
     return job;
   }
 
-  public async getJob(id: string): Promise<SketchJobData | null> {
+  private async readJobFromDisk(id: string): Promise<SketchJobData | null> {
     if (!isValidJobId(id)) return null;
-    const cached = this.activeJobsMap.get(id);
-    if (cached) return cached;
-
     const filePath = this.getJobFilePath(id);
     try {
       const raw = await fsp.readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as SketchJobData;
-      this.activeJobsMap.set(parsed.id, parsed);
-      return parsed;
+      return JSON.parse(raw) as SketchJobData;
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'ENOENT') return null;
@@ -307,16 +322,39 @@ export class SketchJobManager {
     }
   }
 
+  public async getJob(id: string): Promise<SketchJobData | null> {
+    if (!isValidJobId(id)) return null;
+    await this.ensureInitialized();
+    const cached = this.activeJobsMap.get(id);
+    if (cached) return cached;
+
+    const job = await this.readJobFromDisk(id);
+    if (job) {
+      this.activeJobsMap.set(job.id, job);
+    }
+    return job;
+  }
+
   public async listJobs(filter?: { projectId?: string; status?: SketchJobStep }): Promise<SketchJobData[]> {
+    await this.ensureInitialized();
     await fsp.mkdir(this.jobsDir, { recursive: true });
     const entries = await fsp.readdir(this.jobsDir, { withFileTypes: true });
     const jobs: SketchJobData[] = [];
+    const seenIds = new Set<string>();
 
     for (const entry of entries) {
       if (!entry.isFile() || !isJobFile(entry.name)) continue;
       const job = await this.getJob(entry.name.replace(/\.json$/, ''));
       if (job && matchesJobFilter(job, filter)) {
         jobs.push(job);
+        seenIds.add(job.id);
+      }
+    }
+
+    for (const activeJob of this.activeJobsMap.values()) {
+      if (!seenIds.has(activeJob.id) && matchesJobFilter(activeJob, filter)) {
+        jobs.push(activeJob);
+        seenIds.add(activeJob.id);
       }
     }
 
@@ -324,11 +362,13 @@ export class SketchJobManager {
   }
 
   public async findActiveJobForProject(projectId: string): Promise<SketchJobData | null> {
+    await this.ensureInitialized();
     const jobs = await this.listJobs({ projectId });
     return jobs.find((j) => isJobActive(j.status)) || null;
   }
 
   public async isAttachmentInUse(attachmentId: string): Promise<boolean> {
+    await this.ensureInitialized();
     const activeJobs = (await this.listJobs()).filter((j) => isJobActive(j.status));
     for (const job of activeJobs) {
       const atts = job.snapshot.attachments || [];
@@ -339,20 +379,35 @@ export class SketchJobManager {
     return false;
   }
 
+  private shouldRecoverJob(job: SketchJobData): boolean {
+    if (!isJobActive(job.status)) return false;
+    if (job.processId === this.processId && this.activeJobsMap.has(job.id)) {
+      return false;
+    }
+    return true;
+  }
+
+  private async markJobInterrupted(job: SketchJobData): Promise<void> {
+    job.status = 'interrupted';
+    job.stepMessage = 'Trabalho interrompido pelo reinício do servidor. Não reexecutado automaticamente.';
+    job.cancellationExplanation = 'Interrompido por reinício do processo. O resultado anterior é desconhecido.';
+    job.error = 'Processo finalizado inesperadamente antes da conclusão.';
+    this.cleanupJobTempFiles(job.tempFilesToCleanup);
+    job.tempFilesToCleanup = [];
+    await this.persistJob(job);
+  }
+
   public async recoverInterruptedJobs(): Promise<number> {
     await fsp.mkdir(this.jobsDir, { recursive: true });
-    const jobs = await this.listJobs();
+    const entries = await fsp.readdir(this.jobsDir, { withFileTypes: true });
     let recoveredCount = 0;
 
-    for (const job of jobs) {
-      if (isJobActive(job.status)) {
-        job.status = 'interrupted';
-        job.stepMessage = 'Trabalho interrompido pelo reinício do servidor. Não reexecutado automaticamente.';
-        job.cancellationExplanation = 'Interrompido por reinício do processo. O resultado anterior é desconhecido.';
-        job.error = 'Processo finalizado inesperadamente antes da conclusão.';
-        this.cleanupJobTempFiles(job.tempFilesToCleanup);
-        job.tempFilesToCleanup = [];
-        await this.persistJob(job);
+    for (const entry of entries) {
+      if (!entry.isFile() || !isJobFile(entry.name)) continue;
+      const id = entry.name.replace(/\.json$/, '');
+      const job = await this.readJobFromDisk(id);
+      if (job && this.shouldRecoverJob(job)) {
+        await this.markJobInterrupted(job);
         recoveredCount++;
       }
     }
@@ -429,6 +484,14 @@ export class SketchJobManager {
   }
 
   public async enqueueJob(params: EnqueueSketchJobParams): Promise<SketchJobData> {
+    await this.ensureInitialized();
+    const lockKey = `enqueue:${this.jobsDir}:${params.projectId}`;
+    return await serializeWrite(lockKey, async () => {
+      return await this.createAndEnqueueJobInternal(params);
+    });
+  }
+
+  private async createAndEnqueueJobInternal(params: EnqueueSketchJobParams): Promise<SketchJobData> {
     const project = await getProject(params.projectId, this.projectsDir);
     if (!project) {
       throw new Error(`Projeto não encontrado: "${params.projectId}"`);
@@ -467,6 +530,7 @@ export class SketchJobManager {
       version: '1.0.0',
       id,
       projectId: params.projectId,
+      processId: this.processId,
       idempotencyToken: params.idempotencyToken,
       status: 'queued',
       progressPercentage: 5,
@@ -485,6 +549,7 @@ export class SketchJobManager {
   }
 
   public async cancelJob(id: string): Promise<SketchJobData> {
+    await this.ensureInitialized();
     const job = await this.getJob(id);
     if (!job) {
       throw new Error(`Trabalho não encontrado: "${id}"`);
@@ -494,14 +559,15 @@ export class SketchJobManager {
       return job;
     }
 
-    if (job.status === 'generating_with_flow') {
-      job.cancellationRequested = true;
-      job.status = 'cancelled';
+    const wasRunning = job.status !== 'queued';
+    job.cancellationRequested = true;
+    job.status = 'cancelled';
+
+    if (wasRunning) {
       job.cancellationExplanation =
         'A geração em andamento no navegador foi descartada e o resultado não será aplicado ao projeto.';
       job.stepMessage = 'Geração cancelada. Operação no navegador descartada.';
     } else {
-      job.status = 'cancelled';
       job.cancellationExplanation = 'Trabalho cancelado antes de iniciar a geração no navegador.';
       job.stepMessage = 'Trabalho cancelado com sucesso.';
       this.cleanupJobTempFiles(job.tempFilesToCleanup);
@@ -527,15 +593,39 @@ export class SketchJobManager {
     this.queueProcessing = false;
   }
 
-  private verifyGeneratedFile(filePath: string): { valid: boolean; sizeBytes: number; error?: string } {
+  public async verifyGeneratedFile(filePath: string): Promise<{
+    valid: boolean;
+    sizeBytes: number;
+    width?: number;
+    height?: number;
+    format?: string;
+    error?: string;
+  }> {
     if (!filePath || !fs.existsSync(filePath)) {
       return { valid: false, sizeBytes: 0, error: 'Arquivo gerado não existe no disco.' };
     }
-    const stat = fs.statSync(filePath);
-    if (stat.size <= 0) {
+    let buf: Buffer;
+    try {
+      buf = await fsp.readFile(filePath);
+    } catch (err: unknown) {
+      return { valid: false, sizeBytes: 0, error: `Falha ao ler arquivo gerado: ${toErrorMessage(err)}` };
+    }
+    if (buf.length <= 0) {
       return { valid: false, sizeBytes: 0, error: 'Arquivo gerado está corrompido ou vazio (0 bytes).' };
     }
-    return { valid: true, sizeBytes: stat.size };
+
+    const validation = await validateAttachmentBuffer(buf);
+    if (!validation.valid) {
+      return { valid: false, sizeBytes: buf.length, error: `Arquivo gerado inválido: ${validation.error}` };
+    }
+
+    return {
+      valid: true,
+      sizeBytes: buf.length,
+      width: validation.width,
+      height: validation.height,
+      format: validation.format,
+    };
   }
 
   private async copyToSketchAssets(sourcePath: string, jobId: string): Promise<{ assetPath: string; assetUrl: string; filename: string }> {
@@ -692,7 +782,7 @@ export class SketchJobManager {
     job.stepMessage = 'Validando arquivo de imagem gerado.';
     await this.persistJob(job);
 
-    const verification = this.verifyGeneratedFile(rawImagePath);
+    const verification = await this.verifyGeneratedFile(rawImagePath);
     if (!verification.valid) {
       job.status = 'failed';
       job.progressPercentage = 100;
