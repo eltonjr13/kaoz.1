@@ -203,7 +203,8 @@ function appendBriefingDetails(segments: string[], b?: SketchBriefingData): void
 
 export function buildBriefingDirective(briefing?: SketchBriefingData): string {
   const desc = briefing?.productDescription || briefing?.product || 'Featured commercial product';
-  const segments: string[] = [`Product: "${desc}"`];
+  const prefix = briefing?.product && briefing.product !== desc ? `${briefing.product} - ` : '';
+  const segments: string[] = [`Product: "${prefix}${desc}"`];
   appendBriefingDetails(segments, briefing);
 
   const contextStr = segments.join('. ');
