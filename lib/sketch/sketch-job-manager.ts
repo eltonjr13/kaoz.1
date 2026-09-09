@@ -13,7 +13,9 @@ import {
   saveProject,
 } from './sketch-storage.ts';
 import { prepareSketchCompositeReference } from './sketch-composite-preparer.ts';
-import { saveBase64ReferenceImage, cleanupTemporaryReference } from '../flow/reference-files.ts';
+import { validateAttachmentBuffer } from './sketch-attachment-validator.ts';
+import { renderCompositeReferenceDataUrl } from './sketch-exporter.ts';
+import { cleanupTemporaryReference } from '../flow/reference-files.ts';
 
 async function resolveDefaultFlowProvider(): Promise<FlowImageProviderContract> {
   const mod = await import('../../src/providers/flow/FlowProvider.ts');
@@ -27,6 +29,7 @@ import type {
   SketchJobResult,
   SketchJobSnapshot,
   SketchJobStep,
+  SketchLayer,
   SketchProjectData,
   SketchVersionSnapshot,
 } from '../../types/sketch.ts';
@@ -122,6 +125,124 @@ export class DuplicateJobError extends Error {
     this.name = 'DuplicateJobError';
     this.activeJobId = activeJobId;
   }
+}
+
+export function extractBufferFromDataUrl(dataUrl: string): Buffer | null {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return null;
+  const match = dataUrl.match(/^data:image\/[a-zA-Z0-9+.-]+;base64,(.+)$/);
+  if (!match || !match[1]) return null;
+  try {
+    return Buffer.from(match[1], 'base64');
+  } catch {
+    return null;
+  }
+}
+
+async function readAttachmentDataUrl(
+  att?: SketchAttachment,
+  assetsDir?: string
+): Promise<string | undefined> {
+  if (!att) return undefined;
+  if (att.dataUrl) return att.dataUrl;
+  if (!att.filePath || !assetsDir) return undefined;
+
+  const fullPath = path.join(assetsDir, att.filePath);
+  if (!fs.existsSync(fullPath)) return undefined;
+
+  const buf = await fsp.readFile(fullPath);
+  const ext = path.extname(fullPath).replace('.', '').toLowerCase() || 'png';
+  return `data:image/${ext};base64,${buf.toString('base64')}`;
+}
+
+function resolvePlacedImageDataUrl(layers: SketchLayer[]): string | undefined {
+  for (const l of layers) {
+    if (l.type === 'image' && l.visible) {
+      const img = l as import('../../types/sketch.ts').ImageLayer;
+      if (img.imageUrl?.startsWith('data:image/')) {
+        return img.imageUrl;
+      }
+    }
+  }
+  return undefined;
+}
+
+async function resolveProjectAttachmentDataUrl(
+  project: SketchProjectData,
+  assetsDir?: string
+): Promise<string | undefined> {
+  const activeAtt = project.activeReferenceId
+    ? project.attachments.find((a) => a.id === project.activeReferenceId)
+    : undefined;
+  const attDataUrl = await readAttachmentDataUrl(activeAtt, assetsDir);
+  if (attDataUrl) return attDataUrl;
+
+  return resolvePlacedImageDataUrl(project.layers);
+}
+
+async function resolveFallbackReferenceSource(
+  project: SketchProjectData,
+  referenceMode: string,
+  assetsDir?: string
+): Promise<string | undefined> {
+  if (referenceMode === 'sketch') {
+    return await renderCompositeReferenceDataUrl(project);
+  }
+  if (referenceMode === 'identity') {
+    return await resolveProjectAttachmentDataUrl(project, assetsDir);
+  }
+  if (referenceMode === 'composite') {
+    const attUrl = await resolveProjectAttachmentDataUrl(project, assetsDir);
+    const rendered = await renderCompositeReferenceDataUrl(project);
+    return rendered || attUrl;
+  }
+  return undefined;
+}
+
+interface PersistedJobReference {
+  filePath: string;
+  sizeBytes: number;
+  sha256: string;
+  format: string;
+  width: number;
+  height: number;
+}
+
+async function validateAndPersistJobReference(
+  jobsDir: string,
+  jobId: string,
+  dataUrl: string,
+  referenceMode: string
+): Promise<PersistedJobReference> {
+  const buf = extractBufferFromDataUrl(dataUrl);
+  if (!buf || buf.length === 0) {
+    throw new Error(
+      `Imagem de referência visual para o modo "${referenceMode}" possui formato dataUrl inválido ou base64 vazio.`
+    );
+  }
+
+  const validation = await validateAttachmentBuffer(buf);
+  if (!validation.valid) {
+    throw new Error(
+      `Referência visual inválida para o modo "${referenceMode}": ${validation.error}`
+    );
+  }
+
+  await fsp.mkdir(jobsDir, { recursive: true });
+  const ext = validation.format === 'jpeg' ? 'jpg' : validation.format;
+  const refFilename = `ref_${jobId}.${ext}`;
+  const filePath = path.join(jobsDir, refFilename);
+  await fsp.writeFile(filePath, buf);
+
+  const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+
+  return {
+    filePath,
+    sizeBytes: buf.length,
+    sha256,
+    format: validation.format,
+    width: validation.width,
+    height: validation.height,
+  };
 }
 
 export class SketchJobManager {
@@ -243,21 +364,26 @@ export class SketchJobManager {
     if (!files || files.length === 0) return;
     for (const file of files) {
       try {
-        cleanupTemporaryReference(file);
+        if (file && fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
       } catch {
         // Ignorar erros de limpeza secundária
       }
     }
   }
 
-  private createSnapshot(project: SketchProjectData, referenceDataUrl?: string): SketchJobSnapshot {
-    const compiled = prepareSketchCompositeReference(project, {
-      referenceDataUrlOverride: referenceDataUrl,
-    });
-
+  private createSnapshot(
+    project: SketchProjectData,
+    compiled: import('../../types/sketch.ts').SketchGenerationRequest,
+    persistedRef?: PersistedJobReference
+  ): SketchJobSnapshot {
+    const dims = persistedRef ? { width: persistedRef.width, height: persistedRef.height } : undefined;
     return {
       projectId: project.id,
       projectTitle: project.title,
+      originProjectVersion: project.snapshots?.length || 0,
+      originProject: JSON.parse(JSON.stringify(project)),
       briefing: JSON.parse(JSON.stringify(project.briefing || {})),
       copy: JSON.parse(JSON.stringify(project.copy)),
       layers: JSON.parse(JSON.stringify(project.layers)),
@@ -268,6 +394,11 @@ export class SketchJobManager {
       prompt: project.prompt,
       useSketchAsReference: project.useSketchAsReference !== false,
       referenceMode: compiled.referenceMode,
+      referenceKind: compiled.referenceKind,
+      referenceImagePath: persistedRef?.filePath,
+      referenceFileSizeBytes: persistedRef?.sizeBytes,
+      referenceSha256: persistedRef?.sha256,
+      referenceDimensions: dims,
       compositionIntent: compiled.compositionIntent,
       textRenderingStrategy: compiled.textRenderingStrategy,
       compiledPrompt: compiled.preparedPrompt,
@@ -309,8 +440,26 @@ export class SketchJobManager {
       return existing;
     }
 
-    const snapshot = this.createSnapshot(project, params.referenceDataUrl);
+    const compiled = prepareSketchCompositeReference(project, {
+      referenceDataUrlOverride: params.referenceDataUrl,
+    });
+
     const id = `job-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    let persistedRef: PersistedJobReference | undefined;
+
+    if (compiled.referenceMode !== 'none') {
+      const refDataUrl =
+        params.referenceDataUrl ||
+        (await resolveFallbackReferenceSource(project, compiled.referenceMode, this.assetsDir));
+      if (!refDataUrl) {
+        throw new Error(
+          `Referência visual obrigatória ausente para o modo "${compiled.referenceMode}". A geração foi abortada sem fallback silencioso.`
+        );
+      }
+      persistedRef = await validateAndPersistJobReference(this.jobsDir, id, refDataUrl, compiled.referenceMode);
+    }
+
+    const snapshot = this.createSnapshot(project, compiled, persistedRef);
     const now = new Date().toISOString();
 
     const job: SketchJobData = {
@@ -323,7 +472,8 @@ export class SketchJobManager {
       progressPercentage: 5,
       stepMessage: 'Trabalho enfileirado no estúdio Sketch.',
       snapshot,
-      tempFilesToCleanup: [],
+      referenceImagePath: persistedRef?.filePath,
+      tempFilesToCleanup: persistedRef ? [persistedRef.filePath] : [],
       createdAt: now,
       updatedAt: now,
     };
@@ -377,39 +527,6 @@ export class SketchJobManager {
     this.queueProcessing = false;
   }
 
-  private resolveReferenceImage(job: SketchJobData): string | undefined {
-    if (job.snapshot.referenceMode === 'none') return undefined;
-
-    const placedAtt = job.snapshot.attachments?.find(
-      (a) => a.role === 'product' || a.role === 'reference' || a.role === 'composition'
-    );
-
-    if (placedAtt && placedAtt.filePath) {
-      const fullPath = path.join(this.assetsDir, placedAtt.filePath);
-      if (fs.existsSync(fullPath)) {
-        return fullPath;
-      }
-    }
-    return undefined;
-  }
-
-  private prepareJobReference(job: SketchJobData): string | undefined {
-    if (job.snapshot.referenceMode === 'none') return undefined;
-
-    const resolved = this.resolveReferenceImage(job);
-    if (resolved) return resolved;
-
-    const base64Att = job.snapshot.attachments?.find((a) => a.dataUrl?.startsWith('data:image/'));
-    if (base64Att?.dataUrl) {
-      const saved = saveBase64ReferenceImage(base64Att.dataUrl, `ref_${job.id}`);
-      job.tempFilesToCleanup = job.tempFilesToCleanup || [];
-      job.tempFilesToCleanup.push(saved.filePath);
-      return saved.filePath;
-    }
-
-    return undefined;
-  }
-
   private verifyGeneratedFile(filePath: string): { valid: boolean; sizeBytes: number; error?: string } {
     if (!filePath || !fs.existsSync(filePath)) {
       return { valid: false, sizeBytes: 0, error: 'Arquivo gerado não existe no disco.' };
@@ -459,12 +576,14 @@ export class SketchJobManager {
 
     const nextVer = (project.snapshots?.length || 0) + 1;
     const snapId = `snap-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const baseProjectForSnapshot = job.snapshot.originProject || project;
+
     const snapshot: SketchVersionSnapshot = {
       id: snapId,
       versionNumber: nextVer,
       label: `Arte Gerada #${nextVer} (${job.snapshot.providerAspectRatio})`,
       timestamp: new Date().toISOString(),
-      project: JSON.parse(JSON.stringify({ ...project, snapshots: [] })),
+      project: JSON.parse(JSON.stringify({ ...baseProjectForSnapshot, snapshots: [] })),
     };
 
     project.generationHistory = [historyItem, ...(project.generationHistory || [])];
@@ -480,9 +599,26 @@ export class SketchJobManager {
     job.stepMessage = 'Preparando referência e parâmetros visuais.';
     await this.persistJob(job);
 
-    const referenceImage = this.prepareJobReference(job);
-    job.referenceImagePath = referenceImage;
-    return referenceImage;
+    if (job.snapshot.referenceMode === 'none') {
+      return undefined;
+    }
+
+    const refPath = job.referenceImagePath || job.snapshot.referenceImagePath;
+    if (!refPath || !fs.existsSync(refPath)) {
+      throw new Error(
+        `Referência visual obrigatória para o modo "${job.snapshot.referenceMode}" não foi encontrada no disco (${refPath || 'indefinida'}). A geração foi abortada para evitar resultados incorretos.`
+      );
+    }
+
+    const stat = fs.statSync(refPath);
+    if (stat.size === 0) {
+      throw new Error(
+        `Arquivo de referência visual "${path.basename(refPath)}" está vazio (0 bytes). A geração foi abortada para evitar resultados incorretos.`
+      );
+    }
+
+    job.referenceImagePath = refPath;
+    return refPath;
   }
 
   private async waitForLockAndGenerate(
@@ -494,11 +630,12 @@ export class SketchJobManager {
     job.stepMessage = 'Aguardando liberação de lock exclusivo do FlowProvider.';
     await this.persistJob(job);
 
+    const isRefRequired = job.snapshot.referenceMode !== 'none';
     const flowOptions: ImageGenerationOptions = {
-      operation: referenceImage ? 'reference' : 'simple',
+      operation: isRefRequired ? 'reference' : 'simple',
       aspectRatio: job.snapshot.providerAspectRatio,
-      referenceImage,
-      referenceKind: referenceImage ? 'composite' : undefined,
+      referenceImage: isRefRequired ? referenceImage : undefined,
+      referenceKind: isRefRequired ? job.snapshot.referenceKind : undefined,
     };
 
     const provider = await this.getEffectiveFlowProvider();

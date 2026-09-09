@@ -457,6 +457,8 @@ export type SketchJobStep =
 export interface SketchJobSnapshot {
   projectId: string;
   projectTitle: string;
+  originProjectVersion?: number;
+  originProject?: SketchProjectData;
   briefing: SketchBriefingData;
   copy: SketchCopyData;
   layers: SketchLayer[];
@@ -467,6 +469,11 @@ export interface SketchJobSnapshot {
   prompt: string;
   useSketchAsReference: boolean;
   referenceMode: 'none' | 'sketch' | 'identity' | 'composite';
+  referenceKind?: import('@/src/providers/flow/ImageGenerationContract').ImageReferenceKind;
+  referenceImagePath?: string;
+  referenceFileSizeBytes?: number;
+  referenceSha256?: string;
+  referenceDimensions?: { width: number; height: number };
   compositionIntent?: CompositionIntent;
   textRenderingStrategy?: TextRenderingStrategy;
   compiledPrompt: string;

@@ -7,6 +7,7 @@ import {
   SKETCH_SCHEMA_VERSION,
   type BackgroundLayer,
   type ImageLayer,
+  type CompositionIntent,
   type SketchAspectRatio,
   type SketchAttachment,
   type SketchBriefingData,
@@ -17,6 +18,7 @@ import {
   type SketchProjectData,
   type SketchProjectSummary,
   type TextLayer,
+  type TextRenderingStrategy,
 } from '../../types/sketch.ts';
 
 const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -314,6 +316,14 @@ function resolveCollections(obj: Record<string, unknown>, defaultLayers: SketchL
   };
 }
 
+function resolveCompositionIntent(val: unknown): CompositionIntent {
+  return val === 'explore' ? 'explore' : 'follow';
+}
+
+function resolveTextRenderingStrategy(val: unknown): TextRenderingStrategy {
+  return val === 'baked' ? 'baked' : 'layer';
+}
+
 export function createDefaultProject(params?: {
   id?: string;
   title?: string;
@@ -339,6 +349,8 @@ export function createDefaultProject(params?: {
     canvasDimensions: { width: preset.width, height: preset.height, unit: 'px' },
     prompt: 'Modern clean commercial ad photo, vibrant product lighting, aesthetic studio setup, sharp focus.',
     useSketchAsReference: true,
+    compositionIntent: 'follow',
+    textRenderingStrategy: 'layer',
     briefing: {
       schemaVersion: 1,
       version: SKETCH_SCHEMA_VERSION,
@@ -408,6 +420,8 @@ export function normalizeProject(raw: unknown): SketchProjectData {
     useSketchAsReference: obj.useSketchAsReference !== false,
     activeReferenceId: typeof obj.activeReferenceId === 'string' ? obj.activeReferenceId : undefined,
     referenceMode: (obj.referenceMode as SketchProjectData['referenceMode']) || 'none',
+    compositionIntent: resolveCompositionIntent(obj.compositionIntent),
+    textRenderingStrategy: resolveTextRenderingStrategy(obj.textRenderingStrategy),
     briefing: normalizeBriefing(obj.briefing),
     copy: normalizeCopy(obj.copy),
     document: normalizeDocument(obj.document, canvasAspectRatio, cols.layers),
