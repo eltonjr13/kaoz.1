@@ -31,7 +31,9 @@ import {
   type SketchProjectData,
   type SketchTool,
 } from '@/types/sketch';
-import { isJobActive } from '@/lib/sketch/sketch-job-manager';
+import { isJobActive } from '@/lib/sketch/sketch-job-state';
+import { SketchSaveCoordinator, type SaveStatus } from '@/lib/sketch/sketch-save-coordinator';
+import { renderCompositeReferenceDataUrl } from '@/lib/sketch/sketch-exporter';
 import { SketchCanvas } from './sketch-canvas';
 import { SketchCopyEditor } from './sketch-copy-editor';
 import { SketchAttachmentsPanel } from './sketch-attachments-panel';
@@ -46,15 +48,16 @@ import { SketchExportModal } from './sketch-export-modal';
 type LeftTab = 'briefing' | 'copy' | 'referencias';
 type RightTab = 'propriedades' | 'camadas' | 'versoes';
 type CenterViewMode = 'canvas' | 'preview';
-type SaveStatus = 'saved' | 'saving' | 'error';
 
 function SaveStatusIndicator({
   status,
   savedTime,
+  error,
   onRetry,
 }: {
   status: SaveStatus;
   savedTime: string;
+  error?: string | null;
   onRetry: () => void;
 }) {
   if (status === 'saving') {
@@ -68,7 +71,7 @@ function SaveStatusIndicator({
 
   if (status === 'error') {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-rose-400">
+      <div className="flex items-center gap-1.5 text-[11px] text-rose-400" title={error || undefined}>
         <AlertCircle size={13} />
         <span>Falha ao salvar</span>
         <button
@@ -95,6 +98,7 @@ function SketchTopBar({
   canvasRatio,
   saveStatus,
   savedTime,
+  saveError,
   centerView,
   isLeftOpen,
   isRightOpen,
@@ -113,6 +117,7 @@ function SketchTopBar({
   canvasRatio: SketchCanvasAspectRatio;
   saveStatus: SaveStatus;
   savedTime: string;
+  saveError?: string | null;
   centerView: CenterViewMode;
   isLeftOpen: boolean;
   isRightOpen: boolean;
@@ -144,27 +149,26 @@ function SketchTopBar({
         <button
           type="button"
           onClick={onOpenProjectsModal}
-          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          title="Abrir gerenciador de projetos"
+          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+          title="Abrir ou gerenciar projetos"
         >
-          <FolderOpen size={14} className="text-indigo-400" />
+          <FolderOpen size={14} />
           <span className="hidden sm:inline">Projetos</span>
         </button>
 
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
           <input
             type="text"
             value={title}
             onChange={(e) => onUpdateTitle(e.target.value)}
-            className="w-32 sm:w-44 lg:w-48 truncate bg-transparent font-semibold text-white outline-none hover:border-b hover:border-zinc-600 focus:border-b focus:border-indigo-500"
+            className="w-32 sm:w-48 md:w-60 truncate rounded-md bg-transparent px-1.5 py-0.5 font-semibold text-white hover:bg-zinc-800/60 focus:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             title="Clique para renomear o projeto"
           />
         </div>
       </div>
 
-      {/* Formato e Visualização Central */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
+        <div className="hidden lg:flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
           {quickRatios.map((r) => (
             <button
               key={r}
@@ -209,7 +213,6 @@ function SketchTopBar({
         </div>
       </div>
 
-      {/* Estado do Salvamento e Exportação */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {activeJob && isJobActive(activeJob.status) && (
           <button
@@ -223,7 +226,12 @@ function SketchTopBar({
           </button>
         )}
 
-        <SaveStatusIndicator status={saveStatus} savedTime={savedTime} onRetry={onRetrySave} />
+        <SaveStatusIndicator
+          status={saveStatus}
+          savedTime={savedTime}
+          error={saveError}
+          onRetry={onRetrySave}
+        />
 
         <div className="flex items-center gap-1.5">
           <button
@@ -251,6 +259,33 @@ function SketchTopBar({
   );
 }
 
+function SketchEmptyState({ onCreateProject }: { onCreateProject: () => void }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center bg-[#07090e] text-zinc-300 p-6">
+      <div className="flex flex-col items-center max-w-md text-center gap-4">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+          <Pencil size={32} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-xl font-bold text-white">Nenhum projeto encontrado</h2>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Crie seu primeiro projeto para começar a desenhar rascunhos guiados por IA, adicionar
+            briefing, copy e imagens de referência.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCreateProject}
+          className="mt-2 flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg hover:bg-indigo-500 transition-all"
+        >
+          <Plus size={16} />
+          <span>Criar Primeiro Anúncio</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SketchLeftSidebar({
   isOpen,
   activeTab,
@@ -271,13 +306,15 @@ function SketchLeftSidebar({
   if (!isOpen) return null;
 
   return (
-    <aside className="w-[280px] xl:w-[330px] shrink-0 border-r border-zinc-800 bg-[#0d1017] flex flex-col h-full overflow-hidden">
-      <div className="flex border-b border-zinc-800 bg-[#090b10] px-2 py-1.5 gap-1 shrink-0">
+    <aside className="w-80 shrink-0 border-r border-zinc-800 bg-[#0a0d14] flex flex-col h-full overflow-hidden">
+      <div className="flex items-center border-b border-zinc-800 bg-[#0d1017] px-2 pt-2 text-xs font-medium">
         <button
           type="button"
           onClick={() => onSelectTab('briefing')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'briefing' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'briefing'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
           <FileText size={13} />
@@ -286,26 +323,30 @@ function SketchLeftSidebar({
         <button
           type="button"
           onClick={() => onSelectTab('copy')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'copy' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'copy'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          <Sparkles size={13} />
+          <Pencil size={13} />
           <span>Copy</span>
         </button>
         <button
           type="button"
           onClick={() => onSelectTab('referencias')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'referencias' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'referencias'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
           <ImageIcon size={13} />
-          <span>Referências</span>
+          <span>Anexos</span>
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'briefing' && (
           <SketchBriefingPanel
             project={project}
@@ -355,13 +396,15 @@ function SketchRightSidebar({
   if (!isOpen) return null;
 
   return (
-    <aside className="w-[260px] xl:w-[310px] shrink-0 border-l border-zinc-800 bg-[#0d1017] flex flex-col h-full overflow-hidden">
-      <div className="flex border-b border-zinc-800 bg-[#090b10] px-2 py-1.5 gap-1 shrink-0">
+    <aside className="w-80 shrink-0 border-l border-zinc-800 bg-[#0a0d14] flex flex-col h-full overflow-hidden">
+      <div className="flex items-center border-b border-zinc-800 bg-[#0d1017] px-2 pt-2 text-xs font-medium">
         <button
           type="button"
           onClick={() => onSelectTab('propriedades')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'propriedades' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'propriedades'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
           <Sliders size={13} />
@@ -370,8 +413,10 @@ function SketchRightSidebar({
         <button
           type="button"
           onClick={() => onSelectTab('camadas')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'camadas' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'camadas'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
           <Layers size={13} />
@@ -380,8 +425,10 @@ function SketchRightSidebar({
         <button
           type="button"
           onClick={() => onSelectTab('versoes')}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
-            activeTab === 'versoes' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
+            activeTab === 'versoes'
+              ? 'border-indigo-500 text-white font-semibold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
           }`}
         >
           <History size={13} />
@@ -389,7 +436,7 @@ function SketchRightSidebar({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'propriedades' && (
           <SketchPropertiesPanel
             project={project}
@@ -402,14 +449,13 @@ function SketchRightSidebar({
           <SketchLayersPanel
             project={project}
             selectedLayerId={selectedLayerId}
-            onUpdateProject={onUpdateProject}
             onSelectLayer={onSelectLayer}
+            onUpdateProject={onUpdateProject}
           />
         )}
         {activeTab === 'versoes' && (
           <SketchVersionManager
             project={project}
-            onUpdateProject={onUpdateProject}
             onRestoreProject={onRestoreProject}
           />
         )}
@@ -418,33 +464,7 @@ function SketchRightSidebar({
   );
 }
 
-function SketchEmptyState({
-  onCreateProject,
-}: {
-  onCreateProject: () => void;
-}) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-[#07090e] p-6 text-center text-white">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 mb-4">
-        <Pencil size={32} />
-      </div>
-      <h2 className="text-xl font-bold">Nenhum projeto encontrado</h2>
-      <p className="max-w-md text-sm text-zinc-400 mt-2 mb-6">
-        Crie seu primeiro anúncio estático com IA. Utilize a prancheta de composição, gere copies de alta conversão e exporte artes completas.
-      </p>
-      <button
-        type="button"
-        onClick={onCreateProject}
-        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white shadow-lg hover:bg-indigo-500 transition-all"
-      >
-        <Plus size={16} />
-        <span>Criar Primeiro Projeto</span>
-      </button>
-    </div>
-  );
-}
-
-const ACTIVE_PROJECT_KEY = 'kaoz1:sketch:active-project-id';
+const ACTIVE_PROJECT_KEY = 'kaoz_active_sketch_project_id';
 
 function resolveTargetProjectId(projects: Array<{ id: string }>): string {
   try {
@@ -481,6 +501,7 @@ async function fetchActiveJobForProject(projectId: string): Promise<SketchJobDat
 async function pollJobById(jobId: string): Promise<SketchJobData | null> {
   try {
     const res = await fetch(`/api/sketch/jobs/${jobId}`);
+    if (!res.ok) return null;
     const data = await res.json();
     return data.success && data.job ? data.job : null;
   } catch {
@@ -505,7 +526,7 @@ async function cancelJobById(jobId: string): Promise<SketchJobData | null> {
 async function submitGenerateJob(
   projectId: string,
   referenceDataUrl?: string
-): Promise<{ success: boolean; job?: SketchJobData; activeJobId?: string }> {
+): Promise<{ success: boolean; job?: SketchJobData; activeJobId?: string; error?: string }> {
   try {
     const res = await fetch('/api/sketch/generate', {
       method: 'POST',
@@ -521,29 +542,37 @@ async function submitGenerateJob(
       return { success: true, job: data.job };
     }
     if (data.duplicate && data.activeJobId) {
-      return { success: false, activeJobId: data.activeJobId };
+      return { success: false, activeJobId: data.activeJobId, error: 'Trabalho já em andamento para este projeto' };
     }
-    return { success: false };
-  } catch {
-    return { success: false };
+    return { success: false, error: data.error || 'Falha ao iniciar geração' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erro de conexão ao iniciar geração';
+    return { success: false, error: msg };
   }
 }
 
 async function handleJobPollTick(
   activeJobId: string,
-  projectId: string | undefined,
+  currentProjectId: string | undefined,
   onJobUpdate: (job: SketchJobData) => void,
-  onProjectRefresh: (proj: SketchProjectData) => void
+  onMergeVersionMetadata: (proj: SketchProjectData) => void
 ): Promise<boolean> {
   const updated = await pollJobById(activeJobId);
   if (!updated) return false;
+
+  // Proteção contra respostas de outro projeto
+  if (currentProjectId && updated.projectId !== currentProjectId) {
+    return true; // Encerra o polling para este job no contexto do projeto atual
+  }
+
   onJobUpdate(updated);
+
   if (!isJobActive(updated.status)) {
-    if (updated.status === 'completed' && projectId) {
-      const pRes = await fetch(`/api/sketch/projects/${projectId}`);
+    if (updated.status === 'completed' && currentProjectId === updated.projectId) {
+      const pRes = await fetch(`/api/sketch/projects/${currentProjectId}`);
       const pData = await pRes.json();
       if (pData.success && pData.project) {
-        onProjectRefresh(pData.project);
+        onMergeVersionMetadata(pData.project);
       }
     }
     return true;
@@ -573,10 +602,6 @@ async function applyResultBackground(
   }
 }
 
-function hasNoProject(project: SketchProjectData | null, isEmpty: boolean): boolean {
-  return isEmpty || !project;
-}
-
 function SketchLoadingState() {
   return (
     <div className="flex h-full w-full items-center justify-center bg-[#07090e] text-zinc-400 gap-2">
@@ -601,15 +626,15 @@ interface SketchCenterAreaProps {
   strokeSize: number;
   boxLabel: string;
   onUpdateProject: (updater: (prev: SketchProjectData) => SketchProjectData) => void;
-  onSelectLayer: (id: string | null) => void;
+  onSelectLayer: (layerId: string | null) => void;
   setActiveTool: (tool: SketchTool) => void;
   setStrokeColor: (color: string) => void;
   setStrokeSize: (size: number) => void;
   setBoxLabel: (label: string) => void;
   onSaveLayers: (layers?: SketchLayer[]) => void;
-  onGenerateFlowImage: (referenceDataUrl?: string) => Promise<void>;
-  onCancelJob: (jobId: string) => Promise<void>;
-  onApplyResult: (imageUrl: string, flowPath?: string) => Promise<void>;
+  onGenerateFlowImage: (referenceDataUrl?: string) => void;
+  onCancelJob: (jobId: string) => void;
+  onApplyResult: (imageUrl: string, flowPath?: string) => void;
 }
 
 function SketchCenterArea({
@@ -637,11 +662,10 @@ function SketchCenterArea({
     return (
       <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
         <SketchCanvas
-          key={project.id}
           project={project}
-          onUpdateProject={onUpdateProject}
           selectedLayerId={selectedLayerId}
           onSelectLayer={onSelectLayer}
+          onUpdateProject={onUpdateProject}
           activeTool={activeTool}
           setActiveTool={setActiveTool}
           strokeColor={strokeColor}
@@ -666,8 +690,8 @@ function SketchCenterArea({
         onGenerateFlowImage={onGenerateFlowImage}
         onCancelJob={onCancelJob}
         onApplyResult={onApplyResult}
-        onCreateVariation={() => onGenerateFlowImage()}
-        onRetryGeneration={() => onGenerateFlowImage()}
+        onCreateVariation={(refUrl) => onGenerateFlowImage(refUrl)}
+        onRetryGeneration={(refUrl) => onGenerateFlowImage(refUrl)}
       />
     </main>
   );
@@ -680,6 +704,8 @@ export function SketchDashboard() {
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [savedTime, setSavedTime] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
@@ -700,12 +726,44 @@ export function SketchDashboard() {
   const [activeJob, setActiveJob] = useState<SketchJobData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const coordinatorRef = useRef<SketchSaveCoordinator | null>(null);
+  if (!coordinatorRef.current) {
+    coordinatorRef.current = new SketchSaveCoordinator(
+      async (toSave) => {
+        try {
+          const res = await fetch(`/api/sketch/projects/${toSave.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(toSave),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Erro ao salvar no servidor');
+          }
+          setSavedTime(new Date().toLocaleTimeString('pt-BR'));
+          return true;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Falha de conexão ao salvar';
+          setSaveError(msg);
+          return false;
+        }
+      },
+      {
+        onStatusChange: (status, err) => {
+          setSaveStatus(status);
+          setSaveError(err || null);
+        },
+      }
+    );
+  }
+  const coordinator = coordinatorRef.current;
+
   useEffect(() => {
     if (!project?.id) return;
     let cancelled = false;
 
     fetchActiveJobForProject(project.id).then((job) => {
-      if (!cancelled && job) {
+      if (!cancelled && job && job.projectId === project.id) {
         setActiveJob(job);
         setIsGenerating(isJobActive(job.status));
       }
@@ -716,8 +774,25 @@ export function SketchDashboard() {
     };
   }, [project?.id]);
 
+  const handleMergeJobCompletionMetadata = useCallback((serverProject: SketchProjectData) => {
+    setProject((current) => {
+      if (!current || current.id !== serverProject.id) return current;
+      return {
+        ...current,
+        generationHistory: serverProject.generationHistory || current.generationHistory,
+        snapshots: serverProject.snapshots || current.snapshots,
+      };
+    });
+  }, []);
+
   useEffect(() => {
     if (!activeJob || !isJobActive(activeJob.status)) {
+      setIsGenerating(false);
+      return;
+    }
+
+    if (project?.id && activeJob.projectId !== project.id) {
+      setActiveJob(null);
       setIsGenerating(false);
       return;
     }
@@ -728,35 +803,13 @@ export function SketchDashboard() {
         activeJob.id,
         project?.id,
         setActiveJob,
-        setProject
+        handleMergeJobCompletionMetadata
       );
       if (finished) setIsGenerating(false);
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [activeJob?.id, activeJob?.status, project?.id]);
-
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingProjectRef = useRef<SketchProjectData | null>(null);
-
-  const persistToBackend = useCallback(async (toSave: SketchProjectData) => {
-    setSaveStatus('saving');
-    try {
-      const res = await fetch(`/api/sketch/projects/${toSave.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toSave),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Erro ao persistir');
-      }
-      setSaveStatus('saved');
-      setSavedTime(new Date().toLocaleTimeString('pt-BR'));
-    } catch {
-      setSaveStatus('error');
-    }
-  }, []);
+  }, [activeJob?.id, activeJob?.status, activeJob?.projectId, project?.id, handleMergeJobCompletionMetadata]);
 
   const handleUpdateProject = useCallback(
     (updater: (prev: SketchProjectData) => SketchProjectData) => {
@@ -764,17 +817,11 @@ export function SketchDashboard() {
         if (!prev) return prev;
         const next = updater(prev);
         const updated = { ...next, updatedAt: new Date().toISOString() };
-        pendingProjectRef.current = updated;
-
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => {
-          persistToBackend(updated);
-        }, 700);
-
+        coordinator.registerEdit(updated);
         return updated;
       });
     },
-    [persistToBackend]
+    [coordinator]
   );
 
   const loadInitialProject = useCallback(async () => {
@@ -792,8 +839,10 @@ export function SketchDashboard() {
       const pRes = await fetch(`/api/sketch/projects/${targetId}`);
       const pData = await pRes.json();
       if (pData.success && pData.project) {
+        coordinator.reset(0);
         setProject(pData.project);
         setIsEmpty(false);
+        setSaveStatus('saved');
         storeActiveProjectId(pData.project.id);
       } else {
         setIsEmpty(true);
@@ -803,7 +852,7 @@ export function SketchDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [coordinator]);
 
   useEffect(() => {
     loadInitialProject();
@@ -817,17 +866,19 @@ export function SketchDashboard() {
 
   useEffect(() => {
     const flushPending = () => {
-      if (pendingProjectRef.current) {
-        const payload = JSON.stringify(pendingProjectRef.current);
-        try {
-          fetch(`/api/sketch/projects/${pendingProjectRef.current.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload,
-            keepalive: true,
-          }).catch(() => {});
-        } catch {
-          // Ignore
+      if (coordinator.isDirty()) {
+        const pending = coordinator.getPendingRevision();
+        if (pending) {
+          try {
+            fetch(`/api/sketch/projects/${pending.project.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(pending.project),
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            // Ignore
+          }
         }
       }
     };
@@ -837,31 +888,45 @@ export function SketchDashboard() {
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
+      coordinator.clearTimer();
       flushPending();
     };
-  }, []);
+  }, [coordinator]);
 
   const handleOpenProject = async (id: string) => {
-    if (pendingProjectRef.current) {
-      await persistToBackend(pendingProjectRef.current);
+    if (project && project.id === id) return;
+
+    if (coordinator.isDirty()) {
+      await coordinator.flushSave();
     }
+    coordinator.cancelPendingSave();
+
     try {
       const res = await fetch(`/api/sketch/projects/${id}`);
       const data = await res.json();
       if (data.success && data.project) {
+        coordinator.reset(0);
         setProject(data.project);
         setSaveStatus('saved');
+        setSaveError(null);
+        setGenerationError(null);
         storeActiveProjectId(id);
+
+        const job = await fetchActiveJobForProject(id);
+        setActiveJob(job);
+        setIsGenerating(isJobActive(job?.status));
       }
     } catch {
-      // Ignorar erro ao abrir
+      setSaveError('Erro ao abrir o projeto selecionado.');
     }
   };
 
   const handleCreateNewProject = async (title: string, ratio: SketchAspectRatio) => {
+    if (coordinator.isDirty()) {
+      await coordinator.flushSave();
+    }
+    coordinator.cancelPendingSave();
+
     const res = await fetch('/api/sketch/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -869,9 +934,14 @@ export function SketchDashboard() {
     });
     const data = await res.json();
     if (data.success && data.project) {
+      coordinator.reset(0);
       setProject(data.project);
       setIsEmpty(false);
       setSaveStatus('saved');
+      setSaveError(null);
+      setGenerationError(null);
+      setActiveJob(null);
+      setIsGenerating(false);
       storeActiveProjectId(data.project.id);
     }
   };
@@ -888,18 +958,41 @@ export function SketchDashboard() {
   };
 
   const handleDeleteProject = async (id: string) => {
+    coordinator.cancelPendingSave();
     await fetch(`/api/sketch/projects/${id}`, { method: 'DELETE' });
     if (project && project.id === id) {
       await loadInitialProject();
     }
   };
 
-  const handleGenerateFlowImage = async (referenceDataUrl?: string) => {
+  const handleGenerateFlowImage = async (referenceDataUrlOverride?: string) => {
     if (!project || isGenerating) return;
+    setGenerationError(null);
+
+    setSaveStatus('saving');
+    const saveResult = await coordinator.flushSave();
+    if (!saveResult.success) {
+      setSaveStatus('error');
+      setGenerationError(
+        `Falha ao salvar o projeto antes da geração: ${saveResult.error || 'Erro de conexão'}. A geração foi abortada para proteger seu trabalho.`
+      );
+      return;
+    }
+
+    setSaveStatus('saved');
     setIsGenerating(true);
     setCenterView('preview');
 
-    const res = await submitGenerateJob(project.id, referenceDataUrl);
+    let refUrl = referenceDataUrlOverride;
+    if (!refUrl && project.useSketchAsReference !== false) {
+      try {
+        refUrl = await renderCompositeReferenceDataUrl(project);
+      } catch {
+        // Fallback gracioso
+      }
+    }
+
+    const res = await submitGenerateJob(project.id, refUrl);
     if (res.success && res.job) {
       setActiveJob(res.job);
     } else if (res.activeJobId) {
@@ -907,6 +1000,7 @@ export function SketchDashboard() {
       if (active) setActiveJob(active);
     } else {
       setIsGenerating(false);
+      setGenerationError(res.error || 'Falha ao iniciar trabalho de geração no servidor.');
     }
   };
 
@@ -920,25 +1014,29 @@ export function SketchDashboard() {
 
   const handleApplyResultAsBackground = async (imageUrl: string, flowPath?: string) => {
     if (!project) return;
+    coordinator.cancelPendingSave();
+
     const updated = await applyResultBackground(project.id, imageUrl, flowPath);
     if (updated) {
+      coordinator.reset(0);
       setProject(updated);
+      setSaveStatus('saved');
+      setSaveError(null);
       setCenterView('canvas');
+    } else {
+      setSaveError('Falha ao aplicar imagem como fundo.');
     }
   };
 
   const handleSaveLayers = useCallback(
     (layers?: SketchLayer[]) => {
       if (!project) return;
-      const toSave = {
-        ...project,
-        layers: layers || project.layers,
-        updatedAt: new Date().toISOString(),
-      };
-      setProject(toSave);
-      persistToBackend(toSave);
+      handleUpdateProject((prev) => ({
+        ...prev,
+        layers: layers || prev.layers,
+      }));
     },
-    [project, persistToBackend]
+    [handleUpdateProject, project]
   );
 
   const handleUpdateRatio = useCallback(
@@ -954,10 +1052,13 @@ export function SketchDashboard() {
     [handleUpdateProject]
   );
 
-  const handleRetrySave = useCallback(() => {
-    const toSave = pendingProjectRef.current || project;
-    if (toSave) persistToBackend(toSave);
-  }, [project, persistToBackend]);
+  const handleRetrySave = useCallback(async () => {
+    setSaveStatus('saving');
+    const res = await coordinator.flushSave();
+    if (!res.success) {
+      setSaveStatus('error');
+    }
+  }, [coordinator]);
 
   if (isLoading) {
     return <SketchLoadingState />;
@@ -974,6 +1075,7 @@ export function SketchDashboard() {
         canvasRatio={getProjectCanvasRatio(project)}
         saveStatus={saveStatus}
         savedTime={savedTime}
+        saveError={saveError}
         centerView={centerView}
         isLeftOpen={isLeftOpen}
         isRightOpen={isRightOpen}
@@ -988,6 +1090,22 @@ export function SketchDashboard() {
         onRetrySave={handleRetrySave}
         onOpenExportModal={() => setIsExportModalOpen(true)}
       />
+
+      {generationError && (
+        <div className="flex items-center justify-between gap-2 bg-rose-950/90 border-b border-rose-800 px-4 py-2 text-xs text-rose-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={15} className="text-rose-400 shrink-0" />
+            <span>{generationError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGenerationError(null)}
+            className="text-rose-400 hover:text-rose-200 text-xs underline font-medium"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <SketchLeftSidebar
