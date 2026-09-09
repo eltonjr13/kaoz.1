@@ -1,0 +1,75 @@
+{
+  "collection": "Kaoz.1 Sonic Identity — Dark Tech",
+  "version": "1.0.0",
+  "author": "Kaoz.1",
+  "generatedOn": "2026-09-09",
+  "method": "Sintese procedural original e deterministica",
+  "generator": "scripts/generate-ui-sounds.mjs",
+  "generatorVersion": "1.0.0",
+  "thirdPartySamples": false,
+  "license": "Proprietary — Kaoz.1",
+  "format": {
+    "container": "WAV",
+    "encoding": "PCM signed 16-bit",
+    "sampleRate": 48000,
+    "channels": 2
+  },
+  "files": [
+    {
+      "name": "send.wav",
+      "event": "send",
+      "description": "Pulso curto para confirmar o envio de uma acao.",
+      "durationMs": 140,
+      "sha256": "e3a828bbf96dc4091aabfb954273de52c6cf8b495c6615e667531192317452fa"
+    },
+    {
+      "name": "receive.wav",
+      "event": "receive",
+      "description": "Duas notas leves para indicar uma nova resposta.",
+      "durationMs": 260,
+      "sha256": "9dcc51eadfca58c38270c44d4cb1ab74d7d042bef30699ca147cff3000255b72"
+    },
+    {
+      "name": "success.wav",
+      "event": "success",
+      "description": "Acorde ascendente para uma operacao concluida.",
+      "durationMs": 460,
+      "sha256": "6424f6d37acdf34d4a8ce20a4b5a213df367d0d9514100c562c4488c4591db36"
+    },
+    {
+      "name": "attention.wav",
+      "event": "attention",
+      "description": "Dois pulsos para uma decisao ou aprovacao pendente.",
+      "durationMs": 500,
+      "sha256": "df2df73c80816102e9bbfedc29b2e6dee9869aefa005dc7f83a88bb3e978446f"
+    },
+    {
+      "name": "error.wav",
+      "event": "error",
+      "description": "Impacto grave e amortecido para uma falha definitiva.",
+      "durationMs": 340,
+      "sha256": "c1a564202681983af3332fac2821dec19dc9854465f4146597af6744f0a13cfa"
+    },
+    {
+      "name": "mic-on.wav",
+      "event": "mic.on",
+      "description": "Varredura ascendente para o inicio da captura de voz.",
+      "durationMs": 200,
+      "sha256": "c74a8c8fd8259dd7632f4c536b817923d36a7afa2700466f4c574f41925e2246"
+    },
+    {
+      "name": "mic-off.wav",
+      "event": "mic.off",
+      "description": "Varredura descendente para o fim da captura de voz.",
+      "durationMs": 200,
+      "sha256": "c6bc999e6bbc9fae58ec2cf5ecf5dc8bccfb6d7ddabb0ea2925f053553498b0f"
+    },
+    {
+      "name": "task-complete.wav",
+      "event": "task.complete",
+      "description": "Assinatura sonora para o encerramento de tarefas importantes.",
+      "durationMs": 720,
+      "sha256": "40d027d527e1883ae3db9082c866e99a0615a1a35668df0d08e9c7f6147e9dbf"
+    }
+  ]
+}
