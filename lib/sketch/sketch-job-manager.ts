@@ -100,6 +100,7 @@ export interface FlowImageProviderContract {
 export interface SketchJobManagerOptions {
   jobsDir?: string;
   assetsDir?: string;
+  projectsDir?: string;
   flowProvider?: FlowImageProviderContract;
 }
 
@@ -122,6 +123,7 @@ export class DuplicateJobError extends Error {
 export class SketchJobManager {
   private jobsDir: string;
   private assetsDir: string;
+  private projectsDir?: string;
   private flowProvider?: FlowImageProviderContract;
   private activeJobsMap = new Map<string, SketchJobData>();
   private queueProcessing = false;
@@ -130,6 +132,7 @@ export class SketchJobManager {
   constructor(options?: SketchJobManagerOptions) {
     this.jobsDir = options?.jobsDir || getSketchJobsDir();
     this.assetsDir = options?.assetsDir || getSketchAssetsDir();
+    this.projectsDir = options?.projectsDir;
     this.flowProvider = options?.flowProvider;
   }
 
@@ -291,7 +294,7 @@ export class SketchJobManager {
   }
 
   public async enqueueJob(params: EnqueueSketchJobParams): Promise<SketchJobData> {
-    const project = await getProject(params.projectId);
+    const project = await getProject(params.projectId, this.projectsDir);
     if (!project) {
       throw new Error(`Projeto não encontrado: "${params.projectId}"`);
     }
@@ -433,7 +436,7 @@ export class SketchJobManager {
     job: SketchJobData,
     result: SketchJobResult
   ): Promise<{ versionNumber: number; snapshotId: string }> {
-    const project = await getProject(projectId);
+    const project = await getProject(projectId, this.projectsDir);
     if (!project) {
       return { versionNumber: 1, snapshotId: `snap-${Date.now()}` };
     }
@@ -462,7 +465,7 @@ export class SketchJobManager {
 
     project.generationHistory = [historyItem, ...(project.generationHistory || [])];
     project.snapshots = [snapshot, ...(project.snapshots || [])];
-    await saveProject(project);
+    await saveProject(project, this.projectsDir, this.assetsDir);
 
     return { versionNumber: nextVer, snapshotId: snapId };
   }
@@ -605,7 +608,7 @@ export class SketchJobManager {
     imageUrl: string,
     flowMediaPath?: string
   ): Promise<SketchProjectData> {
-    const project = await getProject(projectId);
+    const project = await getProject(projectId, this.projectsDir);
     if (!project) {
       throw new Error(`Projeto não encontrado: "${projectId}"`);
     }
@@ -625,7 +628,7 @@ export class SketchJobManager {
     });
 
     project.layers = updatedLayers;
-    return await saveProject(project);
+    return await saveProject(project, this.projectsDir, this.assetsDir);
   }
 }
 

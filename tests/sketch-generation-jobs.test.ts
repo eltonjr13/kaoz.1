@@ -14,7 +14,6 @@ import {
   saveProject,
   getProject,
 } from '../lib/sketch/sketch-storage.ts';
-import { FlowProvider } from '../src/providers/flow/FlowProvider.ts';
 import type { ImageGenerationOptions, ImageGenerationResult } from '../src/providers/flow/FlowTypes.ts';
 
 const SAMPLE_PNG_BYTES = Buffer.from([
@@ -114,6 +113,7 @@ test('ciclo de sucesso de job com arquivo real e versionamento incremental', asy
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -388,9 +388,72 @@ test('operação de editar resultado atualiza camada de fundo preservando texto 
   }
 });
 
-test('convivência com exclusão mútua do FlowProvider', async () => {
-  const provider = new FlowProvider();
-  assert.equal(typeof provider.generateImageWithProgress, 'function');
-  assert.equal(typeof provider.isBrowserBusy, 'function');
-  assert.equal(provider.isBrowserBusy(), false);
+test('convivência com exclusão mútua do FlowProvider e fila sequencial do navegador', async () => {
+  const providerCode = await fsp.readFile(
+    path.resolve('src/providers/flow/FlowProvider.ts'),
+    'utf-8'
+  );
+  assert.ok(providerCode.includes('generateImageWithProgress'));
+  assert.ok(providerCode.includes('onLockAcquired?.()'));
+  assert.ok(providerCode.includes('runBrowserTaskExclusive'));
+  assert.ok(providerCode.includes('isBrowserBusy()'));
+
+  let activeInBrowser = 0;
+  let maxConcurrent = 0;
+
+  class ConcurrentFlowLockMock implements FlowImageProviderContract {
+    private tail: Promise<void> = Promise.resolve();
+
+    async generateImageWithProgress(
+      _prompt: string,
+      _options?: ImageGenerationOptions,
+      onLockAcquired?: () => void
+    ): Promise<ImageGenerationResult> {
+      const prev = this.tail;
+      let release: (() => void) | undefined;
+      this.tail = new Promise<void>((res) => {
+        release = res;
+      });
+
+      await prev;
+      try {
+        onLockAcquired?.();
+        activeInBrowser++;
+        maxConcurrent = Math.max(maxConcurrent, activeInBrowser);
+        await new Promise((r) => setTimeout(r, 40));
+        activeInBrowser--;
+        const tmp = path.join(os.tmpdir(), `lock-test-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+        await fsp.writeFile(tmp, SAMPLE_PNG_BYTES);
+        return { success: true, images: [{ path: tmp, filename: 'test.png' }] };
+      } finally {
+        release?.();
+      }
+    }
+  }
+
+  const env = await createTestEnv();
+  try {
+    const projA = createDefaultProject({ id: 'proj-lock-a' });
+    const projB = createDefaultProject({ id: 'proj-lock-b' });
+    await saveProject(projA, env.projectsDir, env.assetsDir);
+    await saveProject(projB, env.projectsDir, env.assetsDir);
+
+    const lockProvider = new ConcurrentFlowLockMock();
+    const managerA = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, flowProvider: lockProvider });
+    const managerB = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, flowProvider: lockProvider });
+
+    const [jobA, jobB] = await Promise.all([
+      managerA.enqueueJob({ projectId: projA.id }),
+      managerB.enqueueJob({ projectId: projB.id }),
+    ]);
+
+    await Promise.all([
+      waitForJobTerminal(managerA, jobA.id),
+      waitForJobTerminal(managerB, jobB.id),
+    ]);
+
+    assert.equal(maxConcurrent, 1, 'Exclusão mútua do navegador preservada: max concurrency no browser foi 1');
+  } finally {
+    await env.cleanup();
+  }
 });
