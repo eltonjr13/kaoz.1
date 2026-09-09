@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Pencil,
   FolderOpen,
@@ -12,7 +12,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Eye,
   Sparkles,
   Layers,
   FileText,
@@ -89,6 +88,31 @@ function SaveStatusIndicator({
     <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
       <CheckCircle2 size={13} />
       <span>Salvo {savedTime ? `(${savedTime})` : ''}</span>
+    </div>
+  );
+}
+
+function GenerationErrorBanner({
+  error,
+  onDismiss,
+}: {
+  error: string | null;
+  onDismiss: () => void;
+}) {
+  if (!error) return null;
+  return (
+    <div className="flex items-center justify-between gap-2 bg-rose-950/90 border-b border-rose-800 px-4 py-2 text-xs text-rose-200 shrink-0">
+      <div className="flex items-center gap-2">
+        <AlertCircle size={15} className="text-rose-400 shrink-0" />
+        <span>{error}</span>
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-rose-400 hover:text-rose-200 text-xs underline font-medium"
+      >
+        Fechar
+      </button>
     </div>
   );
 }
@@ -560,9 +584,8 @@ async function handleJobPollTick(
   const updated = await pollJobById(activeJobId);
   if (!updated) return false;
 
-  // Proteção contra respostas de outro projeto
   if (currentProjectId && updated.projectId !== currentProjectId) {
-    return true; // Encerra o polling para este job no contexto do projeto atual
+    return true;
   }
 
   onJobUpdate(updated);
@@ -697,6 +720,172 @@ function SketchCenterArea({
   );
 }
 
+function createSaveCoordinator(
+  setSaveStatus: (s: SaveStatus) => void,
+  setSaveError: (e: string | null) => void,
+  setSavedTime: (t: string) => void
+): SketchSaveCoordinator {
+  return new SketchSaveCoordinator(
+    async (toSave) => {
+      try {
+        const res = await fetch(`/api/sketch/projects/${toSave.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(toSave),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Erro ao salvar no servidor');
+        }
+        setSavedTime(new Date().toLocaleTimeString('pt-BR'));
+        return true;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Falha de conexão ao salvar';
+        setSaveError(msg);
+        return false;
+      }
+    },
+    {
+      onStatusChange: (status, err) => {
+        setSaveStatus(status);
+        setSaveError(err || null);
+      },
+    }
+  );
+}
+
+async function resolveGenerationReferenceUrl(
+  project: SketchProjectData,
+  override?: string
+): Promise<string | undefined> {
+  if (override) return override;
+  if (project.useSketchAsReference === false) return undefined;
+  try {
+    return await renderCompositeReferenceDataUrl(project);
+  } catch {
+    return undefined;
+  }
+}
+
+async function handleSubmissionOutcome(
+  res: { success: boolean; job?: SketchJobData; activeJobId?: string; error?: string },
+  setActiveJob: (job: SketchJobData | null) => void,
+  setIsGenerating: (g: boolean) => void,
+  setGenerationError: (err: string | null) => void
+): Promise<void> {
+  if (res.success && res.job) {
+    setActiveJob(res.job);
+    return;
+  }
+  if (res.activeJobId) {
+    const active = await pollJobById(res.activeJobId);
+    if (active) setActiveJob(active);
+    return;
+  }
+  setIsGenerating(false);
+  setGenerationError(res.error || 'Falha ao iniciar trabalho de geração no servidor.');
+}
+
+async function openProjectById(
+  id: string,
+  coordinator: SketchSaveCoordinator,
+  setProject: (p: SketchProjectData) => void,
+  setActiveJob: (j: SketchJobData | null) => void,
+  setIsGenerating: (g: boolean) => void,
+  setSaveError: (e: string | null) => void,
+  setGenerationError: (e: string | null) => void
+): Promise<void> {
+  if (coordinator.isDirty()) {
+    await coordinator.flushSave();
+  }
+  coordinator.cancelPendingSave();
+
+  try {
+    const res = await fetch(`/api/sketch/projects/${id}`);
+    const data = await res.json();
+    if (data.success && data.project) {
+      coordinator.reset(0);
+      setProject(data.project);
+      setSaveError(null);
+      setGenerationError(null);
+      storeActiveProjectId(id);
+
+      const job = await fetchActiveJobForProject(id);
+      setActiveJob(job);
+      setIsGenerating(isJobActive(job?.status));
+    }
+  } catch {
+    setSaveError('Erro ao abrir o projeto selecionado.');
+  }
+}
+
+async function createNewProjectOnBackend(
+  title: string,
+  ratio: SketchAspectRatio,
+  coordinator: SketchSaveCoordinator,
+  setProject: (p: SketchProjectData) => void,
+  setIsEmpty: (e: boolean) => void,
+  setSaveError: (e: string | null) => void,
+  setGenerationError: (e: string | null) => void
+): Promise<void> {
+  if (coordinator.isDirty()) {
+    await coordinator.flushSave();
+  }
+  coordinator.cancelPendingSave();
+
+  const res = await fetch('/api/sketch/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, aspectRatio: ratio }),
+  });
+  const data = await res.json();
+  if (data.success && data.project) {
+    coordinator.reset(0);
+    setProject(data.project);
+    setIsEmpty(false);
+    setSaveError(null);
+    setGenerationError(null);
+    storeActiveProjectId(data.project.id);
+  }
+}
+
+async function applyResultBackgroundToProject(
+  projectId: string,
+  imageUrl: string,
+  flowPath: string | undefined,
+  coordinator: SketchSaveCoordinator,
+  setProject: (p: SketchProjectData) => void,
+  setCenterView: (v: CenterViewMode) => void,
+  setSaveError: (e: string | null) => void
+): Promise<void> {
+  coordinator.cancelPendingSave();
+  const updated = await applyResultBackground(projectId, imageUrl, flowPath);
+  if (updated) {
+    coordinator.reset(0);
+    setProject(updated);
+    setSaveError(null);
+    setCenterView('canvas');
+  } else {
+    setSaveError('Falha ao aplicar imagem como fundo.');
+  }
+}
+
+function flushPendingToBackend(coordinator: SketchSaveCoordinator) {
+  if (!coordinator.isDirty()) return;
+  const pending = coordinator.getPendingRevision();
+  if (!pending) return;
+  try {
+    fetch(`/api/sketch/projects/${pending.project.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pending.project),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // Ignore
+  }
+}
+
 export function SketchDashboard() {
   const [project, setProject] = useState<SketchProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -721,42 +910,14 @@ export function SketchDashboard() {
 
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExporting] = useState(false);
 
   const [activeJob, setActiveJob] = useState<SketchJobData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const coordinatorRef = useRef<SketchSaveCoordinator | null>(null);
-  if (!coordinatorRef.current) {
-    coordinatorRef.current = new SketchSaveCoordinator(
-      async (toSave) => {
-        try {
-          const res = await fetch(`/api/sketch/projects/${toSave.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(toSave),
-          });
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Erro ao salvar no servidor');
-          }
-          setSavedTime(new Date().toLocaleTimeString('pt-BR'));
-          return true;
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Falha de conexão ao salvar';
-          setSaveError(msg);
-          return false;
-        }
-      },
-      {
-        onStatusChange: (status, err) => {
-          setSaveStatus(status);
-          setSaveError(err || null);
-        },
-      }
-    );
-  }
-  const coordinator = coordinatorRef.current;
+  const [coordinator] = useState(() =>
+    createSaveCoordinator(setSaveStatus, setSaveError, setSavedTime)
+  );
 
   useEffect(() => {
     if (!project?.id) return;
@@ -865,85 +1026,39 @@ export function SketchDashboard() {
   }, []);
 
   useEffect(() => {
-    const flushPending = () => {
-      if (coordinator.isDirty()) {
-        const pending = coordinator.getPendingRevision();
-        if (pending) {
-          try {
-            fetch(`/api/sketch/projects/${pending.project.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(pending.project),
-              keepalive: true,
-            }).catch(() => {});
-          } catch {
-            // Ignore
-          }
-        }
-      }
-    };
-
-    const handleBeforeUnload = () => flushPending();
+    const handleBeforeUnload = () => flushPendingToBackend(coordinator);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       coordinator.clearTimer();
-      flushPending();
+      flushPendingToBackend(coordinator);
     };
   }, [coordinator]);
 
   const handleOpenProject = async (id: string) => {
     if (project && project.id === id) return;
-
-    if (coordinator.isDirty()) {
-      await coordinator.flushSave();
-    }
-    coordinator.cancelPendingSave();
-
-    try {
-      const res = await fetch(`/api/sketch/projects/${id}`);
-      const data = await res.json();
-      if (data.success && data.project) {
-        coordinator.reset(0);
-        setProject(data.project);
-        setSaveStatus('saved');
-        setSaveError(null);
-        setGenerationError(null);
-        storeActiveProjectId(id);
-
-        const job = await fetchActiveJobForProject(id);
-        setActiveJob(job);
-        setIsGenerating(isJobActive(job?.status));
-      }
-    } catch {
-      setSaveError('Erro ao abrir o projeto selecionado.');
-    }
+    await openProjectById(
+      id,
+      coordinator,
+      setProject,
+      setActiveJob,
+      setIsGenerating,
+      setSaveError,
+      setGenerationError
+    );
   };
 
   const handleCreateNewProject = async (title: string, ratio: SketchAspectRatio) => {
-    if (coordinator.isDirty()) {
-      await coordinator.flushSave();
-    }
-    coordinator.cancelPendingSave();
-
-    const res = await fetch('/api/sketch/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, aspectRatio: ratio }),
-    });
-    const data = await res.json();
-    if (data.success && data.project) {
-      coordinator.reset(0);
-      setProject(data.project);
-      setIsEmpty(false);
-      setSaveStatus('saved');
-      setSaveError(null);
-      setGenerationError(null);
-      setActiveJob(null);
-      setIsGenerating(false);
-      storeActiveProjectId(data.project.id);
-    }
+    await createNewProjectOnBackend(
+      title,
+      ratio,
+      coordinator,
+      setProject,
+      setIsEmpty,
+      setSaveError,
+      setGenerationError
+    );
   };
 
   const handleRenameProject = async (id: string, newTitle: string) => {
@@ -983,25 +1098,9 @@ export function SketchDashboard() {
     setIsGenerating(true);
     setCenterView('preview');
 
-    let refUrl = referenceDataUrlOverride;
-    if (!refUrl && project.useSketchAsReference !== false) {
-      try {
-        refUrl = await renderCompositeReferenceDataUrl(project);
-      } catch {
-        // Fallback gracioso
-      }
-    }
-
+    const refUrl = await resolveGenerationReferenceUrl(project, referenceDataUrlOverride);
     const res = await submitGenerateJob(project.id, refUrl);
-    if (res.success && res.job) {
-      setActiveJob(res.job);
-    } else if (res.activeJobId) {
-      const active = await pollJobById(res.activeJobId);
-      if (active) setActiveJob(active);
-    } else {
-      setIsGenerating(false);
-      setGenerationError(res.error || 'Falha ao iniciar trabalho de geração no servidor.');
-    }
+    await handleSubmissionOutcome(res, setActiveJob, setIsGenerating, setGenerationError);
   };
 
   const handleCancelJob = async (jobId: string) => {
@@ -1014,18 +1113,15 @@ export function SketchDashboard() {
 
   const handleApplyResultAsBackground = async (imageUrl: string, flowPath?: string) => {
     if (!project) return;
-    coordinator.cancelPendingSave();
-
-    const updated = await applyResultBackground(project.id, imageUrl, flowPath);
-    if (updated) {
-      coordinator.reset(0);
-      setProject(updated);
-      setSaveStatus('saved');
-      setSaveError(null);
-      setCenterView('canvas');
-    } else {
-      setSaveError('Falha ao aplicar imagem como fundo.');
-    }
+    await applyResultBackgroundToProject(
+      project.id,
+      imageUrl,
+      flowPath,
+      coordinator,
+      setProject,
+      setCenterView,
+      setSaveError
+    );
   };
 
   const handleSaveLayers = useCallback(
@@ -1091,21 +1187,7 @@ export function SketchDashboard() {
         onOpenExportModal={() => setIsExportModalOpen(true)}
       />
 
-      {generationError && (
-        <div className="flex items-center justify-between gap-2 bg-rose-950/90 border-b border-rose-800 px-4 py-2 text-xs text-rose-200 shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={15} className="text-rose-400 shrink-0" />
-            <span>{generationError}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setGenerationError(null)}
-            className="text-rose-400 hover:text-rose-200 text-xs underline font-medium"
-          >
-            Fechar
-          </button>
-        </div>
-      )}
+      <GenerationErrorBanner error={generationError} onDismiss={() => setGenerationError(null)} />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <SketchLeftSidebar

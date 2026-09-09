@@ -124,12 +124,21 @@ export class SketchSaveCoordinator {
     return 'saved';
   }
 
-  private handleSaveCompletion(ok: boolean, revToSave: number, errMsg?: string): SaveResult {
+  private handleSaveCompletion(
+    ok: boolean,
+    revToSave: number,
+    toSave: SketchProjectData,
+    errMsg?: string
+  ): SaveResult {
     if (ok) {
       this.savedRevision = Math.max(this.savedRevision, revToSave);
       const isStillDirty = this.currentRevision > this.savedRevision;
       this.options?.onStatusChange?.(isStillDirty ? 'saving' : 'saved', null);
       return { success: true, savedRevision: this.savedRevision };
+    }
+
+    if (!this.pendingRevision) {
+      this.pendingRevision = { project: toSave, revision: revToSave };
     }
     const err = errMsg || 'Falha ao persistir no servidor';
     this.options?.onStatusChange?.('error', err);
@@ -150,10 +159,10 @@ export class SketchSaveCoordinator {
     const promise = (async (): Promise<SaveResult> => {
       try {
         const ok = await this.persistFn(toSave, revToSave);
-        return this.handleSaveCompletion(ok, revToSave);
+        return this.handleSaveCompletion(ok, revToSave, toSave);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        return this.handleSaveCompletion(false, revToSave, msg);
+        return this.handleSaveCompletion(false, revToSave, toSave, msg);
       } finally {
         this.inFlightRevision = null;
         this.inFlightPromise = null;
