@@ -197,6 +197,7 @@ test('cenário 1: anúncio somente por descrição compila zonas de copy e espa�
   project.useSketchAsReference = false;
 
   const request = compileCreativeGenerationRequest(project);
+  assert.ok(request.creativeCompilation);
 
   assert.equal(request.creativeCompilation.subjectPlacements.length, 0, 'Não deve haver sujeitos sem anexos');
   assert.ok(request.creativeCompilation.reservedCopyZones.length >= 3, 'Deve compilar zonas reservadas para headline, subheadline e cta');
@@ -248,6 +249,7 @@ test('cenário 2: anúncio com foto de produto preserva identidade sem distorç�
   project.layers.push(productImageLayer);
 
   const request = compileCreativeGenerationRequest(project);
+  assert.ok(request.creativeCompilation);
 
   assert.equal(request.creativeCompilation.subjectPlacements.length, 1, 'Deve identificar a foto de produto');
   assert.equal(request.creativeCompilation.subjectPlacements[0].role, 'product');
@@ -326,6 +328,7 @@ test('cenário 3: anúncio com sketch e foto de produto gera composição unific
   project.layers = [sketchLayer, productImageLayer];
 
   const composite = prepareSketchCompositeReference(project);
+  assert.ok(composite.compositePreview);
 
   assert.equal(composite.referenceMode, 'composite', 'Deve usar modo composite para fundir sketch e produto');
   assert.ok(composite.compositePreview.includedRoles.includes('composition'));
@@ -422,7 +425,11 @@ test('cenário 5: alteração de preço e CTA atualiza camadas editáveis sem di
       role: 'headline',
       x: 100,
       y: 200,
+      width: 80,
       fontSize: 48,
+      fontFamily: 'Inter',
+      fontWeight: '700',
+      textAlign: 'left',
       color: '#ffffff',
       visible: true,
       opacity: 1,
@@ -435,7 +442,11 @@ test('cenário 5: alteração de preço e CTA atualiza camadas editáveis sem di
       role: 'cta',
       x: 100,
       y: 800,
+      width: 40,
       fontSize: 32,
+      fontFamily: 'Inter',
+      fontWeight: '700',
+      textAlign: 'center',
       color: '#ffffff',
       backgroundColor: '#10b981',
       backgroundPadding: 16,
@@ -486,6 +497,7 @@ test('cenário 6: reabertura do projeto preserva objetos, coordenadas e versões
       id: 'layer-precise-text',
       name: 'Headline Topo',
       type: 'text',
+      role: 'headline',
       text: 'Precisão Inabalável',
       x: 120,
       y: 180,
@@ -494,6 +506,7 @@ test('cenário 6: reabertura do projeto preserva objetos, coordenadas e versões
       rotation: 15,
       fontSize: 42,
       fontFamily: 'Inter',
+      fontWeight: '700',
       color: '#ffffff',
       textAlign: 'center',
       visible: true,
@@ -505,9 +518,10 @@ test('cenário 6: reabertura do projeto preserva objetos, coordenadas e versões
     project.snapshots = [
       {
         id: 'snap-v1',
-        name: 'Versão 1 - Conceito Base',
-        createdAt: new Date().toISOString(),
-        projectState: JSON.parse(JSON.stringify(project)),
+        versionNumber: 1,
+        label: 'Versão 1 - Conceito Base',
+        timestamp: new Date().toISOString(),
+        project: JSON.parse(JSON.stringify(project)),
       },
     ];
 
@@ -520,8 +534,9 @@ test('cenário 6: reabertura do projeto preserva objetos, coordenadas e versões
     assert.equal(loaded.aspectRatio, '3:4');
     assert.equal(loaded.briefing?.product, 'Smart Watch Aura Pulse');
     assert.equal(loaded.copy?.headline, 'Supere Seus Limites em Cada Segundo');
+    assert.ok(loaded.snapshots);
     assert.equal(loaded.snapshots.length, 1);
-    assert.equal(loaded.snapshots[0].name, 'Versão 1 - Conceito Base');
+    assert.equal(loaded.snapshots[0].label, 'Versão 1 - Conceito Base');
 
     const loadedLayer = loaded.layers.find((l) => l.id === 'layer-precise-text') as TextLayer;
     assert.ok(loadedLayer);
@@ -618,10 +633,15 @@ test('cenário 8: exportação PNG/JPEG nas 4 proporções com exclusão de guia
       id: 'text-title',
       name: 'Título Principal',
       type: 'text',
+      role: 'headline',
       text: `Campanha ${ratio}`,
       x: 100,
       y: 100,
+      width: 80,
       fontSize: 48,
+      fontFamily: 'Inter',
+      fontWeight: '700',
+      textAlign: 'left',
       color: '#ffffff',
       visible: true,
       opacity: 1,
@@ -655,7 +675,7 @@ test('cenário 8: exportação PNG/JPEG nas 4 proporções com exclusão de guia
     const renderedJpeg = await renderCompositionToCanvas(
       project,
       canvasJpeg as unknown as HTMLCanvasElement,
-      { format: 'jpeg', scale: 2, jpegBackground: '#000000', excludeGuides: true }
+      { format: 'jpeg', scale: 2, backgroundColorForJpeg: '#000000', excludeGuides: true }
     );
     assert.equal(renderedJpeg.width, preset.width * 2);
     assert.equal(renderedJpeg.height, preset.height * 2);
