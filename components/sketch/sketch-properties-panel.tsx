@@ -181,6 +181,84 @@ function TextLayerControls({
           ))}
         </div>
       </div>
+
+      <TextBackgroundControls layer={layer} onUpdate={onUpdate} />
+    </div>
+  );
+}
+
+function TextBackgroundControls({
+  layer,
+  onUpdate,
+}: {
+  layer: TextLayer;
+  onUpdate: (updater: (l: TextLayer) => TextLayer) => void;
+}) {
+  const hasBg = Boolean(layer.backgroundColor && layer.backgroundColor !== 'transparent');
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-zinc-300">Fundo do CTA / Badge</span>
+        <button
+          type="button"
+          onClick={() =>
+            onUpdate((l) => ({
+              ...l,
+              backgroundColor: hasBg ? 'transparent' : '#4f46e5',
+            }))
+          }
+          className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+            hasBg ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+          }`}
+        >
+          {hasBg ? 'Ativado' : 'Desativado'}
+        </button>
+      </div>
+
+      {hasBg && (
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-400">Cor do Fundo</span>
+            <input
+              type="color"
+              value={layer.backgroundColor || '#4f46e5'}
+              onChange={(e) => onUpdate((l) => ({ ...l, backgroundColor: e.target.value }))}
+              className="h-5 w-6 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-[10px] text-zinc-400">
+              <span>Espaçamento (Padding)</span>
+              <span>{layer.backgroundPadding || 12}px</span>
+            </div>
+            <input
+              type="range"
+              min={4}
+              max={36}
+              value={layer.backgroundPadding || 12}
+              onChange={(e) => onUpdate((l) => ({ ...l, backgroundPadding: Number(e.target.value) }))}
+              className="accent-indigo-500"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-[10px] text-zinc-400">
+              <span>Cantos Arredondados</span>
+              <span>{layer.borderRadius || 8}px</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={32}
+              value={layer.borderRadius || 8}
+              onChange={(e) => onUpdate((l) => ({ ...l, borderRadius: Number(e.target.value) }))}
+              className="accent-indigo-500"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -229,13 +307,81 @@ function ImageLayerControls({
   );
 }
 
-function BackgroundLayerControls({
+function BackgroundFramingControls({
   layer,
   onUpdate,
 }: {
   layer: BackgroundLayer;
   onUpdate: (updater: (l: BackgroundLayer) => BackgroundLayer) => void;
 }) {
+  const isCover = layer.fit !== 'contain';
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-zinc-300">Enquadramento da Imagem</span>
+        <div className="flex rounded bg-zinc-800 p-0.5 text-[10px]">
+          <button
+            type="button"
+            onClick={() => onUpdate((l) => ({ ...l, fit: 'cover' }))}
+            className={`rounded px-1.5 py-0.5 ${isCover ? 'bg-indigo-600 text-white' : 'text-zinc-400'}`}
+          >
+            Cobrir
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdate((l) => ({ ...l, fit: 'contain' }))}
+            className={`rounded px-1.5 py-0.5 ${!isCover ? 'bg-indigo-600 text-white' : 'text-zinc-400'}`}
+          >
+            Conter
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1 pt-1">
+        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+          <span>Posição Vertical</span>
+          <span>{layer.offsetY ?? 50}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={layer.offsetY ?? 50}
+          onChange={(e) => onUpdate((l) => ({ ...l, offsetY: Number(e.target.value) }))}
+          className="accent-indigo-500"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+          <span>Posição Horizontal</span>
+          <span>{layer.offsetX ?? 50}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={layer.offsetX ?? 50}
+          onChange={(e) => onUpdate((l) => ({ ...l, offsetX: Number(e.target.value) }))}
+          className="accent-indigo-500"
+        />
+      </div>
+    </div>
+  );
+}
+
+function BackgroundLayerControls({
+  layer,
+  projectRatio,
+  onUpdate,
+}: {
+  layer: BackgroundLayer;
+  projectRatio?: string;
+  onUpdate: (updater: (l: BackgroundLayer) => BackgroundLayer) => void;
+}) {
+  const isAdaptedRatio = projectRatio === '4:5';
+
   return (
     <div className="flex flex-col gap-3 pt-1">
       <div className="flex items-center justify-between">
@@ -249,13 +395,23 @@ function BackgroundLayerControls({
       </div>
 
       {layer.imageUrl && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-zinc-400">Imagem Gerada Aplicada</span>
-          <div className="h-16 w-full overflow-hidden rounded-lg border border-zinc-800">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={layer.imageUrl} alt="Fundo" className="h-full w-full object-cover" />
+        <>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-zinc-400">Imagem Gerada Aplicada</span>
+            <div className="h-16 w-full overflow-hidden rounded-lg border border-zinc-800">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={layer.imageUrl} alt="Fundo" className="h-full w-full object-cover" />
+            </div>
           </div>
-        </div>
+
+          {isAdaptedRatio && (
+            <div className="rounded-lg border border-indigo-500/20 bg-indigo-950/20 p-2 text-[10px] text-indigo-300">
+              Prancheta 4:5 adaptada da geração 3:4. Ajuste a posição abaixo sem distorcer o conteúdo.
+            </div>
+          )}
+
+          <BackgroundFramingControls layer={layer} onUpdate={onUpdate} />
+        </>
       )}
     </div>
   );
@@ -464,7 +620,11 @@ export function SketchPropertiesPanel({
       )}
 
       {selectedLayer.type === 'background' && (
-        <BackgroundLayerControls layer={selectedLayer as BackgroundLayer} onUpdate={updateSelectedLayer} />
+        <BackgroundLayerControls
+          layer={selectedLayer as BackgroundLayer}
+          projectRatio={project.canvasAspectRatio || project.aspectRatio}
+          onUpdate={updateSelectedLayer}
+        />
       )}
 
       <div className="flex flex-col gap-2 pt-3 border-t border-zinc-800">

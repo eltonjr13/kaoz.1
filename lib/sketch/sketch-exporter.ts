@@ -104,26 +104,36 @@ function drawCoverImage(
   ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
 }
 
+function drawBackgroundImage(
+  ctx: CanvasRenderingContext2D,
+  layer: BackgroundLayer,
+  img: HTMLImageElement,
+  width: number,
+  height: number
+): void {
+  if (layer.fit === 'contain' || layer.opacity < 1) {
+    ctx.fillStyle = layer.color || '#0d1117';
+    ctx.fillRect(0, 0, width, height);
+  }
+  const offX = typeof layer.offsetX === 'number' ? layer.offsetX : 50;
+  const offY = typeof layer.offsetY === 'number' ? layer.offsetY : 50;
+  drawCoverImage(ctx, img, width, height, offX, offY, layer.fit || 'cover');
+}
+
 function drawBackgroundLayer(
   ctx: CanvasRenderingContext2D,
   layer: BackgroundLayer,
   width: number,
   height: number,
   loadedImages: Map<string, HTMLImageElement>
-) {
+): void {
   if (!layer.visible) return;
   ctx.save();
   ctx.globalAlpha = layer.opacity;
 
   const img = layer.fillType === 'image' && layer.imageUrl ? loadedImages.get(layer.imageUrl) : null;
   if (img) {
-    if (layer.fit === 'contain' || layer.opacity < 1) {
-      ctx.fillStyle = layer.color || '#0d1117';
-      ctx.fillRect(0, 0, width, height);
-    }
-    const offX = typeof layer.offsetX === 'number' ? layer.offsetX : 50;
-    const offY = typeof layer.offsetY === 'number' ? layer.offsetY : 50;
-    drawCoverImage(ctx, img, width, height, offX, offY, layer.fit || 'cover');
+    drawBackgroundImage(ctx, layer, img, width, height);
   } else {
     ctx.fillStyle = layer.color || '#0d1117';
     ctx.fillRect(0, 0, width, height);
@@ -709,20 +719,18 @@ export function renderSketchOnlyDataUrl(paths: SketchPath[], width = 1080, heigh
 
 function normalizeExportOptions(
   optionsOrFormat?: ExportCompositionOptions | 'png' | 'jpeg',
-  quality?: number
+  quality = 0.95
 ): ExportCompositionOptions {
   if (typeof optionsOrFormat === 'string') {
-    return { format: optionsOrFormat, quality: quality ?? 0.95, excludeGuides: true };
+    return { format: optionsOrFormat, quality, excludeGuides: true };
   }
-  return {
-    format: optionsOrFormat?.format ?? 'png',
-    quality: optionsOrFormat?.quality ?? quality ?? 0.95,
-    scale: optionsOrFormat?.scale ?? 1,
-    customWidth: optionsOrFormat?.customWidth,
-    customHeight: optionsOrFormat?.customHeight,
-    excludeGuides: optionsOrFormat?.excludeGuides ?? true,
-    backgroundColorForJpeg: optionsOrFormat?.backgroundColorForJpeg,
+  const defaults: ExportCompositionOptions = {
+    format: 'png',
+    quality,
+    scale: 1,
+    excludeGuides: true,
   };
+  return Object.assign(defaults, optionsOrFormat);
 }
 
 export async function exportCompositionBlob(
