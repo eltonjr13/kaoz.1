@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -26,7 +26,7 @@ import {
 } from '@/types/sketch';
 import { isJobActive } from '@/lib/sketch/sketch-job-state';
 import { SketchSaveCoordinator, type SaveStatus } from '@/lib/sketch/sketch-save-coordinator';
-import { createCleanProject } from '@/lib/sketch/sketch-storage';
+import { createCleanProject } from '@/lib/sketch/sketch-project-defaults';
 import { renderSketchOnlyDataUrl } from '@/lib/sketch/sketch-exporter';
 import { SketchPromptInput } from './sketch-prompt-input';
 import { SketchAttachmentBar } from './sketch-attachment-bar';
