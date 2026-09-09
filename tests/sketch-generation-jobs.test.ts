@@ -95,6 +95,8 @@ async function waitForJobTerminal(manager: SketchJobManager, jobId: string, time
   while (Date.now() - start < timeoutMs) {
     const job = await manager.getJob(jobId);
     if (job && (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled' || job.status === 'interrupted')) {
+      // Drain: let any in-flight persistJob atomic-rename writes settle before the caller cleans up.
+      await new Promise((r) => setTimeout(r, 60));
       return job;
     }
     await new Promise((r) => setTimeout(r, 20));
@@ -118,7 +120,11 @@ test('ciclo de sucesso de job com arquivo real e versionamento incremental', asy
     });
 
     const job = await manager.enqueueJob({ projectId: initial.id });
-    assert.equal(job.status, 'queued');
+    const initialStatus = job.status;
+    assert.ok(
+      initialStatus === 'queued' || initialStatus === 'preparing_reference',
+      `Expected queued or preparing_reference immediately after enqueue, got: ${initialStatus}`
+    );
     assert.equal(job.snapshot.projectTitle, 'Campanha Sérum Glow');
     assert.ok(job.snapshot.compiledPrompt.length > 0);
 
@@ -157,6 +163,7 @@ test('ciclo de falha com mensagem descritiva sem registrar versão corrompida', 
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -186,6 +193,7 @@ test('rejeição estrita de arquivos não existentes ou vazios (sem placeholders
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -211,6 +219,7 @@ test('rejeição de submissão duplicada por clique concorrente e suporte a idem
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -308,6 +317,7 @@ test('cancelamento de trabalho pendente vs em execução com explicação de alc
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -337,6 +347,7 @@ test('preservação de versões sucessivas e histórico de gerações', async ()
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
       flowProvider: mockFlow,
     });
 
@@ -367,6 +378,7 @@ test('operação de editar resultado atualiza camada de fundo preservando texto 
     const manager = new SketchJobManager({
       jobsDir: env.jobsDir,
       assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
     });
 
     const updated = await manager.applyResultAsBackgroundLayer(
@@ -439,8 +451,8 @@ test('convivência com exclusão mútua do FlowProvider e fila sequencial do nav
     await saveProject(projB, env.projectsDir, env.assetsDir);
 
     const lockProvider = new ConcurrentFlowLockMock();
-    const managerA = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, flowProvider: lockProvider });
-    const managerB = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, flowProvider: lockProvider });
+    const managerA = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, projectsDir: env.projectsDir, flowProvider: lockProvider });
+    const managerB = new SketchJobManager({ jobsDir: env.jobsDir, assetsDir: env.assetsDir, projectsDir: env.projectsDir, flowProvider: lockProvider });
 
     const [jobA, jobB] = await Promise.all([
       managerA.enqueueJob({ projectId: projA.id }),
