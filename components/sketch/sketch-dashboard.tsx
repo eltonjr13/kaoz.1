@@ -860,7 +860,7 @@ export function SketchDashboard() {
     return <SketchLoadingState />;
   }
 
-  if (hasNoProject(project, isEmpty)) {
+  if (!project || hasNoProject(project, isEmpty)) {
     return <SketchEmptyState onCreateProject={() => handleCreateNewProject('Primeiro Anúncio', '1:1')} />;
   }
 

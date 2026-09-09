@@ -68,13 +68,23 @@ class MockFlowProvider implements FlowImageProviderContract {
     onLockAcquired?.();
 
     if (this.shouldFail) {
-      return { success: false, error: this.failErrorMessage };
+      return {
+        success: false,
+        path: '',
+        filename: '',
+        createdAt: new Date().toISOString(),
+        error: this.failErrorMessage,
+      };
     }
 
     if (this.generateNonExistentFile) {
+      const missingPath = path.join(os.tmpdir(), 'missing-image-file.png');
       return {
         success: true,
-        images: [{ path: path.join(os.tmpdir(), 'missing-image-file.png'), filename: 'missing.png' }],
+        path: missingPath,
+        filename: 'missing.png',
+        paths: [missingPath],
+        createdAt: new Date().toISOString(),
       };
     }
 
@@ -85,7 +95,10 @@ class MockFlowProvider implements FlowImageProviderContract {
 
     return {
       success: true,
-      images: [{ path: testImgPath, filename: path.basename(testImgPath) }],
+      path: testImgPath,
+      filename: path.basename(testImgPath),
+      paths: [testImgPath],
+      createdAt: new Date().toISOString(),
     };
   }
 }
@@ -435,8 +448,13 @@ test('convivência com exclusão mútua do FlowProvider e fila sequencial do nav
         await new Promise((r) => setTimeout(r, 40));
         activeInBrowser--;
         const tmp = path.join(os.tmpdir(), `lock-test-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-        await fsp.writeFile(tmp, SAMPLE_PNG_BYTES);
-        return { success: true, images: [{ path: tmp, filename: 'test.png' }] };
+        return {
+          success: true,
+          path: tmp,
+          filename: 'test.png',
+          paths: [tmp],
+          createdAt: new Date().toISOString(),
+        };
       } finally {
         release?.();
       }

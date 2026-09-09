@@ -68,9 +68,13 @@ function isJobCancelledOrAborted(job: SketchJobData): boolean {
 }
 
 function extractFirstImagePath(flowResult: ImageGenerationResult): string {
-  const images = flowResult.images;
-  if (Array.isArray(images) && images.length > 0 && images[0]?.path) {
-    return images[0].path;
+  if (flowResult.path) return flowResult.path;
+  if (Array.isArray(flowResult.paths) && flowResult.paths.length > 0 && flowResult.paths[0]) {
+    return flowResult.paths[0];
+  }
+  const anyResult = flowResult as unknown as { images?: Array<{ path?: string }> };
+  if (Array.isArray(anyResult.images) && anyResult.images.length > 0 && anyResult.images[0]?.path) {
+    return anyResult.images[0].path;
   }
   return '';
 }
