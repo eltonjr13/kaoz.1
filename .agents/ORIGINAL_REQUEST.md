@@ -154,3 +154,63 @@ Realizar a auditoria e validação independente de toda a refatoração integrad
 - [ ] Todos os testes unitários e de integração passam.
 - [ ] Relatório final de validação independente detalha os 10 cenários testados.
 
+## 2026-09-10T16:16:39Z
+
+# Teamwork Project Prompt
+
+Requested team: Equipe completa de agentes (executando auditoria, APIs, grafo, memórias, shell e QA em paralelo/fases)
+
+Refatorar a aba Cortex do Kaoz.1 (aplicativo desktop Windows/Electron com Next.js local-first) para transformá-la em uma central clara, eficiente e confiável de memória cognitiva, conhecimento, conversas e identidades, preservando integralmente os dados locais persistidos e os comportamentos existentes.
+
+Working directory: D:\apps\mrchicken
+Integrity mode: development
+
+Referência mestre: D:\apps\mrchicken\docs\TEAMWORK_REFATORAMENTO_CORTEX.md
+
+## Requirements
+
+### R1. Shell Unificado e Visão Geral Baseada em Dados Reais
+Estruturar a página Cortex em seções navegáveis (`Visão Geral`, `Grafo`, `Memórias`, `Conversas`, `Identidades`) com navegação acessível por teclado, compatibilidade com viewport estreito e estados inequívocos de carregamento, vazio, erro com retry e atualização em andamento. A Visão Geral deve apresentar métricas e status operacionais calculados exclusivamente a partir dos dados locais reais.
+
+### R2. Robustez de APIs e Contratos de Dados Locais
+Padronizar contratos e tratamento de erros das rotas locais consumidas pelo Cortex (`/api/memory/**`, `/api/cortex/**`, `/api/conversations/**`). Garantir persistência atômica no arquivo JSON de memória cognitiva e integridade no SQLite de conversas, sem quebras de compatibilidade retroativa, sem retorno de dados fictícios e sem mascarar falhas de requisição como listas vazias.
+
+### R3. Grafo Cognitivo Desacoplado e Otimizado
+Decompor o componente do grafo separando layout/física, renderização canvas e painel de controles/detalhes. Preservar todas as operações existentes (inspeção, edição de nós e conexões, feedback de episódios, regras procedimentais). Otimizar consumo de recursos pausando loops de animação e polling fora de visibilidade, tratando DPI e mantendo a posição estável dos nós durante atualizações em segundo plano.
+
+### R4. Gestão de Memórias, Conversas, Identidades e Ações Destrutivas
+Implementar busca, filtros, paginação e ordenação nas listagens de memórias e conversas, prevenindo condições de corrida onde respostas tardias sobrescrevem buscas recentes. Gerenciar vínculos de identidades observadas com impacto explícito em dados derivados. Substituir diálogos síncronos (`window.confirm`) por modais acessíveis com foco retido, feedback de progresso e rollback confiável se a exclusão falhar.
+
+### R5. Infraestrutura e Restrições Locais
+Operar em ambiente Windows utilizando `npm.cmd`. Garantir que nenhum dado de memória cognitiva, conversa ou identidade seja transmitido para serviços externos em nuvem. Reutilizar componentes e estilos existentes do projeto sem introduzir dependências desnecessárias que aumentem o bundle do Electron.
+
+## Verification Resources
+- Testes automatizados existentes: `tests/cognitive-memory.test.ts`, `tests/conversation-memory.test.ts`.
+- Scripts de validação: `npm.cmd run typecheck`, `npm.cmd run test:memory`, `npm.cmd run test:memory-archive`, `npm.cmd run lint`.
+
+## Acceptance Criteria
+
+### Integridade e Dados
+- [ ] Leitura e escrita de esquemas existentes de memória cognitiva (JSON) e arquivo de conversas (SQLite) mantidas sem perda ou corrupção de dados preexistentes.
+- [ ] Nenhuma chamada de rede transmite dados de memórias ou conversas para servidores remotos.
+- [ ] Todas as mutações existentes (nós, conexões, regras procedimentais, feedback de episódios, memórias e conversas) permanecem disponíveis e funcionais.
+
+### Desempenho e Arquitetura
+- [ ] Componente do grafo não concentra física, renderização, mutação e modais em um único bloco monolítico.
+- [ ] O loop `requestAnimationFrame` do canvas e polling periódico são pausados quando a aba, seção ou janela estiver invisível.
+- [ ] Polling em segundo plano ou atualizações parciais não resetam nem recalculam posições de nós já posicionados.
+- [ ] Requisições assíncronas concorrentes ou lentas de busca não sobrescrevem consultas ou filtros mais recentes.
+
+### Experiência e Acessibilidade
+- [ ] Erros de requisição e falhas de rede exibem mensagens com opção de retry e não são renderizados como estados vazios normais.
+- [ ] Ações destrutivas utilizam modais acessíveis com foco retornado ao elemento de origem e tratamento de erro inline com rollback se a operação falhar.
+- [ ] Navegação entre seções preserva o estado ativo e permite operação completa por teclado.
+
+### Verificação Técnica
+- [ ] `npm.cmd run typecheck` conclui sem erros.
+- [ ] `npm.cmd run test:memory` e `npm.cmd run test:memory-archive` passam com sucesso.
+- [ ] Testes automatizados focados criados para as novas rotas/componentes/utilitários passam.
+- [ ] `npm.cmd run lint` passa nos arquivos criados ou modificados.
+- [ ] Registro documentado de validação visual real no navegador e no Electron, com relatório final das entregas e compatibilidade.
+
+

@@ -9,9 +9,9 @@ export class Hippocampus {
   }
 
   public async addEpisode(episode: EpisodicMemoryNode): Promise<void> {
-    const data = await this.storage.readMemory();
-    data.episodic.nodes.push(episode);
-    await this.storage.writeMemory(data);
+    await this.storage.updateMemory((data) => {
+      data.episodic.nodes.push(episode);
+    });
   }
 
   public async getRecentEpisodes(avatarId: string, limit = 20): Promise<EpisodicMemoryNode[]> {
@@ -23,14 +23,13 @@ export class Hippocampus {
   }
 
   public async updateEpisodeFeedback(episodeId: string, feedback: 'good' | 'bad'): Promise<EpisodicMemoryNode | null> {
-    const data = await this.storage.readMemory();
-    const episode = data.episodic.nodes.find((n) => n.id === episodeId);
-    if (!episode) return null;
+    return this.storage.updateMemory((data) => {
+      const episode = data.episodic.nodes.find((n) => n.id === episodeId);
+      if (!episode) return null;
 
-    episode.userFeedback = feedback;
-    episode.status = feedback === 'bad' ? 'failure' : 'success';
-    
-    await this.storage.writeMemory(data);
-    return episode;
+      episode.userFeedback = feedback;
+      episode.status = feedback === 'bad' ? 'failure' : 'success';
+      return episode;
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { IStorageProvider, CognitiveMemoryData } from './IStorageProvider';
 import { getFlowStorageRoot } from '../../runtime-paths.ts';
@@ -73,13 +73,7 @@ export class JsonStorageProvider implements IStorageProvider {
   }
 
   public async readMemory(): Promise<CognitiveMemoryData> {
-    await this.ensureMigrated();
-    try {
-      const content = await readFile(this.filePath, 'utf8');
-      return normalizeMemory(JSON.parse(content) as CognitiveMemoryData);
-    } catch {
-      return emptyMemory();
-    }
+    return this.loadAndParseMemory();
   }
 
   public async writeMemory(data: CognitiveMemoryData): Promise<void> {
@@ -109,12 +103,7 @@ export class JsonStorageProvider implements IStorageProvider {
   }
 
   private async readMemoryUnlocked(): Promise<CognitiveMemoryData> {
-    await this.ensureMigrated();
-    try {
-      return normalizeMemory(JSON.parse(await readFile(this.filePath, 'utf8')) as CognitiveMemoryData);
-    } catch {
-      return emptyMemory();
-    }
+    return this.loadAndParseMemory();
   }
 
   private async writeAtomic(data: CognitiveMemoryData): Promise<void> {
@@ -125,8 +114,39 @@ export class JsonStorageProvider implements IStorageProvider {
       await writeFile(temporaryPath, JSON.stringify(data, null, 2), 'utf8');
       await rename(temporaryPath, this.filePath);
     } catch (error) {
+      try {
+        await rm(temporaryPath, { force: true });
+      } catch {}
       console.error('[JsonStorageProvider] Failed to write memory file:', error);
       throw error;
+    }
+  }
+
+  private async loadAndParseMemory(): Promise<CognitiveMemoryData> {
+    await this.ensureMigrated();
+    let content: string;
+    try {
+      content = await readFile(this.filePath, 'utf8');
+    } catch (err: any) {
+      if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
+        return emptyMemory();
+      }
+      throw err;
+    }
+
+    try {
+      return normalizeMemory(JSON.parse(content) as CognitiveMemoryData);
+    } catch (parseErr: any) {
+      const corruptPath = `${this.filePath}.corrupt-${Date.now()}`;
+      try {
+        await copyFile(this.filePath, corruptPath);
+        console.error(`[JsonStorageProvider] Arquivo corrompido preservado como ${path.basename(corruptPath)}`);
+      } catch (backupErr) {
+        console.error(`[JsonStorageProvider] Falha ao criar backup do arquivo corrompido em ${corruptPath}:`, backupErr);
+      }
+      throw new Error(
+        `[JsonStorageProvider] Falha ao analisar JSON de memória cognitiva em ${this.filePath}: ${parseErr.message}. Arquivo corrompido preservado como ${corruptPath}`
+      );
     }
   }
 

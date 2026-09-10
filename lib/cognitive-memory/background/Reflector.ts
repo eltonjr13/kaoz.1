@@ -48,110 +48,86 @@ export class Reflector {
       return;
     }
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const reason = fromUserFeedback ? 'O usuário avaliou o resultado como RUIM (feedback negativo)' : `Erro de execução: "${episode.errorMessage || 'Falha desconhecida'}"`;
-
-    const prompt = `
-Você é o Reflector Engine do sistema de memória cognitiva do Kaoz.1.
-Sua tarefa é analisar uma falha e extrair conhecimentos preventivos estruturados em JSON para evitar que o agente repita esse erro.
-
-[DADOS DO EPISÓDIO]:
-- Avatar ID: ${episode.avatarId}
-- Tipo de Tarefa: ${episode.taskType}
-- Prompt Utilizado: "${episode.inputPrompt}"
-- Resumo da Saída: "${episode.outputSummary}"
-- Causa da Falha: ${reason}
-- Modelo Utilizado: ${episode.modelUsed}
-
-Sua resposta DEVE ser estritamente um objeto JSON contendo:
-1. "errorConcept": Um ID curto e slugificado que represente o conceito do erro (ex: "concept:imagefx-timeout", "concept:collage-layout-error").
-2. "errorLabel": Nome curto legível do erro (ex: "Estouro de tempo no ImageFX", "Erro de colagem de imagem").
-3. "errorDescription": Descrição detalhada do que causou esse erro.
-4. "preventiveInstruction": Uma regra operacional curta em português que o agente deve seguir da próxima vez para evitar essa falha (ex: "Não use a palavra colagem no prompt para evitar grids", "Aumente o timeout do locator para 30s").
-
-MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\`\`\`json).
-`;
-
     try {
-      const response = await this.ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-      });
-
-      const text = response.text?.trim() || '{}';
-      const result = JSON.parse(text);
+      const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const reason = buildFailureReason(episode, fromUserFeedback);
+      const prompt = buildFailureReflectionPrompt(episode, reason);
+      const result = await requestFailureAnalysis(this.ai, prompt, modelName);
 
       if (result.errorConcept && result.preventiveInstruction) {
-        const errorNodeId = result.errorConcept.startsWith('concept:') ? result.errorConcept : `concept:${result.errorConcept}`;
-        
-        // 1. Cria/atualiza o nó de erro no grafo semântico
-        const errorNode: GraphNode = {
-          id: errorNodeId,
-          label: result.errorLabel || 'Falha Operacional',
-          type: 'error-pattern',
-          description: result.errorDescription || 'Erro de execução mapeado',
-          confidenceScore: 0.8,
-          lastObserved: new Date().toISOString(),
-          metadata: {
-            taskType: episode.taskType,
-            modelUsed: episode.modelUsed,
-            lastTriggerPrompt: episode.inputPrompt
-          }
-        };
-        await this.cerebralCortex.upsertNode(errorNode);
-
-        // 2. Cria o nó correspondente ao modelo utilizado (caso não exista)
-        const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-        const modelNode: GraphNode = {
-          id: modelNodeId,
-          label: `Modelo ${episode.modelUsed}`,
-          type: 'entity',
-          description: `IA geradora ${episode.modelUsed}`,
-          confidenceScore: 1.0,
-          lastObserved: new Date().toISOString(),
-          metadata: {}
-        };
-        await this.cerebralCortex.upsertNode(modelNode);
-
-        // 3. Cria relacionamento (Edge) indicando a falha
-        const edgeId = `edge:${modelNodeId}->${errorNodeId}`;
-        const edge: GraphEdge = {
-          id: edgeId,
-          source: modelNodeId,
-          target: errorNodeId,
-          relation: 'causes_failure',
-          weight: 0.6,
-          confidenceScore: 0.7,
-          occurrences: 1,
-          lastReinforced: new Date().toISOString()
-        };
-        await this.cerebralCortex.upsertEdge(edge);
-
-        // 4. Cria a regra procedimental preventiva na memória
-        const ruleId = `rule:prevent-${errorNodeId.replace('concept:', '')}`;
-        const rule: ProceduralRule = {
-          id: ruleId,
-          avatarId: episode.avatarId,
-          projectId: episode.projectId,
-          sessionId: episode.sessionId,
-          scope: episode.taskType,
-          triggerPattern: episode.taskType,
-          actionType: 'modify_prompt',
-          instruction: result.preventiveInstruction,
-          confidenceScore: 0.6,
-          successCount: 0,
-          failureCount: 1,
-          lastUpdated: new Date().toISOString(),
-          timestamp: new Date().toISOString()
-        };
-        await this.prefrontalCortex.addRule(rule);
-
-        console.info(`[Reflector] Sucesso ao refletir na falha. Criada regra de prompt: "${result.preventiveInstruction}"`);
+        await this.applyFailureLearnings(result, episode);
       }
     } catch (err) {
       console.error("[Reflector] Falha no processamento da reflexão de erro:", err);
     }
+  }
+
+  private async applyFailureLearnings(result: any, episode: EpisodicMemoryNode) {
+    const errorNodeId = result.errorConcept.startsWith('concept:') ? result.errorConcept : `concept:${result.errorConcept}`;
+    
+    // 1. Cria/atualiza o nó de erro no grafo semântico
+    const errorNode: GraphNode = {
+      id: errorNodeId,
+      label: result.errorLabel || 'Falha Operacional',
+      type: 'error-pattern',
+      description: result.errorDescription || 'Erro de execução mapeado',
+      confidenceScore: 0.8,
+      lastObserved: new Date().toISOString(),
+      metadata: {
+        taskType: episode.taskType,
+        modelUsed: episode.modelUsed,
+        lastTriggerPrompt: episode.inputPrompt
+      }
+    };
+    await this.cerebralCortex.upsertNode(errorNode);
+
+    // 2. Cria o nó correspondente ao modelo utilizado (caso não exista)
+    const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    const modelNode: GraphNode = {
+      id: modelNodeId,
+      label: `Modelo ${episode.modelUsed}`,
+      type: 'entity',
+      description: `IA geradora ${episode.modelUsed}`,
+      confidenceScore: 1.0,
+      lastObserved: new Date().toISOString(),
+      metadata: {}
+    };
+    await this.cerebralCortex.upsertNode(modelNode);
+
+    // 3. Cria relacionamento (Edge) indicando a falha
+    const edgeId = `edge:${modelNodeId}->${errorNodeId}`;
+    const edge: GraphEdge = {
+      id: edgeId,
+      source: modelNodeId,
+      target: errorNodeId,
+      relation: 'causes_failure',
+      weight: 0.6,
+      confidenceScore: 0.7,
+      occurrences: 1,
+      lastReinforced: new Date().toISOString()
+    };
+    await this.cerebralCortex.upsertEdge(edge);
+
+    // 4. Cria a regra procedimental preventiva na memória
+    const ruleId = `rule:prevent-${errorNodeId.replace('concept:', '')}`;
+    const rule: ProceduralRule = {
+      id: ruleId,
+      avatarId: episode.avatarId,
+      projectId: episode.projectId,
+      sessionId: episode.sessionId,
+      scope: episode.taskType,
+      triggerPattern: episode.taskType,
+      actionType: 'modify_prompt',
+      instruction: result.preventiveInstruction,
+      confidenceScore: 0.6,
+      successCount: 0,
+      failureCount: 1,
+      lastUpdated: new Date().toISOString(),
+      timestamp: new Date().toISOString()
+    };
+    await this.prefrontalCortex.addRule(rule);
+
+    console.info(`[Reflector] Sucesso ao refletir na falha. Criada regra de prompt: "${result.preventiveInstruction}"`);
   }
 
   /**
@@ -208,7 +184,12 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
    * 2. Usa Gemini para extrair aprendizado de alta qualidade e criar nó tool-outcome rico
    */
   private async reflectOnUserPositiveFeedback(episode: EpisodicMemoryNode) {
-    // Reforça regras procedimentais associadas
+    await this.reinforcePositiveFeedbackLocally(episode);
+    if (!this.ai) return;
+    await this.extractSuccessWithLLM(episode);
+  }
+
+  private async reinforcePositiveFeedbackLocally(episode: EpisodicMemoryNode) {
     try {
       const data = await this.storage.readMemory();
       const rules = data.procedural.rules.filter(
@@ -236,13 +217,135 @@ MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\
     } catch (err) {
       console.error("[Reflector] Erro ao processar reforço de sucesso:", err);
     }
+  }
 
-    // Usa Gemini para extrair aprendizado rico (se disponível)
+  private async extractSuccessWithLLM(episode: EpisodicMemoryNode) {
     if (!this.ai) return;
 
     try {
       const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-      const prompt = `
+      const prompt = buildPositiveFeedbackPrompt(episode);
+
+      const response = await this.ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+
+      const text = response.text?.trim() || '{}';
+      const result = JSON.parse(text);
+
+      if (result.successConcept && result.replicableInstruction) {
+        await this.applyPositiveFeedbackLearnings(result, episode);
+      }
+    } catch (err) {
+      console.error("[Reflector] Falha ao processar reflexão de feedback positivo com Gemini:", err);
+    }
+  }
+
+  private async applyPositiveFeedbackLearnings(result: any, episode: EpisodicMemoryNode) {
+    const successNodeId = result.successConcept.startsWith('tool-outcome:')
+      ? result.successConcept
+      : `tool-outcome:${result.successConcept}`;
+
+    const successNode: GraphNode = {
+      id: successNodeId,
+      label: result.successLabel || 'Sucesso Operacional',
+      type: 'tool-outcome',
+      description: result.successDescription || 'Execução bem avaliada pelo usuário.',
+      confidenceScore: 1.0,
+      lastObserved: new Date().toISOString(),
+      metadata: {
+        taskType: episode.taskType,
+        modelUsed: episode.modelUsed,
+        avatarId: episode.avatarId,
+        replicableInstruction: result.replicableInstruction,
+        fromUserFeedback: true,
+        approvedAt: new Date().toISOString()
+      }
+    };
+    await this.cerebralCortex.upsertNode(successNode);
+
+    // Conecta o modelo ao sucesso com relação de qualidade
+    const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    const edgeId = `edge:${modelNodeId}->${successNodeId}`;
+    const edge: GraphEdge = {
+      id: edgeId,
+      source: modelNodeId,
+      target: successNodeId,
+      relation: 'improves_quality',
+      weight: 0.9,
+      confidenceScore: 1.0,
+      occurrences: 1,
+      lastReinforced: new Date().toISOString()
+    };
+    await this.cerebralCortex.upsertEdge(edge);
+
+    // Cria regra procedimental de replicação de sucesso
+    const ruleId = `rule:replicate-${successNodeId.replace('tool-outcome:', '')}`;
+    const rule: ProceduralRule = {
+      id: ruleId,
+      avatarId: episode.avatarId,
+      projectId: episode.projectId,
+      sessionId: episode.sessionId,
+      scope: episode.taskType,
+      triggerPattern: episode.taskType,
+      actionType: 'modify_prompt',
+      instruction: result.replicableInstruction,
+      confidenceScore: 0.9,
+      successCount: 1,
+      failureCount: 0,
+      lastUpdated: new Date().toISOString(),
+      timestamp: new Date().toISOString()
+    };
+    await this.prefrontalCortex.addRule(rule);
+
+    console.info(`[Reflector] Aprendizado de sucesso gravado no grafo: "${result.replicableInstruction}"`);
+  }
+}
+
+function buildFailureReason(episode: EpisodicMemoryNode, fromUserFeedback: boolean): string {
+  if (fromUserFeedback) {
+    return 'O usuário avaliou o resultado como RUIM (feedback negativo)';
+  }
+  return `Erro de execução: "${episode.errorMessage || 'Falha desconhecida'}"`;
+}
+
+async function requestFailureAnalysis(ai: GoogleGenAI, prompt: string, modelName: string): Promise<any> {
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: { responseMimeType: 'application/json' }
+  });
+  const text = response.text ? response.text.trim() : '{}';
+  return JSON.parse(text);
+}
+
+function buildFailureReflectionPrompt(episode: EpisodicMemoryNode, reason: string): string {
+  return `
+Você é o Reflector Engine do sistema de memória cognitiva do Kaoz.1.
+Sua tarefa é analisar uma falha e extrair conhecimentos preventivos estruturados em JSON para evitar que o agente repita esse erro.
+
+[DADOS DO EPISÓDIO]:
+- Avatar ID: ${episode.avatarId}
+- Tipo de Tarefa: ${episode.taskType}
+- Prompt Utilizado: "${episode.inputPrompt}"
+- Resumo da Saída: "${episode.outputSummary}"
+- Causa da Falha: ${reason}
+- Modelo Utilizado: ${episode.modelUsed}
+
+Sua resposta DEVE ser estritamente um objeto JSON contendo:
+1. "errorConcept": Um ID curto e slugificado que represente o conceito do erro (ex: "concept:imagefx-timeout", "concept:collage-layout-error").
+2. "errorLabel": Nome curto legível do erro (ex: "Estouro de tempo no ImageFX", "Erro de colagem de imagem").
+3. "errorDescription": Descrição detalhada do que causou esse erro.
+4. "preventiveInstruction": Uma regra operacional curta em português que o agente deve seguir da próxima vez para evitar essa falha (ex: "Não use a palavra colagem no prompt para evitar grids", "Aumente o timeout do locator para 30s").
+
+MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown (\`\`\`json).
+`;
+}
+
+function buildPositiveFeedbackPrompt(episode: EpisodicMemoryNode): string {
+  return `
 Você é o Reflector Engine do sistema de memória cognitiva do Kaoz.1.
 O usuário avaliou um resultado como EXCELENTE (feedback positivo).
 Extraia um aprendizado reutilizável deste episódio de sucesso.
@@ -262,79 +365,6 @@ Sua resposta DEVE ser estritamente um objeto JSON contendo:
 
 MUITO IMPORTANTE: Retorne apenas o JSON bruto, sem blocos de código markdown.
 `;
-
-      const response = await this.ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-      });
-
-      const text = response.text?.trim() || '{}';
-      const result = JSON.parse(text);
-
-      if (result.successConcept && result.replicableInstruction) {
-        const successNodeId = result.successConcept.startsWith('tool-outcome:')
-          ? result.successConcept
-          : `tool-outcome:${result.successConcept}`;
-
-        const successNode: GraphNode = {
-          id: successNodeId,
-          label: result.successLabel || 'Sucesso Operacional',
-          type: 'tool-outcome',
-          description: result.successDescription || 'Execução bem avaliada pelo usuário.',
-          confidenceScore: 1.0,
-          lastObserved: new Date().toISOString(),
-          metadata: {
-            taskType: episode.taskType,
-            modelUsed: episode.modelUsed,
-            avatarId: episode.avatarId,
-            replicableInstruction: result.replicableInstruction,
-            fromUserFeedback: true,
-            approvedAt: new Date().toISOString()
-          }
-        };
-        await this.cerebralCortex.upsertNode(successNode);
-
-        // Conecta o modelo ao sucesso com relação de qualidade
-        const modelNodeId = `concept:model-${episode.modelUsed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-        const edgeId = `edge:${modelNodeId}->${successNodeId}`;
-        const edge: GraphEdge = {
-          id: edgeId,
-          source: modelNodeId,
-          target: successNodeId,
-          relation: 'improves_quality',
-          weight: 0.9,
-          confidenceScore: 1.0,
-          occurrences: 1,
-          lastReinforced: new Date().toISOString()
-        };
-        await this.cerebralCortex.upsertEdge(edge);
-
-        // Cria regra procedimental de replicação de sucesso
-        const ruleId = `rule:replicate-${successNodeId.replace('tool-outcome:', '')}`;
-        const rule: ProceduralRule = {
-          id: ruleId,
-          avatarId: episode.avatarId,
-          projectId: episode.projectId,
-          sessionId: episode.sessionId,
-          scope: episode.taskType,
-          triggerPattern: episode.taskType,
-          actionType: 'modify_prompt',
-          instruction: result.replicableInstruction,
-          confidenceScore: 0.9,
-          successCount: 1,
-          failureCount: 0,
-          lastUpdated: new Date().toISOString(),
-          timestamp: new Date().toISOString()
-        };
-        await this.prefrontalCortex.addRule(rule);
-
-        console.info(`[Reflector] Aprendizado de sucesso gravado no grafo: "${result.replicableInstruction}"`);
-      }
-    } catch (err) {
-      console.error("[Reflector] Falha ao processar reflexão de feedback positivo com Gemini:", err);
-    }
-  }
 }
 
 // Instancia para iniciar a escuta global do EventBus

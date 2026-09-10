@@ -6,6 +6,51 @@ import { recallArchivedConversations } from "./conversation-memory.recall.ts";
 import { getConversationMemoryStore, type ConversationMemoryStore } from "./conversation-memory.store.ts";
 import type { ConversationChannel } from "./conversation-memory.types.ts";
 
+async function executeMemoryOperations(
+  prompt: string,
+  channel: Extract<ConversationChannel, "telegram" | "discord">,
+  profileId: string,
+  conversationId: string,
+  messageId: string,
+  service: ChatMemoryService
+): Promise<string> {
+  const command = detectChatMemoryCommand(prompt);
+  let receipt = "";
+
+  if (command.type === 'forget') {
+    const forgotten = await service.forgetMemories(command.target, { userId: profileId });
+    receipt = forgotten ? 'A solicitacao de esquecimento foi concluida.' : 'Nenhuma memoria correspondente foi encontrada.';
+  }
+
+  const source = channel === "telegram" ? "telegram_chat" : "discord_chat";
+  const candidates = extractChatMemoryCandidates(prompt, "", { source }).map((candidate) => ({
+    ...candidate,
+    evidenceRefs: [{ conversationId, messageId }],
+  }));
+
+  if (candidates.length) {
+    const result = await service.saveChatMemoryCandidates(candidates, { userId: profileId });
+    if (command.explicit) {
+      receipt = result.blockedSensitive ? 'O conteudo nao foi salvo porque parece sensivel.' : 'A operacao de memoria foi concluida.';
+    }
+  }
+
+  return receipt;
+}
+
+function assembleMemoryContext(
+  hot: { personalFacts: string; contextualFacts: string },
+  coldContext: string,
+  receipt: string
+): string {
+  return [
+    hot.personalFacts ? `[FATOS CONFIRMADOS DO USUARIO]\n${hot.personalFacts}` : "",
+    hot.contextualFacts ? `[MEMORIAS CONTEXTUAIS]\n${hot.contextualFacts}` : "",
+    coldContext,
+    receipt ? `[RESULTADO DA OPERACAO DE MEMORIA]\n${receipt}\nNao afirme resultado diferente.` : '',
+  ].filter(Boolean).join("\n\n");
+}
+
 export async function prepareConnectorConversation(input: {
   channel: Extract<ConversationChannel, "telegram" | "discord">;
   accountId: string;
@@ -24,28 +69,19 @@ export async function prepareConnectorConversation(input: {
   if (archived.consolidationJobCreated) scheduleConversationConsolidation();
 
   const service = new ChatMemoryService(new JsonStorageProvider());
-  const command = detectChatMemoryCommand(input.prompt);
-  let receipt = "";
-  if (command.type === 'forget') {
-    const forgotten = await service.forgetMemories(command.target, { userId: identity.effectiveProfileId });
-    receipt = forgotten ? 'A solicitacao de esquecimento foi concluida.' : 'Nenhuma memoria correspondente foi encontrada.';
-  }
-  const candidates = extractChatMemoryCandidates(input.prompt, "", { source: input.channel === "telegram" ? "telegram_chat" : "discord_chat" }).map((candidate) => ({
-    ...candidate,
-    evidenceRefs: [{ conversationId, messageId: archived.message.id }],
-  }));
-  if (candidates.length) {
-    const result = await service.saveChatMemoryCandidates(candidates, { userId: identity.effectiveProfileId });
-    if (command.explicit) receipt = result.blockedSensitive ? 'O conteudo nao foi salvo porque parece sensivel.' : 'A operacao de memoria foi concluida.';
-  }
+  const receipt = await executeMemoryOperations(
+    input.prompt,
+    input.channel,
+    identity.effectiveProfileId,
+    conversationId,
+    archived.message.id,
+    service
+  );
+
   const hot = await service.buildPromptContext(input.prompt, { userId: identity.effectiveProfileId });
   const cold = recallArchivedConversations({ query: input.prompt, profileId: identity.effectiveProfileId, excludeConversationId: conversationId });
-  const memoryContext = [
-    hot.personalFacts ? `[FATOS CONFIRMADOS DO USUARIO]\n${hot.personalFacts}` : "",
-    hot.contextualFacts ? `[MEMORIAS CONTEXTUAIS]\n${hot.contextualFacts}` : "",
-    cold.context,
-    receipt ? `[RESULTADO DA OPERACAO DE MEMORIA]\n${receipt}\nNao afirme resultado diferente.` : '',
-  ].filter(Boolean).join("\n\n");
+  const memoryContext = assembleMemoryContext(hot, cold.context, receipt);
+
   return { profileId: identity.effectiveProfileId, recent, memoryContext };
 }
 

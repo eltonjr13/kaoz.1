@@ -96,6 +96,30 @@ export function detectChatMemoryCommand(message: string): ChatMemoryCommand {
   return { type: 'none', explicit: false, target: '' };
 }
 
+function createFallbackSaveCandidate(
+  message: string,
+  candidateMessage: string,
+  command: ChatMemoryCommand,
+  context: ChatMemoryExtractionContext,
+  source: ChatMemorySource
+): ChatMemoryCandidate | null {
+  if (command.type !== 'save' || !isMeaningfulContent(candidateMessage) || hasSensitiveSignal(candidateMessage)) {
+    return null;
+  }
+  const content = `Usuario informou: ${cleanExtractedContent(candidateMessage)}`;
+  return createCandidate({
+    kind: 'user_fact',
+    scope: context.defaultScope ?? 'user',
+    content,
+    evidence: message,
+    confidenceScore: 0.95,
+    source,
+    matchedPhrase: 'salvar na memoria',
+    explicit: true,
+    supersedeHints: []
+  });
+}
+
 export function extractChatMemoryCandidates(
   lastUserMessage: string,
   _agentResponse = '',
@@ -115,19 +139,9 @@ export function extractChatMemoryCandidates(
     if (candidate) candidates.push(candidate);
   }
 
-  if (candidates.length === 0 && command.type === 'save' && isMeaningfulContent(candidateMessage) && !hasSensitiveSignal(candidateMessage)) {
-    const content = `Usuario informou: ${cleanExtractedContent(candidateMessage)}`;
-    candidates.push(createCandidate({
-      kind: 'user_fact',
-      scope: context.defaultScope ?? 'user',
-      content,
-      evidence: message,
-      confidenceScore: 0.95,
-      source,
-      matchedPhrase: 'salvar na memoria',
-      explicit: true,
-      supersedeHints: []
-    }));
+  if (candidates.length === 0) {
+    const fallback = createFallbackSaveCandidate(message, candidateMessage, command, context, source);
+    if (fallback) candidates.push(fallback);
   }
 
   return dedupeCandidates(candidates);
@@ -213,13 +227,19 @@ function classifyKind(content: string, defaultKind: ChatMemoryKind, matchedPhras
   return defaultKind;
 }
 
+function resolveContextScope(context: ChatMemoryExtractionContext): ChatMemoryScope {
+  if (context.projectId) return 'project';
+  if (context.sessionId) return 'session';
+  return 'user';
+}
+
 function resolveScope(kind: ChatMemoryKind, content: string, signal: SignalDefinition, context: ChatMemoryExtractionContext): ChatMemoryScope {
   if (context.defaultScope) return context.defaultScope;
-  if (signal.defaultScope === 'project') return context.projectId ? 'project' : context.sessionId ? 'session' : 'user';
+  if (signal.defaultScope === 'project') return resolveContextScope(context);
   if (signal.defaultScope) return signal.defaultScope;
   if (kind === 'avatar_style_signal') return 'avatar';
   if (kind === 'project_fact' || PROJECT_SIGNAL.test(normalizeForMatch(content))) {
-    return context.projectId ? 'project' : context.sessionId ? 'session' : 'user';
+    return resolveContextScope(context);
   }
   return signal.status === 'pending_review' ? 'session' : 'user';
 }

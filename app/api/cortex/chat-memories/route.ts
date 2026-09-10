@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
-import { ChatMemoryService } from '@/lib/cognitive-memory/chat/ChatMemoryService';
-import { JsonStorageProvider } from '@/lib/cognitive-memory/storage/JsonStorageProvider';
-import { LOCAL_MEMORY_USER_ID } from '@/lib/cognitive-memory/chat/ChatMemoryService';
-import type { ChatMemoryKind, ChatMemoryScope, ChatMemoryStatus } from '@/lib/cognitive-memory/types/memory';
+import { ChatMemoryService, LOCAL_MEMORY_USER_ID } from '../../../../lib/cognitive-memory/chat/ChatMemoryService.ts';
+import { JsonStorageProvider } from '../../../../lib/cognitive-memory/storage/JsonStorageProvider.ts';
+import type { ChatMemoryKind, ChatMemoryScope, ChatMemoryStatus } from '../../../../lib/cognitive-memory/types/memory.ts';
+import { apiSuccess, apiError, ApiErrorCode } from '../../../../lib/cortex/api-response.ts';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -15,7 +16,6 @@ export async function GET(request: Request) {
     const storage = new JsonStorageProvider();
     const chatMemoryService = new ChatMemoryService(storage);
 
-    // Listar todas as memórias ativas ou em revisão (que não estão rejected)
     const memories = await chatMemoryService.listActiveChatMemories({
       userId: LOCAL_MEMORY_USER_ID,
       avatarId,
@@ -25,40 +25,58 @@ export async function GET(request: Request) {
       includeHistory: true
     });
 
-    return NextResponse.json({ success: true, memories });
+    return apiSuccess({ memories }, 200, { memories });
   } catch (err: any) {
-    console.error("[API Cortex Chat Memories] GET Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[API Cortex Chat Memories] GET Error:', err);
+    return apiError(ApiErrorCode.INTERNAL_ERROR, err.message || 'Erro ao listar memórias.', 500);
   }
+}
+
+async function handleEditAction(memoryId: string, content: unknown, chatMemoryService: ChatMemoryService) {
+  if (typeof content !== 'string' || !content.trim()) {
+    return apiError(ApiErrorCode.INVALID_PARAMETERS, 'Conteudo da memoria e obrigatorio para editar.', 400);
+  }
+  const memory = await chatMemoryService.editMemory(memoryId, content, LOCAL_MEMORY_USER_ID);
+  if (!memory) return apiError(ApiErrorCode.NOT_FOUND, 'Memoria nao encontrada.', 404);
+  return apiSuccess({ memory }, 200, { memory });
+}
+
+async function handleRejectAction(memoryId: string, chatMemoryService: ChatMemoryService) {
+  const rejected = await chatMemoryService.rejectMemory(memoryId, LOCAL_MEMORY_USER_ID);
+  if (!rejected) return apiError(ApiErrorCode.NOT_FOUND, 'Memoria nao encontrada.', 404);
+  return apiSuccess({ status: 'rejected', memoryId }, 200, { status: 'rejected', memoryId });
+}
+
+async function handleForgetAction(memoryId: string, chatMemoryService: ChatMemoryService) {
+  const forgotten = await chatMemoryService.forgetMemoryById(memoryId, LOCAL_MEMORY_USER_ID);
+  if (!forgotten) return apiError(ApiErrorCode.NOT_FOUND, 'Memoria nao encontrada.', 404);
+  return apiSuccess({ forgotten: true, memoryId }, 200, { forgotten: true });
 }
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
-    const { action, memoryId, content } = body;
+    const body = await request.json().catch(() => null);
+    const { action, memoryId, content } = body || {};
 
     if (!memoryId || !['edit', 'forget', 'reject'].includes(action)) {
-      return NextResponse.json({ error: 'Ação inválida ou memoryId ausente' }, { status: 400 });
+      return apiError(ApiErrorCode.INVALID_PARAMETERS, 'Ação inválida ou memoryId ausente.', 400);
     }
 
     const storage = new JsonStorageProvider();
     const chatMemoryService = new ChatMemoryService(storage);
 
     if (action === 'edit') {
-      if (typeof content !== 'string' || !content.trim()) {
-        return NextResponse.json({ error: 'Conteudo da memoria e obrigatorio para editar.' }, { status: 400 });
-      }
-      const memory = await chatMemoryService.editMemory(memoryId, content, LOCAL_MEMORY_USER_ID);
-      if (!memory) return NextResponse.json({ error: 'Memoria nao encontrada.' }, { status: 404 });
-      return NextResponse.json({ success: true, memory });
+      return await handleEditAction(memoryId, content, chatMemoryService);
     }
 
-    const forgotten = await chatMemoryService.forgetMemoryById(memoryId, LOCAL_MEMORY_USER_ID);
-    if (!forgotten) return NextResponse.json({ error: 'Memoria nao encontrada.' }, { status: 404 });
+    if (action === 'reject') {
+      return await handleRejectAction(memoryId, chatMemoryService);
+    }
 
-    return NextResponse.json({ success: true });
+    return await handleForgetAction(memoryId, chatMemoryService);
   } catch (err: any) {
-    console.error("[API Cortex Chat Memories] PATCH Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[API Cortex Chat Memories] PATCH Error:', err);
+    return apiError(ApiErrorCode.INTERNAL_ERROR, err?.message ?? 'Erro ao atualizar memória.', 500);
   }
 }
+

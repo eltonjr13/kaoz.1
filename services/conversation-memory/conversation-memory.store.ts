@@ -199,26 +199,28 @@ export class ConversationMemoryStore {
     title?: string;
     createdAt?: string;
   }): ArchivedConversation {
-    const identity = this.observeIdentity(input);
-    const accountId = input.accountId || "";
-    const conversationId = stableId("conversation", input.channel, accountId, input.externalConversationId);
-    const createdAt = input.createdAt || new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO conversations(id, channel, account_id, external_conversation_id, identity_id, profile_id, title, metadata_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
-      ON CONFLICT(channel, account_id, external_conversation_id) DO NOTHING
-    `).run(
-      conversationId,
-      input.channel,
-      accountId,
-      input.externalConversationId,
-      identity.id,
-      identity.effectiveProfileId,
-      input.title?.trim() || defaultTitle(input.channel),
-      createdAt,
-      createdAt
-    );
-    return this.getConversation(conversationId)!.conversation;
+    return this.transaction(() => {
+      const identity = this.observeIdentity(input);
+      const accountId = input.accountId || "";
+      const conversationId = stableId("conversation", input.channel, accountId, input.externalConversationId);
+      const createdAt = input.createdAt || new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO conversations(id, channel, account_id, external_conversation_id, identity_id, profile_id, title, metadata_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+        ON CONFLICT(channel, account_id, external_conversation_id) DO NOTHING
+      `).run(
+        conversationId,
+        input.channel,
+        accountId,
+        input.externalConversationId,
+        identity.id,
+        identity.effectiveProfileId,
+        input.title?.trim() || defaultTitle(input.channel),
+        createdAt,
+        createdAt
+      );
+      return this.getConversation(conversationId)!.conversation;
+    });
   }
 
   upsertMessage(input: ArchiveMessageInput): { message: ArchivedMessage; consolidationJobCreated: boolean; profileId: string } {
@@ -350,9 +352,11 @@ export class ConversationMemoryStore {
   }
 
   deleteConversation(conversationId: string): { deleted: boolean; messageIds: string[] } {
-    const ids = (this.db.prepare("SELECT id FROM messages WHERE conversation_id=?").all(conversationId) as Row[]).map((row) => String(row.id));
-    const result = this.db.prepare("DELETE FROM conversations WHERE id=?").run(conversationId);
-    return { deleted: Number(result.changes) > 0, messageIds: ids };
+    return this.transaction(() => {
+      const ids = (this.db.prepare("SELECT id FROM messages WHERE conversation_id=?").all(conversationId) as Row[]).map((row) => String(row.id));
+      const result = this.db.prepare("DELETE FROM conversations WHERE id=?").run(conversationId);
+      return { deleted: Number(result.changes) > 0, messageIds: ids };
+    });
   }
 
   renameConversation(channel: ConversationChannel, accountId: string | undefined, externalConversationId: string, title: string): boolean {
@@ -454,6 +458,13 @@ let singleton: ConversationMemoryStore | undefined;
 export function getConversationMemoryStore(): ConversationMemoryStore {
   singleton ||= new ConversationMemoryStore();
   return singleton;
+}
+
+export function resetConversationMemoryStore(): void {
+  if (singleton) {
+    singleton.close();
+    singleton = undefined;
+  }
 }
 
 function stableId(...parts: string[]): string {

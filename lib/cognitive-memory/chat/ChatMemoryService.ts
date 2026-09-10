@@ -45,63 +45,24 @@ export class ChatMemoryService {
       const now = new Date().toISOString();
 
       for (const candidate of candidates) {
-        if (candidate.kind === 'safety_boundary' || candidate.status === 'rejected') {
+        if (isCandidateBlocked(candidate)) {
           result.blockedSensitive = true;
           continue;
         }
 
-        if (candidate.consolidationKey && memories.some((memory) => memory.consolidationKey === candidate.consolidationKey || memory.consolidationKeys?.includes(candidate.consolidationKey!))) continue;
+        if (hasDuplicateConsolidationKey(candidate, memories)) continue;
 
-        const duplicate = memories.find((memory) =>
-          memory.userId === userId &&
-          memory.scope === candidate.scope &&
-          (memory.status === 'active' || memory.status === 'pending_review') &&
-          normalize(memory.content) === normalize(candidate.content)
-        );
-
+        const duplicate = findDuplicateMemory(candidate, memories, userId);
         if (duplicate) {
           reinforce(duplicate, candidate, now);
           result.reinforced.push(duplicate);
           continue;
         }
 
-        const conflicts = memories.filter((memory) =>
-          memory.userId === userId &&
-          memory.status === 'active' &&
-          memory.scope === candidate.scope &&
-          isConflict(memory, candidate)
-        );
-        for (const conflict of conflicts) {
-          conflict.status = 'superseded';
-          conflict.updatedAt = now;
-          result.superseded.push(conflict);
-        }
+        const conflicts = supersedeConflicts(candidate, memories, userId, now);
+        result.superseded.push(...conflicts);
 
-        const record: ChatMemoryRecord = {
-          id: crypto.randomUUID(),
-          userId,
-          avatarId: context.avatarId,
-          projectId: context.projectId,
-          sessionId: context.sessionId,
-          kind: candidate.kind,
-          scope: candidate.scope,
-          content: candidate.content,
-          evidence: candidate.evidence,
-          evidenceRefs: candidate.evidenceRefs,
-          consolidationKey: candidate.consolidationKey,
-          consolidationKeys: candidate.consolidationKey ? [candidate.consolidationKey] : undefined,
-          explicit: candidate.explicit,
-          canonicalKey: candidate.canonicalKey,
-          tags: candidate.tags,
-          supersedesId: conflicts[0]?.id,
-          confidenceScore: candidate.confidenceScore,
-          status: candidate.explicit ? 'active' : candidate.status,
-          occurrences: 1,
-          source: candidate.source,
-          createdAt: now,
-          updatedAt: now,
-          lastReinforcedAt: now
-        };
+        const record = buildNewChatRecord(candidate, userId, context, now, conflicts[0]?.id);
         memories.push(record);
         result.saved.push(record);
       }
@@ -124,14 +85,22 @@ export class ChatMemoryService {
     return (data.chat?.memories || [])
       .filter((memory) => {
         if (memory.userId !== userId) return false;
-        if (!filters.includeHistory && (memory.status === 'rejected' || memory.status === 'superseded')) return false;
-        if (filters.status && memory.status !== filters.status) return false;
-        if (filters.avatarId && memory.scope === 'avatar' && memory.avatarId !== filters.avatarId) return false;
-        if (filters.scope && memory.scope !== filters.scope) return false;
-        if (filters.kind && memory.kind !== filters.kind) return false;
-        return true;
+        return matchesHistoryFilter(memory, filters.includeHistory, filters.status) &&
+               matchesScopeAndKindFilter(memory, filters);
       })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  public async rejectMemory(memoryId: string, userId = LOCAL_MEMORY_USER_ID): Promise<boolean> {
+    return this.storage.updateMemory((data) => {
+      const memories = data.chat?.memories || [];
+      const memory = memories.find((m) => m.id === memoryId && m.userId === userId);
+      if (!memory) return false;
+      memory.status = 'rejected';
+      memory.updatedAt = new Date().toISOString();
+      data.chat = { memories };
+      return true;
+    });
   }
 
   public async forgetMemories(target: string, context: ChatMemoryContext = {}): Promise<number> {
@@ -257,10 +226,92 @@ export class ChatMemoryService {
   }
 }
 
+function isCandidateBlocked(candidate: ChatMemoryCandidate): boolean {
+  return candidate.kind === 'safety_boundary' || candidate.status === 'rejected';
+}
+
+function hasDuplicateConsolidationKey(candidate: ChatMemoryCandidate, memories: ChatMemoryRecord[]): boolean {
+  if (!candidate.consolidationKey) return false;
+  return memories.some((memory) =>
+    memory.consolidationKey === candidate.consolidationKey ||
+    memory.consolidationKeys?.includes(candidate.consolidationKey!)
+  );
+}
+
+function findDuplicateMemory(candidate: ChatMemoryCandidate, memories: ChatMemoryRecord[], userId: string): ChatMemoryRecord | undefined {
+  return memories.find((memory) =>
+    memory.userId === userId &&
+    memory.scope === candidate.scope &&
+    (memory.status === 'active' || memory.status === 'pending_review') &&
+    normalize(memory.content) === normalize(candidate.content)
+  );
+}
+
+function supersedeConflicts(candidate: ChatMemoryCandidate, memories: ChatMemoryRecord[], userId: string, now: string): ChatMemoryRecord[] {
+  const conflicts = memories.filter((memory) =>
+    memory.userId === userId &&
+    memory.status === 'active' &&
+    memory.scope === candidate.scope &&
+    isConflict(memory, candidate)
+  );
+  for (const conflict of conflicts) {
+    conflict.status = 'superseded';
+    conflict.updatedAt = now;
+  }
+  return conflicts;
+}
+
+function buildNewChatRecord(
+  candidate: ChatMemoryCandidate,
+  userId: string,
+  context: ChatMemoryContext,
+  now: string,
+  supersedesId?: string
+): ChatMemoryRecord {
+  return {
+    id: crypto.randomUUID(),
+    userId,
+    avatarId: context.avatarId,
+    projectId: context.projectId,
+    sessionId: context.sessionId,
+    kind: candidate.kind,
+    scope: candidate.scope,
+    content: candidate.content,
+    evidence: candidate.evidence || [],
+    evidenceRefs: candidate.evidenceRefs || [],
+    consolidationKey: candidate.consolidationKey,
+    consolidationKeys: candidate.consolidationKey ? [candidate.consolidationKey] : undefined,
+    explicit: candidate.explicit,
+    canonicalKey: candidate.canonicalKey || `manual:${candidate.kind}:${normalize(candidate.content)}`,
+    tags: candidate.tags || [],
+    supersedesId,
+    confidenceScore: candidate.confidenceScore ?? 0.8,
+    status: candidate.explicit ? 'active' : (candidate.status || 'candidate'),
+    occurrences: 1,
+    source: candidate.source || 'chat',
+    createdAt: now,
+    updatedAt: now,
+    lastReinforcedAt: now
+  };
+}
+
+function matchesHistoryFilter(memory: ChatMemoryRecord, includeHistory?: boolean, statusFilter?: ChatMemoryStatus): boolean {
+  if (!includeHistory && (memory.status === 'rejected' || memory.status === 'superseded')) return false;
+  if (statusFilter && memory.status !== statusFilter) return false;
+  return true;
+}
+
+function matchesScopeAndKindFilter(memory: ChatMemoryRecord, filters: { avatarId?: string; scope?: ChatMemoryScope; kind?: ChatMemoryKind }): boolean {
+  if (filters.avatarId && memory.scope === 'avatar' && memory.avatarId !== filters.avatarId) return false;
+  if (filters.scope && memory.scope !== filters.scope) return false;
+  if (filters.kind && memory.kind !== filters.kind) return false;
+  return true;
+}
+
 function isConflict(memory: ChatMemoryRecord, candidate: ChatMemoryCandidate): boolean {
-  if (memory.canonicalKey === candidate.canonicalKey && memory.content !== candidate.content) return true;
+  if (memory.canonicalKey && candidate.canonicalKey && memory.canonicalKey === candidate.canonicalKey && memory.content !== candidate.content) return true;
   const normalizedContent = normalize(memory.content);
-  return candidate.supersedeHints.some((hint) => normalizedContent.includes(normalize(hint)));
+  return Boolean(candidate.supersedeHints?.some((hint) => normalizedContent.includes(normalize(hint))));
 }
 
 function reinforce(memory: ChatMemoryRecord, candidate: ChatMemoryCandidate, now: string): void {

@@ -32,18 +32,15 @@ export class Amygdala {
    * Atualiza o status e a valência associada a esse nó.
    */
   public async modulateEmotionalWeight(episodeId: string, feedback: 'good' | 'bad'): Promise<EpisodicMemoryNode | null> {
-    const data = await this.storage.readMemory();
-    const episode = data.episodic.nodes.find((n) => n.id === episodeId);
-    
-    if (!episode) return null;
+    return this.storage.updateMemory((data) => {
+      const episode = data.episodic.nodes.find((n) => n.id === episodeId);
+      
+      if (!episode) return null;
 
-    episode.userFeedback = feedback;
-    episode.status = feedback === 'bad' ? 'failure' : 'success';
-    
-    // Na Amígdala, feedback 'bad' age como um choque, reduzindo a chance dessa memória ser evocada novamente no futuro.
-    // Isso poderia influenciar um 'confidenceScore' interno do episódio, se for adicionado no type.
-    
-    await this.storage.writeMemory(data);
-    return episode;
+      episode.userFeedback = feedback;
+      episode.status = feedback === 'bad' ? 'failure' : 'success';
+      
+      return episode;
+    });
   }
 }
