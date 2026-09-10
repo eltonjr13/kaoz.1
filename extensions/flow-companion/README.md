@@ -31,7 +31,7 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 ## Escopo e limites
 
 - Localhost é autorizado por padrão. Domínios HTTPS precisam ser adicionados pelo
-  usuário no popup; outras origens e páginas fora de `/flow` são recusadas.
+  usuário no popup; outras origens e páginas fora de `/flow` e `/sketch` são recusadas.
 - Cada conexão do Kaoz usa um token temporário próprio e recebe apenas seus pedidos.
 - Uma geração por vez; não há reenvio automático em caso de timeout.
 - A extensão abre um projeto próprio e identifica apenas as imagens criadas depois
@@ -46,14 +46,16 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 
 ## Validação em 2026-09-10
 
-- 12 testes passaram, incluindo isolamento por conexão, retomada sem duplicação,
-  arquivo corrompido, persistência idempotente e contratos de referência.
+- 16 testes focados passaram, incluindo isolamento por conexão, retomada sem
+  duplicação, persistência idempotente e separação entre jobs do Chrome e desktop.
 - TypeScript e ESLint focado passaram, usando `eslint.config.mjs`.
 - Uma imagem real foi gerada no Flow pela extensão. O primeiro retorno revelou que
-  o original usa `flow-content.google`; a versão 0.2.1 inclui esse host e busca o
+  o original usa `flow-content.google`; a versão 0.2.2 inclui esse host e busca o
   arquivo original do editor.
-- O percurso final da versão 0.2.1 passou no Chrome: projeto novo, Nano Banana 2,
+- O percurso direto da versão 0.2.2 passou no Chrome: projeto novo, Nano Banana 2,
   formato 9:16, geração x1, retorno do original, validação, armazenamento e prévia.
+- O percurso pelo Sketch também passou: anúncio 1:1, geração x1, arquivo JPEG
+  1024x1024 salvo como Versão #1 e exibido na tela de resultado.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.

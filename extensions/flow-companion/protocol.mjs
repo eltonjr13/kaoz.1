@@ -2,7 +2,7 @@ export function allowedSender(sender, origins = []) {
   try {
     const url = new URL(sender.url);
     return ['http://localhost:3000', 'http://127.0.0.1:3000', ...origins].includes(url.origin)
-      && (url.pathname === '/flow-extension-test.html' || /^\/flow(?:\/|$)/.test(url.pathname));
+      && (url.pathname === '/flow-extension-test.html' || /^\/(?:flow|sketch)(?:\/|$)/.test(url.pathname));
   } catch { return false; }
 }
 

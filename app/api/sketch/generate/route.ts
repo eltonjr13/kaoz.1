@@ -4,6 +4,7 @@ import {
   sketchJobManager,
   DuplicateJobError,
 } from '@/lib/sketch/sketch-job-manager';
+import { browserTransportToken } from '@/lib/flow/browser-image-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const job = await sketchJobManager.enqueueJob(parsed);
+    const job = await sketchJobManager.enqueueJob({
+      ...parsed,
+      browserTransportToken: browserTransportToken(req),
+    });
     return NextResponse.json(
       {
         success: true,

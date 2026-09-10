@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kaoz Flow Companion",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Gera imagens para o Kaoz.1 usando sua sessão do Google Flow no Chrome.",
   "permissions": ["scripting", "storage"],
   "host_permissions": ["https://flow.google.com/*", "https://flow.google/*", "https://labs.google/*", "https://flow-content.google/*", "https://*.googleusercontent.com/*"],

@@ -15,6 +15,7 @@ import {
   getProject,
 } from '../lib/sketch/sketch-storage.ts';
 import type { ImageGenerationOptions, ImageGenerationResult } from '../src/providers/flow/FlowTypes.ts';
+import { browserImageContext } from '../lib/flow/browser-image-context.ts';
 
 const SAMPLE_PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -103,6 +104,19 @@ class MockFlowProvider implements FlowImageProviderContract {
   }
 }
 
+class ContextAwareFlowProvider extends MockFlowProvider {
+  public observedTokens: Array<string | undefined> = [];
+
+  override async generateImageWithProgress(
+    prompt: string,
+    options?: ImageGenerationOptions,
+    onLockAcquired?: () => void
+  ): Promise<ImageGenerationResult> {
+    this.observedTokens.push(browserImageContext.getStore());
+    return super.generateImageWithProgress(prompt, options, onLockAcquired);
+  }
+}
+
 async function waitForJobTerminal(manager: SketchJobManager, jobId: string, timeoutMs = 3000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -158,6 +172,38 @@ test('ciclo de sucesso de job com arquivo real e versionamento incremental', asy
     assert.equal(updatedProj.snapshots?.[0].versionNumber, 1);
     assert.equal(updatedProj.generationHistory.length, 1);
     assert.equal(updatedProj.generationHistory[0].imageUrl, terminalJob.result.imageUrl);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('fila preserva o transporte da extensão por job sem contaminar o desktop', async () => {
+  const env = await createTestEnv();
+  const mockFlow = new ContextAwareFlowProvider();
+  const browserToken = 'a'.repeat(64);
+
+  try {
+    const browserProject = createDefaultProject({ id: 'proj-browser-transport' });
+    const desktopProject = createDefaultProject({ id: 'proj-desktop-transport' });
+    await saveProject(browserProject, env.projectsDir, env.assetsDir);
+    await saveProject(desktopProject, env.projectsDir, env.assetsDir);
+
+    const manager = new SketchJobManager({
+      jobsDir: env.jobsDir,
+      assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
+      flowProvider: mockFlow,
+    });
+
+    const browserJob = await manager.enqueueJob({
+      projectId: browserProject.id,
+      browserTransportToken: browserToken,
+    });
+    const desktopJob = await manager.enqueueJob({ projectId: desktopProject.id });
+    await waitForJobTerminal(manager, browserJob.id);
+    await waitForJobTerminal(manager, desktopJob.id);
+
+    assert.deepEqual(mockFlow.observedTokens, [browserToken, undefined]);
   } finally {
     await env.cleanup();
   }

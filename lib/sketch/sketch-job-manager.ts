@@ -16,6 +16,7 @@ import { prepareSketchCompositeReference } from './sketch-composite-preparer.ts'
 import { validateAttachmentBuffer } from './sketch-attachment-validator.ts';
 import { renderCompositeReferenceDataUrl } from './sketch-exporter.ts';
 import { cleanupTemporaryReference } from '../flow/reference-files.ts';
+import { browserImageContext, withBrowserImageTransport } from '../flow/browser-image-context.ts';
 
 async function resolveDefaultFlowProvider(): Promise<FlowImageProviderContract> {
   const mod = await import('../../src/providers/flow/FlowProvider.ts');
@@ -116,6 +117,7 @@ export interface EnqueueSketchJobParams {
   idempotencyToken?: string;
   referenceDataUrl?: string;
   model?: string;
+  browserTransportToken?: string;
 }
 
 export class DuplicateJobError extends Error {
@@ -253,6 +255,7 @@ export class SketchJobManager {
   private activeJobsMap = new Map<string, SketchJobData>();
   private queueProcessing = false;
   private executionQueue: string[] = [];
+  private browserTransportTokens?: Map<string, string>;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private processId = `proc-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
@@ -266,6 +269,10 @@ export class SketchJobManager {
 
   public getProcessId(): string {
     return this.processId;
+  }
+
+  private getBrowserTransportTokens(): Map<string, string> {
+    return this.browserTransportTokens ??= new Map<string, string>();
   }
 
   public async ensureInitialized(): Promise<void> {
@@ -543,6 +550,8 @@ export class SketchJobManager {
     };
 
     await this.persistJob(job);
+    const browserTransportToken = params.browserTransportToken || browserImageContext.getStore();
+    if (browserTransportToken) this.getBrowserTransportTokens().set(job.id, browserTransportToken);
     this.executionQueue.push(job.id);
     void this.processNextInQueue();
     return job;
@@ -586,7 +595,13 @@ export class SketchJobManager {
       const jobId = this.executionQueue.shift()!;
       const job = await this.getJob(jobId);
       if (job && !isJobTerminal(job.status)) {
-        await this.executeJob(job);
+        const browserTransportTokens = this.getBrowserTransportTokens();
+        const browserTransportToken = browserTransportTokens.get(job.id);
+        try {
+          await withBrowserImageTransport(browserTransportToken, () => this.executeJob(job));
+        } finally {
+          browserTransportTokens.delete(job.id);
+        }
       }
     }
 
@@ -872,5 +887,6 @@ export const sketchJobManager =
   globalForSketchJobs.sketchJobManagerInstance ?? new SketchJobManager();
 
 if (process.env.NODE_ENV !== 'production') {
+  Object.setPrototypeOf(sketchJobManager, SketchJobManager.prototype);
   globalForSketchJobs.sketchJobManagerInstance = sketchJobManager;
 }

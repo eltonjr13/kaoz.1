@@ -6,6 +6,8 @@ test('only the approved Kaoz origin and Flow pages can command the extension', (
   assert.equal(allowedSender({ url: 'http://localhost:3000/flow/images' }), true);
   assert.equal(allowedSender({ url: 'https://kaoz.example/flow/images' }), false);
   assert.equal(allowedSender({ url: 'https://kaoz.example/flow/images' }, ['https://kaoz.example']), true);
+  assert.equal(allowedSender({ url: 'http://localhost:3000/sketch' }), true);
+  assert.equal(allowedSender({ url: 'https://kaoz.example/sketch/project' }, ['https://kaoz.example']), true);
   for (const url of ['https://evil.test', 'http://localhost:3001/flow/images', 'http://localhost:3000/other', 'http://localhost.evil.test:3000/flow/images', 'invalid']) assert.equal(allowedSender({ url }), false);
   assert.equal(allowedSender({}), false);
 });

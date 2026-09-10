@@ -29,6 +29,7 @@ import { SketchSaveCoordinator, type SaveStatus } from '@/lib/sketch/sketch-save
 import { createCleanProject } from '@/lib/sketch/sketch-project-defaults';
 import { renderSketchOnlyDataUrl } from '@/lib/sketch/sketch-exporter';
 import { playUiSound } from '@/lib/ui-sounds';
+import { flowImageFetch } from '@/lib/flow/companion-client';
 import { SketchPromptInput } from './sketch-prompt-input';
 import { SketchAttachmentBar } from './sketch-attachment-bar';
 import { SketchFormatSelector } from './sketch-format-selector';
@@ -38,6 +39,18 @@ import { SketchResultView } from './sketch-result-view';
 import { SketchProjectsModal } from './sketch-projects-modal';
 
 type FlowState = 'input' | 'generating' | 'result';
+
+function playSketchJobSound(
+  jobId: string | undefined,
+  status: 'completed' | 'failed',
+  eligibleJobIds: Set<string>
+) {
+  if (!jobId || !eligibleJobIds.has(jobId)) return;
+  playUiSound(status === 'completed' ? 'task-complete' : 'error', {
+    dedupeKey: `sketch:${jobId}:${status}`,
+  });
+  if (status === 'completed') eligibleJobIds.delete(jobId);
+}
 
 function SaveStatusBadge({
   status,
@@ -505,10 +518,7 @@ export function SketchSingleFlow() {
     async (status: string, jobError?: string, jobId?: string) => {
       setIsGenerating(false);
       if (status === 'completed') {
-        if (jobId && soundEligibleJobIdsRef.current.has(jobId)) {
-          playUiSound('task-complete', { dedupeKey: `sketch:${jobId}:completed` });
-          soundEligibleJobIdsRef.current.delete(jobId);
-        }
+        playSketchJobSound(jobId, 'completed', soundEligibleJobIdsRef.current);
         try {
           const pRes = await fetch(`/api/sketch/projects/${project.id}`);
           const pData = await pRes.json();
@@ -520,9 +530,7 @@ export function SketchSingleFlow() {
         }
         setFlowState('result');
       } else if (status === 'failed') {
-        if (jobId && soundEligibleJobIdsRef.current.has(jobId)) {
-          playUiSound('error', { dedupeKey: `sketch:${jobId}:failed` });
-        }
+        playSketchJobSound(jobId, 'failed', soundEligibleJobIdsRef.current);
         setGenerationError(jobError || 'Falha na geração do anúncio');
         setFlowState('input');
       }
@@ -571,10 +579,11 @@ export function SketchSingleFlow() {
       }
 
       const refDataUrl = resolveReferenceDataUrl(sketchPaths, sketchThumbnail);
-      const res = await fetch('/api/sketch/generate', {
+      const res = await flowImageFetch('/api/sketch/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          type: 'ad-creative',
           projectId: project.id,
           idempotencyToken: `single-${project.id}-${Date.now()}`,
           referenceDataUrl: refDataUrl,
