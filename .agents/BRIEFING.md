@@ -9,6 +9,7 @@ Refactor the Cortex tab of Kaoz.1 (Windows/Electron desktop app with Next.js loc
 - Orchestrator: 2eb56115-a4a7-4a58-b8b0-4024ee9a5853
 - Victory Auditor: to be spawned on victory claim
 - Active Orchestrator: 57329d08-77c1-4755-b061-d3638273f9c1
+- Active Orchestrator (Resumption M1, M3, M4, M5): 816a939f-ab33-4994-be14-d79d197322d4
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
@@ -29,14 +30,14 @@ Refactor the Cortex tab of Kaoz.1 (Windows/Electron desktop app with Next.js loc
 - Rationale: Multi-faceted full-stack refactoring of the Cortex architecture (shell, API endpoints, SQLite/JSON contracts, decoupled canvas graph, memory/conversation/identity management, accessibility, tests). Not a document review, math/proof, or single-change SWE light task.
 
 ## User Context
-- **Last user request**: Refactor Cortex tab in Kaoz.1 (Windows/Electron, Next.js local-first) per D:\apps\mrchicken\docs\TEAMWORK_REFATORAMENTO_CORTEX.md across 5 requirements (R1 Shell, R2 APIs/Contracts, R3 Graph Decoupling, R4 Memory/Conversation/Identity Management, R5 Local Infra/No-cloud).
+- **Last user request**: Resumption of Cortex Refactoring for Milestones M1, M3, M4, M5 (Unified Shell, Decoupled Graph, Memories/Conversations/Identities & Accessible Modals, QA Verification).
 - **Pending clarifications**: none
-- **Delivered results**: none
+- **Delivered results**: M2 & E2E Track (67/67 tests) completed and verified in commit 17482b5.
 
 ## Project Status
-- **Phase**: in progress (Milestone M2 PASSED gate evaluation unanimously with 2 Reviewers, 2 Challengers, and Forensic Auditor CLEAN verdict; proceeding to M1 Shell and M3 Graph)
-- **Cron 1 (Progress)**: task-32
-- **Cron 2 (Liveness)**: task-34
+- **Phase**: in progress (Resumption for Milestones M1, M3, M4, M5 dispatched to Orchestrator 816a939f-ab33-4994-be14-d79d197322d4)
+- **Cron 1 (Progress)**: task-26
+- **Cron 2 (Liveness)**: task-28
 
 ## Victory Audit Status
 - **Triggered**: no
@@ -46,5 +47,6 @@ Refactor the Cortex tab of Kaoz.1 (Windows/Electron desktop app with Next.js loc
 ## Artifact Index
 - d:\apps\mrchicken\.agents\ORIGINAL_REQUEST.md — Original verbatim user request
 - d:\apps\mrchicken\.agents\BRIEFING.md — Persistent memory/briefing for the sentinel
+- d:\apps\mrchicken\.agents\orchestrator_cortex_resumption\DISPATCH.md — Orchestrator resumption dispatch
 - d:\apps\mrchicken\docs\TEAMWORK_REFATORAMENTO_CORTEX.md — Master technical specification for Cortex refactor
 

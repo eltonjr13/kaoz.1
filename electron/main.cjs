@@ -1,8 +1,3 @@
-const nativeOrigin = process.argv.find(argument => /^chrome-extension:\/\/[a-p]{32}\/?$/.test(argument));
-
-if (nativeOrigin) {
-  require('./flow-native-host.cjs').runFlowNativeHost({ nativeOrigin });
-} else {
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { readDesktopPreferences, shouldHideWindowOnClose, writeDesktopPreferences } = require("./desktop-preferences.cjs");
@@ -43,6 +38,12 @@ function desktopPreferencesPath() {
 
 function flowNativeRuntimePath() {
   return path.join(app.getPath("userData"), "flow-companion-runtime.json");
+}
+
+function flowNativeExecutablePath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "flow-native-host", "kaoz-flow-native-host.exe")
+    : path.join(__dirname, "..", "build", "runtime", "flow-native-host", "kaoz-flow-native-host.exe");
 }
 
 function publishFlowNativeRuntime(baseUrl) {
@@ -597,8 +598,7 @@ app.whenReady().then(async () => {
     try {
       flowNativeRegistration = registerFlowNativeHost({
         userDataPath: app.getPath("userData"),
-        executablePath: process.execPath,
-        packaged: app.isPackaged,
+        nativeHostPath: flowNativeExecutablePath(),
       });
     } catch (error) {
       flowNativeRegistration = { registered: false, reason: error instanceof Error ? error.message : String(error) };
@@ -629,4 +629,3 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-}

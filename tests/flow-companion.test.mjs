@@ -19,6 +19,7 @@ test('desktop bridge uses a stable extension id and Native Messaging permission'
   assert.match(constants, new RegExp(extensionId));
   const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
   assert.ok(packageJson.build.extraResources.some(entry => entry.from === 'extensions/flow-companion' && entry.to === 'flow-companion-extension'));
+  assert.ok(packageJson.build.extraResources.some(entry => entry.from === 'build/runtime/flow-native-host' && entry.to === 'flow-native-host'));
   assert.match(fs.readFileSync(path.resolve('build/installer.nsh'), 'utf8'), /DeleteRegKey HKCU .*com\.kaoz1\.flow_companion/);
 });
 

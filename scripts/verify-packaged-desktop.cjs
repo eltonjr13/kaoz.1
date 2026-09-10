@@ -17,7 +17,8 @@ function verifyResources(resources, requireVulkan = false) {
     "parakeet-runtime/packages/onnx_asr/__init__.py",
     "parakeet-runtime/packages/onnxruntime/__init__.py",
     "whisper-cpp-runtime/cpu/whisper-server.exe", "whisper-cpp-runtime/cpu/whisper.dll",
-    "flow-companion-extension/manifest.json", "flow-companion-extension/background.mjs"]) {
+    "flow-companion-extension/manifest.json", "flow-companion-extension/background.mjs",
+    "flow-native-host/kaoz-flow-native-host.exe"]) {
     requireFile(resources, file);
   }
   if (requireVulkan) {

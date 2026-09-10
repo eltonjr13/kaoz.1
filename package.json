@@ -11,9 +11,9 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack",
-    "desktop:dev": "concurrently -k \"cross-env KAOZ1_DESKTOP=1 npm run dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
+    "desktop:dev": "node scripts/prepare-flow-native-host.mjs && concurrently -k \"cross-env KAOZ1_DESKTOP=1 npm run dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
     "build": "node scripts/build-next.mjs",
-    "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs && node scripts/prepare-whisper-cpp-runtime.mjs && node scripts/prepare-electron-shell.mjs && node scripts/verify-electron-shell.mjs && node scripts/smoke-desktop-standalone.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-flow-native-host.mjs && node scripts/prepare-parakeet-runtime.mjs && node scripts/prepare-whisper-cpp-runtime.mjs && node scripts/prepare-electron-shell.mjs && node scripts/verify-electron-shell.mjs && node scripts/smoke-desktop-standalone.mjs",
     "desktop:smoke": "node scripts/smoke-desktop-standalone.mjs",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish never",
     "desktop:release": "npm run build && npm run desktop:prepare && electron-builder --win nsis --publish never",
@@ -159,6 +159,13 @@
         "to": "flow-companion-extension",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "build/runtime/flow-native-host",
+        "to": "flow-native-host",
+        "filter": [
+          "kaoz-flow-native-host.exe"
         ]
       },
       {

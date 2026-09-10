@@ -13,7 +13,7 @@ aplicativo desktop.
    **Conectar ao Kaoz**. Para desenvolvimento, use `http://localhost:3000`.
 4. A extensão abrirá `/flow/images` já com sua identificação.
 
-No aplicativo desktop instalado, a ponte Native Messaging é registrada no primeiro
+No aplicativo desktop, a ponte Native Messaging é registrada no primeiro
 início e a conexão ocorre automaticamente. O popup da extensão pode ser aberto pelo
 botão **Abrir extensão no Chrome** dentro do Kaoz.1.
 

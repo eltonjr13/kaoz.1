@@ -213,4 +213,75 @@ Operar em ambiente Windows utilizando `npm.cmd`. Garantir que nenhum dado de mem
 - [ ] `npm.cmd run lint` passa nos arquivos criados ou modificados.
 - [ ] Registro documentado de validação visual real no navegador e no Electron, com relatório final das entregas e compatibilidade.
 
+## 2026-09-10T21:38:37Z
+
+# Cortex Refactoring — Resumption for Milestones M1, M3, M4, M5
+
+Working directory: D:\apps\mrchicken
+Integrity mode: development
+Requested team: Equipe completa de agentes
+
+## Background & Checkpoint State
+
+Milestone M2 (API standardization, atomic JSON persistence, SQLite WAL transactions, contract envelopes, elimination of fake seed data) and the E2E Testing Track (67/67 tests passing) are 100% complete and verified in git commit 17482b5.
+
+The specifications, contracts, and architecture are defined in:
+- `D:\apps\mrchicken\PROJECT.md`
+- `D:\apps\mrchicken\docs\TEAMWORK_REFATORAMENTO_CORTEX.md`
+- `D:\apps\mrchicken\TEST_INFRA.md`
+
+Current verification baseline:
+- `npm.cmd run typecheck`: 0 errors
+- `npm.cmd run test:memory`: 9/9 passed
+- `npm.cmd run test:memory-archive`: 7/7 passed
+- `node --experimental-strip-types tests/api-cortex-integration.test.ts`: 21/21 passed
+- `node tests/e2e/cortex/test-runner.mjs`: 67/67 passed
+
+## Scope of Work (Milestones M1, M3, M4, M5)
+
+### M1 — Unified Shell & Overview Dashboard
+- Refactor `app/(dashboard)/cortex/page.tsx` and modular shell components in `components/cortex/`.
+- Tabbed keyboard-accessible navigation between 5 sections:
+  1. `Visão Geral`
+  2. `Grafo`
+  3. `Memórias`
+  4. `Conversas`
+  5. `Identidades`
+- Visão Geral dashboard driven **strictly by real data** from local endpoints:
+  - Node counts, edge counts, active rules, episodic memories, persistent memories, conversations, messages, external identities.
+  - Operational health of local storage engines (JSON cognitive memory and SQLite conversation archive).
+  - No synthetic seeds, no decorative placeholders.
+- Unified explicit UI states: Loading skeleton, Empty state, Error state with retry action, and updating indicator.
+- Narrow viewport responsive layout without horizontal overflow.
+
+### M3 — Decoupled & Optimized Cognitive Graph
+- Decompose monolithic `components/cortex/cortex-graph-client.tsx` into clean, testable modules in `components/cortex/graph/`:
+  - `cortex-graph.tsx`: Container orchestrator
+  - `cortex-graph-canvas.tsx`: Canvas renderer with high-DPI (`devicePixelRatio`), inverse hit-testing coordinate mapping, and `ResizeObserver`
+  - `cortex-graph-physics.ts` & `cortex-graph-layout.ts`: Pure physics engine decoupled from React render loop, velocity dampening, collision repulsion
+  - `cortex-graph-controls.tsx`: Zoom, pan, HUD, keyboard navigation
+  - `cortex-graph-details.tsx`: Node/edge inspection, rule editing, episode feedback
+  - `cortex-graph-types.ts`: Graph data types
+- Animation and polling optimization:
+  - Pause `requestAnimationFrame` loop and polling when `document.visibilityState === 'hidden'` or when tab is not active.
+  - Preserve node coordinates during 30s background polling without resetting or shifting existing nodes.
+- Preserve 100% of existing operations: node creation/edit/deletion, connection management, procedural rule feedback/editing, episode creation/feedback.
+
+### M4 — Memory, Conversation, Identity Management & Accessible Modais
+- In `components/cortex/memories/` and `components/cortex/conversations/`:
+  - Memory list (`cortex-chat-memories.tsx`): text search, filters (scope, status, type), pagination, review actions (including `pending_review` highlight).
+  - Conversation archive (`cortex-conversation-archive.tsx`): search with `AbortController` and sequence IDs (preventing stale async responses from overwriting recent searches), genuine empty search results (fix fallback bug).
+  - Identity linking management (`cortex-identities.tsx`): channel association with visible progress and feedback on derived memory impact.
+- Replace all synchronous `window.confirm` and `window.alert` with accessible modal dialogs (`components/cortex/cortex-confirm-modal.tsx`):
+  - Focus trapping, Escape key dismiss, focus restoration to trigger element.
+  - Progress state during deletion, inline error display and safe rollback on failure.
+
+### M5 — QA, Verification & Final Report
+- Run all test suites: `npm.cmd run typecheck`, `npm.cmd run test:memory`, `npm.cmd run test:memory-archive`, `node tests/e2e/cortex/test-runner.mjs`, and `npm.cmd run lint` on touched files.
+- Ensure 0 regressions and 100% pass rate.
+- Document visual validation and Electron desktop readiness.
+
+Coordinate work across specialized agents, maintain clean git commits per phase, and verify all acceptance criteria.
+
+
 
