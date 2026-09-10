@@ -89,7 +89,7 @@ async function runCommand(command: Command) {
     throw new Error('A geração excedeu o tempo de espera. Confira a aba do Flow.');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await report(command, { error: message });
+    try { await report(command, { error: message }); } catch { /* The original request may already have expired. */ }
     setState({ busy: false, message });
   }
 }
