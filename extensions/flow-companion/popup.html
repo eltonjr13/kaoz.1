@@ -1,6 +1,8 @@
 <!doctype html>
-<html lang="pt-BR"><meta charset="utf-8"><title>Kaoz Flow Companion</title>
-<body><h2>Kaoz Flow Companion</h2><p>Teste de uma imagem na sua sessão do Chrome.</p>
-<a id="test" target="_blank">Abrir teste no Kaoz</a>
-<p>Abra um projeto vazio do Flow, desative Agente e escolha imagem x1.</p>
-<script src="popup.js"></script></body></html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Kaoz Flow Companion</title><link rel="stylesheet" href="popup.css"></head>
+<body><h2>Kaoz Flow Companion</h2><p>Conecte o Kaoz à sua conta já aberta no Flow.</p>
+<label for="origin">Endereço do Kaoz</label><input id="origin" type="url" value="http://localhost:3000">
+<button id="connect">Conectar ao Kaoz</button><p id="status" role="status"></p>
+<p>O endereço conectado poderá solicitar gerações e receber as imagens. Seu login fica no Chrome.</p>
+<button id="disconnect">Desconectar endereços</button>
+<script type="module" src="popup.js"></script></body></html>
