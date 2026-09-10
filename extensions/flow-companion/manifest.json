@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Kaoz Flow Companion — teste",
+  "version": "0.1.0",
+  "description": "Gera uma imagem na aba autenticada do Flow a partir do teste local do Kaoz.",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://flow.google.com/*", "https://flow.google/*", "https://labs.google/*", "https://*.googleusercontent.com/*"],
+  "background": { "service_worker": "background.mjs", "type": "module" },
+  "action": { "default_popup": "popup.html" },
+  "externally_connectable": { "matches": ["http://localhost/*", "http://127.0.0.1/*"] }
+}

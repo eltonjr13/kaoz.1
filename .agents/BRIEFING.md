@@ -26,7 +26,7 @@ Refactor the Sketch tab of Kaoz.1 to a minimalist experience oriented to automat
 - **Delivered results**: none
 
 ## Project Status
-- **Phase**: Phase 2 R2 Remediation (Reviewer detected client/server boundary leak with node:fs; Worker Phase 2 R2 isolating client factories in `sketch-project-defaults.ts`)
+- **Phase**: Phase 2 R2 Gate Evaluation (Reviewer, Challenger, Auditor evaluating remediation commit `3aab7e2`)
 - **Cron 1 (Progress)**: task-28
 - **Cron 2 (Liveness)**: task-30
 

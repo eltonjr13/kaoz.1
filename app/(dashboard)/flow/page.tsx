@@ -69,6 +69,7 @@ import { goalHelpText, parseGoalCommand } from "@/services/goals/goal-command";
 import type { AutonomousGoal } from "@/services/goals/goal.types";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
+import { playUiSound, UI_SOUND_DURATIONS_MS } from "@/lib/ui-sounds";
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -1022,6 +1023,7 @@ export default function FlowDashboardPage() {
   const applyingPlanIdsRef = useRef<Set<string>>(new Set());
   const autoDownloaded3dModelsRef = useRef<Set<string>>(new Set());
   const failed3dReconcileUntilRef = useRef<Record<string, number>>({});
+  const soundEligibleJobIdsRef = useRef<Set<string>>(new Set());
   const conversationLoadRequestRef = useRef(0);
   const hasHandledNewRouteRef = useRef(false);
   const [agentModel, setAgentModel] = useState<AgentModel>(() => {
@@ -1958,6 +1960,10 @@ export default function FlowDashboardPage() {
               if (job) {
                 if (job.status === "completed") {
                   nextMessages[msgIndex].jobStatus = 'completed';
+                  if (msg.jobId && soundEligibleJobIdsRef.current.has(msg.jobId)) {
+                    playUiSound("task-complete", { dedupeKey: `job:${msg.jobId}:completed` });
+                    soundEligibleJobIdsRef.current.delete(msg.jobId);
+                  }
                   const finalPath = job.final_video_path || "";
                   const model3dResult = buildModel3dResultFromJob(job);
                   nextMessages[msgIndex].projectResult = null;
@@ -1983,6 +1989,9 @@ export default function FlowDashboardPage() {
                   }
                 } else {
                   nextMessages[msgIndex].jobStatus = 'failed';
+                  if (msg.jobId && soundEligibleJobIdsRef.current.has(msg.jobId)) {
+                    playUiSound("error", { dedupeKey: `job:${msg.jobId}:failed` });
+                  }
                   const finalPath = job.final_video_path || "";
                   const imagePaths = (msg.jobType === "image" || msg.jobType === "ad-creative")
                     ? extractImagePathsFromJob(job.source_video_transcription)
@@ -2702,12 +2711,16 @@ export default function FlowDashboardPage() {
       }
 
       upsertAgentMessage(agentMsg);
+      if (agentMsg.plan && (!data.autoExecute || agentMsg.plan.requires3dBasePreparation)) {
+        playUiSound("attention", { dedupeKey: `plan:${agentMsg.id}:attention` });
+      }
       if (data.autoExecute && agentMsg.plan && !agentMsg.plan.requires3dBasePreparation) {
         void handleApplyPlan(agentMsg.id, agentMsg);
       }
     } catch (err) {
        console.error(err);
        const errorMessage = err instanceof Error ? err.message : String(err);
+       playUiSound("error", { dedupeKey: `chat:${assistantMessageId}:error` });
        upsertAgentMessage({
          id: assistantMessageId,
          role: 'assistant',
@@ -2787,6 +2800,10 @@ export default function FlowDashboardPage() {
       try { await voiceRecognitionRef.current.stop(); } catch {}
     }
 
+    if (playUiSound("mic-on")) {
+      await new Promise((resolve) => setTimeout(resolve, UI_SOUND_DURATIONS_MS["mic-on"]));
+    }
+
     const provider = createSpeechProvider();
     voiceRecognitionRef.current = provider;
     voiceCommandPendingRef.current = false;
@@ -2807,6 +2824,7 @@ export default function FlowDashboardPage() {
 
     provider.onError((error) => {
       const errorMessage = error.message || "Falha no reconhecimento de voz.";
+      playUiSound("error", { dedupeKey: `microphone:${errorMessage}` });
       setVoiceError(errorMessage);
       setVoiceStatus("Voz desligada apos erro de microfone.");
       voiceEnabledRef.current = false;
@@ -2832,6 +2850,7 @@ export default function FlowDashboardPage() {
       await provider.start();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel iniciar o microfone.";
+      playUiSound("error", { dedupeKey: `microphone:${message}` });
       setVoiceError(message);
       setVoiceStatus("Voz indisponivel.");
       voiceEnabledRef.current = false;
@@ -2990,6 +3009,12 @@ export default function FlowDashboardPage() {
         })
       });
       const data = await res.json();
+      const startedJob = Boolean(res.ok && data.success && data.jobId);
+      if (startedJob) {
+        soundEligibleJobIdsRef.current.add(data.jobId);
+      } else {
+        playUiSound("error", { dedupeKey: `plan:${msgId}:start-error` });
+      }
       setChatMessages((previous) => previous.map((message) => {
         if (message.id !== msgId) return message;
         if (res.ok && data.success && data.jobId) {
@@ -3008,6 +3033,7 @@ export default function FlowDashboardPage() {
     } catch (err) {
       console.error(err);
       const errorMessage = err instanceof Error ? err.message : String(err);
+      playUiSound("error", { dedupeKey: `plan:${msgId}:start-error` });
       setChatMessages((previous) => previous.map((message) => message.id === msgId
         ? {
             ...message,
@@ -3027,6 +3053,7 @@ export default function FlowDashboardPage() {
     const msg = chatMessages[msgIndex];
     const imagePaths = msg.imageResult?.paths?.length ? msg.imageResult.paths : (msg.imageResult?.path ? [msg.imageResult.path] : []);
     if (!msg.jobId || imagePaths.length === 0) return;
+    soundEligibleJobIdsRef.current.add(msg.jobId);
 
     const nextMessages = [...chatMessages];
     nextMessages[msgIndex].jobStatus = "running";
@@ -3054,6 +3081,7 @@ export default function FlowDashboardPage() {
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      playUiSound("error", { dedupeKey: `job:${msg.jobId}:3d-start-error` });
       setChatMessages((previous) =>
         previous.map((item) =>
           item.id === msgId
@@ -3106,6 +3134,9 @@ export default function FlowDashboardPage() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Falha ao regenerar a imagem.");
       }
+      playUiSound("task-complete", {
+        dedupeKey: `job:${msg.jobId}:regenerate:${imageIndex}:completed`,
+      });
 
       setChatMessages((previous) =>
         previous.map((item) =>
@@ -3126,6 +3157,7 @@ export default function FlowDashboardPage() {
       );
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      playUiSound("error", { dedupeKey: `job:${msg.jobId}:regenerate:${imageIndex}:error` });
       setChatMessages((previous) =>
         previous.map((item) =>
           item.id === msgId

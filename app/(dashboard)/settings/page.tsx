@@ -39,6 +39,7 @@ import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
 import { DesktopBehaviorPanel } from "@/components/settings/DesktopBehaviorPanel";
+import { SoundSettingsPanel } from "@/components/settings/SoundSettingsPanel";
 import { SystemHealthPanel } from "@/components/settings/SystemHealthPanel";
 
 interface PortalConfig {
@@ -2033,6 +2034,7 @@ export default function SettingsPage() {
 
         {activeTab === "updates" && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+            <SoundSettingsPanel />
             <DesktopBehaviorPanel />
             <AppUpdatesPanel />
           </div>

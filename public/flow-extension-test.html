@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Teste Flow Companion | Kaoz</title>
+<link rel="stylesheet" href="/flow-extension-test.css"></head>
+<body><main>
+<p class="eyebrow">KAOZ · EXPERIMENTO</p><h1>Seu Flow, no seu Chrome.</h1>
+<p>Gere uma imagem usando a conta já conectada no navegador.</p>
+<label for="extension">ID da extensão</label><div class="connection"><input id="extension" autocomplete="off" placeholder="Abra esta página pelo ícone da extensão"><button id="connect">Conectar</button></div>
+<p id="connection" role="status">Aguardando conexão.</p>
+<label for="prompt">O que vamos criar?</label>
+<textarea id="prompt" maxlength="4000" rows="5">Uma pequena galinha astronauta branca em uma estufa lunar, cercada por plantas verdes, planeta Terra ao fundo, iluminação cinematográfica suave, ilustração 3D detalhada, sem texto.</textarea>
+<p>Deixe um único projeto do Flow aberto, com a caixa de comando vazia, modo Agente desativado e imagem x1.</p>
+<button id="generate" disabled>Gerar uma imagem</button>
+<p id="progress" role="status" aria-live="polite">Pronto para testar após conectar.</p>
+<section id="result" hidden><h2>Imagem recebida do Flow</h2><img id="image" alt="Imagem gerada pelo Flow através da extensão"><p id="details"></p><a id="download">Baixar imagem</a> · <a id="project" target="_blank" rel="noreferrer">Abrir no Flow</a></section>
+</main><script src="/flow-extension-test.js"></script></body></html>

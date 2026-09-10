@@ -3,6 +3,7 @@ import { IBM_Plex_Mono } from "next/font/google";
 import { DesktopTitlebar } from "@/components/layout/desktop-titlebar";
 import { ShortcutProvider } from "@/lib/shortcuts/ShortcutContext";
 import { CommandPalette, ShortcutsCheatsheetModal } from "@/components/shortcuts";
+import { UiSoundProvider } from "@/components/sound/ui-sound-provider";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={ibmPlexMono.variable} suppressHydrationWarning>
         <ShortcutProvider>
+          <UiSoundProvider />
           <DesktopTitlebar />
           <div className="flow-cinematic-background" aria-hidden="true">
             <div className="flow-cinematic-background__art" />
