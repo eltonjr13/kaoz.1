@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import type { ImageGenerationOptions, ImageGenerationResult } from '../../src/providers/flow/FlowTypes';
-import { getFlowGeneratedDir, getFlowTempUploadsDir } from '../runtime-paths.ts';
+import { getFlowGeneratedDir, getFlowTempUploadsDir, getSketchJobsDir } from '../runtime-paths.ts';
 import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 
 export interface BrowserImageCommand {
@@ -29,10 +29,14 @@ const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 async function referenceData(file: string): Promise<string> {
   const resolved = await fs.realpath(file);
   const roots = await Promise.all([getFlowGeneratedDir(), getFlowTempUploadsDir()].map(root => fs.realpath(root).catch(() => path.resolve(root))));
-  if (!roots.some(root => {
+  const inside = (root: string) => {
     const relative = path.relative(root, resolved);
     return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
-  })) throw new Error('Referência fora do armazenamento de imagens.');
+  };
+  const sketchJobsRoot = await fs.realpath(getSketchJobsDir()).catch(() => path.resolve(getSketchJobsDir()));
+  const isSketchJobReference = inside(sketchJobsRoot)
+    && /^ref_job-[a-zA-Z0-9_-]{1,128}\.(?:png|jpe?g|webp)$/i.test(path.basename(resolved));
+  if (!roots.some(inside) && !isSketchJobReference) throw new Error('Referência fora do armazenamento de imagens.');
   const stat = await fs.stat(resolved);
   if (stat.size > 6 * 1024 * 1024) throw new Error('A referência excede 6 MB.');
   const bytes = await fs.readFile(resolved);

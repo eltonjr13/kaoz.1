@@ -52,6 +52,10 @@ function playSketchJobSound(
   if (status === 'completed') eligibleJobIds.delete(jobId);
 }
 
+function resultVersionNumber(job: SketchJobData | null): number | undefined {
+  return job?.result?.versionNumber;
+}
+
 function SaveStatusBadge({
   status,
   savedTime,
@@ -696,6 +700,7 @@ export function SketchSingleFlow() {
           <SketchResultView
             project={project}
             activeResult={activeResult}
+            versionNumber={resultVersionNumber(activeJob)}
             imageUrl={activeImageUrl}
             aspectRatio={project.aspectRatio}
             onDownload={handleDownload}

@@ -56,6 +56,8 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
   formato 9:16, geração x1, retorno do original, validação, armazenamento e prévia.
 - O percurso pelo Sketch também passou: anúncio 1:1, geração x1, arquivo JPEG
   1024x1024 salvo como Versão #1 e exibido na tela de resultado.
+- Um esboço real com 19 traços passou como `kaoz-reference.png`: geração 3:4 x1,
+  JPEG 896x1200 salvo como Versão #2 e rótulo confirmado na interface.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.

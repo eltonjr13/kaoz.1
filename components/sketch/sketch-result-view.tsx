@@ -18,6 +18,7 @@ import type {
 export interface SketchResultViewProps {
   project: SketchProjectData;
   activeResult?: SketchCreativeResult;
+  versionNumber?: number;
   imageUrl: string;
   aspectRatio: FlowSupportedAspectRatio;
   onDownload: () => void;
@@ -103,6 +104,7 @@ function ResultAdjustmentForm({
 
 export function SketchResultView({
   activeResult,
+  versionNumber,
   imageUrl,
   aspectRatio,
   onDownload,
@@ -114,7 +116,7 @@ export function SketchResultView({
   const ratioClass = resolveAspectRatioClass(aspectRatio);
   const lineageLabel = resolveIterationLabel(
     activeResult?.lineage?.iterationType,
-    activeResult?.lineage?.versionNumber
+    activeResult?.lineage?.versionNumber ?? versionNumber
   );
 
   return (
