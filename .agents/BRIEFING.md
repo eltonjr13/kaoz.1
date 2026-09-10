@@ -1,32 +1,38 @@
-# BRIEFING — 2026-07-13T19:05:29Z
+# BRIEFING — 2026-09-09T22:01:19Z
 
 ## Mission
-Orchestrate, monitor, and verify the expansion of the Skills tab in mrchicken project with two new skills: analisador-de-metricas and gerador-de-hashtags.
+Refactor the Sketch tab of Kaoz.1 to a minimalist experience oriented to automatic static ad generation following a strict 5-phase sequential pipeline with blocking between phases.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: d:\apps\mrchicken\.agents
-- Orchestrator: 9980a620-cf7a-4b64-b1b9-73124f519a71
-- Victory Auditor: 649826c4-f25f-4b6a-8e1a-4019d889da60
+- Orchestrator: 2eb56115-a4a7-4a58-b8b0-4024ee9a5853
+- Victory Auditor: to be spawned on victory claim
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
 - Victory Audit is MANDATORY before reporting completion
 - Integrity mode: demo
+- Sequential 5-phase execution with strict blocking between phases:
+  Phase 1 -> Phase 2 & 3 -> Phase 4 -> Phase 5
+
+## Routing Decision
+- Selected path: General (`teamwork_preview_orchestrator`)
+- Rationale: Multi-phase full-stack SWE refactoring (contracts/storage, UI, creative engine, pipeline/composition, and independent E2E validation) with strict blocking between phases. Not a document review, math/proof, or SWE light task.
 
 ## User Context
-- **Last user request**: Expand the Skills tab of the Next.js project by creating two new skills ("analisador-de-metricas" and "gerador-de-hashtags"), integrating them into the Skills Tab UI, and ensuring a premium design and successful build without import errors.
+- **Last user request**: Refactor Sketch tab for minimalist auto-generation of static ads (prompt + optional attachments + optional sketch -> ready creative), running a 5-phase pipeline strictly blocking phase advancement until previous artifacts, contracts, tests, and commits are delivered and verified.
 - **Pending clarifications**: none
 - **Delivered results**: none
 
 ## Project Status
-- **Phase**: complete
-- **Cron 1 (Progress)**: task-19
-- **Cron 2 (Liveness)**: task-21
+- **Phase**: Phase 2 R2 Remediation (Reviewer detected client/server boundary leak with node:fs; Worker Phase 2 R2 isolating client factories in `sketch-project-defaults.ts`)
+- **Cron 1 (Progress)**: task-28
+- **Cron 2 (Liveness)**: task-30
 
 ## Victory Audit Status
-- **Triggered**: yes
-- **Verdict**: VICTORY CONFIRMED
+- **Triggered**: no
+- **Verdict**: pending
 - **Retry count**: 0
 
 ## Artifact Index

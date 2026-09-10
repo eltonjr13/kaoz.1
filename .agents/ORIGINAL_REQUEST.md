@@ -32,3 +32,125 @@ Revisar os arquivos modificados para garantir que não existam quebras de import
 ### Entrega das Skills
 - [ ] Os arquivos para `analisador-de-metricas` e `gerador-de-hashtags` existem dentro da pasta `skills/`.
 - [ ] O componente da "Aba de Skills" contém referências (cards ou botões) no código fonte apontando para as novas skills.
+
+## 2026-09-09T22:01:19Z
+
+# Teamwork Project Prompt — Draft
+
+> Status: Launched
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+> Requested team: Sequential 5-agent pipeline with strict blocking between phases
+
+Refatorar a aba Sketch do Kaoz.1 para uma experiência minimalista orientada à entrega automática de anúncios estáticos (fluxo: prompt + anexos opcionais + sketch opcional -> criativo pronto), executando a pipeline em 5 fases estritamente sequenciais onde a execução de cada agente é bloqueada até que o anterior entregue seus artefatos e validações.
+
+Working directory: d:\apps\mrchicken
+Integrity mode: demo
+
+## Regra Fundamental de Orquestração
+Executar a pipeline em fases estritamente sequenciais. Bloquear o avanço para a fase seguinte até que os artefatos, contratos, testes e commits da fase anterior estejam completamente entregues e verificados:
+Fase 1 (Agente 1) ➔ Fase 2 (Agente 2) & Fase 3 (Agente 3) ➔ Fase 4 (Agente 4) ➔ Fase 5 (Agente 5).
+
+---
+
+## Requirements
+
+### R1. Base de Contratos, Armazenamento e Compatibilidade (Agente 1)
+Definir os contratos versionados e a camada de persistência para a nova experiência Sketch antes dos demais agentes em `types/sketch.ts` e `lib/sketch/sketch-storage.ts`:
+- Contratos versionados para:
+  1. Pedido simples: prompt, formato (dimensões/proporção), referências selecionadas e sketch opcional.
+  2. Plano criativo interno: fatos fornecidos, ângulo de venda, conceito visual, copy, direção de arte, composição e restrições.
+  3. Resultado: arte final, recursos necessários a ajustes, pedido de origem e versão/linhagem.
+  4. Intenção de alteração: refinar resultado existente ou criar outro conceito independente.
+- Diferenciar estritamente fatos informados de decisões criativas inferidas, preservando literalmente textos, ofertas e preços fornecidos pelo usuário.
+- Novos projetos devem iniciar limpos, sem chamadas prontas, sem selo, sem CTA e sem layout promocional pré-montado (o prompt de exemplo deve ser apenas placeholder visual de UI, nunca conteúdo persistido).
+- Garantir compatibilidade aditiva com projetos antigos existentes, preservando histórico, camadas internas e opções antigas sem sobrescrever dados.
+- Entregar contratos puros e testes automatizados de persistência e compatibilidade antes de desbloquear as fases seguintes.
+
+### R2. Interface Minimalista de Fluxo Único (Agente 2)
+Implementar a nova experiência visual em `components/sketch/` e `app/(dashboard)/sketch/page.tsx` consumindo os contratos da Fase 1:
+- Substituir a interface de múltiplos painéis por uma tela limpa e focada:
+  - Título Sketch e acesso discreto ao histórico de projetos/criações.
+  - Campo proeminente de texto para descrever o anúncio.
+  - Upload e gerenciamento de anexos de referência (arquivo, drag-and-drop, colar via clipboard, visualização em miniatura, remoção e tag opcional de finalidade). Sem necessidade de posicionar em prancheta.
+  - Modal de desenho Sketch (pincel, borracha, paleta de cores essenciais, espessura, desfazer/refazer, limpar, aplicar com miniatura, cancelar preservando desenho anterior). Se não desenhar, nada é enviado.
+  - Seletor compacto de formato/aspect ratio.
+  - Botão principal único: "Gerar criativo".
+- Não exigir criação/nomeação manual prévia de projeto para começar.
+- Não exibir no fluxo inicial: briefing estruturado, editor de copy manual, painel de propriedades, lista permanente de camadas, prévia do Flow ou prancheta vazia.
+- Tela de resultado: arte final em destaque, botão "Baixar", botão "Outra ideia", campo de ajuste "O que você quer mudar?", progresso simples e tratamento de erro com retry.
+- Salvar coordenadamente sob uma mesma revisão (pedido + anexos + sketch) e validar responsividade e navegação por teclado.
+
+### R3. Motor Criativo Interno e Geração de Copy (Agente 3)
+Implementar o planejamento criativo em `lib/sketch/` (`sketch-copy-generator.ts`, `sketch-prompt-compiler.ts` e novo módulo de planejamento):
+- Entrada: pedido simples validado pela Fase 1. Saída: plano criativo estruturado e pronto para execução visual.
+- O motor deve:
+  1. Extrair produto, público-alvo, objetivo, oferta e restrições do pedido simples.
+  2. Separar fatos explícitos de escolhas de direção artística.
+  3. Formular internamente 3 conceitos breves e distintos (explorando desejo, objeção, demonstração, contraste ou curiosidade).
+  4. Selecionar o conceito mais adequado antes de disparar geração visual.
+  5. Sincronizar copy e direção de arte para trabalharem em conjunto.
+  6. Planejar composição automática e tipografia sem impor templates genéricos de título/selo/CTA para todos os anúncios.
+- Evitar clichês publicitários artificiais por default (ex: "O futuro chegou", produto flutuando com partículas e neon), a menos que solicitado explicitamente.
+- Testar e validar o planejamento com no mínimo 6 pedidos distintos: produto físico, serviço, oferta com preço exato, pedido sem texto, referência de identidade de produto e composição guiada por sketch.
+
+### R4. Integração do Pipeline, Gerenciamento de Jobs e Composição Final (Agente 4)
+Integrar os contratos (Fase 1), a interface (Fase 2) e o motor criativo (Fase 3) na infraestrutura de jobs e composição em `lib/sketch/sketch-job-manager.ts`, `lib/sketch/sketch-composite-preparer.ts`, `lib/sketch/sketch-exporter.ts`, `lib/sketch/sketch-composition-rules.ts` e rotas `app/api/sketch/`:
+- Conectar o pipeline completo de ponta a ponta: Pedido imutável ➔ Planejamento criativo ➔ Preparação de referências ➔ Geração visual ➔ Composição determinística ➔ Arquivo final entregue.
+- Garantir processamento assíncrono persistente (a geração não pode depender de manter a aba do navegador aberta).
+- Respeitar limites reais de anexos/referências sem descarte silencioso; diferenciar identidade visual de guia de composição.
+- Suporte a ajustes inteligentes:
+  - Ajuste apenas de texto: reutilizar a arte base existente sem nova geração de imagem desnecessária.
+  - Ajuste visual: aplicar edição/referência suportada.
+  - "Outra ideia": gerar um novo conceito distinto, preservando fatos, produto e restrições fornecidas.
+  - Cada resultado gera uma nova versão imutável na linhagem do projeto, sem sobrescrever versões anteriores.
+- Validar fluxo com provedor simulado/mock, verificando bytes, plano executado e existência da arte finalizada.
+
+### R5. Validação Independente, Auditoria E2E e Estabilidade (Agente 5)
+Realizar a auditoria e validação independente de toda a refatoração integrada para responder: "Consigo descrever um anúncio e receber uma arte pronta sem operar um editor de design?":
+- Validar os 10 cenários essenciais:
+  1. Primeiro acesso com apenas o campo de pedido e ações essenciais.
+  2. Prompt isolado.
+  3. Prompt com anexos de referência.
+  4. Prompt com desenho Sketch.
+  5. Prompt combinado com referências e sketch.
+  6. Cancelamento/reabertura do modal de desenho sem perda de estado prévio.
+  7. Ajuste exclusivo de texto reaproveitando a arte visual existente.
+  8. Ação "Outra ideia" produzindo conceito genuinamente diferente.
+  9. Download do criativo exatamente correspondente ao resultado exibido.
+  10. Reabertura de projetos legados com histórico, dados e compatibilidade 100% preservados.
+- Garantir ausência de regressões que reintroduzam complexidade (briefing manual obrigatório, camadas visíveis por padrão, etc.).
+- Validação técnica completa:
+  - `npm run typecheck` sem erros.
+  - ESLint direcionado aos arquivos alterados sem violações.
+  - Testes unitários e de integração do Sketch executando com sucesso.
+  - Verificação de não-regressão de Flow, prompts e atalhos.
+  - Build de produção (`npm run build`) concluído com sucesso.
+
+---
+
+## Acceptance Criteria
+
+### Integridade do Código e Compatibilidade
+- [ ] O comando `npm run typecheck` passa sem erros de tipagem.
+- [ ] O build do Next.js (`npm run build`) completa com sucesso sem falhas de rotas ou compilação.
+- [ ] Projetos antigos do Sketch abrem perfeitamente sem perda de dados, camadas ou histórico.
+- [ ] Novos projetos iniciam com estado limpo, sem textos padrão, CTAs ou selos pré-populados.
+
+### Experiência do Usuário e Interface Minimalista
+- [ ] O fluxo inicial contém apenas o campo de descrição do anúncio, anexos, botão de sketch, seletor de formato e botão "Gerar criativo".
+- [ ] Não há exigência de criar projeto antes de redigir o pedido.
+- [ ] A tela de resultado apresenta arte pronta, Baixar, Outra ideia e campo de ajustes.
+- [ ] O modal de sketch abre, permite desenhar/limpar/desfazer/refazer, gera miniatura ao aplicar e mantém o desenho anterior em caso de cancelamento.
+
+### Motor Criativo e Composição
+- [ ] O motor criativo extrai fatos estritamente fornecidos e gera múltiplos conceitos internamente, sem clichês genéricos.
+- [ ] Textos e ofertas literais do usuário são rigorosamente preservados.
+- [ ] Nenhum anexo ou referência é silenciosamente ignorado.
+- [ ] Ajustes de texto reutilizam a imagem existente quando aplicável.
+- [ ] Ação "Outra ideia" gera nova versão com conceito distinto na mesma linhagem.
+
+### Bloqueio e Entrega por Agente
+- [ ] Cada agente conclui sua fase gerando arquivos, testes e commit Conventional Commit dedicado antes do próximo iniciar.
+- [ ] Todos os testes unitários e de integração passam.
+- [ ] Relatório final de validação independente detalha os 10 cenários testados.
+
