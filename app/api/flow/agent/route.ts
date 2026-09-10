@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
+import { browserTransportToken, withBrowserImageTransport } from '@/lib/flow/browser-image-context';
 import type { FlowDecision } from "@/lib/ai/gemini";
 import {
   resolveGeneratedReferencePath,
@@ -122,7 +123,9 @@ export async function POST(request: Request) {
     } | null;
 
     const action = typeof body?.action === "string" ? body.action.trim() : "optimize";
-    const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
+    const browserToken = browserTransportToken(request);
+    const rawRequestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
+    const requestId = rawRequestId && browserToken ? `${browserToken}:${rawRequestId}` : rawRequestId;
     const model = typeof body?.model === "string" ? body.model.trim() : "";
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
     const type = typeof body?.type === "string" ? body.type.trim() : "";
@@ -279,7 +282,7 @@ export async function POST(request: Request) {
         });
       }
 
-      void flowProvider.runAgentTask({
+      void withBrowserImageTransport(browserToken, () => flowProvider.runAgentTask({
         topic: taskPrompt,
         avatarId: APP_WORKSPACE_ID,
         model: model as "deepseek" | "claude" | "chatgpt" | "gemini" | "cerebras" | "zenmux" | "iamhc",
@@ -302,7 +305,7 @@ export async function POST(request: Request) {
         jobId,
         baseUrl,
         approvedPlan
-      }).then(async (result) => {
+      })).then(async (result) => {
         if (!goalId) return;
         if (result.success) {
           await autonomousGoalStore.setStatus(goalId, "completed", {

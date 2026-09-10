@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { flowProvider } from "@/src/providers/flow/FlowProvider";
+import { browserTransportToken, withBrowserImageTransport } from '@/lib/flow/browser-image-context';
 import {
   cleanupTemporaryReference,
   copyGeneratedReferenceToTemp,
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
     
     try {
       if (type === "image") {
-        const result = await flowProvider.generateImage(prompt, options);
+        const result = await withBrowserImageTransport(browserTransportToken(request), () => flowProvider.generateImage(prompt, options));
         if (!result.success) {
           return NextResponse.json({ success: false, error: result.error }, { status: 500 });
         }

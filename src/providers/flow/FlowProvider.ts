@@ -10,6 +10,8 @@ import { logger } from './FlowUtils';
 import { Page, Locator } from 'playwright';
 import { getFlowGeneratedDir } from '@/lib/runtime-paths';
 import { prepareFlowImagePrompt } from '@/lib/ai/image-prompt-engineering';
+import { browserImageContext } from '@/lib/flow/browser-image-context';
+import { requestBrowserImage } from '@/lib/flow/browser-image-broker';
 
 export class FlowProvider {
   private config: FlowConfig;
@@ -92,6 +94,11 @@ export class FlowProvider {
     options?: ImageGenerationOptions,
     onLockAcquired?: () => void
   ): Promise<ImageGenerationResult> {
+    const browserToken = browserImageContext.getStore();
+    if (browserToken) {
+      onLockAcquired?.();
+      return requestBrowserImage(browserToken, prompt, options);
+    }
     this.activeTasksCount++;
     try {
       return await this.runBrowserTaskExclusive(async () => {

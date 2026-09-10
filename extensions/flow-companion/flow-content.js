@@ -1,64 +1,134 @@
 (() => {
-  // Reinjection on the same tab must not add listeners or submit a second job.
-  if (window.__kaozFlowCompanion) return;
-  window.__kaozFlowCompanion = true;
+  if (window.__kaozFlowCompanionV2) return;
+  window.__kaozFlowCompanionV2 = true;
   let job = null;
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const visible = element => element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0;
-  const buttons = () => Array.from(document.querySelectorAll('button')).filter(visible);
-  const label = element => element.getAttribute('aria-label') || element.textContent || '';
-  const images = () => Array.from(document.images).filter(image => visible(image)
-    && image.naturalWidth >= 256 && image.naturalHeight >= 256 && !image.closest('nav'));
-
-  function controls() {
-    const composer = Array.from(document.querySelectorAll('div[contenteditable="true"]')).find(visible);
-    const submit = buttons().find(button => /^(Iniciar geração|Start generation)$/i.test(label(button)));
-    const model = buttons().find(button => /Nano Banana|Imagen/.test(button.textContent));
-    const agent = buttons().find(button => /^(Agente|Agent)$/.test(label(button)));
-    if (!composer || !submit) throw new Error('Abra um projeto e faça login normalmente no Flow antes do teste.');
-    if (agent?.getAttribute('aria-pressed') === 'true') throw new Error('Desative o modo Agente no Flow antes do teste.');
-    if (!model || !/x1\b/.test(model.textContent)) throw new Error('Selecione um modelo de imagem e quantidade x1 no Flow.');
-    if (composer.textContent.trim()) throw new Error('A caixa de comando já contém texto. Use um projeto vazio para preservar seu trabalho.');
-    return { composer, submit };
-  }
-
-  async function start(message) {
-    if (job?.status === 'running') throw new Error('Já existe uma geração nesta aba.');
-    const { composer, submit } = controls();
-    const previous = new Set(images().map(image => image.currentSrc || image.src));
-    composer.focus();
-    // ProseMirror handles the native editing input event and updates its state.
-    if (!document.execCommand('insertText', false, message.prompt)) throw new Error('O editor não aceitou o pedido.');
-    if (composer.textContent.trim() !== message.prompt) throw new Error('O texto do editor diverge do pedido. Geração não enviada.');
-    for (let attempt = 0; attempt < 20 && submit.disabled; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+  const text = element => (element.getAttribute('aria-label') || element.textContent || '').trim();
+  const all = selector => Array.from(document.querySelectorAll(selector)).filter(visible);
+  const button = expression => all('button').find(element => expression.test(text(element)));
+  const imageSource = image => image.currentSrc || image.src;
+  const imageList = () => Array.from(document.images).filter(image => image.complete && image.naturalWidth >= 256 && image.naturalHeight >= 256);
+  const composer = () => all('div[contenteditable="true"]').find(element => !element.closest('nav'));
+  async function waitFor(read, message, limit = 30000) {
+    const start = Date.now();
+    while (Date.now() - start < limit) {
+      const value = read();
+      if (value) return value;
+      await delay(400);
     }
-    if (submit.disabled) throw new Error('O botão de geração continua desativado.');
-    job = { id: message.id, status: 'running', startedAt: Date.now(), previous };
+    throw new Error(message);
+  }
+  async function prepareProject() {
+    const create = await waitFor(() => button(/^(Novo projeto|New project)$/i), 'Faça login no Flow na aba aberta e tente novamente.');
+    create.click();
+    await waitFor(composer, 'O editor do Flow não abriu.');
+    const agent = button(/^(Agente|Agent)$/i);
+    if (agent?.getAttribute('aria-pressed') === 'true') { agent.click(); await delay(300); }
+    if (composer().textContent.trim()) throw new Error('O projeto contém um rascunho. Geração interrompida para preservá-lo.');
+  }
+  async function selectRadio(name) {
+    const radio = await waitFor(() => all('[role="radio"]').find(element => text(element).endsWith(name)), 'Opção do Flow indisponível: ' + name, 5000);
+    radio.click();
+    await delay(150);
+  }
+  async function configure(options) {
+    const trigger = await waitFor(() => button(/Gatilho de configurações|Settings trigger/i), 'Configurações do Flow indisponíveis.');
+    trigger.click();
+    await selectRadio('Imagem');
+    if (options.aspectRatio) await selectRadio(options.aspectRatio);
+    await selectRadio('x' + options.quantity);
+    const family = button(/Selecionar família de modelos|Select model family/i);
+    if (family && !family.textContent.includes(options.model)) {
+      family.click();
+      const model = await waitFor(() => all('[role="menuitem"], [role="option"], [role="menuitemradio"], button').find(element => text(element) === options.model), 'Modelo indisponível no Flow: ' + options.model, 5000);
+      model.click();
+      await delay(200);
+    }
+    trigger.click();
+    await delay(200);
+    if (!trigger.textContent.includes(options.model)) throw new Error('O Flow não confirmou o modelo solicitado.');
+    if (!trigger.textContent.includes('x' + options.quantity)) throw new Error('O Flow não confirmou a quantidade solicitada.');
+  }
+  async function attachReference(dataUrl) {
+    if (!dataUrl) return;
+    if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl) || dataUrl.length > 9 * 1024 * 1024) throw new Error('Referência inválida ou grande demais.');
+    const before = new Set(Array.from(document.images).map(imageSource));
+    const blob = await (await fetch(dataUrl)).blob();
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], 'kaoz-reference.' + blob.type.split('/')[1], { type: blob.type }));
+    const input = composer();
+    input.focus();
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
+    await waitFor(() => Array.from(document.images).some(image => !before.has(imageSource(image)) && visible(image)),
+      'O Flow não confirmou o anexo. A geração foi interrompida para não ignorar sua referência.', 20000);
+  }
+  async function submit(prompt) {
+    const input = composer();
+    input.focus();
+    if (!document.execCommand('insertText', false, prompt)) throw new Error('O editor não aceitou o pedido.');
+    if (input.textContent.trim() !== prompt) throw new Error('O texto do editor diverge do pedido.');
+    const submit = await waitFor(() => {
+      const element = button(/^(Iniciar geração|Start generation)$/i);
+      return element && !element.disabled ? element : null;
+    }, 'O Flow não habilitou a geração.', 5000);
+    job.submitted = true;
     submit.click();
-    return { ok: true };
   }
-
-  function status(id) {
-    if (!job || job.id !== id) throw new Error('Sessão da extensão perdida. Verifique a aba do Flow antes de gerar novamente.');
-    const image = images().find(item => !job.previous.has(item.currentSrc || item.src));
-    if (image) {
-      job.status = 'completed';
-      return { ok: true, status: job.status, imageUrl: image.currentSrc || image.src,
-        width: image.naturalWidth, height: image.naturalHeight, projectUrl: location.href };
+  async function originalImage(card) {
+    const source = imageSource(card);
+    if (source.startsWith('https://flow-content.google/')) return card;
+    card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
+    const original = await waitFor(() => imageList().find(image => imageSource(image).startsWith('https://flow-content.google/')),
+      'A imagem foi gerada, mas o Flow não disponibilizou o arquivo original.', 20000);
+    return original;
+  }
+  async function collect(previous, count) {
+    const cards = await waitFor(() => {
+      const fresh = imageList().filter(image => visible(image) && !previous.has(imageSource(image)) && /^https:\/\//.test(imageSource(image)));
+      return fresh.length >= count ? fresh.slice(0, count) : null;
+    }, 'O Flow não concluiu as imagens. Confira a aba; o pedido não será reenviado.', 5 * 60_000);
+    const sources = cards.map(imageSource);
+    const output = [];
+    for (const source of sources) {
+      const card = await waitFor(() => imageList().find(image => imageSource(image) === source), 'Imagem indisponível na grade.');
+      const original = await originalImage(card);
+      output.push({ url: imageSource(original), width: original.naturalWidth, height: original.naturalHeight });
+      const done = button(/^(Edição concluída|Done editing)$/i);
+      if (done) { done.click(); await delay(400); }
     }
-    if (Date.now() - job.startedAt > 180000) throw new Error('Tempo de espera esgotado. Confira o Flow; o pedido não será reenviado automaticamente.');
-    return { ok: true, status: 'running', elapsedSeconds: Math.round((Date.now() - job.startedAt) / 1000) };
+    return output;
   }
-
+  async function generate(message) {
+    const options = { aspectRatio: '1:1', quantity: 1, model: 'Nano Banana 2', ...message.options };
+    if (![1, 2, 3, 4].includes(options.quantity)) throw new Error('Quantidade inválida.');
+    await prepareProject();
+    job.projectUrl = location.href;
+    job.stage = 'Configurando modelo e formato';
+    await configure(options);
+    job.stage = 'Preparando referência';
+    await attachReference(options.referenceImage);
+    const previous = new Set(imageList().map(imageSource));
+    job.stage = 'Enviando pedido ao Flow';
+    await submit(message.prompt);
+    job.stage = 'Gerando imagens no Flow';
+    job.images = await collect(previous, options.quantity);
+    job.status = 'completed';
+    job.stage = 'Imagens prontas para o Kaoz';
+  }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (sender.id !== chrome.runtime.id) return false;
-    try {
-      if (message.type === 'start') {
-        start(message).then(reply).catch(error => reply({ ok: false, error: error.message }));
-        return true;
-      }
-      else if (message.type === 'status') reply(status(message.id));
-    } catch (error) { reply({ ok: false, error: error.message }); }
+    if (message.type === 'start') {
+      if (job) { reply({ ok: job.id === message.id, error: 'Esta aba já tem um pedido.' }); return false; }
+      job = { id: message.id, status: 'running', stage: 'Abrindo projeto no Flow', startedAt: Date.now(), submitted: false };
+      reply({ ok: true });
+      void generate(message).catch(error => { job.status = 'failed'; job.error = error.message; });
+      return false;
+    }
+    if (message.type === 'status') {
+      if (!job || job.id !== message.id) reply({ ok: false, error: 'A aba foi recarregada. Confira o Flow antes de gerar novamente.' });
+      else reply({ ...job, ok: job.status !== 'failed', elapsedSeconds: Math.round((Date.now() - job.startedAt) / 1000) });
+    }
     return false;
   });
 })();

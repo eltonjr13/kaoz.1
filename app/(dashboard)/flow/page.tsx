@@ -70,6 +70,8 @@ import type { AutonomousGoal } from "@/services/goals/goal.types";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
 import { playUiSound, UI_SOUND_DURATIONS_MS } from "@/lib/ui-sounds";
+import { flowImageFetch } from '@/lib/flow/companion-client';
+import { FlowCompanionConnection } from '@/components/flow/FlowCompanionConnection';
 
 class SpeechQueue {
   private queue: Promise<void> = Promise.resolve();
@@ -550,7 +552,7 @@ async function generate3dBaseImage(params: {
   useExistingFlowReference?: boolean;
   operation?: ImageGenerationOperation;
 }): Promise<GenerationResult> {
-  const response = await fetch("/api/flow/generate", {
+  const response = await flowImageFetch("/api/flow/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2968,7 +2970,7 @@ export default function FlowDashboardPage() {
     ));
 
     try {
-      const res = await fetch("/api/flow/agent", {
+      const res = await flowImageFetch("/api/flow/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3258,7 +3260,7 @@ export default function FlowDashboardPage() {
       setEditing3dBaseImagePath(null);
       setDraftMessage("");
 
-      const res = await fetch("/api/flow/agent", {
+      const res = await flowImageFetch("/api/flow/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3602,6 +3604,7 @@ export default function FlowDashboardPage() {
 
   return (
     <div className="flow-page-shell relative isolate flex flex-col overflow-hidden bg-transparent text-white select-none" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FlowCompanionConnection compact />
       <div className="flow-cinematic-background" aria-hidden="true">
         <div className="flow-cinematic-background__art" />
         <div className="flow-cinematic-background__overlay" />
