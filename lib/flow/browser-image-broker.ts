@@ -26,7 +26,7 @@ const receiptState = globalThis as typeof globalThis & { kaozBrowserImageReceipt
 const receipts = receiptState.kaozBrowserImageReceipts ??= new Map();
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
-async function referenceData(file: string): Promise<string> {
+export async function companionReferenceData(file: string): Promise<string> {
   const resolved = await fs.realpath(file);
   const roots = await Promise.all([getFlowGeneratedDir(), getFlowTempUploadsDir()].map(root => fs.realpath(root).catch(() => path.resolve(root))));
   const inside = (root: string) => {
@@ -45,7 +45,7 @@ async function referenceData(file: string): Promise<string> {
   return `data:image/${metadata.format};base64,${bytes.toString('base64')}`;
 }
 
-function quantity(value: ImageGenerationOptions['quantity']): number {
+export function companionQuantity(value: ImageGenerationOptions['quantity']): number {
   const count = Number(String(value ?? 1).replace(/x/g, ''));
   if (!Number.isInteger(count) || count < 1 || count > 4) throw new Error('Quantidade de imagens inválida.');
   return count;
@@ -58,8 +58,8 @@ export async function requestBrowserImage(token: string, prompt: string, options
     id: randomUUID(),
     prompt: prepareFlowImagePrompt({ prompt, operation, aspectRatio: options.aspectRatio, referenceKind: options.referenceKind }),
     options: {
-      aspectRatio: options.aspectRatio || '1:1', quantity: quantity(options.quantity), model: options.model || 'Nano Banana 2',
-      referenceImage: options.referenceImage ? await referenceData(options.referenceImage) : undefined,
+      aspectRatio: options.aspectRatio || '1:1', quantity: companionQuantity(options.quantity), model: options.model || 'Nano Banana 2',
+      referenceImage: options.referenceImage ? await companionReferenceData(options.referenceImage) : undefined,
     },
   };
   if (command.prompt.length > 16000) throw new Error('O pedido preparado excede 16000 caracteres.');
@@ -77,7 +77,7 @@ export function nextBrowserImage(token: string): BrowserImageCommand | null {
   return [...pending.values()].find(item => item.token === token)?.command ?? null;
 }
 
-async function saveImages(id: string, images: unknown, expected: number): Promise<ImageGenerationResult> {
+export async function saveCompanionImages(id: string, images: unknown, expected: number): Promise<ImageGenerationResult> {
   if (!Array.isArray(images) || images.length !== expected) throw new Error(`Esperadas ${expected} imagens nesta geração.`);
   const buffers = await Promise.all(images.map(async image => {
     const value = typeof image === 'string' ? image : '';
@@ -114,7 +114,7 @@ export async function completeBrowserImage(token: string, id: string, payload: {
     item.reject(new Error(payload.error.slice(0, 1000)));
     return null;
   }
-  item.saving ??= saveImages(id, payload.images, item.command.options.quantity);
+  item.saving ??= saveCompanionImages(id, payload.images, item.command.options.quantity);
   let result: ImageGenerationResult;
   try { result = await item.saving; }
   catch (error) { item.saving = undefined; throw error; }

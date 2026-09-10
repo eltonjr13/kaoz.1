@@ -39,6 +39,7 @@ import { SkillsSettingsPanel } from "@/components/settings/SkillsSettingsPanel";
 import { ConnectorsSettingsPanel } from "@/components/settings/ConnectorsSettingsPanel";
 import { AppUpdatesPanel } from "@/components/settings/AppUpdatesPanel";
 import { DesktopBehaviorPanel } from "@/components/settings/DesktopBehaviorPanel";
+import { FlowCompanionConnection } from "@/components/flow/FlowCompanionConnection";
 import { SoundSettingsPanel } from "@/components/settings/SoundSettingsPanel";
 import { SystemHealthPanel } from "@/components/settings/SystemHealthPanel";
 
@@ -2036,6 +2037,7 @@ export default function SettingsPage() {
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
             <SoundSettingsPanel />
             <DesktopBehaviorPanel />
+            <FlowCompanionConnection />
             <AppUpdatesPanel />
           </div>
         )}

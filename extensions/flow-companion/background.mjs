@@ -2,18 +2,28 @@ import { allowedSender, validPrompt } from './protocol.mjs';
 import { imageData } from './image-download.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const NATIVE_HOST = 'com.kaoz1.flow_companion';
 let lock = Promise.resolve();
+let nativePort;
+let desktopConfiguration;
+let desktopRunner;
 function exclusive(action) {
   const result = lock.then(action, action);
   lock = result.catch(() => {});
   return result;
 }
-async function jobs() { return (await chrome.storage.session.get('jobs')).jobs || {}; }
+async function jobs() {
+  const durable = (await chrome.storage.local.get('jobs')).jobs;
+  if (durable) return durable;
+  const legacy = (await chrome.storage.session.get('jobs')).jobs || {};
+  if (Object.keys(legacy).length) await chrome.storage.local.set({ jobs: legacy });
+  return legacy;
+}
 async function save(job) {
   const entries = await jobs();
   entries[job.id] = job;
   const values = Object.values(entries).sort((a, b) => b.startedAt - a.startedAt).slice(0, 30);
-  await chrome.storage.session.set({ jobs: Object.fromEntries(values.map(item => [item.id, item])) });
+  await chrome.storage.local.set({ jobs: Object.fromEntries(values.map(item => [item.id, item])) });
 }
 async function owned(message, sender) {
   const job = (await jobs())[message.jobId];
@@ -106,6 +116,104 @@ const routes = {
   ping: async () => ({ ok: true, version: chrome.runtime.getManifest().version }),
   open, start, status, image: getImage, acknowledge: finish,
 };
+
+function validDesktopConfiguration(message) {
+  try {
+    const url = new URL(message.baseUrl);
+    return message.type === 'configure' && url.protocol === 'http:' && url.hostname === '127.0.0.1' && Boolean(url.port)
+      && /^[a-f0-9]{64}$/.test(message.token);
+  } catch { return false; }
+}
+
+function desktopHeaders(configuration) {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${configuration.token}`,
+    'X-Kaoz-Flow-Extension-Version': chrome.runtime.getManifest().version,
+  };
+}
+
+async function reportDesktop(configuration, command, payload) {
+  const response = await fetch(`${configuration.baseUrl}/api/flow/desktop-companion`, {
+    method: 'POST',
+    headers: desktopHeaders(configuration),
+    body: JSON.stringify({ id: command.id, ...payload }),
+  });
+  if (!response.ok) throw new Error((await response.json()).error || 'O desktop não aceitou o resultado do Flow.');
+}
+
+async function runDesktopCommand(configuration, command) {
+  const sender = { url: `${configuration.baseUrl}/flow/images`, tab: { id: -1 } };
+  try {
+    const started = await exclusive(() => start({ ...command, requestId: command.id }, sender));
+    for (let attempt = 0; attempt < 150; attempt++) {
+      const result = await exclusive(() => status({ type: 'status', jobId: started.jobId }, sender));
+      if (result.status === 'completed') {
+        const images = [];
+        for (let index = 0; index < (result.images?.length || 0); index++) {
+          const image = await exclusive(() => getImage({ type: 'image', jobId: started.jobId, index }, sender));
+          if (!image.dataUrl) throw new Error('O Flow não retornou a imagem original.');
+          images.push(image.dataUrl);
+        }
+        await reportDesktop(configuration, command, { images });
+        await exclusive(() => finish({ type: 'acknowledge', jobId: started.jobId }, sender));
+        return;
+      }
+      await delay(2500);
+    }
+    throw new Error('A geração excedeu o tempo de espera. Confira a aba do Flow.');
+  } catch (error) {
+    await reportDesktop(configuration, command, { error: error instanceof Error ? error.message : String(error) }).catch(() => {});
+  }
+}
+
+function startDesktopRunner() {
+  if (desktopRunner || !desktopConfiguration) return;
+  desktopRunner = (async () => {
+    while (desktopConfiguration) {
+      const configuration = desktopConfiguration;
+      try {
+        const response = await fetch(`${configuration.baseUrl}/api/flow/desktop-companion`, {
+          headers: desktopHeaders(configuration),
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error('O aplicativo desktop recusou a conexão.');
+        const { command } = await response.json();
+        if (command) await runDesktopCommand(configuration, command);
+      } catch { /* Reconnect and runtime changes are handled by the native host. */ }
+      await delay(1500);
+    }
+  })().finally(() => {
+    desktopRunner = undefined;
+    if (desktopConfiguration) startDesktopRunner();
+  });
+}
+
+function connectNativeBridge() {
+  if (typeof chrome.runtime.connectNative !== 'function' || nativePort) return;
+  try {
+    const port = chrome.runtime.connectNative(NATIVE_HOST);
+    nativePort = port;
+    port.onMessage.addListener(message => {
+      if (validDesktopConfiguration(message)) {
+        desktopConfiguration = { baseUrl: message.baseUrl, token: message.token };
+        startDesktopRunner();
+      } else if (message?.type === 'unavailable') {
+        desktopConfiguration = undefined;
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      nativePort = undefined;
+      desktopConfiguration = undefined;
+      setTimeout(connectNativeBridge, 1500);
+    });
+    port.postMessage({ type: 'ping' });
+  } catch {
+    nativePort = undefined;
+    setTimeout(connectNativeBridge, 3000);
+  }
+}
+
 chrome.runtime.onMessageExternal.addListener((message, sender, reply) => {
   void (async () => {
     const { origins = [] } = await chrome.storage.local.get('origins');
@@ -116,3 +224,6 @@ chrome.runtime.onMessageExternal.addListener((message, sender, reply) => {
   })().then(reply).catch(error => reply({ ok: false, error: error.message }));
   return true;
 });
+chrome.runtime.onStartup?.addListener(connectNativeBridge);
+chrome.runtime.onInstalled?.addListener(connectNativeBridge);
+connectNativeBridge();

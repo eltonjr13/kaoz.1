@@ -16,6 +16,8 @@ if (process.platform === "win32") {
     chooseCourseFolder: () => ipcRenderer.invoke("kaoz1-desktop:choose-course-folder"),
     chooseVideoFile: () => ipcRenderer.invoke("kaoz1-desktop:choose-video-file"),
     saveFile: (payload) => ipcRenderer.invoke("kaoz1-desktop:save-file", payload),
+    getFlowCompanionStatus: () => ipcRenderer.invoke("kaoz1-flow-companion:get-status"),
+    openFlowCompanion: () => ipcRenderer.invoke("kaoz1-flow-companion:open"),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("kaoz1-update:download"),

@@ -1,6 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { allowedSender, allowedImage, validPrompt, appOrigin } from '../extensions/flow-companion/protocol.mjs';
+
+const manifest = JSON.parse(fs.readFileSync(path.resolve('extensions/flow-companion/manifest.json'), 'utf8'));
+
+test('desktop bridge uses a stable extension id and Native Messaging permission', () => {
+  assert.equal(manifest.version, '0.3.0');
+  assert.equal(manifest.minimum_chrome_version, '105');
+  assert.ok(manifest.permissions.includes('nativeMessaging'));
+  assert.ok(manifest.host_permissions.includes('http://127.0.0.1/*'));
+  const digest = crypto.createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest().subarray(0, 16);
+  const extensionId = [...digest].map(byte => String.fromCharCode(97 + (byte >> 4)) + String.fromCharCode(97 + (byte & 15))).join('');
+  assert.equal(extensionId, 'eogpaadohpepjiedfbmigenebifdlldi');
+  const constants = fs.readFileSync(path.resolve('electron/flow-native-constants.cjs'), 'utf8');
+  assert.match(constants, new RegExp(extensionId));
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+  assert.ok(packageJson.build.extraResources.some(entry => entry.from === 'extensions/flow-companion' && entry.to === 'flow-companion-extension'));
+  assert.match(fs.readFileSync(path.resolve('build/installer.nsh'), 'utf8'), /DeleteRegKey HKCU .*com\.kaoz1\.flow_companion/);
+});
 
 test('only the approved Kaoz origin and Flow pages can command the extension', () => {
   assert.equal(allowedSender({ url: 'http://localhost:3000/flow/images' }), true);

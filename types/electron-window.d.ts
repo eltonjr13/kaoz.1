@@ -27,6 +27,15 @@ declare global {
       setAutoDownloadUpdates: (enabled: boolean) => Promise<{ autoDownloadUpdates: boolean } | null>;
       chooseCourseFolder: () => Promise<string | null>;
       chooseVideoFile: () => Promise<string | null>;
+      getFlowCompanionStatus: () => Promise<{
+        connected: boolean;
+        busy: boolean;
+        message: string;
+        registered?: boolean;
+        extensionId?: string;
+        version?: string;
+      } | null>;
+      openFlowCompanion: () => Promise<{ opened: boolean; message?: string } | null>;
       saveFile?: (payload: {
         defaultName: string;
         buffer: ArrayBuffer;

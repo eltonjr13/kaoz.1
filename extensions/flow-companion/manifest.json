@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Kaoz Flow Companion",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Gera imagens para o Kaoz.1 usando sua sessão do Google Flow no Chrome.",
-  "permissions": ["scripting", "storage"],
-  "host_permissions": ["https://flow.google.com/*", "https://flow.google/*", "https://labs.google/*", "https://flow-content.google/*", "https://*.googleusercontent.com/*"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsMBMsdzKYyIvh5O1rG674TgkdpBMI5dDHGY1MxQuN6bNgd+XxOsc36Iq+RY17MS0+UGUq8m4SYJmCp1E4ZiK/n6nTqpvWfHECL5LBt8yTQTPcu0AR0b+wwUFFrzq1g70gy0XnvUlHKYbQZojuU9/eZxci2hTJFPSrut4NQkDYxjWapcnbWQhccUdtcc+BLOx5z9hQ3qIxvkMOlQ0TVaFIDEPI9c3AmZ4+HDINBxZ1hovGoXuQo87ykB4hdvUPdzFG5ZvQL3/XdXrDiQlfW8ZxFIOZM+65oQdf+DhwbarsqwWEb18KVM4QtCtjGCEnkcZede5vsi2t68k7+zwUHw7CwIDAQAB",
+  "minimum_chrome_version": "105",
+  "permissions": ["nativeMessaging", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "https://flow.google.com/*", "https://flow.google/*", "https://labs.google/*", "https://flow-content.google/*", "https://*.googleusercontent.com/*"],
   "background": { "service_worker": "background.mjs", "type": "module" },
   "action": { "default_popup": "popup.html" },
   "externally_connectable": { "matches": ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"] }

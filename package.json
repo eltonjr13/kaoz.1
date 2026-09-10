@@ -11,7 +11,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev --webpack",
-    "desktop:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
+    "desktop:dev": "concurrently -k \"cross-env KAOZ1_DESKTOP=1 npm run dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
     "build": "node scripts/build-next.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs && node scripts/prepare-parakeet-runtime.mjs && node scripts/prepare-whisper-cpp-runtime.mjs && node scripts/prepare-electron-shell.mjs && node scripts/verify-electron-shell.mjs && node scripts/smoke-desktop-standalone.mjs",
     "desktop:smoke": "node scripts/smoke-desktop-standalone.mjs",
@@ -23,7 +23,7 @@
     "clean:check": "node scripts/clean-generated.mjs --include-release",
     "clean:caches": "node scripts/clean-generated.mjs --apply --include-release",
     "clean:all-generated": "node scripts/clean-generated.mjs --apply --include-release --include-desktop-runtime",
-    "test": "npm run typecheck && npm run test:shortcuts && npm run test:product-surface && npm run test:model-p && npm run test:chat-context && npm run test:flow-image && npm run test:flow-agents && npm run test:multiagent-migration && npm run test:image-prompt && npm run test:personality && npm run test:memory && npm run test:memory-archive && npm run test:voice-expression && npm run test:tool-safety && npm run test:tool-execution && npm run test:playwright-mcp && npm run test:davinci-resolve && npm run test:google-drive && npm run test:connectors && npm run test:skills && npm run test:agent-prompt && npm run test:agent-infrastructure && npm run test:agent-capabilities && npm run test:execution-classifier && npm run test:workflow-factory && npm run test:execution-layer && npm run test:agent-registry && npm run test:creative-domain && npm run test:campaign-director && npm run test:creative-workflow && npm run test:war-room && npm run test:live-canvas && npm run test:campaign-parser && npm run test:campaign-production && npm run test:speech-synthesizer && npm run test:agent-messaging && npm run test:agent-shared-context && npm run test:planner-agent && npm run test:task-decomposer-agent && npm run test:agent-scheduler && npm run test:supervisor-agent && npm run test:production-supervision && npm run test:chief-agent && npm run test:artifacts && npm run test:updates && npm run test:desktop && npm run test:speech && npm run test:lipsync && npm run test:build-cleanup && npm run test:desktop-icon && npm run test:sketch",
+    "test": "npm run typecheck && npm run test:shortcuts && npm run test:product-surface && npm run test:model-p && npm run test:chat-context && npm run test:flow-image && npm run test:flow-companion && npm run test:flow-agents && npm run test:multiagent-migration && npm run test:image-prompt && npm run test:personality && npm run test:memory && npm run test:memory-archive && npm run test:voice-expression && npm run test:tool-safety && npm run test:tool-execution && npm run test:playwright-mcp && npm run test:davinci-resolve && npm run test:google-drive && npm run test:connectors && npm run test:skills && npm run test:agent-prompt && npm run test:agent-infrastructure && npm run test:agent-capabilities && npm run test:execution-classifier && npm run test:workflow-factory && npm run test:execution-layer && npm run test:agent-registry && npm run test:creative-domain && npm run test:campaign-director && npm run test:creative-workflow && npm run test:war-room && npm run test:live-canvas && npm run test:campaign-parser && npm run test:campaign-production && npm run test:speech-synthesizer && npm run test:agent-messaging && npm run test:agent-shared-context && npm run test:planner-agent && npm run test:task-decomposer-agent && npm run test:agent-scheduler && npm run test:supervisor-agent && npm run test:production-supervision && npm run test:chief-agent && npm run test:artifacts && npm run test:updates && npm run test:desktop && npm run test:speech && npm run test:lipsync && npm run test:build-cleanup && npm run test:desktop-icon && npm run test:sketch",
     "test:model-p": "node --experimental-strip-types --no-warnings --test tests/model-p.test.ts tests/model-p-chat-parser.test.ts",
     "test:shortcuts": "node --experimental-strip-types --no-warnings --test tests/keyboard-shortcuts.test.ts",
     "test:desktop-icon": "node --no-warnings --test tests/desktop-icon.test.mjs",
@@ -32,6 +32,7 @@
     "test:product-surface": "node --no-warnings --test tests/product-surface-retirement.test.mjs",
     "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs",
     "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs",
+    "test:flow-companion": "node --experimental-strip-types --no-warnings --test tests/flow-companion.test.mjs tests/flow-companion-broker.test.ts tests/flow-native-host.test.cjs",
     "test:flow-agents": "node --no-warnings --test tests/flow-agent-specialization.test.mjs",
     "test:multiagent-migration": "node --no-warnings --test tests/multiagent-final-migration.test.mjs",
     "test:image-prompt": "node --experimental-strip-types --no-warnings --test tests/image-prompt-engineering.test.ts",
@@ -152,6 +153,13 @@
       {
         "from": ".env.example",
         "to": "config/.env.example"
+      },
+      {
+        "from": "extensions/flow-companion",
+        "to": "flow-companion-extension",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "build/runtime/parakeet",

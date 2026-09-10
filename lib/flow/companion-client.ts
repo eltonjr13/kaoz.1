@@ -117,10 +117,28 @@ export function mountCompanion() {
   return () => { consumers = Math.max(0, consumers - 1); };
 }
 
+async function ensureDesktopCompanion() {
+  const bridge = window.kaoz1Desktop;
+  if (!bridge?.getFlowCompanionStatus || !bridge.openFlowCompanion) throw new Error('A ponte do Chrome não está disponível nesta versão do aplicativo.');
+  let status = await bridge.getFlowCompanionStatus();
+  if (status?.connected) return;
+  const opened = await bridge.openFlowCompanion();
+  if (!opened?.opened) throw new Error(opened?.message || 'Não foi possível abrir a extensão no Chrome.');
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await sleep(750);
+    status = await bridge.getFlowCompanionStatus();
+    if (status?.connected) return;
+  }
+  throw new Error('A extensão não conectou. Recarregue a Kaoz Flow Companion no Chrome e tente novamente.');
+}
+
 export async function flowImageFetch(url: string, init: RequestInit) {
-  if (isDesktopFlow()) return fetch(url, init);
   const body = JSON.parse(String(init.body || '{}'));
   const kind = body.approvedPlan?.flow || body.type;
+  if (isDesktopFlow()) {
+    if (['image', 'ad-creative'].includes(kind)) await ensureDesktopCompanion();
+    return fetch(url, init);
+  }
   if (!['image', 'ad-creative'].includes(kind)) return fetch(url, init);
   if (!current.connected) await connectCompanion();
   startRunner();

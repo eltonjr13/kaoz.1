@@ -9,3 +9,7 @@
   Pop $0
   Sleep 750
 !macroend
+
+!macro customUnInstall
+  DeleteRegKey HKCU "Software\Google\Chrome\NativeMessagingHosts\com.kaoz1.flow_companion"
+!macroend

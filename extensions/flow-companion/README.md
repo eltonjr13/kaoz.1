@@ -1,8 +1,8 @@
 # Kaoz Flow Companion
 
 Extensão Manifest V3 para gerar imagens no Google Flow usando a sessão normal do
-Chrome. A integração atende o Kaoz aberto no navegador; o aplicativo desktop
-continua usando o provedor local existente.
+Chrome. Ela é o transporte principal de imagens tanto no navegador quanto no
+aplicativo desktop.
 
 ## Instalação
 
@@ -12,6 +12,10 @@ continua usando o provedor local existente.
 3. Abra **Kaoz Flow Companion**, informe o endereço do Kaoz e clique em
    **Conectar ao Kaoz**. Para desenvolvimento, use `http://localhost:3000`.
 4. A extensão abrirá `/flow/images` já com sua identificação.
+
+No aplicativo desktop instalado, a ponte Native Messaging é registrada no primeiro
+início e a conexão ocorre automaticamente. O popup da extensão pode ser aberto pelo
+botão **Abrir extensão no Chrome** dentro do Kaoz.1.
 
 Instalação local conforme a [documentação oficial do Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked).
 
@@ -39,8 +43,9 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 - Download limitado a PNG, JPEG ou WebP de até 12 MB dos hosts permitidos.
 - Mudanças no editor do Flow, desafios do Google e recarga/fechamento da aba podem
   exigir intervenção. A extensão não lê cookies nem exporta a sessão.
-- A fila do servidor fica em memória. A página e o processo do Kaoz devem permanecer
-  ativos até a conclusão.
+- O desktop registra o estado da fila em `%APPDATA%\Kaoz.1\storage\flow-companion`.
+  Se a comunicação cair depois do envio, o pedido exige conferência no Flow e não é
+  reenviado automaticamente.
 - Ao atualizar o código, recarregue a extensão em `chrome://extensions` e recarregue
   a aba do Flow somente quando não houver geração em andamento.
 
@@ -61,3 +66,6 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.
+
+No desktop: Kaoz → broker local → Native Messaging Host → service worker → projeto
+autenticado do Flow → API local autenticada → validação e armazenamento no Kaoz.

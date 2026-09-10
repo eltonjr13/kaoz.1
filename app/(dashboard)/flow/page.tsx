@@ -2975,6 +2975,7 @@ export default function FlowDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-project",
+          type: msg.plan.kind,
           requestId: msg.id,
           goalId: msg.plan.goalId,
           prompt: msg.plan.originalPrompt,
@@ -3265,6 +3266,7 @@ export default function FlowDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-project",
+          type: updatedPlan.kind,
           requestId: `${messageId}:edited:${editedImagePath}`,
           prompt: updatedPlan.originalPrompt,
           imageOperation: updatedPlan.imageOperation,

@@ -1,3 +1,8 @@
+const nativeOrigin = process.argv.find(argument => /^chrome-extension:\/\/[a-p]{32}\/?$/.test(argument));
+
+if (nativeOrigin) {
+  require('./flow-native-host.cjs').runFlowNativeHost({ nativeOrigin });
+} else {
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { readDesktopPreferences, shouldHideWindowOnClose, writeDesktopPreferences } = require("./desktop-preferences.cjs");
@@ -5,9 +10,12 @@ const { updateErrorDetails } = require("./update-errors.cjs");
 const { stopProcessTree } = require("./process-lifecycle.cjs");
 const { migrateLegacyUserData } = require("./user-data-migration.cjs");
 const { spawn } = require("node:child_process");
+const { randomBytes } = require("node:crypto");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
+const { FLOW_EXTENSION_ID } = require("./flow-native-constants.cjs");
+const { registerFlowNativeHost } = require("./flow-native-registration.cjs");
 
 let mainWindow;
 let nextServer;
@@ -17,6 +25,8 @@ let desktopPreferences;
 let updateCheckPromise;
 let installingUpdate = false;
 let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported: false };
+let flowNativeRegistration = { registered: false, reason: "not-started" };
+const flowNativeToken = randomBytes(32).toString("hex");
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
 
@@ -29,6 +39,58 @@ function getMainWindowForEvent(event) {
 
 function desktopPreferencesPath() {
   return path.join(app.getPath("userData"), "desktop-preferences.json");
+}
+
+function flowNativeRuntimePath() {
+  return path.join(app.getPath("userData"), "flow-companion-runtime.json");
+}
+
+function publishFlowNativeRuntime(baseUrl) {
+  const file = flowNativeRuntimePath();
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(temporary, `${JSON.stringify({ baseUrl, token: flowNativeToken, pid: process.pid, updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+  fs.renameSync(temporary, file);
+}
+
+function clearFlowNativeRuntime() {
+  const file = flowNativeRuntimePath();
+  try {
+    const current = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (current.pid === process.pid && current.token === flowNativeToken) fs.rmSync(file, { force: true });
+  } catch { /* The runtime descriptor may already be absent. */ }
+}
+
+function installedChromePath() {
+  const candidates = [
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env["PROGRAMFILES(X86)"] && path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+  ].filter(Boolean);
+  return candidates.find(candidate => fs.existsSync(candidate));
+}
+
+async function flowCompanionStatus() {
+  if (!applicationUrl) return { connected: false, busy: false, message: "O servidor local ainda está iniciando.", registered: flowNativeRegistration.registered };
+  try {
+    const response = await fetch(`${applicationUrl}/api/flow/desktop-companion?status=1`, {
+      headers: { authorization: `Bearer ${flowNativeToken}` },
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "A ponte do Chrome não respondeu.");
+    return { ...payload.status, registered: flowNativeRegistration.registered, extensionId: FLOW_EXTENSION_ID };
+  } catch (error) {
+    return { connected: false, busy: false, registered: flowNativeRegistration.registered, extensionId: FLOW_EXTENSION_ID, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function openFlowCompanion() {
+  const chrome = installedChromePath();
+  if (!chrome) return { opened: false, message: "Google Chrome não foi encontrado neste computador." };
+  const child = spawn(chrome, [`chrome-extension://${FLOW_EXTENSION_ID}/popup.html`], { detached: true, stdio: "ignore", windowsHide: true });
+  child.unref();
+  return { opened: true };
 }
 
 function getDesktopPreferences() {
@@ -311,6 +373,16 @@ ipcMain.handle("kaoz1-desktop:save-file", async (event, payload) => {
   return { savedPath: selection.filePath };
 });
 
+ipcMain.handle("kaoz1-flow-companion:get-status", (event) => {
+  if (!getMainWindowForEvent(event)) return null;
+  return flowCompanionStatus();
+});
+
+ipcMain.handle("kaoz1-flow-companion:open", (event) => {
+  if (!getMainWindowForEvent(event)) return null;
+  return openFlowCompanion();
+});
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {
@@ -437,6 +509,7 @@ async function stopProductionServer() {
 
 function createWindow(url) {
   applicationUrl = url;
+  publishFlowNativeRuntime(url);
   const appOrigin = new URL(url).origin;
   const isTrustedLocalOrigin = (candidate) => {
     try {
@@ -521,6 +594,15 @@ app.whenReady().then(async () => {
       legacyRoot: path.join(app.getPath("appData"), "MrChicken")
     });
     getDesktopPreferences();
+    try {
+      flowNativeRegistration = registerFlowNativeHost({
+        userDataPath: app.getPath("userData"),
+        executablePath: process.execPath,
+        packaged: app.isPackaged,
+      });
+    } catch (error) {
+      flowNativeRegistration = { registered: false, reason: error instanceof Error ? error.message : String(error) };
+    }
     configureAutoUpdater();
     createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
@@ -539,9 +621,12 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   app.isQuitting = true;
+  clearFlowNativeRuntime();
   void stopProductionServer();
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+}

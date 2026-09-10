@@ -12,6 +12,7 @@ import { getFlowGeneratedDir } from '@/lib/runtime-paths';
 import { prepareFlowImagePrompt } from '@/lib/ai/image-prompt-engineering';
 import { browserImageContext } from '@/lib/flow/browser-image-context';
 import { requestBrowserImage } from '@/lib/flow/browser-image-broker';
+import { requestDesktopImage } from '@/lib/flow/desktop-image-broker';
 
 export class FlowProvider {
   private config: FlowConfig;
@@ -98,6 +99,10 @@ export class FlowProvider {
     if (browserToken) {
       onLockAcquired?.();
       return requestBrowserImage(browserToken, prompt, options);
+    }
+    if (process.env.KAOZ1_DESKTOP === '1' && process.env.FLOW_IMAGE_TRANSPORT !== 'legacy') {
+      onLockAcquired?.();
+      return requestDesktopImage(prompt, options);
     }
     this.activeTasksCount++;
     try {
