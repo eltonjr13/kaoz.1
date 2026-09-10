@@ -20,7 +20,7 @@
     throw new Error(message);
   }
   async function prepareProject() {
-    const create = await waitFor(() => button(/^(Novo projeto|New project)$/i), 'Faça login no Flow na aba aberta e tente novamente.');
+    const create = await waitFor(() => button(/(Novo projeto|New project)$/i), 'Faça login no Flow na aba aberta e tente novamente.');
     create.click();
     await waitFor(composer, 'O editor do Flow não abriu.');
     const agent = button(/^(Agente|Agent)$/i);

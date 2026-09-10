@@ -50,9 +50,10 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
   arquivo corrompido, persistência idempotente e contratos de referência.
 - TypeScript e ESLint focado passaram, usando `eslint.config.mjs`.
 - Uma imagem real foi gerada no Flow pela extensão. O primeiro retorno revelou que
-  o original usa `flow-content.google`; a versão 0.2.0 inclui esse host e busca o
+  o original usa `flow-content.google`; a versão 0.2.1 inclui esse host e busca o
   arquivo original do editor.
-- O percurso final após recarregar a versão 0.2.0 no Chrome ainda precisa ser medido.
+- O percurso final da versão 0.2.1 passou no Chrome: projeto novo, Nano Banana 2,
+  formato 9:16, geração x1, retorno do original, validação, armazenamento e prévia.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.
