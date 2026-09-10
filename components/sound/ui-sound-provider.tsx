@@ -45,6 +45,7 @@ const COOLDOWN_MS: Record<UiSoundName, number> = {
 interface ActiveSound {
   audio: HTMLAudioElement;
   priority: number;
+  sound: UiSoundName;
 }
 
 function preferencesAllowRequest(request: UiSoundRequest, preferences: UiSoundPreferences) {
@@ -71,6 +72,16 @@ function stopActiveSound(active: ActiveSound | null, nextAudio: HTMLAudioElement
   if (active.audio.ended) return;
   active.audio.pause();
   active.audio.currentTime = 0;
+}
+
+function applyPreferencesToActiveSound(active: ActiveSound | null, preferences: UiSoundPreferences) {
+  if (!active) return;
+  if (!preferences.enabled) {
+    active.audio.pause();
+    active.audio.currentTime = 0;
+    return;
+  }
+  active.audio.volume = Math.max(0, Math.min(1, preferences.volume * SOUND_GAIN[active.sound]));
 }
 
 function requestWasPlayed(request: UiSoundRequest, keys: Set<string>) {
@@ -134,7 +145,7 @@ export function UiSoundProvider() {
       audio.pause();
       audio.currentTime = 0;
       audio.volume = Math.max(0, Math.min(1, preferences.volume * SOUND_GAIN[request.sound]));
-      activeRef.current = { audio, priority };
+      activeRef.current = { audio, priority, sound: request.sound };
       try {
         await audio.play();
         playedAtRef.current.set(request.sound, Date.now());
@@ -151,9 +162,11 @@ export function UiSoundProvider() {
       if (request?.sound in UI_SOUND_SOURCES) void performPlay(request);
     };
     const handleSettings = (event: Event) => {
-      preferencesRef.current = normalizeUiSoundPreferences(
+      const preferences = normalizeUiSoundPreferences(
         (event as CustomEvent<UiSoundPreferences>).detail,
       );
+      preferencesRef.current = preferences;
+      applyPreferencesToActiveSound(activeRef.current, preferences);
     };
     window.addEventListener(UI_SOUND_PLAY_EVENT, handlePlay);
     window.addEventListener(UI_SOUND_SETTINGS_EVENT, handleSettings);

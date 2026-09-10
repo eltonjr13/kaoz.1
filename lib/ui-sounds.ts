@@ -77,6 +77,7 @@ export function playUiSound(sound: UiSoundName, options: Omit<UiSoundRequest, "s
   if (typeof window === "undefined") return false;
   const preferences = readUiSoundPreferences();
   if (!options.force && !preferences.enabled) return false;
+  if (!options.force && preferences.volume === 0) return false;
   if (!options.force && document.hidden && !preferences.playInBackground) return false;
 
   window.dispatchEvent(new CustomEvent<UiSoundRequest>(UI_SOUND_PLAY_EVENT, {

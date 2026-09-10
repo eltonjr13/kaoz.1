@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { DavinciFreePanel } from "@/components/settings/DavinciFreePanel";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
+import { playUiSound } from "@/lib/ui-sounds";
 
 type StatusMessage = { text: string; type: "success" | "error" | "info" };
 
@@ -130,6 +131,16 @@ export function VideoEditorClient() {
     const timeout = window.setTimeout(() => setStatus(null), 5000);
     return () => window.clearTimeout(timeout);
   }, [isUrgentStatus, status]);
+
+  useEffect(() => {
+    if (status?.type === "error") {
+      playUiSound("error");
+      return;
+    }
+    if (status?.type !== "success") return;
+    if (!/(conclu|exportad|finaliz|pronto|renderiz)/i.test(status.text)) return;
+    playUiSound("task-complete");
+  }, [status]);
 
   useEffect(() => {
     if (!isUrgentStatus) return;

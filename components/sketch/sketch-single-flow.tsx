@@ -28,6 +28,7 @@ import { isJobActive } from '@/lib/sketch/sketch-job-state';
 import { SketchSaveCoordinator, type SaveStatus } from '@/lib/sketch/sketch-save-coordinator';
 import { createCleanProject } from '@/lib/sketch/sketch-project-defaults';
 import { renderSketchOnlyDataUrl } from '@/lib/sketch/sketch-exporter';
+import { playUiSound } from '@/lib/ui-sounds';
 import { SketchPromptInput } from './sketch-prompt-input';
 import { SketchAttachmentBar } from './sketch-attachment-bar';
 import { SketchFormatSelector } from './sketch-format-selector';
@@ -411,6 +412,7 @@ export function SketchSingleFlow() {
   const [savedTime, setSavedTime] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const soundEligibleJobIdsRef = useRef<Set<string>>(new Set());
 
   const [sketchPaths, setSketchPaths] = useState<SketchPath[]>([]);
   const [sketchThumbnail, setSketchThumbnail] = useState<string | undefined>(undefined);
@@ -500,9 +502,13 @@ export function SketchSingleFlow() {
   };
 
   const handleJobFinished = useCallback(
-    async (status: string, jobError?: string) => {
+    async (status: string, jobError?: string, jobId?: string) => {
       setIsGenerating(false);
       if (status === 'completed') {
+        if (jobId && soundEligibleJobIdsRef.current.has(jobId)) {
+          playUiSound('task-complete', { dedupeKey: `sketch:${jobId}:completed` });
+          soundEligibleJobIdsRef.current.delete(jobId);
+        }
         try {
           const pRes = await fetch(`/api/sketch/projects/${project.id}`);
           const pData = await pRes.json();
@@ -514,6 +520,9 @@ export function SketchSingleFlow() {
         }
         setFlowState('result');
       } else if (status === 'failed') {
+        if (jobId && soundEligibleJobIdsRef.current.has(jobId)) {
+          playUiSound('error', { dedupeKey: `sketch:${jobId}:failed` });
+        }
         setGenerationError(jobError || 'Falha na geração do anúncio');
         setFlowState('input');
       }
@@ -531,7 +540,7 @@ export function SketchSingleFlow() {
           const currentJob: SketchJobData = data.job;
           setActiveJob(currentJob);
           if (!isJobActive(currentJob.status)) {
-            await handleJobFinished(currentJob.status, currentJob.error);
+            await handleJobFinished(currentJob.status, currentJob.error, currentJob.id);
           }
         }
       } catch {
@@ -575,13 +584,16 @@ export function SketchSingleFlow() {
 
       const data = await res.json();
       if (data.success && data.job) {
+        soundEligibleJobIdsRef.current.add(data.job.id);
         setActiveJob(data.job);
       } else {
+        playUiSound('error', { dedupeKey: `sketch:${project.id}:start-error` });
         setIsGenerating(false);
         setGenerationError(data.error || 'Não foi possível iniciar a geração.');
         setFlowState('input');
       }
     } catch (err: unknown) {
+      playUiSound('error', { dedupeKey: `sketch:${project.id}:start-error` });
       setIsGenerating(false);
       setGenerationError(err instanceof Error ? err.message : 'Erro de conexão');
       setFlowState('input');
