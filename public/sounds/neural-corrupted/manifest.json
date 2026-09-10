@@ -1,0 +1,61 @@
+{
+  "collection": "Kaoz.1 Sonic Identity — Neural Corrompido",
+  "status": "prototype",
+  "version": "0.1.0",
+  "author": "Kaoz.1",
+  "generatedOn": "2026-09-09",
+  "method": "Sintese procedural original com FM, ressonadores modais, nuvens granulares e microfraturas digitais",
+  "generator": "scripts/generate-neural-corrupted-sounds.mjs",
+  "thirdPartySamples": false,
+  "license": "Proprietary — Kaoz.1",
+  "format": {
+    "container": "WAV",
+    "encoding": "PCM signed 16-bit",
+    "sampleRate": 48000,
+    "channels": 2
+  },
+  "files": [
+    {
+      "name": "app-open.wav",
+      "event": "app.open",
+      "description": "O sistema desperta, se organiza e reconhece o usuario.",
+      "durationMs": 1620,
+      "sha256": "ad2ab96b6765f3324027b395040258d8c4c2de07fbcb16997aac69a0b580f686"
+    },
+    {
+      "name": "task-complete.wav",
+      "event": "task.complete",
+      "description": "As partes de uma tarefa se encaixam em uma conclusao firme.",
+      "durationMs": 1040,
+      "sha256": "2692200d42e6dab6af91d61c52e2019fdd86f78a49b7fa09af0ee8052745baba"
+    },
+    {
+      "name": "error.wav",
+      "event": "error",
+      "description": "A estrutura digital perde estabilidade e colapsa.",
+      "durationMs": 690,
+      "sha256": "79359748ad8743c9cce0e446341f877474e0590d57b20599e45081cdcb6caade"
+    },
+    {
+      "name": "attention.wav",
+      "event": "attention",
+      "description": "Uma presenca neural insiste por uma decisao do usuario.",
+      "durationMs": 820,
+      "sha256": "cce0531eae866135abf6d3ef1efa8a6fc9f570051a830011956517aa95d62eba"
+    },
+    {
+      "name": "mic-on.wav",
+      "event": "mic.on",
+      "description": "Um canal neural se abre para receber a voz.",
+      "durationMs": 360,
+      "sha256": "bc6e0c8feb465108ca1556253a69706c97c1843c37a2032dfc71e0211d2c22ea"
+    },
+    {
+      "name": "navigate.wav",
+      "event": "navigate",
+      "description": "Um fragmento de informacao atravessa a interface.",
+      "durationMs": 170,
+      "sha256": "d79b6586d07742f2ea94fca0fefd607ea2346178e03cb0fe53445b8a9b6def65"
+    }
+  ]
+}
