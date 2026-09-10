@@ -120,7 +120,7 @@ test('SaveCoordinator: 50 rapid edits are debounced into exactly one final save'
 
   assert.strictEqual(persistCallCount, 1, 'Only 1 persist should occur for 50 rapid edits');
   assert.strictEqual(lastPersistedRev, 50, 'Persisted revision must be 50');
-  assert.strictEqual(lastPersistedProject?.prompt, 'Prompt version 50');
+  assert.strictEqual((lastPersistedProject as SketchProjectData | null)?.prompt, 'Prompt version 50');
   assert.strictEqual(coordinator.isDirty(), false);
   assert.strictEqual(coordinator.getSavedRevision(), 50);
 });

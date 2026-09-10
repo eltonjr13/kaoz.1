@@ -121,14 +121,14 @@ function verifyCleanStateInvariants(proj: SketchProjectData, expectedRatio: Flow
   assert.strictEqual(proj.prompt, '', 'Prompt must be empty string');
   assert.strictEqual(proj.aspectRatio, expectedRatio, 'Aspect ratio must match requested');
   assert.strictEqual(proj.canvasAspectRatio, expectedRatio, 'Canvas aspect ratio must match requested');
-  assert.strictEqual(proj.canvasDimensions.width, preset.width, 'Canvas width mismatch');
-  assert.strictEqual(proj.canvasDimensions.height, preset.height, 'Canvas height mismatch');
-  assert.strictEqual(proj.document.dimensions.width, preset.width, 'Document width mismatch');
-  assert.strictEqual(proj.document.dimensions.height, preset.height, 'Document height mismatch');
+  assert.strictEqual(proj.canvasDimensions?.width, preset.width, 'Canvas width mismatch');
+  assert.strictEqual(proj.canvasDimensions?.height, preset.height, 'Canvas height mismatch');
+  assert.strictEqual(proj.document?.dimensions.width, preset.width, 'Document width mismatch');
+  assert.strictEqual(proj.document?.dimensions.height, preset.height, 'Document height mismatch');
   assert.strictEqual(proj.attachments.length, 0, 'Must have zero attachments');
   assert.strictEqual(proj.generationHistory.length, 0, 'Must have empty generation history');
-  assert.strictEqual(proj.creativeResults.length, 0, 'Must have empty creative results');
-  assert.strictEqual(proj.changeIntents.length, 0, 'Must have empty change intents');
+  assert.strictEqual(proj.creativeResults?.length, 0, 'Must have empty creative results');
+  assert.strictEqual(proj.changeIntents?.length, 0, 'Must have empty change intents');
 
   // Verify copy fields are clean
   assert.strictEqual(proj.copy.headline, '', 'Copy headline must be empty');
@@ -137,9 +137,9 @@ function verifyCleanStateInvariants(proj: SketchProjectData, expectedRatio: Flow
   assert.strictEqual(proj.copy.badge, '', 'Copy badge must be empty');
 
   // Verify briefing fields are clean
-  assert.strictEqual(proj.briefing.productDescription, '', 'Briefing productDescription must be empty');
-  assert.strictEqual(proj.briefing.targetAudience, '', 'Briefing targetAudience must be empty');
-  assert.strictEqual(proj.briefing.objective, '', 'Briefing objective must be empty');
+  assert.strictEqual(proj.briefing?.productDescription, '', 'Briefing productDescription must be empty');
+  assert.strictEqual(proj.briefing?.targetAudience, '', 'Briefing targetAudience must be empty');
+  assert.strictEqual(proj.briefing?.objective, '', 'Briefing objective must be empty');
 
   // Verify layers: exactly 1 background layer, zero canned promotional text layers
   assert.strictEqual(proj.layers.length, 1, 'Must have exactly 1 layer');
