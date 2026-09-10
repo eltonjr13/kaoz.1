@@ -67,7 +67,8 @@
     const input = composer();
     input.focus();
     if (!document.execCommand('insertText', false, prompt)) throw new Error('O editor não aceitou o pedido.');
-    if (input.textContent.trim() !== prompt) throw new Error('O texto do editor diverge do pedido.');
+    const normalizeText = value => value.replace(/\s+/g, ' ').trim();
+    if (normalizeText(input.innerText || input.textContent) !== normalizeText(prompt)) throw new Error('O texto do editor diverge do pedido.');
     const submit = await waitFor(() => {
       const element = button(/^(Iniciar geração|Start generation)$/i);
       return element && !element.disabled ? element : null;

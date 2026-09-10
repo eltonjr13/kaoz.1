@@ -14,7 +14,7 @@ export function FlowCompanionConnection({ compact = false }: { compact?: boolean
   const [id, setId] = useState('');
   useEffect(() => {
     setDesktop(isDesktopFlow());
-    setId(localStorage.getItem('kaoz-flow-extension-id') || '');
+    setId(new URLSearchParams(location.search).get('extensionId') || localStorage.getItem('kaoz-flow-extension-id') || '');
     return subscribeCompanion(() => setState(companionSnapshot()));
   }, []);
   if (desktop) return null;

@@ -41,7 +41,7 @@ export function companionMessage(message: unknown): Promise<Reply> {
 }
 
 export async function connectCompanion(id?: string) {
-  extensionId = (id || localStorage.getItem('kaoz-flow-extension-id') || '').trim();
+  extensionId = (id || localStorage.getItem('kaoz-flow-extension-id') || extensionId || '').trim();
   try {
     const result = await companionMessage({ type: 'ping' });
     if (!result.version || Number(result.version.split('.')[1]) < 2) throw new Error('Recarregue a extensão no Chrome para usar a versão 0.2.0 ou superior.');

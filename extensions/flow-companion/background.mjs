@@ -35,7 +35,7 @@ async function open() {
   const tab = await chrome.tabs.create({ url: 'https://flow.google.com/' });
   return { ok: true, tabId: tab.id };
 }
-async function start(message, sender) {
+async function prepareRequest(message, sender) {
   if (!validPrompt(message.prompt)) throw new Error('Informe um pedido de até 16000 caracteres.');
   const id = message.requestId || crypto.randomUUID();
   if (!/^[a-zA-Z0-9-]{8,100}$/.test(id)) throw new Error('Identificador inválido.');
@@ -44,10 +44,15 @@ async function start(message, sender) {
   const owner = new URL(sender.url).origin;
   if (existing) {
     if (existing.owner !== owner) throw new Error('Pedido pertence a outro Kaoz.');
-    return { ok: true, jobId: id };
+    return { id, owner, existing };
   }
   const active = Object.values(entries).find(job => ['starting', 'running'].includes(job.status));
   if (active) throw new Error('Há um pedido em andamento. Retome ou encerre o acompanhamento no Kaoz.');
+  return { id, owner, existing: null };
+}
+async function start(message, sender) {
+  const { id, owner, existing } = await prepareRequest(message, sender);
+  if (existing) return { ok: true, jobId: id };
   const tab = await chrome.tabs.create({ url: 'https://flow.google.com/', active: true });
   const job = { id, owner, tabId: tab.id, startedAt: Date.now(), status: 'starting' };
   await save(job);
@@ -64,14 +69,18 @@ async function start(message, sender) {
     job.status = 'failed'; job.error = error.message; await save(job); throw error;
   }
 }
+async function readStatus(job) {
+  const result = await chrome.tabs.sendMessage(job.tabId, { type: 'status', id: job.id });
+  if (!result?.ok) throw new Error(result?.error || 'A aba perdeu a sessão. Confira o Flow; o pedido não será reenviado.');
+  if (Date.now() - job.startedAt > 7 * 60_000 && result.status !== 'completed') throw new Error('A geração excedeu sete minutos. Confira o Flow antes de tentar outro pedido.');
+  return result;
+}
 async function status(message, sender) {
   const job = await owned(message, sender);
   if (job.status === 'failed') return { ok: false, error: job.error };
   if (job.status === 'completed') return { ok: true, status: 'completed', images: job.images, projectUrl: job.projectUrl };
   try {
-    const result = await chrome.tabs.sendMessage(job.tabId, { type: 'status', id: job.id });
-    if (!result?.ok) throw new Error(result?.error || 'A aba perdeu a sessão. Confira o Flow; o pedido não será reenviado.');
-    if (Date.now() - job.startedAt > 7 * 60_000 && result.status !== 'completed') throw new Error('A geração excedeu sete minutos. Confira o Flow antes de tentar outro pedido.');
+    const result = await readStatus(job);
     if (result.status === 'completed') {
       Object.assign(job, { status: 'completed', images: result.images, projectUrl: result.projectUrl });
       await save(job);
