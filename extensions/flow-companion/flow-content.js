@@ -21,7 +21,7 @@
     return { composer, submit };
   }
 
-  function start(message) {
+  async function start(message) {
     if (job?.status === 'running') throw new Error('Já existe uma geração nesta aba.');
     const { composer, submit } = controls();
     const previous = new Set(images().map(image => image.currentSrc || image.src));
@@ -29,6 +29,9 @@
     // ProseMirror handles the native editing input event and updates its state.
     if (!document.execCommand('insertText', false, message.prompt)) throw new Error('O editor não aceitou o pedido.');
     if (composer.textContent.trim() !== message.prompt) throw new Error('O texto do editor diverge do pedido. Geração não enviada.');
+    for (let attempt = 0; attempt < 20 && submit.disabled; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     if (submit.disabled) throw new Error('O botão de geração continua desativado.');
     job = { id: message.id, status: 'running', startedAt: Date.now(), previous };
     submit.click();
@@ -50,7 +53,10 @@
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (sender.id !== chrome.runtime.id) return false;
     try {
-      if (message.type === 'start') reply(start(message));
+      if (message.type === 'start') {
+        start(message).then(reply).catch(error => reply({ ok: false, error: error.message }));
+        return true;
+      }
       else if (message.type === 'status') reply(status(message.id));
     } catch (error) { reply({ ok: false, error: error.message }); }
     return false;

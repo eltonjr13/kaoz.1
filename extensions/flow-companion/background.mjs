@@ -9,7 +9,18 @@ async function imageData(url) {
   if (!response.ok || !allowedImage(response.url)) throw new Error('Não foi possível baixar a imagem do Flow.');
   const mime = response.headers.get('content-type')?.split(';')[0];
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) throw new Error('O resultado não é uma imagem suportada.');
-  const reader = response.body.getReader();
+  const chunks = await readImageChunks(response.body);
+  let binary = '';
+  for (const chunk of chunks) {
+    for (let offset = 0; offset < chunk.length; offset += 8192) {
+      binary += String.fromCharCode(...chunk.subarray(offset, offset + 8192));
+    }
+  }
+  return { dataUrl: `data:${mime};base64,${btoa(binary)}`, bytes: binary.length, mime };
+}
+
+async function readImageChunks(body) {
+  const reader = body.getReader();
   const chunks = [];
   let size = 0;
   while (true) {
@@ -22,13 +33,11 @@ async function imageData(url) {
     }
     chunks.push(value);
   }
-  let binary = '';
-  for (const chunk of chunks) {
-    for (let offset = 0; offset < chunk.length; offset += 8192) {
-      binary += String.fromCharCode(...chunk.subarray(offset, offset + 8192));
-    }
-  }
-  return { dataUrl: `data:${mime};base64,${btoa(binary)}`, bytes: size, mime };
+  return chunks;
+}
+
+function ensureStarted(result) {
+  if (!result?.ok) throw new Error(result?.error || 'A extensão não recebeu confirmação do Flow.');
 }
 
 async function start(message, sender) {
@@ -47,7 +56,7 @@ async function start(message, sender) {
     await chrome.storage.session.set({ activeJob: job });
     try {
       const result = await chrome.tabs.sendMessage(tab.id, { type: 'start', id: job.id, prompt: message.prompt.trim() });
-      if (!result?.ok) throw new Error(result?.error || 'A extensão não recebeu confirmação do Flow.');
+      ensureStarted(result);
       return { ok: true, jobId: job.id };
     } catch (error) {
       await chrome.storage.session.remove('activeJob');
