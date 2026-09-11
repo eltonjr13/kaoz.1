@@ -1,9 +1,53 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Kaoz Flow Companion</title><link rel="stylesheet" href="popup.css"></head>
-<body><h2>Kaoz Flow Companion</h2><p>O Kaoz.1 Desktop conecta automaticamente quando o aplicativo está aberto.</p>
-<p>Para usar o Kaoz no navegador, conecte o endereço abaixo à sua conta já aberta no Flow.</p>
-<label for="origin">Endereço do Kaoz</label><input id="origin" type="url" value="http://localhost:3000">
-<button id="connect">Conectar ao Kaoz</button><p id="status" role="status"></p>
-<p>O endereço conectado poderá solicitar gerações e receber as imagens. Seu login fica no Chrome.</p>
-<button id="disconnect">Desconectar endereços</button>
-<script type="module" src="popup.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<title>Kaoz Flow Companion</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="kaoz-popup">
+  <div class="kaoz-aura" aria-hidden="true"></div>
+  <div class="kaoz-grain" aria-hidden="true"></div>
+
+  <header class="kaoz-header">
+    <img class="kaoz-mark" src="assets/kaoz-mark.png" alt="" width="40" height="40">
+    <div class="kaoz-identity">
+      <h1 class="kaoz-wordmark">Kaoz<span class="kaoz-wordmark__signal">.1</span></h1>
+      <p class="kaoz-label">Extensão do Chrome</p>
+    </div>
+  </header>
+
+  <section class="kaoz-status" id="companion" data-state="idle" aria-live="polite">
+    <span class="kaoz-dot" aria-hidden="true"></span>
+    <div class="kaoz-status__body">
+      <p class="kaoz-status__title" id="companion-title">Verificando o Chrome…</p>
+      <p class="kaoz-status__detail" id="companion-detail">Conferindo a ponte com o Kaoz.1.</p>
+    </div>
+  </section>
+
+  <main class="kaoz-panel">
+    <p class="kaoz-copy">O Kaoz.1 Desktop conecta automaticamente quando o aplicativo está aberto. Para usar o Kaoz no navegador, conecte o endereço abaixo à sua conta já aberta no Flow.</p>
+
+    <label class="kaoz-label" for="origin">Endereço do Kaoz</label>
+    <input id="origin" type="url" value="http://localhost:3000" placeholder="https://seu-kaoz.example" spellcheck="false" autocomplete="off">
+
+    <button id="connect" class="kaoz-action kaoz-action--primary" type="button">Conectar ao Kaoz</button>
+    <p id="status" class="kaoz-feedback" role="status"></p>
+
+    <div class="kaoz-split" aria-hidden="true"></div>
+
+    <p class="kaoz-note">O endereço conectado poderá solicitar gerações e receber as imagens. Seu login fica no Chrome.</p>
+    <ul class="kaoz-origins" id="origins" aria-label="Endereços conectados"></ul>
+    <button id="disconnect" class="kaoz-action kaoz-action--ghost" type="button">Desconectar endereços</button>
+  </main>
+
+  <footer class="kaoz-footer">
+    <span class="kaoz-label">Flow · Sessão do Chrome</span>
+    <span class="kaoz-label kaoz-footer__version" id="version"></span>
+  </footer>
+</div>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

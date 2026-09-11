@@ -1,1 +1,394 @@
-body{width:320px;padding:16px;font:14px system-ui;background:#13161d;color:#e5e9f0}h2{font-size:20px}p{line-height:1.5;color:#b6c2d1}label{display:block;margin:12px 0 6px}input{box-sizing:border-box;width:100%;padding:10px;background:#202731;border:1px solid #586475;color:inherit;border-radius:8px}button{margin-top:12px;padding:10px;border:0;border-radius:8px;background:#b1e08e;color:#172112;cursor:pointer}#disconnect{background:#273241;color:#d5dfeb}
+/* Kaoz Flow Companion popup — espelha os tokens de app/globals.css
+   (superfícies neutras + sinal indigo) para o popup ter a cara do Kaoz.1. */
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-600.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: dark;
+  --palette-void: #090a0d;
+  --palette-ink: #101217;
+  --palette-surface: #171a21;
+  --palette-stone: #383d49;
+  --palette-muted: #8b92a1;
+  --palette-paper: #f4f5f7;
+  --palette-accent: #7c6cf2;
+  --signal-primary: var(--palette-accent);
+  --signal-bright: #a99fff;
+  --signal-soft: rgba(124, 108, 242, 0.14);
+  --signal-soft: color-mix(in srgb, var(--signal-primary) 14%, transparent);
+  --signal-glow: rgba(124, 108, 242, 0.28);
+  --signal-cut: 8px;
+  --font-ui: "Söhne", "Sohne", "Soehne", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-technical: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --surface-elevated: var(--palette-surface);
+  --line: rgba(139, 146, 161, 0.22);
+  --line: color-mix(in srgb, var(--palette-muted) 22%, transparent);
+  --text: var(--palette-paper);
+  --muted: var(--palette-muted);
+  --success: #22c55e;
+  --danger: #ef4444;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 340px;
+  margin: 0;
+  background: var(--palette-void);
+  color: var(--text);
+  font: 0.9375rem/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.kaoz-popup {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+/* Atmosfera cinematográfica do app: aura indigo + grão, discretos. */
+.kaoz-aura {
+  position: absolute;
+  inset: -40% -20% auto;
+  z-index: -2;
+  height: 220px;
+  pointer-events: none;
+  background: radial-gradient(60% 60% at 26% 12%, rgba(124, 108, 242, 0.32), transparent 70%);
+}
+
+.kaoz-grain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+  opacity: 0.05;
+}
+
+/* Cabeçalho: marca do app + wordmark. */
+.kaoz-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.kaoz-mark {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.kaoz-identity {
+  min-width: 0;
+}
+
+.kaoz-wordmark {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.kaoz-wordmark__signal {
+  color: var(--signal-bright);
+}
+
+/* Rótulos técnicos em IBM Plex Mono, como o sistema de tipos do app. */
+.kaoz-label {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-technical);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+/* Estado da ponte: mesmo indicador de status usado no Kaoz.1. */
+.kaoz-status {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(23, 26, 33, 0.78);
+  background: color-mix(in srgb, var(--palette-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+
+.kaoz-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--palette-stone);
+  flex: none;
+}
+
+.kaoz-status[data-state="online"] .kaoz-dot {
+  background: var(--success);
+}
+
+.kaoz-status[data-state="busy"] .kaoz-dot {
+  background: var(--signal-bright);
+  animation: kaoz-pulse 1.6s ease-in-out infinite;
+}
+
+.kaoz-status[data-state="error"] .kaoz-dot {
+  background: var(--danger);
+}
+
+.kaoz-status__body {
+  min-width: 0;
+}
+
+.kaoz-status__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.kaoz-status__detail {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-family: var(--font-technical);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+@keyframes kaoz-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.kaoz-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.kaoz-copy {
+  margin: 0 0 12px;
+  color: #c3cad6;
+  font-size: 0.8125rem;
+}
+
+.kaoz-panel .kaoz-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(9, 10, 13, 0.6);
+  background: color-mix(in srgb, var(--palette-void) 62%, transparent);
+  color: var(--text);
+  font-family: var(--font-technical);
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+
+input::placeholder {
+  color: rgba(139, 146, 161, 0.7);
+}
+
+input:focus-visible {
+  border-color: color-mix(in srgb, var(--signal-primary) 74%, transparent);
+  outline: 0;
+  box-shadow: inset 2px 0 var(--signal-bright);
+}
+
+/* Mesmo recorte de sinal e varredura dos botões do Kaoz.1. */
+.kaoz-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--signal-cut)) 0,
+    100% var(--signal-cut),
+    100% 100%,
+    var(--signal-cut) 100%,
+    0 calc(100% - var(--signal-cut))
+  );
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 180ms ease;
+}
+
+.kaoz-action::after {
+  position: absolute;
+  inset: 0 auto 0 -38%;
+  z-index: -1;
+  width: 32%;
+  content: "";
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.22), transparent);
+  transform: skewX(-18deg);
+  transition: translate 280ms ease, opacity 180ms ease;
+}
+
+.kaoz-action:hover::after {
+  opacity: 0.55;
+  translate: 440% 0;
+}
+
+.kaoz-action:focus-visible {
+  outline: 0;
+  filter: drop-shadow(0 0 5px rgba(169, 159, 255, 0.58));
+}
+
+.kaoz-action--primary {
+  background: linear-gradient(90deg, rgba(124, 108, 242, 0.42), rgba(23, 26, 33, 0.95) 72%);
+  background: linear-gradient(90deg, var(--signal-soft), var(--surface-elevated) 72%);
+  box-shadow: inset 2px 0 var(--signal-bright);
+  color: #dcd8ff;
+}
+
+.kaoz-action--primary:hover {
+  filter: drop-shadow(0 0 10px rgba(124, 108, 242, 0.35));
+}
+
+.kaoz-action--ghost {
+  border: 1px solid var(--line);
+  background: rgba(39, 43, 53, 0.7);
+  color: #d5dfeb;
+}
+
+.kaoz-feedback {
+  margin: 8px 0 0;
+  min-height: 0;
+  color: var(--muted);
+  font-family: var(--font-technical);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+}
+
+.kaoz-feedback:empty {
+  display: none;
+}
+
+.kaoz-feedback[data-tone="ok"] {
+  color: #8ee0a6;
+}
+
+.kaoz-feedback[data-tone="error"] {
+  color: #f0a0a0;
+}
+
+.kaoz-split {
+  height: 1px;
+  margin: 16px 0 12px;
+  background: repeating-linear-gradient(to right, var(--signal-primary) 0 18px, transparent 18px 24px);
+  opacity: 0.45;
+}
+
+.kaoz-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.kaoz-origins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kaoz-origins:empty {
+  margin: 0;
+}
+
+.kaoz-origins li {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--signal-primary) 34%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--signal-soft);
+  color: #cdc7ff;
+  font-family: var(--font-technical);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+}
+
+.kaoz-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.kaoz-footer__version {
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
+.kaoz-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.kaoz-action:disabled::after {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kaoz-action::after,
+  .kaoz-dot {
+    transition: none;
+    animation: none !important;
+  }
+}

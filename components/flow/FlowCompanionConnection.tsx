@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { companionSnapshot, connectCompanion, isDesktopFlow, mountCompanion, subscribeCompanion } from '@/lib/flow/companion-client';
+import { companionSnapshot, connectCompanion, isDesktopFlow, mountCompanion, subscribeCompanion, type CompanionState } from '@/lib/flow/companion-client';
 
 type DesktopCompanionState = {
   connected: boolean;

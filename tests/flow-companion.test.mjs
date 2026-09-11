@@ -8,7 +8,7 @@ import { allowedSender, allowedImage, validPrompt, appOrigin } from '../extensio
 const manifest = JSON.parse(fs.readFileSync(path.resolve('extensions/flow-companion/manifest.json'), 'utf8'));
 
 test('desktop bridge uses a stable extension id and Native Messaging permission', () => {
-  assert.equal(manifest.version, '0.3.2');
+  assert.equal(manifest.version, '0.4.0');
   assert.equal(manifest.minimum_chrome_version, '105');
   assert.ok(manifest.permissions.includes('nativeMessaging'));
   assert.ok(manifest.host_permissions.includes('http://127.0.0.1/*'));
@@ -125,4 +125,70 @@ test('desktop bridge accepts localhost and rejects hosts outside loopback', asyn
   // Encerra o runner para não deixar temporizador pendente no fim da suíte.
   portListener({ type: 'unavailable' });
   await new Promise(resolve => setTimeout(resolve, 1700));
+});
+
+test('popup keeps the Kaoz.1 surface and ships every asset it declares', () => {
+  const root = path.resolve('extensions/flow-companion');
+  const popup = fs.readFileSync(path.join(root, 'popup.html'), 'utf8');
+  assert.match(popup, /<link rel="stylesheet" href="popup\.css">/);
+  assert.match(popup, /<script type="module" src="popup\.js"><\/script>/);
+  for (const control of ['origin', 'connect', 'disconnect']) assert.match(popup, new RegExp(`id="${control}"`));
+  assert.match(popup, /id="status" class="kaoz-feedback" role="status"/);
+  assert.match(popup, /id="version"/);
+
+  // A paleta e a tipografia técnica precisam ser as mesmas do app.
+  const appStyles = fs.readFileSync(path.resolve('app/globals.css'), 'utf8');
+  const popupStyles = fs.readFileSync(path.join(root, 'popup.css'), 'utf8');
+  for (const token of ['--palette-accent', '--palette-void', '--palette-stone', '--signal-bright']) {
+    assert.ok(appStyles.includes(`${token}:`) && popupStyles.includes(`${token}:`), token);
+  }
+  assert.match(popupStyles, /IBM Plex Mono/);
+  assert.match(popupStyles, /clip-path: polygon\(/);
+
+  const declared = [
+    ...Object.values(manifest.icons),
+    ...Object.values(manifest.action.default_icon),
+    'popup.html', 'popup.css', 'popup.js', 'protocol.mjs',
+    'assets/kaoz-mark.png', 'fonts/ibm-plex-mono-400.woff2', 'fonts/ibm-plex-mono-600.woff2',
+  ];
+  for (const file of declared) {
+    const target = path.join(root, file);
+    assert.ok(fs.statSync(target).size > 0, `asset ausente ou vazio: ${file}`);
+  }
+});
+
+test('service worker reports bridge state and the tracked request to the popup', async (t) => {
+  let listener;
+  const data = {
+    origins: ['http://localhost:3000'],
+    jobs: {
+      'running-job-1': { id: 'running-job-1', owner: 'http://localhost:3000', status: 'running', startedAt: 2 },
+      'done-job-2': { id: 'done-job-2', owner: 'http://localhost:3000', status: 'completed', startedAt: 1 },
+    },
+  };
+  const area = source => ({ get: async key => ({ [key]: source[key] }), set: async values => Object.assign(source, values) });
+  globalThis.chrome = {
+    runtime: {
+      getManifest: () => ({ version: '0.4.0' }),
+      onMessageExternal: { addListener() {} },
+      onMessage: { addListener(value) { listener = value; } },
+    },
+    storage: { session: area({}), local: area(data) },
+    scripting: { executeScript: async () => {} },
+    tabs: {},
+  };
+  t.after(() => { delete globalThis.chrome; });
+
+  await import('../extensions/flow-companion/background.mjs?popup-state');
+  assert.equal(typeof listener, 'function');
+  const ask = message => new Promise(resolve => assert.equal(listener(message, {}, resolve), true));
+
+  const state = await ask({ type: 'companion-state' });
+  assert.equal(state.ok, true);
+  assert.equal(state.version, '0.4.0');
+  assert.deepEqual(state.origins, ['http://localhost:3000']);
+  assert.equal(state.desktop, false);
+  assert.deepEqual(state.active, { id: 'running-job-1', status: 'running', owner: 'http://localhost:3000' });
+
+  assert.equal(listener({ type: 'ping' }, {}, () => {}), false);
 });

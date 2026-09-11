@@ -44,6 +44,21 @@ O teste envia o prompt informado ao Google e utiliza a geração disponível na 
 A extensão não solicita permissões de cookies, histórico ou depuração. A sessão
 permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 
+## Interface
+
+O popup segue a identidade do Kaoz.1: superfícies neutras escuras, acento indigo
+(`#7c6cf2`), recorte de sinal nos botões, tipografia técnica em IBM Plex Mono e a
+arte do aplicativo como marca. Ele mostra o mesmo estado do painel do desktop —
+ponte local ativa, geração em acompanhamento ou nenhuma conexão — em vez de
+apenas o formulário de endereço.
+
+- Ícones da barra e da página `chrome://extensions` saem de `app/icon.png` por
+  `node scripts/generate-extension-icons.mjs`. Os tamanhos 16 e 32 px usam um
+  recorte do rosto, que é o que permanece legível na barra.
+- `fonts/` traz o subconjunto latino de três pesos do IBM Plex Mono usado pelo app.
+- Estados do indicador: conectado, gerando (acento pulsando), aguardando e falha
+  de resposta do service worker.
+
 ## Escopo e limites
 
 - Localhost é autorizado por padrão. Domínios HTTPS precisam ser adicionados pelo
@@ -96,6 +111,15 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
   referências) e 15 do Flow Companion/broker.
 - A geração real no Flow com uma foto anexada ainda depende de uma sessão do
   Google autenticada no seu Chrome.
+- O popup 0.4.0 passou a usar a identidade do Kaoz.1 (paleta do app, IBM Plex
+  Mono, recorte de sinal e a arte do aplicativo como marca) e mostra o estado da
+  ponte e da geração, lido do service worker por `companion-state`.
+- Ícones 16/32/48/128 e a marca do popup saíram de `app/icon.png` por
+  `scripts/generate-extension-icons.mjs`; os pesos latinos do IBM Plex Mono do
+  popup ficaram em `extensions/flow-companion/fonts`.
+- O popup foi conferido renderizado em Chrome headless nos três estados
+  (Desktop conectado, aguardando conexão e gerando) e nos 21 testes focados da
+  extensão.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.

@@ -225,6 +225,24 @@ chrome.runtime.onMessageExternal.addListener((message, sender, reply) => {
   })().then(reply).catch(error => reply({ ok: false, error: error.message }));
   return true;
 });
+// O popup lê o mesmo estado que o painel do desktop mostra: ponte local
+// disponível e o pedido em acompanhamento na aba do Flow.
+chrome.runtime.onMessage?.addListener((message, _sender, reply) => {
+  if (message?.type !== 'companion-state') return false;
+  void (async () => {
+    const { origins = [] } = await chrome.storage.local.get('origins');
+    const entries = Object.values(await jobs());
+    const active = entries.find(job => ['starting', 'running'].includes(job.status));
+    return {
+      ok: true,
+      version: chrome.runtime.getManifest().version,
+      origins,
+      desktop: Boolean(desktopConfiguration),
+      active: active ? { id: active.id, status: active.status, owner: active.owner } : null,
+    };
+  })().then(reply).catch(error => reply({ ok: false, error: error.message }));
+  return true;
+});
 chrome.runtime.onStartup?.addListener(connectNativeBridge);
 chrome.runtime.onInstalled?.addListener(connectNativeBridge);
 connectNativeBridge();
