@@ -291,9 +291,25 @@ function extractPathsFromProject(project: SketchProjectData): SketchPath[] {
 
 function getResultImageUrl(project: SketchProjectData): string | undefined {
   const results = project.creativeResults;
-  if (!results || results.length === 0) return undefined;
-  const active = results.find((r) => r.id === project.activeResultId) || results[results.length - 1];
-  return active?.finalAsset?.imageUrl;
+  if (results && results.length > 0) {
+    const active = results.find((r) => r.id === project.activeResultId) || results[results.length - 1];
+    const url = active?.finalAsset?.imageUrl;
+    if (url) return url;
+  }
+  // A geração real registra a arte em generationHistory, não em creativeResults.
+  return project.generationHistory?.[0]?.imageUrl;
+}
+
+function projectHasGeneratedArt(project: SketchProjectData): boolean {
+  return Boolean(project.creativeResults?.length || project.generationHistory?.length);
+}
+
+function resolveJobWarnings(job: SketchJobData | null) {
+  return collectJobWarnings(job?.snapshot);
+}
+
+function resolveRequestedChangeType(job: SketchJobData | null): string | undefined {
+  return job?.snapshot?.requestedChange?.type;
 }
 
 function getBackgroundLayerImageUrl(project: SketchProjectData): string {
@@ -661,7 +677,7 @@ export function SketchSingleFlow() {
         setSketchPaths(paths);
         setSketchThumbnail(paths.length > 0 ? renderSketchOnlyDataUrl(paths, 240, 240) : undefined);
         setIsProjectsModalOpen(false);
-        setFlowState(loaded.creativeResults?.length ? 'result' : 'input');
+        setFlowState(projectHasGeneratedArt(loaded) ? 'result' : 'input');
       }
     } catch {
       setSaveError('Erro ao abrir projeto.');
@@ -709,7 +725,8 @@ export function SketchSingleFlow() {
             onApplyAdjustment={(adj) => handleGenerate('refine_text', adj)}
             onBackToEdit={() => setFlowState('input')}
             isGenerating={isGenerating}
-            warnings={collectJobWarnings(activeJob?.snapshot)}
+            warnings={resolveJobWarnings(activeJob)}
+            requestedChangeType={resolveRequestedChangeType(activeJob)}
           />
         )}
 

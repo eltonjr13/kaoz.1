@@ -16,6 +16,7 @@ import type {
   SketchProjectData,
 } from '@/types/sketch';
 import type { SketchJobWarning } from '@/lib/sketch/sketch-job-warnings';
+import { describeIterationLabel } from '@/lib/sketch/sketch-iteration-label';
 
 export interface SketchResultViewProps {
   project: SketchProjectData;
@@ -29,6 +30,7 @@ export interface SketchResultViewProps {
   onBackToEdit: () => void;
   isGenerating?: boolean;
   warnings?: SketchJobWarning[];
+  requestedChangeType?: string;
 }
 
 function resolveAspectRatioClass(ratio: FlowSupportedAspectRatio): string {
@@ -44,21 +46,6 @@ function resolveAspectRatioClass(ratio: FlowSupportedAspectRatio): string {
     case '1:1':
     default:
       return 'aspect-square max-h-[480px]';
-  }
-}
-
-function resolveIterationLabel(iterationType?: string, versionNumber?: number): string {
-  const v = versionNumber ? `v${versionNumber}` : 'v1';
-  switch (iterationType) {
-    case 'new_concept':
-      return `Outra ideia (${v})`;
-    case 'text_adjustment':
-      return `Ajuste de texto (${v})`;
-    case 'visual_adjustment':
-      return `Ajuste visual (${v})`;
-    case 'initial':
-    default:
-      return `Versão original (${v})`;
   }
 }
 
@@ -116,10 +103,11 @@ export function SketchResultView({
   onBackToEdit,
   isGenerating = false,
   warnings = [],
+  requestedChangeType,
 }: SketchResultViewProps) {
   const ratioClass = resolveAspectRatioClass(aspectRatio);
-  const lineageLabel = resolveIterationLabel(
-    activeResult?.lineage?.iterationType,
+  const lineageLabel = describeIterationLabel(
+    activeResult?.lineage?.iterationType || requestedChangeType,
     activeResult?.lineage?.versionNumber ?? versionNumber
   );
 
