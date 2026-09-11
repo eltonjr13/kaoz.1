@@ -202,13 +202,18 @@ function appendBriefingDetails(segments: string[], b?: SketchBriefingData): void
 }
 
 export function buildBriefingDirective(briefing?: SketchBriefingData): string {
-  const desc = briefing?.productDescription || briefing?.product || 'Featured commercial product';
-  const prefix = briefing?.product && briefing.product !== desc ? `${briefing.product} - ` : '';
-  const segments: string[] = [`Product: "${prefix}${desc}"`];
+  const product = typeof briefing?.product === 'string' ? briefing.product.trim() : '';
+  const description = typeof briefing?.productDescription === 'string' ? briefing.productDescription.trim() : '';
+  const label = product && description && product !== description ? `${product} — ${description}` : description || product;
+
+  // Without a real briefing the directive must stay silent. A generic product
+  // placeholder used to override the user's own idea, so it no longer exists.
+  const segments: string[] = [];
+  if (label) segments.push(`Product: ${label}`);
   appendBriefingDetails(segments, briefing);
 
-  const contextStr = segments.join('. ');
-  return `${contextStr}. INTEGRITY MANDATE: Do not hallucinate, invent, or add non-existent product features, unstated prices, unauthorized discounts, or fictitious testimonials. Base composition strictly on stated attributes.`;
+  const contextStr = segments.length > 0 ? `${segments.join('. ')}. ` : '';
+  return `${contextStr}INTEGRITY MANDATE: Do not hallucinate, invent, or add non-existent product features, unstated prices, unauthorized discounts, or fictitious testimonials. Base composition strictly on stated attributes.`;
 }
 
 function describeProportion(width: number, height: number): string {
@@ -244,8 +249,12 @@ export function compileCreativeGenerationPrompt(input: CreativeCompileInput): st
   const guides = extractCompositionGuides(input.layers);
 
   const sections: string[] = [];
-  if (input.prompt && input.prompt.trim()) {
-    sections.push(input.prompt.trim());
+  const idea = typeof input.prompt === 'string' ? input.prompt.trim() : '';
+  if (idea) {
+    // The user's own words come first and stay unquoted so the text-intent
+    // heuristic never mistakes the idea for typography to render in the image.
+    const normalizedIdea = /[.!?]$/.test(idea) ? idea : `${idea}.`;
+    sections.push(`Primary creative idea (highest priority, preserve the user's own words and intent): ${normalizedIdea}`);
   }
 
   sections.push(buildBriefingDirective(input.briefing));
@@ -346,6 +355,29 @@ export interface ValidateCreativePromptOptions {
   hasSketch?: boolean;
   briefing?: SketchBriefingData;
   copy?: SketchCopyData;
+}
+
+function normalizeForComparison(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Guards the user's own idea against silent loss during prompt preparation.
+ * Short ideas are skipped: they are too generic to prove a real match.
+ */
+export function checkIdeaPreservation(prompt: string, idea?: string): string[] {
+  const normalizedIdea = normalizeForComparison(typeof idea === 'string' ? idea : '');
+  if (normalizedIdea.length < 12) return [];
+
+  const sentences = normalizedIdea.split(/(?<=[.!?])\s+/);
+  const tail = sentences[sentences.length - 1] || normalizedIdea;
+  const needle = tail.length >= 12 ? tail : normalizedIdea;
+
+  if (normalizeForComparison(prompt).includes(needle)) return [];
+
+  return [
+    'Alerta de fidelidade: a ideia original do usuário não aparece integralmente no prompt enviado ao Flow.',
+  ];
 }
 
 export function validateCreativePrompt(

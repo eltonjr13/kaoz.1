@@ -14,7 +14,7 @@ import {
 } from './sketch-storage.ts';
 import { prepareSketchCompositeReference } from './sketch-composite-preparer.ts';
 import { validateAttachmentBuffer } from './sketch-attachment-validator.ts';
-import { renderCompositeReferenceDataUrl } from './sketch-exporter.ts';
+import { buildSketchProviderReference } from './sketch-reference-builder.ts';
 import { cleanupTemporaryReference } from '../flow/reference-files.ts';
 import { browserImageContext, withBrowserImageTransport } from '../flow/browser-image-context.ts';
 
@@ -138,66 +138,6 @@ export function extractBufferFromDataUrl(dataUrl: string): Buffer | null {
   } catch {
     return null;
   }
-}
-
-async function readAttachmentDataUrl(
-  att?: SketchAttachment,
-  assetsDir?: string
-): Promise<string | undefined> {
-  if (!att) return undefined;
-  if (att.dataUrl) return att.dataUrl;
-  if (!att.filePath || !assetsDir) return undefined;
-
-  const fullPath = path.join(assetsDir, att.filePath);
-  if (!fs.existsSync(fullPath)) return undefined;
-
-  const buf = await fsp.readFile(fullPath);
-  const ext = path.extname(fullPath).replace('.', '').toLowerCase() || 'png';
-  return `data:image/${ext};base64,${buf.toString('base64')}`;
-}
-
-function resolvePlacedImageDataUrl(layers: SketchLayer[]): string | undefined {
-  for (const l of layers) {
-    if (l.type === 'image' && l.visible) {
-      const img = l as import('../../types/sketch.ts').ImageLayer;
-      if (img.imageUrl?.startsWith('data:image/')) {
-        return img.imageUrl;
-      }
-    }
-  }
-  return undefined;
-}
-
-async function resolveProjectAttachmentDataUrl(
-  project: SketchProjectData,
-  assetsDir?: string
-): Promise<string | undefined> {
-  const activeAtt = project.activeReferenceId
-    ? project.attachments.find((a) => a.id === project.activeReferenceId)
-    : undefined;
-  const attDataUrl = await readAttachmentDataUrl(activeAtt, assetsDir);
-  if (attDataUrl) return attDataUrl;
-
-  return resolvePlacedImageDataUrl(project.layers);
-}
-
-async function resolveFallbackReferenceSource(
-  project: SketchProjectData,
-  referenceMode: string,
-  assetsDir?: string
-): Promise<string | undefined> {
-  if (referenceMode === 'sketch') {
-    return await renderCompositeReferenceDataUrl(project);
-  }
-  if (referenceMode === 'identity') {
-    return await resolveProjectAttachmentDataUrl(project, assetsDir);
-  }
-  if (referenceMode === 'composite') {
-    const attUrl = await resolveProjectAttachmentDataUrl(project, assetsDir);
-    const rendered = await renderCompositeReferenceDataUrl(project);
-    return rendered || attUrl;
-  }
-  return undefined;
 }
 
 interface PersistedJobReference {

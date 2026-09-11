@@ -19,6 +19,7 @@ import type { ImageReferenceKind } from '../../src/providers/flow/ImageGeneratio
 import {
   compileCreativeGenerationPrompt,
   validateCreativePrompt,
+  checkIdeaPreservation,
   extractCopyZones,
   extractSubjectPlacements,
   extractCompositionGuides,
@@ -120,15 +121,17 @@ export function detectPlacedImages(
 export function checkUnplacedAttachments(
   attachments: SketchAttachment[],
   placedAttachmentIds: Set<string>,
-  activeReferenceId?: string
+  activeReferenceId?: string,
+  selectedReferenceIds?: Set<string>
 ): SketchReferenceDiagnostic[] {
   const diagnostics: SketchReferenceDiagnostic[] = [];
 
   for (const att of attachments) {
     const isPlaced = placedAttachmentIds.has(att.id);
     const isActiveRef = activeReferenceId === att.id;
+    const isSelectedRef = selectedReferenceIds?.has(att.id) === true;
 
-    if (!isPlaced && !isActiveRef) {
+    if (!isPlaced && !isActiveRef && !isSelectedRef) {
       diagnostics.push({
         code: 'UNPLACED_ATTACHMENT',
         severity: 'warning',
@@ -395,10 +398,16 @@ export function prepareSketchCompositeReference(
   );
   const activeRefRole = activeAtt ? (activeAtt.role as SketchReferenceRole) : undefined;
 
+  const selectedReferenceIds = new Set(
+    (project.currentOrder?.selectedReferences || [])
+      .map((reference) => reference.attachmentId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  );
   const unplacedDiag = checkUnplacedAttachments(
     project.attachments,
     placedInfo.placedAttachmentIds,
-    project.activeReferenceId
+    project.activeReferenceId,
+    selectedReferenceIds
   );
   diagnostics.push(...unplacedDiag);
 
@@ -440,6 +449,16 @@ export function prepareSketchCompositeReference(
     if (!diagnostics.some((d) => d.message === issue)) {
       diagnostics.push({
         code: 'PROMPT_QUALITY_ISSUE',
+        severity: 'warning',
+        message: issue,
+      });
+    }
+  }
+
+  for (const issue of checkIdeaPreservation(preparedPrompt, project.prompt)) {
+    if (!diagnostics.some((d) => d.message === issue)) {
+      diagnostics.push({
+        code: 'PROMPT_IDEA_NOT_PRESERVED',
         severity: 'warning',
         message: issue,
       });

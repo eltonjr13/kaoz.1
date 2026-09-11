@@ -75,7 +75,7 @@ Refactoring of the Cortex tab in Kaoz.1 (Windows/Electron, Next.js 14 local-firs
 |---|------|-------|-------------|--------|
 | E2E | E2E Testing Track | Design test runner, Tiers 1-4 opaque-box test suites, publish `TEST_READY.md` | none | DONE |
 | M2 | Robustez de APIs e Contratos Locais | Standardization of API routes, atomic JSON storage, SQLite WAL transactions, elimination of fake seed data, error handling | none | DONE |
-| M1 | Shell Unificado e Visão Geral | Unified navigation shell, Visão Geral dashboard with real metrics, explicit UI states, keyboard accessibility | M2 | PLANNED |
+| M1 | Shell Unificado e Visão Geral | Unified navigation shell, Visão Geral dashboard with real metrics, explicit UI states, keyboard accessibility | M2 | DONE |
 | M3 | Grafo Cognitivo Desacoplado e Otimizado | Decomposition of graph monolith into physics, canvas renderer (DPI, ResizeObserver, visibility pause), controls/details, node stability | M2 | PLANNED |
 | M4 | Gestão de Memórias, Conversas, Identidades e Modais | Search/filter/pagination with AbortController, accessible focus-trap confirmation modals, identity management | M1, M2 | PLANNED |
 | M5 | Final Milestone: Validação E2E e Hardening | Phase 1 (100% E2E test pass) + Phase 2 (Adversarial Coverage Hardening Tier 5) + Forensic Audit | E2E, M1, M2, M3, M4 | PLANNED |

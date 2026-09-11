@@ -1,21 +1,13 @@
-import { CortexGraphClient } from "@/components/cortex/cortex-graph-client";
-import { CortexChatMemories } from "@/components/cortex/cortex-chat-memories";
-import { CortexConversationArchive } from "@/components/cortex/cortex-conversation-archive";
+import { CortexShell } from "@/components/cortex/cortex-shell";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Córtex Cognitivo | Kaoz.1",
+  description: "Central unificada de memória cognitiva, grafo de conhecimento, conversas e identidades - Kaoz.1",
+};
+
 export default function CortexPage() {
-  return (
-    <>
-      <div className="title-row" style={{ marginBottom: "20px" }}>
-        <div className="section-title">
-          <h1>Córtex Cognitivo</h1>
-          <p>Visualização em tempo real do Grafo de Conhecimento e do aprendizado contínuo do Agente.</p>
-        </div>
-      </div>
-      <CortexGraphClient />
-      <CortexChatMemories />
-      <CortexConversationArchive />
-    </>
-  );
+  return <CortexShell />;
 }
+

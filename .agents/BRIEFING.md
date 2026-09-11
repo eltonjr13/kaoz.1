@@ -32,10 +32,10 @@ Refactor the Cortex tab of Kaoz.1 (Windows/Electron desktop app with Next.js loc
 ## User Context
 - **Last user request**: Resumption of Cortex Refactoring for Milestones M1, M3, M4, M5 (Unified Shell, Decoupled Graph, Memories/Conversations/Identities & Accessible Modals, QA Verification).
 - **Pending clarifications**: none
-- **Delivered results**: M2 & E2E Track (67/67 tests) completed and verified in commit 17482b5.
+- **Delivered results**: M2 & E2E Track (67/67 tests) completed and verified in commit 17482b5; Milestone M1 (Unified Shell & Overview Dashboard) completed and verified with unanimous gate sign-off (Worker DONE, Reviewer 1 & 2 APPROVE, Challenger 1 & 2 APPROVE, Forensic Auditor CLEAN).
 
 ## Project Status
-- **Phase**: in progress (Resumption for Milestones M1, M3, M4, M5 dispatched to Orchestrator 816a939f-ab33-4994-be14-d79d197322d4)
+- **Phase**: in progress (Milestone M1 PASSED; proceeding to Milestone M3: Decoupled & Optimized Cognitive Graph)
 - **Cron 1 (Progress)**: task-26
 - **Cron 2 (Liveness)**: task-28
 
