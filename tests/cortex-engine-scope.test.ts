@@ -118,11 +118,35 @@ test("invalidação por versão: fonte alterada não é reutilizada", () => {
   assert.deepEqual(kept.map((item) => item.candidate.id), ["b"]);
 });
 
-test("revalidação final: exclusão concorrente remove o candidato antes do uso", () => {
+test("revalidação final: exclusão concorrente remove o candidato antes do uso", async () => {
   const candidates = [entry("a", "x").candidate, entry("b", "y").candidate];
-  const { allowed, dropped } = revalidateBeforeUse(candidates, (id) => id !== "b");
-  assert.deepEqual(allowed.map((c) => c.id), ["a"]);
+  const { allowed, dropped } = await revalidateBeforeUse(candidates, async (ids) =>
+    new Set(ids.filter((id) => id !== "b"))
+  );
+  assert.deepEqual(allowed.map((candidate) => candidate.id), ["a"]);
   assert.deepEqual(dropped, ["b"]);
+});
+
+test("revalidação final: consulta a autorização UMA vez por lote", async () => {
+  const candidates = [
+    entry("a", "x").candidate,
+    entry("b", "y").candidate,
+    entry("c", "z").candidate,
+  ];
+  let calls = 0;
+  await revalidateBeforeUse(candidates, async (ids) => {
+    calls += 1;
+    // Recebe todos os IDs de uma vez, não um por candidato.
+    assert.equal(ids.length, 3);
+    return new Set(ids);
+  });
+  assert.equal(calls, 1, "a autorização precisa ser resolvida em lote");
+});
+
+test("revalidação final: armazenamento ilegível descarta tudo em vez de autorizar", async () => {
+  const candidates = [entry("a", "x").candidate];
+  const { allowed } = await revalidateBeforeUse(candidates, async () => new Set());
+  assert.deepEqual(allowed, [], "sem autorização confirmada nada é publicado");
 });
 
 test("estado derivado é isolado por escopo e não vaza entre tarefas", () => {

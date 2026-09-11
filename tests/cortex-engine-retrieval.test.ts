@@ -7,8 +7,11 @@
  * o worker real é coberta em `cortex-engine-worker.test.ts`.
  */
 
-import test from "node:test";
+import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   legacyOrder,
@@ -29,6 +32,27 @@ import type {
 import type {
   EngineRuntime,
 } from "../services/cortex-engine/engine-runtime.ts";
+
+let isolatedDataDir: string | null = null;
+let previousDataDir: string | undefined;
+
+/**
+ * Isola o diretório de dados.
+ *
+ * Sem isto os rastros desta suíte seriam gravados no diretório REAL do
+ * desenvolvedor — poluindo o produto com dados de teste.
+ */
+before(async () => {
+  previousDataDir = process.env.KAOZ1_DATA_DIR;
+  isolatedDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "cortex-retrieval-"));
+  process.env.KAOZ1_DATA_DIR = isolatedDataDir;
+});
+
+after(async () => {
+  if (previousDataDir === undefined) delete process.env.KAOZ1_DATA_DIR;
+  else process.env.KAOZ1_DATA_DIR = previousDataDir;
+  if (isolatedDataDir) await fs.rm(isolatedDataDir, { recursive: true, force: true });
+});
 
 const PROFILE = "profile-a";
 
@@ -121,7 +145,10 @@ async function makeService(
   const deps: RetrievalDeps = {
     settings,
     runtime: options.runtime === null ? undefined : (options.runtime ?? fakeRuntime()),
-    isAuthorized: options.authorized ?? (() => true),
+    resolveAuthorized: async (ids: string[]) => {
+      const authorize = options.authorized ?? (() => true);
+      return new Set(ids.filter((id) => authorize(id)));
+    },
     baselineOrder: legacyOrder,
     now: () => new Date("2026-09-11T12:00:00Z"),
   };

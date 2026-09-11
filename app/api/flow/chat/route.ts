@@ -12,6 +12,8 @@ import {
 } from "@/lib/flow/reference-files";
 import { detectChatMemoryCommand, extractChatMemoryCandidates } from "@/lib/cognitive-memory/chat/ChatMemoryExtractor";
 import { ChatMemoryService, LOCAL_MEMORY_USER_ID } from "@/lib/cognitive-memory/chat/ChatMemoryService";
+import { buildMaleCnsStrategy } from "@/services/cortex-engine/male-cns-selection";
+import { recordTaskEvent } from "@/services/cortex-engine/retrieval-context-adapter";
 import { JsonStorageProvider } from "@/lib/cognitive-memory/storage/JsonStorageProvider";
 import type { ChatMemoryRecord } from "@/lib/cognitive-memory/types/memory";
 import { getAgentVoiceContext, getAgentVoiceInstruction, getVoiceExpressionContext } from "@/lib/ai/agent-voice";
@@ -56,6 +58,13 @@ type FlowChatRequestBody = {
   stream?: boolean;
   voiceActive?: boolean;
   sessionId?: string;
+  /**
+   * Escopo do pedido. Usado para ISOLAR memórias e estado temporal; a
+   * identidade (`profileId`) é sempre resolvida no servidor e nunca vem daqui.
+   */
+  projectId?: string;
+  avatarId?: string;
+  taskId?: string;
   warRoomMode?: boolean;
   archiveContext?: {
     conversationId: string;
@@ -179,22 +188,106 @@ function needsExternalTools(messages: ChatMessage[]): boolean {
   return normalized.startsWith("/") || extractMcpMention(text) !== null || EXTERNAL_TOOL_INTENT_PATTERN.test(normalized) || connectorPublishProvider(normalized) !== null || skillHasExecutableTools;
 }
 
+/**
+ * Propaga o rastro da seleção para o log do Flow.
+ *
+ * Só registra quando o motor REALMENTE ordenou. Um fallback é registrado com o
+ * motivo — nunca como sucesso do motor.
+ */
+function logSelectionTrace(context: {
+  selectionTraceId?: string;
+  selectionFallbackReason?: string;
+}): void {
+  if (!context.selectionTraceId) return;
+  const suffix = context.selectionFallbackReason
+    ? ` fallback=${context.selectionFallbackReason}`
+    : '';
+  console.info(`[API CHAT] MaleCNS trace=${context.selectionTraceId}${suffix}`);
+}
+
+/**
+ * Alimenta o estado temporal da tarefa com o evento deste turno.
+ *
+ * REGRAS que este helper respeita (plano, seção 7):
+ *  - só eventos de PRODUÇÃO entram: pedido do usuário e correção explícita;
+ *  - Cortex desligado não alimenta nada e não registra conteúdo;
+ *  - sem `taskId` não há estado de tarefa, então nada é gravado;
+ *  - a chamada é "fire and forget": falhar aqui não pode derrubar a conversa.
+ */
+function recordTaskEventIfEnabled(input: {
+  enabled: boolean;
+  latestUserText: string;
+  memoryCommand: string;
+  userId: string;
+  sessionId?: string;
+  projectId?: string;
+  avatarId?: string;
+  taskId?: string;
+}): void {
+  if (!input.enabled || !input.taskId || !input.latestUserText.trim()) return;
+  const kind = input.memoryCommand === 'correct' ? 'explicit-correction' : 'user-request';
+  void recordTaskEvent({
+    scope: {
+      // Identidade resolvida no servidor, não no cliente.
+      profileId: input.userId,
+      sessionId: input.sessionId || 'no-session',
+      projectId: input.projectId,
+      avatarId: input.avatarId,
+      taskId: input.taskId,
+      channel: 'flow',
+    },
+    kind,
+    content: input.latestUserText,
+  }).catch((err) => {
+    console.warn('[API CHAT] Falha ao registrar evento de tarefa:', err);
+  });
+}
+
+/**
+ * Carrega o contexto de memórias do chat.
+ *
+ * A COLETA continua aqui; a ORDENAÇÃO pode ser delegada ao motor derivado do
+ * MaleCNS via estratégia injetada. Quando a estratégia devolve `null` — modo
+ * `legacy`, `shadow`, fallback ou contexto imediato — o caminho anterior
+ * responde integralmente, sem alteração de comportamento.
+ */
 async function loadCortexChatContext(input: {
   enabled: boolean;
   latestUserText: string;
   sessionId?: string;
   immediateContextReference: boolean;
   archiveConversationId?: string;
+  projectId?: string;
+  avatarId?: string;
+  taskId?: string;
 }): Promise<{ relevantMemories?: string; activePersonalityMemories?: ChatMemoryRecord[] }> {
   if (!input.enabled || !input.latestUserText || input.immediateContextReference) return {};
 
   try {
     const storage = new JsonStorageProvider();
     const service = new ChatMemoryService(storage);
-    const promptContext = await service.buildPromptContext(input.latestUserText, {
+    // Escopo resolvido aqui, no servidor: o cliente não decide identidade.
+    const selectionStrategy = buildMaleCnsStrategy({
       userId: LOCAL_MEMORY_USER_ID,
-      sessionId: input.sessionId
+      sessionId: input.sessionId,
+      projectId: input.projectId,
+      avatarId: input.avatarId,
+      channel: 'flow',
+      taskId: input.taskId,
+      immediateContextReference: input.immediateContextReference,
     });
+    const promptContext = await service.buildPromptContext(
+      input.latestUserText,
+      {
+        userId: LOCAL_MEMORY_USER_ID,
+        sessionId: input.sessionId,
+        projectId: input.projectId,
+        avatarId: input.avatarId,
+      },
+      12,
+      { selectionStrategy }
+    );
+    logSelectionTrace(promptContext);
     const archiveConversationId = input.archiveConversationId
       ? getConversationMemoryStore().resolveConversationId('flow', '', input.archiveConversationId)
       : undefined;
@@ -427,6 +520,9 @@ export async function POST(request: Request) {
       stream,
       voiceActive,
       sessionId,
+      projectId,
+      avatarId,
+      taskId,
       archiveContext,
     } = body;
     const cortexMemoryEnabled = useCortexMemory !== false;
@@ -480,9 +576,22 @@ export async function POST(request: Request) {
         latestUserText,
         sessionId,
         immediateContextReference,
-        archiveConversationId: archiveContext?.conversationId
+        archiveConversationId: archiveContext?.conversationId,
+        projectId,
+        avatarId,
+        taskId
       })
     ]);
+    recordTaskEventIfEnabled({
+      enabled: cortexMemoryEnabled,
+      latestUserText,
+      memoryCommand: detectChatMemoryCommand(latestUserText).type,
+      userId: LOCAL_MEMORY_USER_ID,
+      sessionId,
+      projectId,
+      avatarId,
+      taskId
+    });
     const personality = null;
 
 

@@ -1,5 +1,9 @@
 import type { IStorageProvider } from '../storage/IStorageProvider';
 import type { ChatMemoryCandidate } from './ChatMemoryExtractor';
+import type {
+  MemorySelectionOutcome,
+  MemorySelectionStrategy,
+} from './memory-selection.ts';
 import type { ChatMemoryRecord, ChatMemoryKind, ChatMemoryScope, ChatMemoryStatus } from '../types/memory';
 
 export const LOCAL_MEMORY_USER_ID = 'local-user';
@@ -10,6 +14,12 @@ export interface ChatMemoryContext {
   avatarId?: string;
   projectId?: string;
   sessionId?: string;
+}
+
+/** Opções de montagem do contexto. A estratégia é opcional e injetável. */
+export interface BuildPromptContextOptions {
+  selectionStrategy?: MemorySelectionStrategy;
+  deadlineMs?: number;
 }
 
 export interface ChatMemoryWriteResult {
@@ -23,6 +33,10 @@ export interface ChatMemoryPromptContext {
   personalFacts: string;
   contextualFacts: string;
   records: ChatMemoryRecord[];
+  /** Preenchido quando a estratégia externa ordenou; ausente no caminho anterior. */
+  selectionTraceId?: string;
+  /** Motivo quando o motor não respondeu e o caminho anterior assumiu. */
+  selectionFallbackReason?: string;
 }
 
 export class ChatMemoryService {
@@ -196,13 +210,74 @@ export class ChatMemoryService {
     });
   }
 
-  public async buildPromptContext(query: string, context: ChatMemoryContext = {}, limit = 12): Promise<ChatMemoryPromptContext> {
+  /**
+   * Monta o contexto de memórias para o prompt.
+   *
+   * A assinatura e o retorno permanecem compatíveis. `options.selectionStrategy`
+   * permite que a ORDENAÇÃO seja feita por outro motor; quando ela devolve
+   * `null` (modo legacy, flag desligada, contexto imediato), o caminho anterior
+   * responde integralmente. Coleta, precedência e deduplicação continuam aqui.
+   */
+  public async buildPromptContext(
+    query: string,
+    context: ChatMemoryContext = {},
+    limit = 12,
+    options: BuildPromptContextOptions = {}
+  ): Promise<ChatMemoryPromptContext> {
     if (context.cortexEnabled === false) return { personalFacts: '', contextualFacts: '', records: [] };
     const data = await this.storage.readMemory();
     const userId = context.userId || LOCAL_MEMORY_USER_ID;
     const active = (data.chat?.memories || []).filter((memory) =>
       memory.userId === userId && memory.status === 'active' && scopeMatches(memory, context)
     );
+
+    const external = await this.tryExternalSelection(active, query, context, limit, options);
+    if (external) {
+      const budgeted = fitMemoryBudget(external.personal, external.contextual, 1500);
+      return {
+        personalFacts: formatMemories(budgeted.personal),
+        contextualFacts: formatMemories(budgeted.contextual),
+        records: [...budgeted.personal, ...budgeted.contextual],
+        selectionTraceId: external.traceId,
+        selectionFallbackReason: external.fallbackReason,
+      };
+    }
+
+    return this.selectWithLegacyRanking(active, query, limit);
+  }
+
+  /**
+   * Consulta a estratégia externa. Devolver `null` significa "use o caminho
+   * anterior"; qualquer falha da estratégia também cai no anterior, nunca
+   * deixando o contexto vazio.
+   */
+  private async tryExternalSelection(
+    active: ChatMemoryRecord[],
+    query: string,
+    context: ChatMemoryContext,
+    limit: number,
+    options: BuildPromptContextOptions
+  ): Promise<MemorySelectionOutcome | null> {
+    const strategy = options.selectionStrategy;
+    if (!strategy || !active.length) return null;
+    try {
+      return await strategy.select(active, {
+        query,
+        personalLimit: isRecallQuery(query) ? Math.max(limit, 24) : limit,
+        tokenBudget: 1500,
+        deadlineMs: options.deadlineMs ?? 250,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /** Caminho anterior, preservado byte a byte para servir de referência. */
+  private selectWithLegacyRanking(
+    active: ChatMemoryRecord[],
+    query: string,
+    limit: number
+  ): ChatMemoryPromptContext {
     const personal = active.filter((memory) => memory.scope === 'user' || memory.scope === 'global');
     const contextual = active.filter((memory) => memory.scope !== 'user' && memory.scope !== 'global');
     const recall = isRecallQuery(query);

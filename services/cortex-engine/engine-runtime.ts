@@ -204,12 +204,15 @@ async function fileExists(file: string): Promise<boolean> {
   }
 }
 
-/** Caminho do worker compilado, com fallback para o fonte em desenvolvimento. */
-export function resolveWorkerScript(root = process.cwd()): string {
-  const compiled = path.join(root, "services", "cortex-engine", "engine-worker.mjs");
-  const source = path.join(root, "services", "cortex-engine", "engine-worker.ts");
-  return fs
-    .access(compiled)
-    .then(() => compiled)
-    .catch(() => source) as unknown as string;
+/**
+ * Caminho do worker compilado.
+ *
+ * Prefere o `.mjs` gerado por `cortex:build-worker`; cai para o fonte `.ts`
+ * apenas em desenvolvimento, onde o runner de testes consegue executá-lo. O
+ * Node do Electron NÃO executa TypeScript — por isso o pacote exige o `.mjs`.
+ */
+export async function resolveWorkerScript(root = process.cwd()): Promise<string> {
+  const compiled = path.join(root, "services", "cortex-engine", "worker-build", "engine-worker.mjs");
+  if (await fileExists(compiled)) return compiled;
+  return path.join(root, "services", "cortex-engine", "engine-worker.ts");
 }

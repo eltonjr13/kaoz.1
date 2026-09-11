@@ -11,22 +11,31 @@
  */
 
 import {
-  ChatMemoryService,
   LOCAL_MEMORY_USER_ID,
   type ChatMemoryContext,
 } from "../../lib/cognitive-memory/chat/ChatMemoryService.ts";
-import { JsonStorageProvider } from "../../lib/cognitive-memory/storage/JsonStorageProvider.ts";
 import type { ChatMemoryRecord } from "../../lib/cognitive-memory/types/memory.ts";
+import { listUsableMemoryIds } from "./authorization.ts";
 import type { IndexEntry } from "./candidate-index.ts";
+import { EngineRuntime, resolveWorkerScript } from "./engine-runtime.ts";
+import { defaultPackageDir, defaultReadoutPath } from "./engine-status.ts";
 import { legacyOrder, RetrievalService } from "./retrieval-service.ts";
 import { loadSettings } from "./cortex-engine.settings.ts";
-import { TaskStateStore } from "./task-state.ts";
+import {
+  applyEvent,
+  buildDerivedState,
+  emptyExplicitState,
+  scopeKey,
+  TaskStateStore,
+} from "./task-state.ts";
 import { TraceStore } from "./trace-store.ts";
 import { LEXICAL_DIMENSION } from "./text-encoder.ts";
 import type {
   CortexEngineMode,
   MemoryCandidate,
   RetrievalScope,
+  TaskEventKind,
+  TaskStateEvent,
 } from "./cortex-engine.types.ts";
 
 /** Identidade local compartilhada pelo chat e pelo arquivo de conversas. */
@@ -119,6 +128,7 @@ export async function getRetrievalService(): Promise<RetrievalService> {
   );
   sharedService = await RetrievalService.create({
     settings,
+    runtime: await buildRuntimeIfAvailable(settings.mode),
     traceStore: new TraceStore(settings.maxTraces),
     taskState: sharedTaskState,
     resolveAuthorized,
@@ -127,9 +137,66 @@ export async function getRetrievalService(): Promise<RetrievalService> {
   return sharedService;
 }
 
+/**
+ * Cria o runtime SOMENTE quando ele pode ser útil.
+ *
+ * Em `legacy` a rede não é inicializada: nenhum worker é criado, nenhum
+ * arquivo é lido (plano, seção 8).
+ */
+async function buildRuntimeIfAvailable(
+  mode: CortexEngineMode
+): Promise<EngineRuntime | undefined> {
+  if (mode === "legacy") return undefined;
+  try {
+    const [packageDir, readoutPath, workerScript] = await Promise.all([
+      Promise.resolve(defaultPackageDir()),
+      Promise.resolve(defaultReadoutPath()),
+      resolveWorkerScript(),
+    ]);
+    const settings = await loadSettings();
+    return new EngineRuntime({
+      packageDir,
+      readoutPath,
+      dimension: LEXICAL_DIMENSION,
+      maxQueue: settings.maxQueue,
+      sampleSize: settings.activitySampleSize,
+      workerScript,
+    });
+  } catch {
+    // Sem worker/pacote o serviço segue e reporta fallback em cada recuperação,
+    // em vez de derrubar a rota.
+    return undefined;
+  }
+}
+
 /** Acesso ao estado temporal compartilhado, para os caminhos que o alimentam. */
 export function getTaskStateStore(): TaskStateStore | null {
   return sharedTaskState;
+}
+
+/**
+ * Descarta o serviço compartilhado.
+ *
+ * Necessário para testes que trocam a configuração ou o pacote: o serviço lê
+ * modo, limites e pacote uma única vez por processo.
+ */
+export function resetRetrievalService(): void {
+  sharedService = null;
+  sharedTaskState = null;
+}
+
+/**
+ * Encerra o motor e descarta o serviço.
+ *
+ * Obrigatório onde o processo precisa terminar: o worker roda em uma thread
+ * viva, e sem `terminate()` o Node não encerra. É também o que o rollback
+ * operacional usa para voltar a `legacy` sem apagar dados (plano, seção 17).
+ */
+export async function shutdownRetrievalService(): Promise<void> {
+  const service = sharedService;
+  sharedService = null;
+  sharedTaskState = null;
+  if (service) await service.shutdown();
 }
 
 /**
@@ -139,25 +206,8 @@ export function getTaskStateStore(): TaskStateStore | null {
  */
 export async function resolveAuthorized(ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
-  try {
-    const service = new ChatMemoryService(new JsonStorageProvider());
-    const active = await service.listActiveChatMemories({
-      userId: DEFAULT_PROFILE_ID,
-      includeHistory: true,
-    });
-    const usable = new Set(
-      active
-        .filter(
-          (memory) => memory.status === "active" || memory.status === "pending_review"
-        )
-        .map((memory) => memory.id)
-    );
-    return new Set(ids.filter((id) => usable.has(id)));
-  } catch {
-    // Armazenamento ilegível não autoriza nada: melhor cair no caminho anterior
-    // do que publicar uma memória que pode ter sido excluída.
-    return new Set();
-  }
+  const usable = await listUsableMemoryIds();
+  return new Set(ids.filter((id) => usable.has(id)));
 }
 
 /**
@@ -173,4 +223,51 @@ export async function effectiveEngineMode(): Promise<CortexEngineMode> {
   } catch {
     return "legacy";
   }
+}
+
+/**
+ * Registra um evento ACEITO da tarefa.
+ *
+ * Só chamado por eventos de produção do fluxo (pedido do usuário, correção,
+ * artefato aprovado, etapa concluída, resultado de ferramenta). Consultas da
+ * UI, polling e retries de ranking NUNCA passam por aqui — é o que impede o
+ * estado temporal de ser alimentado por ruído (plano, seção 7.3).
+ */
+export async function recordTaskEvent(input: {
+  scope: RetrievalScope;
+  kind: TaskEventKind;
+  content: string;
+  evidenceIds?: string[];
+}): Promise<void> {
+  const store = sharedTaskState;
+  if (!store || !input.content.trim()) return;
+  const key = scopeKey(input.scope);
+  if (!input.scope.taskId) return;
+
+  await store.commit(input.scope.taskId, async () => {
+    const current = store.getExplicit(input.scope.taskId!) ?? emptyExplicitState(input.scope.taskId!);
+    const event: TaskStateEvent = {
+      eventId: `${input.scope.taskId}:${current.lastEventSequence + 1}:${input.kind}`,
+      taskId: input.scope.taskId!,
+      // A sequência vem do estado aceito: eventos repetidos não avançam nada.
+      sequence: current.lastEventSequence + 1,
+      kind: input.kind,
+      origin: input.scope,
+      timestamp: new Date().toISOString(),
+      content: input.content,
+      evidenceIds: input.evidenceIds ?? [],
+    };
+    const next = applyEvent(current, event);
+    store.setExplicit(next);
+    store.setDerived(
+      key,
+      buildDerivedState({
+        scope: input.scope,
+        explicit: next,
+        events: [event],
+        dimension: LEXICAL_DIMENSION,
+        sourceVersions: {},
+      })
+    );
+  });
 }

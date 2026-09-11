@@ -6,8 +6,11 @@
  * invalidação por mudança de projeto e descarte quando o Cortex está desligado.
  */
 
-import test from "node:test";
+import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   applyEvent,
@@ -24,6 +27,27 @@ import type {
   TaskEventKind,
   TaskStateEvent,
 } from "../services/cortex-engine/cortex-engine.types.ts";
+
+let isolatedDataDir: string | null = null;
+let previousDataDir: string | undefined;
+
+/**
+ * Isola o diretório de dados.
+ *
+ * O teste de persistência do estado explícito usa o caminho REAL de gravação;
+ * sem isolamento ele escreveria no diretório do desenvolvedor.
+ */
+before(async () => {
+  previousDataDir = process.env.KAOZ1_DATA_DIR;
+  isolatedDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "cortex-task-state-"));
+  process.env.KAOZ1_DATA_DIR = isolatedDataDir;
+});
+
+after(async () => {
+  if (previousDataDir === undefined) delete process.env.KAOZ1_DATA_DIR;
+  else process.env.KAOZ1_DATA_DIR = previousDataDir;
+  if (isolatedDataDir) await fs.rm(isolatedDataDir, { recursive: true, force: true });
+});
 
 function scope(overrides: Partial<RetrievalScope> = {}): RetrievalScope {
   return {

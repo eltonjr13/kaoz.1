@@ -332,6 +332,16 @@ export class RetrievalService {
   public get traceStore(): TraceStore {
     return this.traces;
   }
+
+  /**
+   * Encerra o worker e para de aceitar trabalho.
+   *
+   * Interrupção REAL, não abandono de promessa: é o que permite ao processo
+   * encerrar e o que o rollback operacional aciona.
+   */
+  public async shutdown(): Promise<void> {
+    await this.runtime?.terminate();
+  }
 }
 
 export function overlapAt(a: string[], b: string[], k: number): number {

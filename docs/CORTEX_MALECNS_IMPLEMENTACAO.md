@@ -36,10 +36,11 @@ treinamento são decisões da Kaoz.
 | Preparação | `scripts/cortex/prepare_malecns.py`, `requirements.txt` |
 | Corpus/treino | `scripts/cortex/build_corpus.py`, `train_readout.py`, `run_evaluation.py` |
 | Empacotamento | `scripts/cortex/build-worker.mjs` |
+| Integração | `lib/cognitive-memory/chat/memory-selection.ts`, `services/cortex-engine/retrieval-context-adapter.ts`, `male-cns-selection.ts` |
 | UI | `components/cortex/brain/{cortex-brain,brain-canvas,brain-trace-list,brain-trace-details,use-engine-data}` |
 | APIs | `app/api/cortex/engine/{status,topology,traces,traces/[id],settings}` |
 | Fixtures | `tests/fixtures/cortex-engine/{corpus.json,package/,trained/}` |
-| Testes | `tests/cortex-engine-{package,numeric,scope,task-state,retrieval,worker,parity}.test.ts` |
+| Testes | `tests/cortex-engine-{package,numeric,scope,task-state,retrieval,integration,vertical-slice,worker,parity}.test.ts` |
 
 ---
 
@@ -205,14 +206,46 @@ rename. Aliases `KAOZ1_*` / `MRCHICKEN_*` preservados.
 
 ---
 
-## 5. Desvios do plano, com motivo
+### Integração no caminho real (chat / Flow)
+
+A integração separa três responsabilidades, para que o motor participe apenas
+do RANKING:
+
+| Responsabilidade | Onde vive |
+| --- | --- |
+| COLETA de elegíveis | `ChatMemoryService.buildPromptContext` (inalterado) |
+| RANKING | estratégia injetável: motor MaleCNS ou caminho anterior |
+| MONTAGEM do contexto | `buildPromptContext` (inalterado) |
+
+- `lib/cognitive-memory/chat/memory-selection.ts` define o contrato
+  `MemorySelectionStrategy`. Fica em `lib/` para que `lib/` não dependa de
+  `services/`.
+- `services/cortex-engine/retrieval-context-adapter.ts` converte registros em
+  candidatos, resolve o escopo **no servidor** e constrói o runtime apenas
+  quando o modo não é `legacy`.
+- `services/cortex-engine/male-cns-selection.ts` implementa a estratégia e
+  devolve `null` sempre que o motor NÃO participou.
+
+**Regra que garante segurança de comportamento:** a estratégia devolve `null`
+em modo `legacy`, em `shadow`, em fallback e em contexto imediato. Com `null`,
+`ChatMemoryService` executa seu caminho anterior sem alteração — o que torna
+`shadow` e fallback incapazes de mudar o contexto entregue.
+
+`/api/flow/chat` passou a propagar `projectId`, `avatarId` e `taskId` (escopo),
+registra o evento do turno no estado temporal (`user-request` ou
+`explicit-correction`) e propaga o `traceId` no log. A identidade continua sendo
+resolvida no servidor; o cliente nunca define `profileId`.
+
+### Desvios do plano, com motivo
 
 | Item do plano | O que foi feito | Por quê |
 | --- | --- | --- |
 | Worker demonstrado em `standalone` e no pacote Windows | Worker compilado e validado a partir de cópia isolada em diretório temporário | Substitui parcialmente a verificação no app empacotado, que **não foi executada** |
-| Integração no Flow e nos agentes (seção 9) | Não feita | Fases 3–4 não concluídas; ver limitações |
+| Integração no `app/api/flow/agent/route.ts` e nos adapters dos agentes | Não feita | Só o caminho de CHAT foi integrado; ver limitações |
+| Telegram / Discord | Não ligados | O plano exige medir e mostrar status por canal antes de anunciar cobertura; não foi feito |
 | Encoder semântico multilíngue | Não implementado | O plano permite começar pelo lexical para validar contratos |
 | SSE dedicado | Não adicionado | O plano recomenda não adicionar SSE só para animar o cérebro; polling com cancelamento atende |
+| Estado temporal alimentado por artefato aprovado / etapa concluída | Não ligado | Os eventos disponíveis no caminho do chat são pedido do usuário e correção; os demais exigem os hooks de artefato e de execução |
 
 ---
 
@@ -221,9 +254,10 @@ rename. Aliases `KAOZ1_*` / `MRCHICKEN_*` preservados.
 1. **A hipótese não se confirmou nesta entrega.** O ganho ficou abaixo do alvo e
    o intervalo de confiança da diferença inclui zero. Detalhes e números em
    `CORTEX_MALECNS_AVALIACAO.md`. Por isso o **modo padrão permanece `legacy`**.
-2. **A integração no caminho real de produção do Flow e dos agentes não foi
-   feita.** O motor existe, é testado e é observável, mas ainda não participa de
-   uma conversa real. As fases 3 e 4 do plano não foram concluídas.
+2. **A integração cobre o caminho de CHAT, não o de agentes nem os canais
+   externos.** `app/api/flow/agent/route.ts`, os adapters de memória dos agentes
+   e as entradas de Telegram/Discord continuam sem o motor. A matriz de cobertura
+   da seção 14.4 do plano (`Fase 4`) não foi produzida.
 3. **Nenhuma validação em navegador nem no app Windows empacotado foi
    executada.** Os componentes de UI existem e compilam, mas nunca foram
    renderizados. Larguras de 390/768/1280 px não foram verificadas.
@@ -241,6 +275,10 @@ rename. Aliases `KAOZ1_*` / `MRCHICKEN_*` preservados.
    seeds foram usadas para o readout, mas o conjunto de teste é pequeno.
 8. **A geolocalização dos nós é só o soma**, não a morfologia. A anatomia exibida
    é uma nuvem de somas reais, não o volume do neurônio.
+9. **O cliente do Flow ainda não envia `projectId`/`avatarId`/`taskId`.** A rota
+   aceita e propaga esses campos, mas sem eles o escopo fica com os campos
+   marcados como ausentes e o estado temporal não é alimentado. Ligar o envio no
+   cliente é trabalho pendente.
 
 ---
 
