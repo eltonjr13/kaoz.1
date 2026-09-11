@@ -8,7 +8,7 @@ import { allowedSender, allowedImage, validPrompt, appOrigin } from '../extensio
 const manifest = JSON.parse(fs.readFileSync(path.resolve('extensions/flow-companion/manifest.json'), 'utf8'));
 
 test('desktop bridge uses a stable extension id and Native Messaging permission', () => {
-  assert.equal(manifest.version, '0.3.1');
+  assert.equal(manifest.version, '0.3.2');
   assert.equal(manifest.minimum_chrome_version, '105');
   assert.ok(manifest.permissions.includes('nativeMessaging'));
   assert.ok(manifest.host_permissions.includes('http://127.0.0.1/*'));

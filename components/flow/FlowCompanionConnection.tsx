@@ -13,6 +13,52 @@ type DesktopCompanionState = {
   version?: string;
 };
 
+function describeDesktopConnection(state: DesktopCompanionState): string {
+  if (state.connected) return `Conectado${state.version ? ` · v${state.version}` : ''}`;
+  return state.registered ? 'Aguardando extensão' : 'Ponte indisponível';
+}
+
+function hasRegistrationProblem(state: DesktopCompanionState): boolean {
+  if (state.registered) return false;
+  if (!state.registrationReason) return false;
+  return state.registrationReason !== 'not-started';
+}
+
+function resolveExtensionIdFromLocation(): string {
+  try {
+    return new URLSearchParams(location.search).get('extensionId') || localStorage.getItem('kaoz-flow-extension-id') || '';
+  } catch {
+    return '';
+  }
+}
+
+async function readDesktopCompanionState(): Promise<DesktopCompanionState | null> {
+  try {
+    return (await window.kaoz1Desktop?.getFlowCompanionStatus()) || null;
+  } catch {
+    return null;
+  }
+}
+
+function describeDesktopCompactLabel(state: DesktopCompanionState): string {
+  if (state.busy) return 'Gerando no Chrome…';
+  return state.connected ? 'Chrome conectado' : 'Conectar Chrome';
+}
+
+function describeBrowserCompactLabel(state: CompanionState): string {
+  return state.busy ? 'Gerando no Chrome…' : 'Imagens · Chrome';
+}
+
+async function openChromeCompanion(): Promise<string | null> {
+  try {
+    const result = await window.kaoz1Desktop?.openFlowCompanion();
+    if (!result || result.opened) return null;
+    return result.message || 'Não foi possível abrir o Chrome.';
+  } catch {
+    return null;
+  }
+}
+
 export function FlowCompanionProvider({ children }: { children: React.ReactNode }) {
   useEffect(mountCompanion, []);
   return children;
@@ -26,11 +72,11 @@ export function FlowCompanionConnection({ compact = false }: { compact?: boolean
   useEffect(() => {
     const isDesktop = isDesktopFlow();
     setDesktop(isDesktop);
-    setId(new URLSearchParams(location.search).get('extensionId') || localStorage.getItem('kaoz-flow-extension-id') || '');
+    setId(resolveExtensionIdFromLocation());
     if (isDesktop) {
       let active = true;
       const refresh = async () => {
-        const next = await window.kaoz1Desktop?.getFlowCompanionStatus().catch(() => null);
+        const next = await readDesktopCompanionState();
         if (active && next) setDesktopState(next);
       };
       void refresh();
@@ -40,27 +86,27 @@ export function FlowCompanionConnection({ compact = false }: { compact?: boolean
     return subscribeCompanion(() => setState(companionSnapshot()));
   }, []);
   if (desktop) {
-    if (compact) return <Link className="absolute right-4 top-6 z-50 rounded-full border border-white/15 bg-black/80 px-3 py-2 text-xs text-zinc-200" href="/flow/images">{desktopState.busy ? 'Gerando no Chrome…' : desktopState.connected ? 'Chrome conectado' : 'Conectar Chrome'}</Link>;
+    if (compact) return <Link className="absolute right-4 top-6 z-50 rounded-full border border-white/15 bg-black/80 px-3 py-2 text-xs text-zinc-200" href="/flow/images">{describeDesktopCompactLabel(desktopState)}</Link>;
     const openChrome = async () => {
-      const result = await window.kaoz1Desktop?.openFlowCompanion().catch(() => null);
-      if (result && !result.opened) setDesktopState(current => ({ ...current, message: result.message || 'Não foi possível abrir o Chrome.' }));
+      const problem = await openChromeCompanion();
+      if (problem) setDesktopState(current => ({ ...current, message: problem }));
     };
     return <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
       <h2 className="font-semibold">Flow pelo Chrome</h2>
       <p className="my-3 text-sm text-zinc-300" role="status">{desktopState.message}</p>
       <div className="flex flex-wrap items-center gap-3">
         <span className={`rounded-full px-3 py-1 text-xs ${desktopState.connected ? 'bg-lime-300/15 text-lime-200' : 'bg-amber-300/15 text-amber-200'}`}>
-          {desktopState.connected ? `Conectado${desktopState.version ? ` · v${desktopState.version}` : ''}` : desktopState.registered ? 'Aguardando extensão' : 'Ponte indisponível'}
+          {describeDesktopConnection(desktopState)}
         </span>
         {!desktopState.connected && <button className="rounded-lg bg-lime-300 px-4 py-2 text-sm font-medium text-black" onClick={() => void openChrome()}>Abrir extensão no Chrome</button>}
       </div>
-      {!desktopState.registered && desktopState.registrationReason && desktopState.registrationReason !== 'not-started' && (
+      {hasRegistrationProblem(desktopState) && (
         <p className="mt-3 text-xs text-amber-200/80">Motivo registrado: {desktopState.registrationReason}</p>
       )}
       <p className="mt-3 text-xs text-zinc-400">As imagens do aplicativo desktop usam sua sessão normal do Google Flow no Chrome.</p>
     </section>;
   }
-  if (compact) return <Link className="absolute right-4 top-6 z-50 rounded-full border border-white/15 bg-black/80 px-3 py-2 text-xs text-zinc-200" href="/flow/images">{state.busy ? 'Gerando no Chrome…' : 'Imagens · Chrome'}</Link>;
+  if (compact) return <Link className="absolute right-4 top-6 z-50 rounded-full border border-white/15 bg-black/80 px-3 py-2 text-xs text-zinc-200" href="/flow/images">{describeBrowserCompactLabel(state)}</Link>;
   return <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
     <h2 className="font-semibold">Conexão com o Chrome</h2>
     <p className="my-3 text-sm text-zinc-300" role="status">{state.message}</p>

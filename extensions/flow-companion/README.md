@@ -78,6 +78,13 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
 
 ## Validação em 2026-09-11
 
+- A ponte do desktop passou a aceitar `localhost` e `127.0.0.1` como o mesmo
+  host local: o Next monta a URL da requisição como `localhost:<porta>` mesmo
+  quando o aplicativo grava `127.0.0.1:<porta>` no runtime, e a comparação
+  estrita derrubava toda chamada da extensão com `Destino desktop inválido`.
+- O aplicativo agora tenta registrar a ponte de novo quando o registro falha,
+  grava o motivo em `%APPDATA%\Kaoz.1\logs\flow-companion.log` e mostra esse
+  motivo na tela de conexão, em vez de só exibir "Ponte indisponível".
 - A referência passou a ser **montada no servidor**: esboço + anexos viram uma
   única imagem (prancha) antes de chegar ao Chrome. O envio do esboço pela
   interface deixou de substituir as fotos anexadas.
