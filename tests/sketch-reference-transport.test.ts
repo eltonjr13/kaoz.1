@@ -606,7 +606,66 @@ test('anexo selecionado ilegível bloqueia a geração com erro explícito', asy
       },
       (err: unknown) => {
         const msg = err instanceof Error ? err.message : '';
-        return msg.includes('referência') && msg.includes('anexada');
+        return msg.includes('referência')
+          && msg.includes('anexada')
+          && msg.includes('produto-corrompido.png');
+      }
+    );
+
+    assert.equal(mockFlow.calls.length, 0);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('anexo grande demais bloqueia a geração informando o motivo real', async () => {
+  const env = await createTestEnv();
+  const mockFlow = new InspectableFlowProvider();
+  const oversized = await sharp({ create: { width: 900, height: 900, channels: 3, background: '#102030' } })
+    .jpeg({ quality: 100 })
+    .toBuffer();
+
+  try {
+    const project = createDefaultProject({ id: 'proj-oversized-ref-1' });
+    project.prompt = 'Anúncio com a foto do produto';
+    project.attachments = [
+      {
+        id: 'att-huge',
+        name: 'foto-pesada.jpg',
+        // Acima do limite de 10 MB aceito no upload do anexo.
+        dataUrl: `data:image/jpeg;base64,${Buffer.concat([
+          oversized,
+          Buffer.alloc(11 * 1024 * 1024, 0x20),
+        ]).toString('base64')}`,
+        role: 'product',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    project.currentOrder = {
+      schemaVersion: 1,
+      version: '1.0.0',
+      id: 'order-oversized-1',
+      prompt: project.prompt,
+      aspectRatio: '1:1',
+      selectedReferences: [{ attachmentId: 'att-huge', role: 'product' }],
+      createdAt: new Date().toISOString(),
+    };
+    await saveProject(project, env.projectsDir, env.assetsDir);
+
+    const manager = new SketchJobManager({
+      jobsDir: env.jobsDir,
+      assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
+      flowProvider: mockFlow,
+    });
+
+    await assert.rejects(
+      async () => {
+        await manager.enqueueJob({ projectId: project.id });
+      },
+      (err: unknown) => {
+        const msg = err instanceof Error ? err.message : '';
+        return msg.includes('10 MB') || msg.includes('Tamanho do arquivo');
       }
     );
 

@@ -685,10 +685,15 @@ function buildUnavailableReference(
   diagnostics: SketchReferenceDiagnostic[]
 ): BuiltSketchReference {
   if (selected.length > 0) {
+    const reasons = diagnostics
+      .filter((item) => item.code === 'REFERENCE_DROPPED')
+      .slice(0, 2)
+      .map((item) => item.message)
+      .join(' ');
     diagnostics.push({
       code: 'REFERENCE_UNAVAILABLE',
       severity: 'error',
-      message: `Nenhuma das ${selected.length} referência(s) anexada(s) pôde ser usada na geração. Reenvie a imagem e tente novamente.`,
+      message: `Nenhuma das ${selected.length} referência(s) anexada(s) pôde ser usada na geração.${reasons ? ` ${reasons}` : ''} A geração foi interrompida para não produzir uma arte sem a sua referência.`,
     });
   }
   return {

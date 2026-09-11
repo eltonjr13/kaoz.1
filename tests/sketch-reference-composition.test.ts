@@ -121,6 +121,11 @@ test('fluxo simples usa o esboço como guia e descarta a copy residual da campan
     /Never draw placeholder words/i,
     'Camadas de texto nunca podem virar texto fictício na imagem'
   );
+  assert.match(
+    request.preparedPrompt,
+    /never draw stick figures, doodles, arrows, symbols or cartoon outlines/i,
+    'Traço de palito não pode virar o personagem da arte'
+  );
   assert.equal(request.creativeCompilation?.copy.headline, '');
   assert.equal(request.creativeCompilation?.reservedCopyZones.length, 0);
   assert.equal(

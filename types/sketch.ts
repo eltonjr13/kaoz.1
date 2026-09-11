@@ -662,6 +662,7 @@ export interface SketchJobSnapshot {
   referenceIncludedRoles?: SketchReferenceRole[];
   referenceAttachmentIds?: string[];
   referenceSource?: string;
+  referencePreviewUrl?: string;
   compiledPromptSha256?: string;
   compositionIntent?: CompositionIntent;
   textRenderingStrategy?: TextRenderingStrategy;

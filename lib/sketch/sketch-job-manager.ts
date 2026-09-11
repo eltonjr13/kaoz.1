@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import sharp from 'sharp';
 import {
   getSketchJobsDir,
   getSketchAssetsDir,
@@ -475,6 +476,29 @@ export class SketchJobManager {
     compiled.compositePreview.includedRoles = builtReference.includedRoles;
   }
 
+  /**
+   * Small, servable copy of the exact reference sent to Flow, so the studio can
+   * show what is being generated before the result arrives.
+   */
+  private async writeReferencePreview(projectId: string, sourcePath: string): Promise<string | undefined> {
+    if (!sourcePath || !fs.existsSync(sourcePath)) return undefined;
+    try {
+      await fsp.mkdir(this.assetsDir, { recursive: true });
+      const safeId = projectId.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 96);
+      const filename = `ref-preview-${safeId}.jpg`;
+      const preview = await sharp(sourcePath, { limitInputPixels: 40_000_000 })
+        .resize({ width: 720, withoutEnlargement: true })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      await fsp.writeFile(path.join(this.assetsDir, filename), preview);
+      return `/api/sketch/assets/${filename}?v=${Date.now()}`;
+    } catch {
+      // A missing preview must never block a generation.
+      return undefined;
+    }
+  }
+
   private async createAndEnqueueJobInternal(params: EnqueueSketchJobParams): Promise<SketchJobData> {
     const project = await getProject(params.projectId, this.projectsDir);
     if (!project) {
@@ -505,6 +529,7 @@ export class SketchJobManager {
 
     const id = `job-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
     let persistedRef: PersistedJobReference | undefined;
+    let referencePreviewUrl: string | undefined;
 
     if (compiled.referenceMode !== 'none') {
       const refDataUrl = builtReference.dataUrl;
@@ -514,9 +539,10 @@ export class SketchJobManager {
         );
       }
       persistedRef = await validateAndPersistJobReference(this.jobsDir, id, refDataUrl, compiled.referenceMode);
+      referencePreviewUrl = await this.writeReferencePreview(project.id, persistedRef.filePath);
     }
 
-    const snapshot = this.createSnapshot(project, compiled, persistedRef, builtReference);
+    const snapshot = this.createSnapshot(project, compiled, persistedRef, builtReference, referencePreviewUrl);
     const now = new Date().toISOString();
 
     const job: SketchJobData = {
