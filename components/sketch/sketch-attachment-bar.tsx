@@ -8,6 +8,7 @@ import {
   MAX_SKETCH_ATTACHMENTS,
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '@/types/sketch';
+import { resolveDefaultAttachmentRole } from '@/lib/sketch/sketch-attachment-roles';
 
 export interface SketchAttachmentBarProps {
   attachments: SketchAttachment[];
@@ -166,12 +167,11 @@ export function SketchAttachmentBar({
 
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const defaultRole: SketchReferenceRole = attachments.length === 0 ? 'product' : 'style';
       const newAtt: SketchAttachment = {
         id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         name: file.name,
         dataUrl,
-        role: defaultRole,
+        role: resolveDefaultAttachmentRole(file.name),
         mimeType: file.type,
         createdAt: new Date().toISOString(),
       };

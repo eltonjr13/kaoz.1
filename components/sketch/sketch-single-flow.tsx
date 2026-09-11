@@ -312,6 +312,47 @@ function resolveRequestedChangeType(job: SketchJobData | null): string | undefin
   return job?.snapshot?.requestedChange?.type;
 }
 
+const LAST_PROJECT_KEY = 'kaoz.sketch.lastProjectId';
+
+function rememberProjectId(id: string): void {
+  try {
+    window.localStorage.setItem(LAST_PROJECT_KEY, id);
+  } catch {
+    // Armazenamento indisponível: seguir sem restaurar é aceitável.
+  }
+}
+
+function forgetProjectId(): void {
+  try {
+    window.localStorage.removeItem(LAST_PROJECT_KEY);
+  } catch {
+    // Ignora indisponibilidade do armazenamento.
+  }
+}
+
+/** Reabre o projeto em que a pessoa estava trabalhando antes de recarregar. */
+async function loadRememberedProject(): Promise<SketchProjectData | null> {
+  let storedId: string | null = null;
+  try {
+    storedId = window.localStorage.getItem(LAST_PROJECT_KEY);
+  } catch {
+    return null;
+  }
+  if (!storedId) return null;
+  try {
+    const res = await fetch(`/api/sketch/projects/${storedId}`);
+    const data = await res.json();
+    return data?.success && data.project ? (data.project as SketchProjectData) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildSketchThumbnail(paths: SketchPath[]): string | undefined {
+  if (paths.length === 0) return undefined;
+  return renderSketchOnlyDataUrl(paths, 240, 240);
+}
+
 function getBackgroundLayerImageUrl(project: SketchProjectData): string {
   for (const layer of project.layers) {
     if (layer.type === 'background') {
@@ -484,6 +525,7 @@ export function SketchSingleFlow() {
       const withOrder = syncOrderFromProject(updated, paths, thumb);
       setProject(withOrder);
       coordinator.registerEdit(withOrder, 700);
+      rememberProjectId(withOrder.id);
       setSavedTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     },
     [coordinator, sketchPaths, sketchThumbnail]
@@ -658,6 +700,7 @@ export function SketchSingleFlow() {
 
   const handleNewProject = () => {
     coordinator.reset(0);
+    forgetProjectId();
     setProject(createCleanProject());
     setSketchPaths([]);
     setSketchThumbnail(undefined);
@@ -670,19 +713,38 @@ export function SketchSingleFlow() {
       const res = await fetch(`/api/sketch/projects/${projectId}`);
       const data = await res.json();
       if (data.success && data.project) {
-        coordinator.reset(0);
         const loaded: SketchProjectData = data.project;
-        setProject(loaded);
         const paths = extractPathsFromProject(loaded);
+        coordinator.reset(0);
+        setProject(loaded);
         setSketchPaths(paths);
-        setSketchThumbnail(paths.length > 0 ? renderSketchOnlyDataUrl(paths, 240, 240) : undefined);
-        setIsProjectsModalOpen(false);
+        setSketchThumbnail(buildSketchThumbnail(paths));
+        setActiveJob(null);
         setFlowState(projectHasGeneratedArt(loaded) ? 'result' : 'input');
+        rememberProjectId(loaded.id);
+        setIsProjectsModalOpen(false);
       }
     } catch {
       setSaveError('Erro ao abrir projeto.');
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadRememberedProject().then((loaded) => {
+      if (cancelled || !loaded) return;
+      const paths = extractPathsFromProject(loaded);
+      coordinator.reset(0);
+      setProject(loaded);
+      setSketchPaths(paths);
+      setSketchThumbnail(buildSketchThumbnail(paths));
+      setFlowState(projectHasGeneratedArt(loaded) ? 'result' : 'input');
+    });
+    return () => {
+      cancelled = true;
+    };
+    // O coordenador é criado uma única vez; este efeito restaura uma vez por tela.
+  }, [coordinator]);
 
   const activeResult = project.creativeResults?.find((r) => r.id === project.activeResultId) ||
     (project.creativeResults && project.creativeResults[project.creativeResults.length - 1]);
@@ -763,6 +825,7 @@ export function SketchSingleFlow() {
         onClose={() => setIsProjectsModalOpen(false)}
         onOpenProject={handleOpenProjectFromModal}
         onCreateNewProject={async (title, ratio) => {
+          forgetProjectId();
           setProject(createCleanProject({ title, aspectRatio: ratio }));
           setSketchPaths([]);
           setSketchThumbnail(undefined);

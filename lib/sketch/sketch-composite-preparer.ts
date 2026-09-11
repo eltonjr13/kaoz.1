@@ -19,6 +19,7 @@ import {
 } from '../../types/sketch.ts';
 import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 import type { ImageReferenceKind } from '../../src/providers/flow/ImageGenerationContract.ts';
+import { normalizeSketchRole } from './sketch-reference-builder.ts';
 
 /**
  * The Sketch prompt is curated by this pipeline, not free-form LLM text, so it
@@ -421,9 +422,9 @@ function resolveSubjectRoles(project: SketchProjectData): CreativeSubjectRole[] 
   const roles: CreativeSubjectRole[] = [];
   for (const reference of references) {
     const attachment = project.attachments.find((item) => item.id === reference.attachmentId);
-    const role = (reference.role || attachment?.role) as SketchReferenceRole | undefined;
-    if (!role) continue;
-    roles.push({ role, label: attachment?.name });
+    const rawRole = reference.role || attachment?.role;
+    if (!rawRole) continue;
+    roles.push({ role: normalizeSketchRole(rawRole), label: attachment?.name });
   }
   return roles;
 }

@@ -94,6 +94,11 @@ function toSketchRole(role: unknown): SketchReferenceRole {
   return SKETCH_ROLES.includes(role as SketchReferenceRole) ? (role as SketchReferenceRole) : 'product';
 }
 
+/** Legacy `AttachmentRole` values collapse into a subject role. */
+export function normalizeSketchRole(role: unknown): SketchReferenceRole {
+  return toSketchRole(role);
+}
+
 function resolveRole(attachment: SketchAttachment, layer?: SketchLayer): SketchReferenceRole {
   const fromLayer = layer && layer.type === 'image' ? layer.role : undefined;
   return toSketchRole(fromLayer || attachment.role);
