@@ -15,6 +15,7 @@ import path from "node:path";
 import { EngineRuntime, EngineRuntimeError } from "../services/cortex-engine/engine-runtime.ts";
 import { loadMatrix, readManifest } from "../services/cortex-engine/connectome-package.ts";
 import { lexicalEncoderArtifact, encodeText } from "../services/cortex-engine/text-encoder.ts";
+import { CANDIDATE_META_STRIDE } from "../services/cortex-engine/cortex-engine.types.ts";
 import { buildProjection } from "../services/cortex-engine/sparse-reservoir.ts";
 import { packVectors } from "../services/cortex-engine/candidate-index.ts";
 
@@ -41,6 +42,26 @@ async function makeRuntime(overrides: { maxQueue?: number } = {}) {
     sampleSize: 64,
     workerScript: WORKER,
   });
+}
+
+
+/**
+ * Metadados sintéticos COM variação.
+ *
+ * Constantes aqui escondem exatamente a classe de defeito que este arquivo
+ * precisa pegar: features sem sinal deixando o readout fora da distribuição.
+ */
+function metaFor(count: number): Float32Array {
+  const meta = new Float32Array(count * CANDIDATE_META_STRIDE);
+  for (let row = 0; row < count; row++) {
+    const base = row * CANDIDATE_META_STRIDE;
+    meta[base] = ((row * 37) % 100) / 100;
+    meta[base + 1] = row % 7;
+    meta[base + 2] = row % 3 === 0 ? 1 : 0;
+    meta[base + 3] = 0.4 + ((row * 11) % 60) / 100;
+    meta[base + 4] = 1 + (row % 5);
+  }
+  return meta;
 }
 
 test("worker compilado existe e é JavaScript executável", async (t) => {
@@ -112,6 +133,7 @@ test("rank: devolve um score finito por candidato, na ordem dos IDs enviados", a
       ),
       candidateIds: ids,
       baselineScores: [1, 2, 3],
+      candidateMeta: metaFor(3),
       withTaskState: false,
       sampleActivity: true,
     });
@@ -144,6 +166,7 @@ test("rank: dimensão de vetores incompatível é recusada com motivo explícito
       candidateVectors: new Float32Array(64),
       candidateIds: ["a", "b", "c"],
       baselineScores: [0, 0, 0],
+      candidateMeta: metaFor(3),
       withTaskState: false,
       sampleActivity: false,
     });
@@ -178,6 +201,7 @@ test("deadline: estouro encerra o worker de verdade e reporta o motivo", async (
       ),
       candidateIds: Array.from({ length: 64 }, (_, i) => `m-${i}`),
       baselineScores: Array.from({ length: 64 }, () => 0),
+      candidateMeta: metaFor(64),
       withTaskState: false,
       sampleActivity: false,
     });
@@ -210,6 +234,7 @@ test("fila cheia é recusada em vez de acumular trabalho ilimitado", async (t) =
       candidateVectors: vectors,
       candidateIds: ids,
       baselineScores: ids.map(() => 0),
+      candidateMeta: metaFor(ids.length),
       withTaskState: false,
       sampleActivity: false,
       deadlineMs: 5,

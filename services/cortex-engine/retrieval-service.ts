@@ -22,7 +22,8 @@ import {
   revalidateBeforeUse,
   type IndexEntry,
 } from "./candidate-index.ts";
-import { lexicalEncoderArtifact } from "./text-encoder.ts";
+import { dotProduct } from "./readout.ts";
+import { lexicalEncoderArtifact, recencyDays } from "./text-encoder.ts";
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -33,6 +34,7 @@ import { markSource, TraceStore } from "./trace-store.ts";
 import { scopeKey, type TaskStateStore } from "./task-state.ts";
 import type {
   CortexEngineMode,
+  EncodedCandidate,
   EngineTrace,
   FallbackReason,
   MemoryCandidate,
@@ -40,6 +42,7 @@ import type {
   RetrievalResult,
   RetrievalScope,
 } from "./cortex-engine.types.ts";
+import { CANDIDATE_META_STRIDE } from "./cortex-engine.types.ts";
 
 export interface RetrievalDeps {
   settings?: CortexEngineSettings;
@@ -352,6 +355,33 @@ export function overlapAt(a: string[], b: string[], k: number): number {
   let hits = 0;
   for (const id of b.slice(0, k)) if (setA.has(id)) hits++;
   return hits;
+}
+
+/**
+ * Metadados por candidato na ordem do contrato: semanticDot, recencyDays,
+ * explicit, confidence, occurrences.
+ *
+ * Extraídos das memórias REAIS. Qualquer valor constante aqui colocaria as
+ * features correspondentes fora da distribuição em que o readout foi treinado.
+ */
+export function buildCandidateMeta(
+  candidates: EncodedCandidate[],
+  byId: Map<string, MemoryCandidate>,
+  queryVector: Float32Array,
+  now?: () => Date
+): Float32Array {
+  const reference = now ? now().getTime() : Date.now();
+  const meta = new Float32Array(candidates.length * CANDIDATE_META_STRIDE);
+  candidates.forEach((candidate, row) => {
+    const record = byId.get(candidate.id);
+    const base = row * CANDIDATE_META_STRIDE;
+    meta[base] = dotProduct(candidate.vector, queryVector);
+    meta[base + 1] = recencyDays(record?.updatedAt, reference);
+    meta[base + 2] = record?.explicit ? 1 : 0;
+    meta[base + 3] = record?.confidenceScore ?? 0.5;
+    meta[base + 4] = record?.occurrences ?? 1;
+  });
+  return meta;
 }
 
 /** Escopo resolvido no servidor; `profileId` do cliente não é confiável. */

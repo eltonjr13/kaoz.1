@@ -14,6 +14,22 @@ import path from "node:path";
 import { loadGeometry, loadMatrix, loadNodes, readManifest, } from "./connectome-package.mjs";
 import { buildProjection, ReservoirError, runSteps, } from "./sparse-reservoir.mjs";
 import { extractFeatures, scoreWithReadout } from "./readout.mjs";
+import { CANDIDATE_META_STRIDE } from "./cortex-engine.types.mjs";
+/**
+ * Parâmetros fixados da dinâmica.
+ *
+ * Devem coincidir com os usados no treino (`scripts/cortex/train_readout.py`),
+ * senão o readout opera sobre features fora da distribuição aprendida.
+ */
+function reservoirParams(dimension) {
+    return {
+        alpha: 0.5,
+        steps: 6,
+        seed: 20260911,
+        rowGain: 0.9,
+        inputDimension: dimension,
+    };
+}
 let state = null;
 let readoutWeights = null;
 let readoutBias = 0;
@@ -58,23 +74,30 @@ function rank(request) {
         // Estado de referência único: TODOS os candidatos partem dele, em cópia
         // isolada. O estado persistente da tarefa nunca é atualizado aqui.
         const reference = request.withTaskState ? request.taskVector : undefined;
+        // O estado da CONSULTA precisa vir do mesmo processo que o dos candidatos.
+        // Antes era passado o vetor codificado da consulta, que vive em outro
+        // espaço — o cosseno e a distância do readout não mediam nada.
+        const queryState = runSteps(matrix, projection, reservoirParams(dimension), request.queryVector).state;
         const samples = [];
         const scores = new Float32Array(count);
         const readout = buildReadout();
         for (let row = 0; row < count; row++) {
             const vector = request.candidateVectors.subarray(row * dimension, (row + 1) * dimension);
-            const { state: candidateState, samples: rowSamples } = runSteps(matrix, projection, { alpha: 0.5, steps: 6, seed: 20260911, rowGain: 0.9, inputDimension: dimension }, vector, reference, request.sampleActivity && row < 4, state.sampleSize);
+            const { state: candidateState, samples: rowSamples } = runSteps(matrix, projection, reservoirParams(dimension), vector, reference, request.sampleActivity && row < 4, state.sampleSize);
             if (request.sampleActivity && row < 4)
                 samples.push(...rowSamples);
-            const candidateBase = request.baselineScores[row] ?? 0;
+            // Metadados REAIS do candidato: as features precisam sair daqui, não de
+            // constantes — senão o readout treinado opera fora da distribuição.
+            const metaBase = row * CANDIDATE_META_STRIDE;
+            const baselineScore = request.baselineScores[row] ?? 0;
             const features = extractFeatures({
-                baselineScore: candidateBase,
-                semanticDot: candidateBase,
-                recencyDays: 0,
-                explicit: false,
-                confidenceScore: 0.5,
-                occurrences: 1,
-                queryState: request.queryVector,
+                baselineScore,
+                semanticDot: request.candidateMeta[metaBase] ?? 0,
+                recencyDays: request.candidateMeta[metaBase + 1] ?? 0,
+                explicit: (request.candidateMeta[metaBase + 2] ?? 0) > 0.5,
+                confidenceScore: request.candidateMeta[metaBase + 3] ?? 0.5,
+                occurrences: request.candidateMeta[metaBase + 4] ?? 1,
+                queryState,
                 candidateState,
                 readoutEnergy: energy(candidateState),
             });

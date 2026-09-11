@@ -8,4 +8,5 @@
  *
  * Nada aqui armazena conteúdo de memória: apenas IDs, scores e metadados.
  */
-export {};
+/** Quantos valores de metadado cada candidato carrega. */
+export const CANDIDATE_META_STRIDE = 5;

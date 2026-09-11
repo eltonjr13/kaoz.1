@@ -317,9 +317,10 @@ test("desligar o Cortex descarta o derivado preservando o estado explícito", as
 });
 
 test("MESMO espaço de codificação: estado da tarefa e vetor da consulta são comparáveis", () => {
-  // Um único evento: depois de normalizar, o vetor do estado precisa ser
-  // IDÊNTICO ao vetor que o codificador produz para o mesmo texto. Se forem
-  // espaços diferentes, `state-cosine` e `state-distance` não medem nada.
+  // Um único evento: o vetor do estado precisa ser PARALELO ao vetor que o
+  // codificador produz para o mesmo texto (o peso do evento escala, não gira,
+  // e a normalização devolve a mesma direção). Se fossem espaços diferentes,
+  // `state-cosine` e `state-distance` não mediriam nada.
   const text = "a iluminação aprovada usa luz quente de 3200K";
   const state = buildDerivedState({
     scope: scope(),
@@ -329,10 +330,11 @@ test("MESMO espaço de codificação: estado da tarefa e vetor da consulta são 
     sourceVersions: {},
   });
   const queryVector = encodeText(text, 32);
-  assert.deepEqual(
-    Array.from(state.vector),
-    Array.from(queryVector),
-    "o vetor do estado precisa estar no MESMO espaço do vetor da consulta"
+  assert.equal(state.vector.length, queryVector.length, "mesma dimensão");
+  const cosine = cosineSimilarity(state.vector, queryVector);
+  assert.ok(
+    cosine > 0.9999,
+    `vetores precisam ser paralelos (mesmo espaço); cosseno obtido: ${cosine}`
   );
 });
 
