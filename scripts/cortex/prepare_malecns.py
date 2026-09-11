@@ -529,8 +529,31 @@ def build_manifest(
             "pyarrow": _version("pyarrow"),
             "numpy": _version("numpy"),
             "scipy": _version("scipy"),
+            # A projeção é reconstruída a partir desta seed, não persistida.
+            "projectionSeed": str(20260911),
+            "projectionFanIn": "8",
+            "normalization": "row-normalized to gain<1 (see stats.rowGain)",
         },
     }
+
+
+def write_integrity(out: Path) -> dict[str, str]:
+    """SHA-256 dos binários do próprio pacote, conferidos antes de carregar."""
+    files = [
+        "row-pointers.bin",
+        "column-indices.bin",
+        "weights.bin",
+        "geometry/positions.bin",
+    ]
+    integrity: dict[str, str] = {}
+    for name in files:
+        path = out / name
+        if path.exists():
+            integrity[name] = sha256_file(path)
+    (out / "integrity.json").write_text(
+        json.dumps(integrity, indent=2), encoding="utf-8"
+    )
+    return integrity
 
 
 def _version(name: str) -> str:
@@ -589,6 +612,8 @@ def main(argv: list[str] | None = None) -> int:
     (out / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    integrity = write_integrity(out)
+    print(f"  integridade: {len(integrity)} binários verificados")
 
     stats = manifest["stats"]
     print(
