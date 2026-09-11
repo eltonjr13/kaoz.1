@@ -46,8 +46,11 @@ export interface RetrievalDeps {
   runtime?: EngineRuntime;
   traceStore?: TraceStore;
   taskState?: TaskStateStore;
-  /** Autorização atual: dados excluídos entre a coleta e o uso são descartados. */
-  isAuthorized: (id: string) => boolean;
+  /**
+   * Autorização atual em lote: recebe os IDs usados e devolve os que ainda
+   * valem. Lida uma vez por recuperação para cobrir exclusões concorrentes.
+   */
+  resolveAuthorized: (ids: string[]) => Promise<Set<string>>;
   /** Pontuação convencional, injetada para manter o caminho anterior intacto. */
   baselineOrder: (candidates: MemoryCandidate[], query: string) => MemoryCandidate[];
   now?: () => Date;
@@ -213,9 +216,11 @@ export class RetrievalService {
         return this.shadowResult(request, traceId, started, ordered, legacyIds, ranked);
       }
 
-      const malecnsOrder = revalidateBeforeUse(
-        ranked.map((entry) => byId.get(entry.id)).filter(Boolean) as MemoryCandidate[],
-        this.deps.isAuthorized
+      const malecnsOrder = (
+        await revalidateBeforeUse(
+          ranked.map((entry) => byId.get(entry.id)).filter(Boolean) as MemoryCandidate[],
+          this.deps.resolveAuthorized
+        )
       ).allowed;
       await this.writeTrace(
         request,

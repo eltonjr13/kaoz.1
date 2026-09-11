@@ -146,15 +146,23 @@ export function invalidateChangedVersions(
   return { kept, invalidated };
 }
 
-/** Remove candidatos excluídos entre a coleta e a materialização final. */
-export function revalidateBeforeUse(
+/**
+ * Revalidação antes do uso.
+ *
+ * Uma única consulta em lote: exclusões concorrentes precisam ser cobertas sem
+ * reler o armazenamento por candidato. Candidatos que sumiram entre a coleta e
+ * a materialização do texto são descartados.
+ */
+export async function revalidateBeforeUse(
   candidates: MemoryCandidate[],
-  stillAuthorized: (id: string) => boolean
-): { allowed: MemoryCandidate[]; dropped: string[] } {
+  resolveAuthorized: (ids: string[]) => Promise<Set<string>>
+): Promise<{ allowed: MemoryCandidate[]; dropped: string[] }> {
+  const ids = candidates.map((candidate) => candidate.id);
+  const authorized = await resolveAuthorized(ids);
   const allowed: MemoryCandidate[] = [];
   const dropped: string[] = [];
   for (const candidate of candidates) {
-    if (stillAuthorized(candidate.id)) allowed.push(candidate);
+    if (authorized.has(candidate.id)) allowed.push(candidate);
     else dropped.push(candidate.id);
   }
   return { allowed, dropped };

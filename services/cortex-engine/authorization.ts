@@ -4,6 +4,9 @@
  * Dados excluídos não podem continuar acessíveis por replay, e a revalidação
  * acontece ANTES da materialização do texto final para cobrir exclusões
  * concorrentes (plano, seções 8 e 11).
+ *
+ * Fonte única: o conjunto de IDs utilizáveis é lido uma vez e consumido tanto
+ * pela revalidação da recuperação quanto pelo detalhe de um rastro.
  */
 
 import {
@@ -13,28 +16,33 @@ import {
 import { JsonStorageProvider } from "../../lib/cognitive-memory/storage/JsonStorageProvider.ts";
 
 /**
- * Função de autorização atual: responde se um ID de memória ainda pode ser usado.
+ * IDs de memória que ainda podem ser usados agora.
  *
- * Memórias do chat valem pelo status ativo. Evidências do arquivo de conversas
- * são revalidadas pela própria busca (a linha excluída deixa de aparecer), e por
- * isso não entram no conjunto local — mas nunca são dadas como garantidas.
+ * Memórias rejeitadas ou excluídas ficam de fora. Falha de leitura devolve um
+ * conjunto vazio: é preferível cair no caminho anterior a publicar uma memória
+ * que pode ter sido removida.
  */
-export async function currentAuthorization(): Promise<(id: string) => boolean> {
-  const authorized = new Set<string>();
+export async function listUsableMemoryIds(): Promise<Set<string>> {
   try {
-    const storage = new JsonStorageProvider();
-    const service = new ChatMemoryService(storage);
+    const service = new ChatMemoryService(new JsonStorageProvider());
     const memories = await service.listActiveChatMemories({
       userId: LOCAL_MEMORY_USER_ID,
       includeHistory: true,
     });
-    for (const memory of memories) {
-      if (memory.status === "active" || memory.status === "pending_review") {
-        authorized.add(memory.id);
-      }
-    }
+    return new Set(
+      memories
+        .filter(
+          (memory) => memory.status === "active" || memory.status === "pending_review"
+        )
+        .map((memory) => memory.id)
+    );
   } catch {
-    // Sem armazenamento legível, nada é dado como autorizado.
+    return new Set();
   }
-  return (id: string) => authorized.has(id);
+}
+
+/** Predicado por ID, para o detalhe de um rastro. */
+export async function currentAuthorization(): Promise<(id: string) => boolean> {
+  const usable = await listUsableMemoryIds();
+  return (id: string) => usable.has(id);
 }
