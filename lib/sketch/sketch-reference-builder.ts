@@ -27,6 +27,10 @@ import { validateAttachmentBuffer } from './sketch-attachment-validator.ts';
 export const MAX_REFERENCE_BYTES = 5_500_000;
 const MAX_REFERENCE_DIMENSION = 1600;
 const SKETCH_COORDINATE_BASE = 1080;
+/** Subjects stay readable but clearly ghosted, so the guide reads as a plan. */
+const GUIDE_SUBJECT_ALPHA = 0.82;
+const GUIDE_STROKE_ALPHA = 0.85;
+const GUIDE_BASE_COLOR = '#f4f4f5';
 const SKETCH_ROLES: SketchReferenceRole[] = [
   'product',
   'person',
@@ -184,7 +188,7 @@ export function buildSketchSvg(
   paths: SketchPath[],
   width: number,
   height: number,
-  options: { background?: string | null } = {}
+  options: { background?: string | null; strokeColorOverride?: string; opacityScale?: number } = {}
 ): string {
   const scaleX = width / SKETCH_COORDINATE_BASE;
   const scaleY = height / SKETCH_COORDINATE_BASE;
@@ -195,8 +199,8 @@ export function buildSketchSvg(
   }
 
   for (const strokePath of paths) {
-    const color = strokeColor(strokePath, options.background);
-    const opacity = strokeOpacity(strokePath);
+    const color = options.strokeColorOverride || strokeColor(strokePath, options.background);
+    const opacity = Math.min(1, Math.max(0.05, strokeOpacity(strokePath) * (options.opacityScale ?? 1)));
     const strokeWidth = Math.max(1, strokePath.size * scaleX);
     parts.push(
       ...(strokePath.tool === 'box'
@@ -333,10 +337,12 @@ function planGrid(count: number): GridPlan {
   return { columns: 3, rows: 3 };
 }
 
-function planCells(count: number, canvasWidth: number, canvasHeight: number, hasSketch: boolean): CellBox[] {
+function planCells(count: number, canvasWidth: number, canvasHeight: number): CellBox[] {
   const grid = planGrid(count);
-  const regionWidthRatio = hasSketch ? (grid.columns === 1 ? 0.56 : 0.9) : 0.92;
-  const regionHeightRatio = hasSketch ? (grid.rows === 1 ? 0.5 : 0.68) : 0.92;
+  // The guide fills the frame. Small inset only, so the layout never turns into
+  // a small photo cluster floating on a large empty board.
+  const regionWidthRatio = 0.98;
+  const regionHeightRatio = 0.98;
 
   const regionWidth = canvasWidth * regionWidthRatio;
   const regionHeight = canvasHeight * regionHeightRatio;
@@ -467,7 +473,7 @@ async function prepareSketchBoard(
 }
 
 async function fitIntoBox(buffer: Buffer, box: CellBox): Promise<{ buffer: Buffer; left: number; top: number }> {
-  const padding = Math.round(Math.min(box.width, box.height) * 0.05);
+  const padding = Math.round(Math.min(box.width, box.height) * 0.02);
   const width = Math.max(1, box.width - padding * 2);
   const height = Math.max(1, box.height - padding * 2);
   const resized = await sharp(buffer, { limitInputPixels: 40_000_000 })
@@ -482,32 +488,78 @@ async function fitIntoBox(buffer: Buffer, box: CellBox): Promise<{ buffer: Buffe
   };
 }
 
+/** Uniform transparency, so ghosted subjects never look like a finished collage. */
+async function applyUniformAlpha(buffer: Buffer, alpha: number): Promise<Buffer> {
+  return await sharp(buffer)
+    .ensureAlpha()
+    .composite([
+      {
+        input: { create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha } } },
+        tile: true,
+        blend: 'dest-in',
+      },
+    ])
+    .png()
+    .toBuffer();
+}
+
+/**
+ * The guide base comes from the reference itself: a blurred, darkened cover of
+ * the first subject. It removes the empty white board that the generator used
+ * to turn into a wall, without inventing new visual information.
+ */
+async function buildGuideBase(image: Buffer | undefined, width: number, height: number): Promise<Buffer> {
+  const fallback = await sharp({ create: { width, height, channels: 4, background: GUIDE_BASE_COLOR } }).png().toBuffer();
+  if (!image) return fallback;
+  try {
+    return await sharp(image, { limitInputPixels: 40_000_000 })
+      .resize({ width, height, fit: 'cover' })
+      .blur(24)
+      .modulate({ brightness: 0.94 })
+      .flatten({ background: GUIDE_BASE_COLOR })
+      .png()
+      .toBuffer();
+  } catch {
+    return fallback;
+  }
+}
+
+async function renderGuideStrokes(paths: SketchPath[], width: number, height: number): Promise<Buffer | null> {
+  if (paths.length === 0) return null;
+  try {
+    const svg = buildSketchSvg(paths, width, height, {
+      strokeColorOverride: '#0f172a',
+      opacityScale: 0.85,
+    });
+    return await sharp(Buffer.from(svg), { limitInputPixels: 40_000_000 }).png().toBuffer();
+  } catch {
+    return null;
+  }
+}
+
 async function composeBoard(input: {
   canvasWidth: number;
   canvasHeight: number;
-  sketch?: Buffer | null;
+  guide?: Buffer | null;
   images: Buffer[];
 }): Promise<Buffer> {
   const compositions: { input: Buffer; left: number; top: number }[] = [];
-  if (input.sketch) compositions.push({ input: input.sketch, left: 0, top: 0 });
+  const cells = planCells(input.images.length, input.canvasWidth, input.canvasHeight);
 
-  const cells = planCells(input.images.length, input.canvasWidth, input.canvasHeight, Boolean(input.sketch));
   for (let index = 0; index < input.images.length; index++) {
     const fitted = await fitIntoBox(input.images[index], cells[index]);
-    compositions.push({ input: fitted.buffer, left: fitted.left, top: fitted.top });
+    compositions.push({
+      input: await applyUniformAlpha(fitted.buffer, GUIDE_SUBJECT_ALPHA),
+      left: fitted.left,
+      top: fitted.top,
+    });
   }
 
-  return await sharp({
-    create: {
-      width: input.canvasWidth,
-      height: input.canvasHeight,
-      channels: 4,
-      background: '#ffffff',
-    },
-  })
-    .composite(compositions)
-    .png()
-    .toBuffer();
+  // Strokes go last: the plan must stay readable on top of the subjects.
+  if (input.guide) compositions.push({ input: input.guide, left: 0, top: 0 });
+
+  const base = await buildGuideBase(input.images[0], input.canvasWidth, input.canvasHeight);
+  return await sharp(base).composite(compositions).png().toBuffer();
 }
 
 async function normalizeOutput(buffer: Buffer): Promise<{ buffer: Buffer; mimeType: string }> {
@@ -591,15 +643,19 @@ async function buildSingleAttachmentReference(
 
 async function buildBoardReference(
   sketch: ResolvedSketch,
+  sketchPaths: SketchPath[],
   images: ResolvedImages,
   preset: AspectRatioDimension,
   diagnostics: SketchReferenceDiagnostic[]
 ): Promise<BuiltSketchReference> {
-  const hasSketch = Boolean(sketch.buffer);
+  const strokes = sketchPaths.length > 0
+    ? await renderGuideStrokes(sketchPaths, preset.width, preset.height)
+    : await prepareSketchBoard(preset.width, preset.height, sketch.buffer);
+  const hasSketch = Boolean(sketch.buffer) || sketchPaths.length > 0;
   const board = await composeBoard({
     canvasWidth: preset.width,
     canvasHeight: preset.height,
-    sketch: await prepareSketchBoard(preset.width, preset.height, sketch.buffer),
+    guide: strokes,
     images: images.buffers,
   });
   const normalized = await normalizeOutput(board);
@@ -651,9 +707,10 @@ export async function buildSketchProviderReference(
   const diagnostics: SketchReferenceDiagnostic[] = [];
   const preset = resolveAspectPreset(input.providerAspectRatio);
   const useSketch = input.project.useSketchAsReference !== false;
+  const sketchPaths = useSketch ? collectProviderSketchPaths(input.project.layers) : [];
   const sketch = await resolveSketchForReference({
     declared: useSketch ? input.clientSketchDataUrl : undefined,
-    paths: useSketch ? collectProviderSketchPaths(input.project.layers) : [],
+    paths: sketchPaths,
     preset,
     diagnostics,
   });
@@ -665,5 +722,5 @@ export async function buildSketchProviderReference(
   if (images.buffers.length === 0 && !hasSketch) return buildUnavailableReference(selected, diagnostics);
   if (images.buffers.length === 0) return await buildSketchOnlyReference(sketch, preset, images, diagnostics);
   if (!hasSketch && images.buffers.length === 1) return await buildSingleAttachmentReference(images, diagnostics);
-  return await buildBoardReference(sketch, images, preset, diagnostics);
+  return await buildBoardReference(sketch, sketchPaths, images, preset, diagnostics);
 }

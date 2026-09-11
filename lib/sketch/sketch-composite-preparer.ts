@@ -8,6 +8,9 @@ import {
   type SketchReferenceRole,
   type SketchLayer,
   type SketchAttachment,
+  type SketchCopyData,
+  type CompositionIntent,
+  type TextRenderingStrategy,
   type ImageLayer,
   type SketchDrawingLayer,
   type CreativeGenerationCompiledRequest,
@@ -16,13 +19,23 @@ import {
 } from '../../types/sketch.ts';
 import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 import type { ImageReferenceKind } from '../../src/providers/flow/ImageGenerationContract.ts';
+
+/**
+ * The Sketch prompt is curated by this pipeline, not free-form LLM text, so it
+ * gets a larger budget than the chat paths. The extension types the exact text
+ * and the hard provider limit is 16000 characters.
+ */
+export const SKETCH_PROMPT_MAX_WORDS = 560;
 import {
   compileCreativeGenerationPrompt,
   validateCreativePrompt,
   checkIdeaPreservation,
+  extractRequestedWording,
+  requestsVisibleText,
   extractCopyZones,
   extractSubjectPlacements,
   extractCompositionGuides,
+  type CreativeSubjectRole,
 } from './sketch-prompt-compiler.ts';
 
 interface SketchAnalysis {
@@ -330,9 +343,120 @@ function buildProviderOptions(
   };
 }
 
+function emptyCopy(): SketchCopyData {
+  return {
+    schemaVersion: 1,
+    version: '1.0.0',
+    headline: '',
+    subheadline: '',
+    cta: '',
+    badge: '',
+  };
+}
+
+/**
+ * The simple flow (a typed idea plus optional references) never collects copy
+ * fields. Any headline or CTA found on such a project is residue from an older
+ * campaign and must not reach the image prompt or reserve empty typography
+ * areas.
+ */
+function resolveSimpleFlowCopy(project: SketchProjectData): {
+  copy: SketchCopyData;
+  strategy: TextRenderingStrategy;
+  requestedWording?: string;
+  missingWording: boolean;
+} {
+  const wording = extractRequestedWording(project.prompt);
+  if (wording) {
+    return { copy: { ...emptyCopy(), headline: wording }, strategy: 'baked', requestedWording: wording, missingWording: false };
+  }
+  return {
+    copy: emptyCopy(),
+    strategy: 'layer',
+    missingWording: requestsVisibleText(project.prompt),
+  };
+}
+
+function resolveEffectiveCopy(project: SketchProjectData): {
+  copy: SketchCopyData;
+  layers: SketchLayer[];
+  strategy: TextRenderingStrategy;
+  diagnostics: SketchReferenceDiagnostic[];
+} {
+  if (!project.currentOrder) {
+    return {
+      copy: project.copy,
+      layers: project.layers,
+      strategy: project.textRenderingStrategy || 'layer',
+      diagnostics: [],
+    };
+  }
+
+  const resolved = resolveSimpleFlowCopy(project);
+  const diagnostics: SketchReferenceDiagnostic[] = [];
+  if (resolved.missingWording) {
+    diagnostics.push({
+      code: 'TEXT_WORDING_REQUIRED',
+      severity: 'warning',
+      message:
+        'A ideia pede texto ou chamada de ação, mas nenhuma frase exata foi informada. A arte foi gerada com espaço limpo; escreva a frase entre aspas para ela ser renderizada na imagem.',
+    });
+  }
+
+  return {
+    copy: resolved.copy,
+    layers: project.layers.filter((layer) => layer.type !== 'text'),
+    strategy: resolved.strategy,
+    diagnostics,
+  };
+}
+
+/**
+ * Roles chosen by the user in the simple flow, in the order they were selected.
+ */
+function resolveSubjectRoles(project: SketchProjectData): CreativeSubjectRole[] {
+  const references = project.currentOrder?.selectedReferences || [];
+  const roles: CreativeSubjectRole[] = [];
+  for (const reference of references) {
+    const attachment = project.attachments.find((item) => item.id === reference.attachmentId);
+    const role = (reference.role || attachment?.role) as SketchReferenceRole | undefined;
+    if (!role) continue;
+    roles.push({ role, label: attachment?.name });
+  }
+  return roles;
+}
+
+/**
+ * In the simple flow the layout is a rough pencil sketch over pasted photos, so
+ * the generator must treat it as guidance instead of reproducing it. Older
+ * projects carry a stored "follow" from the retired canvas flow.
+ */
+function resolveCompositionIntent(
+  project: SketchProjectData,
+  hasSketch: boolean,
+  selectedReferenceCount: number
+): CompositionIntent {
+  if (!project.currentOrder) return project.compositionIntent || 'follow';
+  return hasSketch && selectedReferenceCount > 0 ? 'explore' : 'follow';
+}
+
+/**
+ * The provider receives a single assembled board whenever photos and sketch
+ * have to travel together, even before the layered-reference detection runs.
+ */
+function willUseCompositeReference(
+  referenceMode: string,
+  hasSketch: boolean,
+  selectedReferenceCount: number
+): boolean {
+  return referenceMode === 'composite' || (hasSketch && selectedReferenceCount > 0) || selectedReferenceCount > 1;
+}
+
 function assembleCreativeCompilation(
   project: SketchProjectData,
   hasSketch: boolean,
+  referenceMode: string,
+  selectedReferenceCount: number,
   diagnostics: SketchReferenceDiagnostic[]
 ): {
   compositionIntent: 'follow' | 'explore';
@@ -340,21 +464,30 @@ function assembleCreativeCompilation(
   compiledPrompt: string;
   creativeCompilation: CreativeGenerationCompiledRequest;
 } {
-  const compositionIntent = project.compositionIntent || 'follow';
-  const textRenderingStrategy = project.textRenderingStrategy || 'layer';
+  const effective = resolveEffectiveCopy(project);
+  diagnostics.push(...effective.diagnostics);
+
+  const compositionIntent = resolveCompositionIntent(project, hasSketch, selectedReferenceCount);
+  const textRenderingStrategy = effective.strategy;
+  const hasCompositeReference = willUseCompositeReference(referenceMode, hasSketch, selectedReferenceCount);
 
   const compiledPrompt = compileCreativeGenerationPrompt({
     prompt: project.prompt,
     briefing: project.briefing,
-    copy: project.copy,
-    layers: project.layers,
+    copy: effective.copy,
+    layers: effective.layers,
     attachments: project.attachments,
     compositionIntent,
     textRenderingStrategy,
     hasSketch,
+    hasCompositeReference,
+    subjectCount: selectedReferenceCount > 0 ? selectedReferenceCount : undefined,
+    subjectRoles: resolveSubjectRoles(project),
   });
 
-  const promptIssues = validateCreativePrompt(compiledPrompt, textRenderingStrategy);
+  const promptIssues = validateCreativePrompt(compiledPrompt, textRenderingStrategy, {
+    maxWords: SKETCH_PROMPT_MAX_WORDS,
+  });
   for (const issue of promptIssues) {
     diagnostics.push({
       code: 'PROMPT_QUALITY_ISSUE',
@@ -365,10 +498,10 @@ function assembleCreativeCompilation(
 
   const creativeCompilation: CreativeGenerationCompiledRequest = {
     briefing: project.briefing || { productDescription: '' },
-    copy: project.copy,
+    copy: effective.copy,
     compositionIntent,
     textRenderingStrategy,
-    reservedCopyZones: extractCopyZones(project.layers),
+    reservedCopyZones: extractCopyZones(effective.layers),
     subjectPlacements: extractSubjectPlacements(project.layers, project.attachments),
     compositionGuides: extractCompositionGuides(project.layers),
     compiledPrompt,
@@ -440,7 +573,13 @@ export function prepareSketchCompositeReference(
     diagnostics
   );
 
-  const creative = assembleCreativeCompilation(project, sketchInfo.hasSketch, diagnostics);
+  const creative = assembleCreativeCompilation(
+    project,
+    sketchInfo.hasSketch,
+    referenceMode,
+    resolveSelectedReferenceIds(project).size || placedInfo.placedImages.length,
+    diagnostics
+  );
 
   const preparedPrompt = prepareFlowImagePrompt({
     prompt: creative.compiledPrompt,
@@ -450,8 +589,8 @@ export function prepareSketchCompositeReference(
     // The Sketch prompt is composed and curated by this pipeline, so it gets a
     // larger budget than LLM text. Truncating it here used to delete the user's
     // creative direction; validateCreativePrompt still warns above 320 words.
-    maxCoreWords: 400,
-    maxFinalWords: 440,
+    maxCoreWords: 560,
+    maxFinalWords: 600,
   });
 
   const finalPromptIssues = validateCreativePrompt(
@@ -460,7 +599,8 @@ export function prepareSketchCompositeReference(
     {
       hasSketch: sketchInfo.hasSketch,
       briefing: project.briefing,
-      copy: project.copy,
+      copy: creative.creativeCompilation.copy,
+      maxWords: SKETCH_PROMPT_MAX_WORDS,
     }
   );
 

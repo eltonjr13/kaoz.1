@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useRef, useEffect } from 'react';
-import { X, Sparkles, CornerDownLeft } from 'lucide-react';
+import { X, Sparkles, CornerDownLeft, Info } from 'lucide-react';
 
 export interface SketchPromptInputProps {
   prompt: string;
@@ -67,6 +67,14 @@ export function SketchPromptInput({
         rows={3}
         className="w-full resize-none bg-transparent text-sm leading-relaxed text-zinc-100 placeholder-zinc-500 outline-none disabled:opacity-50"
       />
+
+      <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-2.5 py-2 text-[11px] leading-relaxed text-zinc-500">
+        <Info size={12} className="mt-0.5 shrink-0 text-indigo-400/80" />
+        <span>
+          A frase entre <span className="text-zinc-300">aspas</span> é a única que aparece escrita na arte. Ex:{' '}
+          <span className="text-zinc-400">…o nome dele é &quot;DURMA NÃO PAINHO&quot;</span>
+        </span>
+      </div>
 
       <div className="flex items-center justify-between pt-2 text-[11px] text-zinc-500 border-t border-zinc-800/60 mt-2">
         <span className="flex items-center gap-1 text-zinc-500">
