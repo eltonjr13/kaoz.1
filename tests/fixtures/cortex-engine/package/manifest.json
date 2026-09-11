@@ -17,7 +17,7 @@
   ],
   "license": "CC BY 4.0",
   "attribution": "Berg et al. (2025) 'Sexual dimorphism in the complete connectome of the Drosophila male central nervous system'. Janelia FlyEM / Drosophila Connectomics Group. DOI 10.1101/2025.10.09.680999",
-  "generatedAt": "2026-09-11T21:01:22Z",
+  "generatedAt": "2026-09-11T22:35:22Z",
   "selection": {
     "algorithm": "largest-strong-component of cb_intrinsic induced subgraph, ranked by recurrent degree",
     "seed": 20260911,
@@ -38,8 +38,7 @@
     "notes": [
       "elegíveis=31280; maior componente=31280; arestas induzidas=6553692",
       "a seleção usa apenas estrutura do dataset; nenhuma memória do usuário participou da escolha"
-    ],
-    "_fraction": 1.0
+    ]
   },
   "stats": {
     "neurons": 1536,

@@ -1,6 +1,6 @@
 {
   "base": "http://127.0.0.1:3000",
-  "validatedAt": "2026-09-11T22:09:58.042Z",
+  "validatedAt": "2026-09-11T22:40:00.977Z",
   "widths": [
     390,
     768,
@@ -34,6 +34,16 @@
         "hasSrOnly": true,
         "mentionsLoading": true
       },
+      "hydration": {
+        "tabReactKeys": 0,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 1,
+        "pacoteAusente": false,
+        "erroCarregar": false
+      },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-390.png"
     },
     {
@@ -63,6 +73,16 @@
         "hasSrOnly": false,
         "mentionsLoading": false
       },
+      "hydration": {
+        "tabReactKeys": -1,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 0,
+        "pacoteAusente": false,
+        "erroCarregar": false
+      },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\flow-390.png"
     },
     {
@@ -84,6 +104,16 @@
       "skeleton": {
         "hasSrOnly": true,
         "mentionsLoading": true
+      },
+      "hydration": {
+        "tabReactKeys": 0,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 1,
+        "pacoteAusente": false,
+        "erroCarregar": false
       },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-768.png"
     },
@@ -107,6 +137,16 @@
         "hasSrOnly": false,
         "mentionsLoading": false
       },
+      "hydration": {
+        "tabReactKeys": -1,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 0,
+        "pacoteAusente": false,
+        "erroCarregar": false
+      },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\flow-768.png"
     },
     {
@@ -128,6 +168,16 @@
       "skeleton": {
         "hasSrOnly": true,
         "mentionsLoading": true
+      },
+      "hydration": {
+        "tabReactKeys": 0,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 1,
+        "pacoteAusente": false,
+        "erroCarregar": false
       },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-1280.png"
     },
@@ -151,32 +201,41 @@
         "hasSrOnly": false,
         "mentionsLoading": false
       },
+      "hydration": {
+        "tabReactKeys": -1,
+        "buttonReactKeys": 0,
+        "hydrated": false
+      },
+      "brainStates": {
+        "skeleton": 0,
+        "pacoteAusente": false,
+        "erroCarregar": false
+      },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\flow-1280.png"
     }
   ],
   "consoleErrors": [
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=zxlA14AgVFZZkbWP3cOSh' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=a_Vr4OOaij6DvDKRDOuRr' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=a_Vr4OOaij6DvDKRDOuRr' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=a_Vr4OOaij6DvDKRDOuRr' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Vj5oy6yogjDay4aahcqD8' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Vj5oy6yogjDay4aahcqD8' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=Vj5oy6yogjDay4aahcqD8' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=SBTz1or7kYN-ixMf7kbkY' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=SBTz1or7kYN-ixMf7kbkY' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=SBTz1or7kYN-ixMf7kbkY' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_x1yrdEHc2OJyRZZmBuJf' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_x1yrdEHc2OJyRZZmBuJf' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_x1yrdEHc2OJyRZZmBuJf' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=H0zobp054QytvacLkUEIZ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=H0zobp054QytvacLkUEIZ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=H0zobp054QytvacLkUEIZ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
   ],
   "failedRequests": []
 }
