@@ -7,10 +7,12 @@ import {
   Brain,
   MessagesSquare,
   Shield,
+  Network,
   LucideProps,
 } from "lucide-react";
 
 export type CortexSection =
+  | "cerebro"
   | "visao-geral"
   | "grafo"
   | "memorias"
@@ -29,39 +31,47 @@ export interface CortexSectionConfig {
 
 export const CORTEX_SECTIONS: CortexSectionConfig[] = [
   {
+    id: "cerebro",
+    label: "Cérebro",
+    description:
+      "Anatomia real do recorte do conectoma e processamento observado das memórias",
+    icon: Network,
+    shortcutNumber: "1",
+  },
+  {
     id: "visao-geral",
     label: "Visão Geral",
     description: "Métricas consolidadas e saúde operacional dos motores locais",
     icon: LayoutDashboard,
-    shortcutNumber: "1",
+    shortcutNumber: "2",
   },
   {
     id: "grafo",
     label: "Grafo",
     description: "Grafo cognitivo de conhecimento e regras procedimentais",
     icon: GitBranch,
-    shortcutNumber: "2",
+    shortcutNumber: "3",
   },
   {
     id: "memorias",
     label: "Memórias",
     description: "Memórias persistentes, tags e revisões de aprendizado",
     icon: Brain,
-    shortcutNumber: "3",
+    shortcutNumber: "4",
   },
   {
     id: "conversas",
     label: "Conversas",
     description: "Arquivo histórico omnichannel pesquisável (Flow, Telegram, Discord)",
     icon: MessagesSquare,
-    shortcutNumber: "4",
+    shortcutNumber: "5",
   },
   {
     id: "identidades",
     label: "Identidades",
     description: "Identidades externas observadas e vínculos com perfil local",
     icon: Shield,
-    shortcutNumber: "5",
+    shortcutNumber: "6",
   },
 ];
 
@@ -71,6 +81,35 @@ export interface CortexNavigationProps {
   onSelectSection: (section: CortexSection) => void;
   pendingReviewCount?: number;
   className?: string;
+}
+
+/**
+ * Resolve a seção de destino para uma tecla de navegação do tablist.
+ *
+ * Devolve -1 quando a tecla não é um comando conhecido. Aceita as setas, Home,
+ * End e os dígitos de 1 a N (um por seção).
+ */
+export function resolveNextIndex(
+  event: { key: string },
+  currentIndex: number,
+  total: number
+): number {
+  switch (event.key) {
+    case "ArrowRight":
+    case "ArrowDown":
+      return (currentIndex + 1) % total;
+    case "ArrowLeft":
+    case "ArrowUp":
+      return (currentIndex - 1 + total) % total;
+    case "Home":
+      return 0;
+    case "End":
+      return total - 1;
+    default:
+      break;
+  }
+  const digit = /^[1-9]$/.test(event.key) ? Number(event.key) : -1;
+  return digit >= 1 && digit <= total ? digit - 1 : -1;
 }
 
 export function CortexNavigation({
@@ -94,53 +133,13 @@ export function CortexNavigation({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const total = sections.length;
-    let nextIndex = -1;
-
-    switch (e.key) {
-      case "ArrowRight":
-      case "ArrowDown":
-        e.preventDefault();
-        nextIndex = (currentIndex + 1) % total;
-        break;
-
-      case "ArrowLeft":
-      case "ArrowUp":
-        e.preventDefault();
-        nextIndex = (currentIndex - 1 + total) % total;
-        break;
-
-      case "Home":
-        e.preventDefault();
-        nextIndex = 0;
-        break;
-
-      case "End":
-        e.preventDefault();
-        nextIndex = total - 1;
-        break;
-
-      case "1":
-      case "2":
-      case "3":
-      case "4":
-      case "5": {
-        const num = parseInt(e.key, 10);
-        if (num >= 1 && num <= total) {
-          e.preventDefault();
-          nextIndex = num - 1;
-        }
-        break;
-      }
-
-      default:
-        return;
-    }
-
-    if (nextIndex >= 0 && nextIndex < total) {
-      const targetSection = sections[nextIndex].id;
-      onSelectSection(targetSection);
-      focusTab(targetSection);
-    }
+    if (total === 0) return;
+    const nextIndex = resolveNextIndex(e, currentIndex, total);
+    if (nextIndex < 0) return;
+    e.preventDefault();
+    const targetSection = sections[nextIndex].id;
+    onSelectSection(targetSection);
+    focusTab(targetSection);
   };
 
   return (

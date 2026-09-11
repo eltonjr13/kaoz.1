@@ -27,15 +27,21 @@ import type {
   TaskStateEvent,
 } from "./cortex-engine.types.ts";
 
-/** Chave estável de isolamento. Campos ausentes são marcados, não omitidos. */
+/**
+ * Chave estável de isolamento. Campos ausentes são marcados, não omitidos.
+ *
+ * A tarefa vem por ÚLTIMO de propósito: assim `scopeBaseKey` é um prefixo
+ * literal de `scopeKey`, e invalidar por base alcança todas as tarefas do
+ * mesmo projeto/sessão sem casar outro escopo por acidente.
+ */
 export function scopeKey(scope: RetrievalScope): string {
   return [
     `p=${scope.profileId}`,
     `s=${scope.sessionId}`,
     `j=${scope.projectId ?? "-"}`,
     `a=${scope.avatarId ?? "-"}`,
-    `t=${scope.taskId ?? "-"}`,
     `c=${scope.channel}`,
+    `t=${scope.taskId ?? "-"}`,
   ].join("|");
 }
 
@@ -290,8 +296,13 @@ export class TaskStateStore {
   private derived = new Map<string, DerivedTaskState>();
   private explicit = new Map<string, ExplicitTaskState>();
   private chains = new Map<string, Promise<unknown>>();
+  private ttlMinutes: number;
+  private dimension: number;
 
-  constructor(private ttlMinutes: number, private dimension: number) {}
+  constructor(ttlMinutes: number, dimension: number) {
+    this.ttlMinutes = ttlMinutes;
+    this.dimension = dimension;
+  }
 
   public getExplicit(taskId: string): ExplicitTaskState | undefined {
     return this.explicit.get(taskId);
@@ -334,21 +345,33 @@ export class TaskStateStore {
   }
 
   /**
-   * Desligar o Cortex descarta o estado derivado sem alimentar o motor e sem
+   * Desligar o Cortex descarta TODOS os vetores sem alimentar o motor e sem
    * registrar conteúdo para reprodução futura (plano, seção 7.8).
    */
-  public discardDerived(scope?: RetrievalScope): void {
-    if (!scope) {
-      this.derived.clear();
-      return;
-    }
+  public discardAllDerived(): void {
+    this.derived.clear();
+  }
+
+  /**
+   * Descarta os vetores de TODAS as tarefas de um escopo-base.
+   *
+   * É a operação de troca de projeto/reset/exclusão de origem: como a base não
+   * inclui a tarefa, isto alcança deliberadamente todas as tarefas daquele
+   * projeto/sessão. Para uma única tarefa use `discardTask`.
+   */
+  public discardDerivedBase(scope: RetrievalScope): void {
     const base = scopeBaseKey(scope);
     for (const key of [...this.derived.keys()]) {
       if (key.startsWith(base)) this.derived.delete(key);
     }
   }
 
-  /** Troca de projeto/reset/exclusão de origem invalida o derivado correspondente. */
+  /** Descarta exatamente UMA tarefa, sem tocar nas tarefas irmãs do mesmo projeto. */
+  public discardTask(scope: RetrievalScope): void {
+    this.derived.delete(scopeKey(scope));
+  }
+
+  /** Invalidação por base: mesmo efeito de `discardDerivedBase`. */
   public invalidateBase(base: string): void {
     for (const key of [...this.derived.keys()]) {
       if (key.startsWith(base)) this.derived.delete(key);

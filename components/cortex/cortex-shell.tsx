@@ -9,6 +9,7 @@ import {
 } from "./cortex-navigation";
 import { CortexOverview } from "./cortex-overview";
 import { CortexGraphClient } from "./cortex-graph-client";
+import { CortexBrain } from "./brain/cortex-brain";
 import { CortexChatMemories } from "./cortex-chat-memories";
 import { CortexConversationArchive } from "./cortex-conversation-archive";
 import { CortexIdentities } from "./cortex-identities";
@@ -108,7 +109,7 @@ function CortexTabPanel({
 }
 
 export function CortexShell({
-  initialSection = "visao-geral",
+  initialSection = "cerebro",
   className = "",
 }: CortexShellProps) {
   const [activeSection, setActiveSection] = useState<CortexSection>(initialSection);
@@ -179,6 +180,12 @@ export function CortexShell({
 
       {/* Tab Panels: Lazy-Mount + Keep-Alive with hidden={activeSection !== id} */}
       <div className="relative min-w-0 w-full max-w-full">
+        <CortexTabPanel id="cerebro" activeSection={activeSection} visitedSections={visitedSections}>
+          <CortexSectionErrorBoundary section="Cérebro">
+            <CortexBrain isActive={activeSection === "cerebro"} />
+          </CortexSectionErrorBoundary>
+        </CortexTabPanel>
+
         <CortexTabPanel id="visao-geral" activeSection={activeSection} visitedSections={visitedSections}>
           <CortexSectionErrorBoundary
             section="Visão Geral"

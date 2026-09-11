@@ -23,7 +23,10 @@ export interface SparseMatrix {
   indices: Int32Array;
   /** Pesos correspondentes. */
   weights: Float32Array;
+  /** Número de linhas (nós de destino). */
   size: number;
+  /** Número de colunas (fontes). Igual a `size` em `W`; igual à dimensão da entrada em `P`. */
+  columns: number;
 }
 
 export interface ReservoirParams {
@@ -108,7 +111,7 @@ export function buildProjection(
     picks.sort((a, b) => a[0] - b[0]);
     rows.push(picks);
   }
-  return rowsToMatrix(rows, nodeCount);
+  return rowsToMatrix(rows, nodeCount, inputDimension);
 }
 
 /** Gerador determinístico; documentado para reproduzir a projeção. */
@@ -125,7 +128,8 @@ export function mulberry32(seed: number): () => number {
 
 function rowsToMatrix(
   rows: Array<Array<[number, number]>>,
-  size: number
+  size: number,
+  columns: number
 ): SparseMatrix {
   const indptr = new Int32Array(size + 1);
   let nnz = 0;
@@ -144,7 +148,7 @@ function rowsToMatrix(
       cursor++;
     }
   }
-  return { indptr, indices, weights, size };
+  return { indptr, indices, weights, size, columns };
 }
 
 export interface StepInput {
@@ -195,10 +199,16 @@ export function runSteps(
   sampleActivity = false,
   sampleSize = 0
 ): { state: Float32Array; samples: ActivitySample[] } {
-  if (inputVector.length !== projection.size) {
+  if (inputVector.length !== projection.columns) {
     throw new ReservoirError(
       "dimension",
-      `entrada esperada de tamanho ${projection.size}, recebida ${inputVector.length}`
+      `entrada esperada de tamanho ${projection.columns}, recebida ${inputVector.length}`
+    );
+  }
+  if (matrix.columns !== matrix.size) {
+    throw new ReservoirError(
+      "dimension",
+      `matriz recorrente não quadrada: ${matrix.size}x${matrix.columns}`
     );
   }
   const size = matrix.size;

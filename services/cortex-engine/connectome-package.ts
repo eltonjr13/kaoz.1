@@ -37,6 +37,14 @@ export class PackageError extends Error {
   }
 }
 
+/**
+ * Constrói o erro de pacote sem parameter properties, que o modo strip-only do
+ * Node não aceita.
+ */
+export function packageError(reason: FallbackReason, message: string): PackageError {
+  return new PackageError(reason, message);
+}
+
 async function readBinary(file: string): Promise<ArrayBuffer> {
   const buffer = await fs.readFile(file);
   return buffer.buffer.slice(
@@ -125,7 +133,7 @@ export async function loadMatrix(
       `column-indices (${indices.length}) e weights (${weights.length}) divergem`
     );
   }
-  return { indptr, indices, weights, size };
+  return { indptr, indices, weights, size, columns: size };
 }
 
 export async function loadNodes(dir: string): Promise<ConnectomeNode[]> {

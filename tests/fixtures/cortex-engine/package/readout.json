@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0-D",
+  "variant": "D",
+  "dimension": 10,
+  "featureNames": [
+    "bias-free-baseline",
+    "semantic-dot",
+    "recency",
+    "explicit",
+    "confidence",
+    "occurrences",
+    "state-cosine",
+    "state-distance",
+    "query-state-dot",
+    "readout-energy"
+  ],
+  "weights": [
+    0.6204940947866865,
+    -5.552378616795594,
+    -0.05997059732347425,
+    0.0,
+    -3.3962292978478947,
+    -2.587241885417523,
+    -0.03386042686048253,
+    -1.7228413261285165,
+    -0.0020312319027683034,
+    -0.2817037212387462
+  ],
+  "bias": 0.0,
+  "normalization": {
+    "mean": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "std": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "training": {
+    "algorithm": "pairwise-logistic-sgd-l2",
+    "learningRate": 0.05,
+    "epochs": 300,
+    "seed": 11,
+    "l2": 0.0001,
+    "trainSize": 1536,
+    "validationSize": 0,
+    "testSize": 0,
+    "validationMetric": {
+      "name": "nDCG@8",
+      "value": 0.0
+    },
+    "topologyControl": "none"
+  }
+}

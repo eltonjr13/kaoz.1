@@ -30,7 +30,11 @@ function detailFile(traceId: string): string {
 export const TRACE_RETENTION_DAYS = 14;
 
 export class TraceStore {
-  constructor(private maxTraces: number) {}
+  private maxTraces: number;
+
+  constructor(maxTraces: number) {
+    this.maxTraces = maxTraces;
+  }
 
   /** Grava o índice (linha por trace) e o detalhe. Escrita atômica. */
   public async append(trace: EngineTrace): Promise<void> {

@@ -133,7 +133,19 @@ export interface ConnectomePackageManifest {
   stats: ConnectomeStats;
   /** Escala registrada das cores de atividade — não são medições biológicas. */
   activityScale: { min: number; max: number; note: string };
+  /** Descrição da matriz esparsa embarcada. */
+  csr: CsrProvenance;
   tooling: Record<string, string>;
+}
+
+export interface CsrProvenance {
+  /** Convenção de orientação, ex.: `W[destination, origin]`. */
+  orientation: string;
+  indexType: string;
+  weightType: string;
+  endianness: string;
+  nnz: number;
+  shape: [number, number];
 }
 
 export interface SelectionProvenance {

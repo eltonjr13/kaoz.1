@@ -7,7 +7,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getLocalDataDir } from "@/lib/runtime-paths.ts";
+import { getLocalDataDir } from "../../lib/runtime-paths.ts";
 import type { CortexEngineMode } from "./cortex-engine.types.ts";
 
 export interface CortexEngineSettings {
@@ -86,7 +86,7 @@ export function sanitizeSettings(input: unknown): Partial<CortexEngineSettings> 
 function assignBounded(
   raw: Record<string, unknown>,
   out: Partial<CortexEngineSettings>,
-  key: keyof CortexEngineSettings,
+  key: NumericSettingKey,
   min: number,
   max: number
 ): void {
@@ -94,6 +94,15 @@ function assignBounded(
   if (typeof value !== "number" || !Number.isFinite(value)) return;
   out[key] = Math.min(max, Math.max(min, Math.round(value)));
 }
+
+type NumericSettingKey =
+  | "maxCandidates"
+  | "deadlineMs"
+  | "shadowDeadlineMs"
+  | "taskStateTtlMinutes"
+  | "activitySampleSize"
+  | "maxQueue"
+  | "maxTraces";
 
 export async function loadSettings(): Promise<CortexEngineSettings> {
   try {

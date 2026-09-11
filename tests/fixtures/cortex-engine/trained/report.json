@@ -1,0 +1,450 @@
+{
+  "generatedBy": "scripts/cortex/train_readout.py",
+  "featureNames": [
+    "bias-free-baseline",
+    "semantic-dot",
+    "recency",
+    "explicit",
+    "confidence",
+    "occurrences",
+    "state-cosine",
+    "state-distance",
+    "query-state-dot",
+    "readout-energy"
+  ],
+  "variants": {
+    "A": {
+      "description": "linha de base convencional (features de texto/metadados)",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8690654831493614,
+          "ci95": [
+            0.8390470448941355,
+            0.8969070241157965
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.7764705882352941,
+          "ci95": [
+            0.5955056179775281,
+            0.9404761904761905
+          ]
+        },
+        "MRR": {
+          "mean": 0.3554014939309057
+        },
+        "projectMixInTop8": 2.235294117647059,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7597153260046939,
+          "duration:proj-brasa": 0.9014620798784204,
+          "duration:proj-orla": 0.9168402787799744,
+          "duration:proj-veio": 0.8521385673837006,
+          "duration:proj-marola": 0.8445316707592603,
+          "soundtrack:proj-hatch": 0.8175193059724088,
+          "soundtrack:proj-brasa": 0.8134800922136585,
+          "soundtrack:proj-orla": 0.8813609085097298,
+          "soundtrack:proj-veio": 0.8744005913484341,
+          "soundtrack:proj-marola": 0.8215248898498044,
+          "informal:proj-hatch": 0.7862566674808656,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9669356808717828,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8732497202131303,
+          "parallel-tasks:proj-hatch": 0.752295356916299,
+          "parallel-tasks:proj-brasa": 0.9855049654622912,
+          "parallel-tasks:proj-orla": 0.9147159236449826,
+          "parallel-tasks:proj-veio": 0.8725076671322013,
+          "parallel-tasks:proj-marola": 0.8953061872241159
+        }
+      }
+    },
+    "B": {
+      "description": "busca híbrida + scorer convencional",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8690654831493614,
+          "ci95": [
+            0.8390470448941355,
+            0.8969070241157965
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.7764705882352941,
+          "ci95": [
+            0.5955056179775281,
+            0.9404761904761905
+          ]
+        },
+        "MRR": {
+          "mean": 0.3554014939309057
+        },
+        "projectMixInTop8": 2.235294117647059,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7597153260046939,
+          "duration:proj-brasa": 0.9014620798784204,
+          "duration:proj-orla": 0.9168402787799744,
+          "duration:proj-veio": 0.8521385673837006,
+          "duration:proj-marola": 0.8445316707592603,
+          "soundtrack:proj-hatch": 0.8175193059724088,
+          "soundtrack:proj-brasa": 0.8134800922136585,
+          "soundtrack:proj-orla": 0.8813609085097298,
+          "soundtrack:proj-veio": 0.8744005913484341,
+          "soundtrack:proj-marola": 0.8215248898498044,
+          "informal:proj-hatch": 0.7862566674808656,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9669356808717828,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8732497202131303,
+          "parallel-tasks:proj-hatch": 0.752295356916299,
+          "parallel-tasks:proj-brasa": 0.9855049654622912,
+          "parallel-tasks:proj-orla": 0.9147159236449826,
+          "parallel-tasks:proj-veio": 0.8725076671322013,
+          "parallel-tasks:proj-marola": 0.8953061872241159
+        }
+      }
+    },
+    "C": {
+      "description": "conectividade reconfigurada (controle de topologia)",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8739430218936199,
+          "ci95": [
+            0.8463571907926767,
+            0.9001876549424395
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.788235294117647,
+          "ci95": [
+            0.6049382716049383,
+            0.9518072289156626
+          ]
+        },
+        "MRR": {
+          "mean": 0.35134920634920636
+        },
+        "projectMixInTop8": 2.235294117647059,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7619653578301647,
+          "duration:proj-brasa": 0.9003993329824358,
+          "duration:proj-orla": 0.9171432078362616,
+          "duration:proj-veio": 0.8308008999766396,
+          "duration:proj-marola": 0.8398723486972713,
+          "soundtrack:proj-hatch": 0.8541615047355213,
+          "soundtrack:proj-brasa": 0.8152598829075326,
+          "soundtrack:proj-orla": 0.8928434044729825,
+          "soundtrack:proj-veio": 0.8664928019477528,
+          "soundtrack:proj-marola": 0.867531183619658,
+          "informal:proj-hatch": 0.8103969309149273,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9669356808717828,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8757948507600612,
+          "parallel-tasks:proj-hatch": 0.7802368137714364,
+          "parallel-tasks:proj-brasa": 0.9633702780294843,
+          "parallel-tasks:proj-orla": 0.9172610541919135,
+          "parallel-tasks:proj-veio": 0.8855283417560009,
+          "parallel-tasks:proj-marola": 0.8935263965302418
+        }
+      }
+    },
+    "D": {
+      "description": "MaleCNS sem estado temporal",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8782065893768031,
+          "ci95": [
+            0.8514598179534378,
+            0.9031953405590619
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.788235294117647,
+          "ci95": [
+            0.6049382716049383,
+            0.9518072289156626
+          ]
+        },
+        "MRR": {
+          "mean": 0.3402567693744164
+        },
+        "projectMixInTop8": 2.176470588235294,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7680485124472529,
+          "duration:proj-brasa": 0.8995691428920797,
+          "duration:proj-orla": 0.9171432078362616,
+          "duration:proj-veio": 0.8308008999766396,
+          "duration:proj-marola": 0.8440339469267855,
+          "soundtrack:proj-hatch": 0.8551992423484666,
+          "soundtrack:proj-brasa": 0.8134800922136585,
+          "soundtrack:proj-orla": 0.9279782103021094,
+          "soundtrack:proj-veio": 0.8878103889501334,
+          "soundtrack:proj-marola": 0.9239772333696175,
+          "informal:proj-hatch": 0.8103969309149273,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9455013686513909,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8833987940314215,
+          "parallel-tasks:proj-hatch": 0.7802368137714364,
+          "parallel-tasks:proj-brasa": 0.9616398571899243,
+          "parallel-tasks:proj-orla": 0.8976065326653956,
+          "parallel-tasks:proj-veio": 0.8860914355229248,
+          "parallel-tasks:proj-marola": 0.8948548301502226
+        }
+      }
+    },
+    "E": {
+      "description": "MaleCNS com estado temporal",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8782065893768031,
+          "ci95": [
+            0.8514598179534378,
+            0.9031953405590619
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.788235294117647,
+          "ci95": [
+            0.6049382716049383,
+            0.9518072289156626
+          ]
+        },
+        "MRR": {
+          "mean": 0.3402567693744164
+        },
+        "projectMixInTop8": 2.176470588235294,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7680485124472529,
+          "duration:proj-brasa": 0.8995691428920797,
+          "duration:proj-orla": 0.9171432078362616,
+          "duration:proj-veio": 0.8308008999766396,
+          "duration:proj-marola": 0.8440339469267855,
+          "soundtrack:proj-hatch": 0.8551992423484666,
+          "soundtrack:proj-brasa": 0.8134800922136585,
+          "soundtrack:proj-orla": 0.9279782103021094,
+          "soundtrack:proj-veio": 0.8878103889501334,
+          "soundtrack:proj-marola": 0.9239772333696175,
+          "informal:proj-hatch": 0.8103969309149273,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9455013686513909,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8833987940314215,
+          "parallel-tasks:proj-hatch": 0.7802368137714364,
+          "parallel-tasks:proj-brasa": 0.9616398571899243,
+          "parallel-tasks:proj-orla": 0.8976065326653956,
+          "parallel-tasks:proj-veio": 0.8860914355229248,
+          "parallel-tasks:proj-marola": 0.8948548301502226
+        }
+      }
+    },
+    "F": {
+      "description": "estado temporal convencional (controle de E)",
+      "metrics": {
+        "nDCG@8": {
+          "mean": 0.8690654831493614,
+          "ci95": [
+            0.8390470448941355,
+            0.8969070241157965
+          ]
+        },
+        "Recall@8": {
+          "mean": 0.7764705882352941,
+          "ci95": [
+            0.5955056179775281,
+            0.9404761904761905
+          ]
+        },
+        "MRR": {
+          "mean": 0.3554014939309057
+        },
+        "projectMixInTop8": 2.235294117647059,
+        "obsoleteResurrections": 0,
+        "queriesEvaluated": 85,
+        "perScenario": {
+          "duration:proj-hatch": 0.7597153260046939,
+          "duration:proj-brasa": 0.9014620798784204,
+          "duration:proj-orla": 0.9168402787799744,
+          "duration:proj-veio": 0.8521385673837006,
+          "duration:proj-marola": 0.8445316707592603,
+          "soundtrack:proj-hatch": 0.8175193059724088,
+          "soundtrack:proj-brasa": 0.8134800922136585,
+          "soundtrack:proj-orla": 0.8813609085097298,
+          "soundtrack:proj-veio": 0.8744005913484341,
+          "soundtrack:proj-marola": 0.8215248898498044,
+          "informal:proj-hatch": 0.7862566674808656,
+          "informal:proj-brasa": 1.0,
+          "informal:proj-orla": 0.9669356808717828,
+          "informal:proj-veio": 0.8692236565766653,
+          "informal:proj-marola": 0.8732497202131303,
+          "parallel-tasks:proj-hatch": 0.752295356916299,
+          "parallel-tasks:proj-brasa": 0.9855049654622912,
+          "parallel-tasks:proj-orla": 0.9147159236449826,
+          "parallel-tasks:proj-veio": 0.8725076671322013,
+          "parallel-tasks:proj-marola": 0.8953061872241159
+        }
+      }
+    }
+  },
+  "diagnosticReservoirOnly": {
+    "features": [
+      "state-cosine",
+      "state-distance",
+      "query-state-dot",
+      "readout-energy"
+    ],
+    "metrics": {
+      "nDCG@8": {
+        "mean": 0.5825210712271707,
+        "ci95": [
+          0.5113133856098366,
+          0.6515631908846822
+        ]
+      },
+      "Recall@8": {
+        "mean": 0.4470588235294118,
+        "ci95": [
+          0.2804878048780488,
+          0.6190476190476191
+        ]
+      },
+      "MRR": {
+        "mean": 0.2761805629704645
+      },
+      "projectMixInTop8": 4.317647058823529,
+      "obsoleteResurrections": 0,
+      "queriesEvaluated": 85,
+      "perScenario": {
+        "duration:proj-hatch": 0.6242406906560695,
+        "duration:proj-brasa": 0.49462605575327084,
+        "duration:proj-orla": 0.6085159201775063,
+        "duration:proj-veio": 0.2532786348619799,
+        "duration:proj-marola": 0.5494812209358246,
+        "soundtrack:proj-hatch": 0.7312732948460539,
+        "soundtrack:proj-brasa": 0.6252675312446788,
+        "soundtrack:proj-orla": 0.587446225258815,
+        "soundtrack:proj-veio": 0.5002723977598885,
+        "soundtrack:proj-marola": 0.8598827189214668,
+        "informal:proj-hatch": 0.7555610692246879,
+        "informal:proj-brasa": 0.7859387010454267,
+        "informal:proj-orla": 0.608419203355352,
+        "informal:proj-veio": 0.2754603758568569,
+        "informal:proj-marola": 0.7388622725424717,
+        "parallel-tasks:proj-hatch": 0.7339842345847043,
+        "parallel-tasks:proj-brasa": 0.759147592216664,
+        "parallel-tasks:proj-orla": 0.43736194426734387,
+        "parallel-tasks:proj-veio": 0.35976078709761816,
+        "parallel-tasks:proj-marola": 0.457256262374532
+      }
+    },
+    "note": "Readout treinado APENAS com features de estado do reservatório. Mede se a rede distingue candidatos sem ajuda das features convencionais."
+  },
+  "promotion": {
+    "targetAbsoluteGain": 0.03,
+    "bestConventionalNDCG@8": 0.8739430218936199,
+    "malecnsNDCG@8": 0.8782065893768031,
+    "difference": {
+      "mean": 0.00914110622744171,
+      "ci95": [
+        -0.001220629595237027,
+        0.021752741565134945
+      ]
+    },
+    "differenceVsRewiredControl": {
+      "mean": 0.004263567483183102,
+      "ci95": [
+        -0.0019963116532281085,
+        0.011348647044515095
+      ]
+    },
+    "gainAboveTarget": false,
+    "lowerBoundAboveZero": false,
+    "promote": false,
+    "decision": "MANTER `legacy` como padrão. ganho de +0.0091 abaixo do alvo de +0,03; limite inferior do IC da diferença em -0.0012 (não acima de zero); não supera o controle de topologia reconfigurada (IC da diferença: [-0.0020, +0.0113]). O recurso fica integrado e acessível como experimental."
+  },
+  "candidateRecallAt128": {
+    "mean": 0.8,
+    "ci95": [
+      0.6162790697674418,
+      0.9534883720930233
+    ]
+  },
+  "trainingSeeds": [
+    11,
+    23,
+    37,
+    59,
+    71
+  ],
+  "seedsValidation": {
+    "A": [
+      {
+        "seed": 11,
+        "validationNDCG@8": 0.9213240198087294
+      },
+      {
+        "seed": 23,
+        "validationNDCG@8": 0.9188976757655686
+      },
+      {
+        "seed": 37,
+        "validationNDCG@8": 0.9231884516407357
+      },
+      {
+        "seed": 59,
+        "validationNDCG@8": 0.9193298754974061
+      },
+      {
+        "seed": 71,
+        "validationNDCG@8": 0.9200895994261427
+      }
+    ],
+    "D": [
+      {
+        "seed": 11,
+        "validationNDCG@8": 0.92534493892524
+      },
+      {
+        "seed": 23,
+        "validationNDCG@8": 0.9221724137907024
+      },
+      {
+        "seed": 37,
+        "validationNDCG@8": 0.9253568201712217
+      },
+      {
+        "seed": 59,
+        "validationNDCG@8": 0.9256969035833289
+      },
+      {
+        "seed": 71,
+        "validationNDCG@8": 0.9278155546800075
+      }
+    ]
+  },
+  "hyperparameters": {
+    "epochs": 300,
+    "learningRate": 0.05,
+    "l2": 0.0001,
+    "alpha": 0.5,
+    "steps": 6,
+    "dimension": 64,
+    "projectionFanIn": 8
+  },
+  "partitions": {
+    "train": 145,
+    "validation": 95,
+    "test": 85
+  },
+  "note": "Métricas do corpus SINTÉTICO congelado. Nenhum resultado usa o relógio da máquina nem dados pessoais locais."
+}
