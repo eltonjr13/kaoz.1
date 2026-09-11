@@ -201,14 +201,24 @@ function appendBriefingDetails(segments: string[], b?: SketchBriefingData): void
   appendBriefingStyling(segments, b);
 }
 
-export function buildBriefingDirective(briefing?: SketchBriefingData): string {
-  const product = typeof briefing?.product === 'string' ? briefing.product.trim() : '';
-  const description = typeof briefing?.productDescription === 'string' ? briefing.productDescription.trim() : '';
-  const label = product && description && product !== description ? `${product} — ${description}` : description || product;
+function trimOrEmpty(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
+function resolveProductLabel(briefing?: SketchBriefingData): string {
+  const product = trimOrEmpty(briefing?.product);
+  const description = trimOrEmpty(briefing?.productDescription);
+  if (!product) return description;
+  if (!description) return product;
+  if (description.toLowerCase().startsWith(product.toLowerCase())) return description;
+  return `${product} — ${description}`;
+}
+
+export function buildBriefingDirective(briefing?: SketchBriefingData): string {
   // Without a real briefing the directive must stay silent. A generic product
   // placeholder used to override the user's own idea, so it no longer exists.
   const segments: string[] = [];
+  const label = resolveProductLabel(briefing);
   if (label) segments.push(`Product: ${label}`);
   appendBriefingDetails(segments, briefing);
 
@@ -254,7 +264,7 @@ export function compileCreativeGenerationPrompt(input: CreativeCompileInput): st
     // The user's own words come first and stay unquoted so the text-intent
     // heuristic never mistakes the idea for typography to render in the image.
     const normalizedIdea = /[.!?]$/.test(idea) ? idea : `${idea}.`;
-    sections.push(`Primary creative idea (highest priority, preserve the user's own words and intent): ${normalizedIdea}`);
+    sections.push(`Primary creative idea (highest priority): ${normalizedIdea}`);
   }
 
   sections.push(buildBriefingDirective(input.briefing));

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import sharp from 'sharp';
 import {
   SketchJobManager,
   type FlowImageProviderContract,
@@ -44,6 +45,14 @@ const DISTINCT_PNG_BYTES = Buffer.from([
 ]);
 
 const DISTINCT_PNG_DATA_URL = `data:image/png;base64,${DISTINCT_PNG_BYTES.toString('base64')}`;
+
+async function realPngBuffer(background = '#1f6feb', size = 96): Promise<Buffer> {
+  return await sharp({ create: { width: size, height: size, channels: 3, background } }).png().toBuffer();
+}
+
+async function realPngDataUrl(background = '#1f6feb', size = 96): Promise<string> {
+  return `data:image/png;base64,${(await realPngBuffer(background, size)).toString('base64')}`;
+}
 
 interface CapturedProviderCall {
   prompt: string;
@@ -163,6 +172,7 @@ test('salvar e reabrir projeto mantendo "explore" e "baked"', async () => {
 test('projeto somente com sketch chega ao provedor como imagem (não simple)', async () => {
   const env = await createTestEnv();
   const mockFlow = new InspectableFlowProvider();
+  const sketchBoard = await realPngDataUrl('#ffffff', 512);
 
   try {
     const project = createDefaultProject({ id: 'proj-sketch-only-1', title: 'Apenas Rabisco' });
@@ -187,7 +197,7 @@ test('projeto somente com sketch chega ao provedor como imagem (não simple)', a
 
     const job = await manager.enqueueJob({
       projectId: project.id,
-      referenceDataUrl: SAMPLE_PNG_DATA_URL,
+      referenceDataUrl: sketchBoard,
     });
 
     const terminalJob = await waitForJobTerminal(manager, job.id);
@@ -200,18 +210,25 @@ test('projeto somente com sketch chega ao provedor como imagem (não simple)', a
     assert.equal(call.options?.referenceKind, 'sketch');
     assert.ok(call.options?.referenceImage);
     assert.ok(call.capturedReferenceBytes);
-    assert.equal(call.capturedReferenceBytes.length, SAMPLE_PNG_BYTES.length);
+    const metadata = await sharp(call.capturedReferenceBytes).metadata();
+    assert.equal(metadata.format, 'png');
+    assert.equal(metadata.width, 1080);
+    assert.equal(metadata.height, 1080);
   } finally {
     await env.cleanup();
   }
 });
 
-test('projeto com sketch e produto envia a composição aprovada e seus bytes', async () => {
+test('projeto com sketch e produto unifica esboço e anexo em uma única referência', async () => {
   const env = await createTestEnv();
   const mockFlow = new InspectableFlowProvider();
+  const productBytes = await realPngBuffer('#b3541e');
+  const productDataUrl = `data:image/png;base64,${productBytes.toString('base64')}`;
+  const sketchBoard = await realPngDataUrl('#ffffff', 512);
 
   try {
     const project = createDefaultProject({ id: 'proj-sketch-product-1', title: 'Sketch e Produto' });
+    project.prompt = 'Panela de ferro fundido sobre brasas ao anoitecer';
     project.layers = [
       {
         id: 'layer-sketch-1',
@@ -239,11 +256,20 @@ test('projeto com sketch e produto envia a composição aprovada e seus bytes', 
       {
         id: 'att-prod-1',
         name: 'prod.png',
-        dataUrl: SAMPLE_PNG_DATA_URL,
+        dataUrl: productDataUrl,
         role: 'product',
         createdAt: new Date().toISOString(),
       },
     ];
+    project.currentOrder = {
+      schemaVersion: 1,
+      version: '1.0.0',
+      id: 'order-sketch-product-1',
+      prompt: project.prompt,
+      aspectRatio: '1:1',
+      selectedReferences: [{ attachmentId: 'att-prod-1', role: 'product' }],
+      createdAt: new Date().toISOString(),
+    };
     await saveProject(project, env.projectsDir, env.assetsDir);
 
     const manager = new SketchJobManager({
@@ -255,7 +281,7 @@ test('projeto com sketch e produto envia a composição aprovada e seus bytes', 
 
     const job = await manager.enqueueJob({
       projectId: project.id,
-      referenceDataUrl: DISTINCT_PNG_DATA_URL,
+      referenceDataUrl: sketchBoard,
     });
 
     const terminalJob = await waitForJobTerminal(manager, job.id);
@@ -267,7 +293,13 @@ test('projeto com sketch e produto envia a composição aprovada e seus bytes', 
     assert.equal(call.options?.operation, 'reference');
     assert.equal(call.options?.referenceKind, 'composite');
     assert.ok(call.capturedReferenceBytes);
-    assert.deepEqual(call.capturedReferenceBytes, DISTINCT_PNG_BYTES);
+    // The generated reference is a composed board, never the raw sketch nor the
+    // untrimmed attachment.
+    assert.equal(call.capturedReferenceBytes.equals(productBytes), false);
+    const metadata = await sharp(call.capturedReferenceBytes).metadata();
+    assert.equal(metadata.format, 'png');
+    assert.equal(metadata.width, 1080);
+    assert.equal(metadata.height, 1080);
     assert.equal(job.snapshot.referenceKind, 'composite');
     assert.equal(job.snapshot.referenceMode, 'composite');
   } finally {
@@ -275,34 +307,51 @@ test('projeto com sketch e produto envia a composição aprovada e seus bytes', 
   }
 });
 
-test('múltiplos anexos não escolhem anexo arbitrário', async () => {
+test('múltiplos anexos selecionados entram todos na referência composta', async () => {
   const env = await createTestEnv();
   const mockFlow = new InspectableFlowProvider();
+  const firstBytes = await realPngBuffer('#2f855a');
+  const secondBytes = await realPngBuffer('#b7791f');
+  const thirdBytes = await realPngBuffer('#553c9a');
+  const sketchBoard = await realPngDataUrl('#ffffff', 512);
 
   try {
     const project = createDefaultProject({ id: 'proj-multi-att-1', title: 'Múltiplos Anexos' });
     const att1: SketchAttachment = {
       id: 'att-1',
       name: 'produto.png',
-      dataUrl: SAMPLE_PNG_DATA_URL,
+      dataUrl: `data:image/png;base64,${firstBytes.toString('base64')}`,
       role: 'product',
       createdAt: new Date().toISOString(),
     };
     const att2: SketchAttachment = {
       id: 'att-2',
       name: 'referencia.png',
-      dataUrl: SAMPLE_PNG_DATA_URL,
+      dataUrl: `data:image/png;base64,${secondBytes.toString('base64')}`,
       role: 'reference',
       createdAt: new Date().toISOString(),
     };
     const att3: SketchAttachment = {
       id: 'att-3',
       name: 'composicao.png',
-      dataUrl: SAMPLE_PNG_DATA_URL,
+      dataUrl: `data:image/png;base64,${thirdBytes.toString('base64')}`,
       role: 'composition',
       createdAt: new Date().toISOString(),
     };
     project.attachments = [att1, att2, att3];
+    project.currentOrder = {
+      schemaVersion: 1,
+      version: '1.0.0',
+      id: 'order-multi-1',
+      prompt: 'Três referências para o mesmo anúncio',
+      aspectRatio: '1:1',
+      selectedReferences: [
+        { attachmentId: 'att-1', role: 'product' },
+        { attachmentId: 'att-2', role: 'style' },
+        { attachmentId: 'att-3', role: 'composition' },
+      ],
+      createdAt: new Date().toISOString(),
+    };
     project.layers = [
       {
         id: 'layer-sketch-1',
@@ -325,24 +374,29 @@ test('múltiplos anexos não escolhem anexo arbitrário', async () => {
     // Envia a composição visual unificada distinta aprovada
     const job = await manager.enqueueJob({
       projectId: project.id,
-      referenceDataUrl: DISTINCT_PNG_DATA_URL,
+      referenceDataUrl: sketchBoard,
     });
 
     await waitForJobTerminal(manager, job.id);
     assert.equal(mockFlow.calls.length, 1);
     const call = mockFlow.calls[0];
 
-    // O provedor deve receber exatamente a composição aprovada, e não o anexo 1, 2 ou 3
+    assert.equal(call.options?.referenceKind, 'composite');
     assert.ok(call.capturedReferenceBytes);
-    assert.deepEqual(call.capturedReferenceBytes, DISTINCT_PNG_BYTES);
+    // A single board carries all three attachments plus the layout sketch.
+    assert.equal(call.capturedReferenceBytes.equals(firstBytes), false);
+    assert.equal(call.capturedReferenceBytes.equals(secondBytes), false);
+    assert.equal(call.capturedReferenceBytes.equals(thirdBytes), false);
+    assert.equal(job.snapshot.referenceKind, 'composite');
   } finally {
     await env.cleanup();
   }
 });
 
-test('comparação dos bytes enviados ao provedor com a referência esperada', async () => {
+test('os bytes gravados no trabalho são exatamente os bytes entregues ao provedor', async () => {
   const env = await createTestEnv();
   const mockFlow = new InspectableFlowProvider();
+  const sketchBoard = await realPngDataUrl('#f7fafc', 512);
 
   try {
     const project = createDefaultProject({ id: 'proj-bytes-check-1' });
@@ -365,15 +419,13 @@ test('comparação dos bytes enviados ao provedor com a referência esperada', a
       flowProvider: mockFlow,
     });
 
-    const expectedSha256 = crypto.createHash('sha256').update(DISTINCT_PNG_BYTES).digest('hex');
-
     const job = await manager.enqueueJob({
       projectId: project.id,
-      referenceDataUrl: DISTINCT_PNG_DATA_URL,
+      referenceDataUrl: sketchBoard,
     });
 
-    assert.equal(job.snapshot.referenceSha256, expectedSha256);
-    assert.equal(job.snapshot.referenceFileSizeBytes, DISTINCT_PNG_BYTES.length);
+    assert.ok(job.snapshot.referenceSha256);
+    assert.ok(job.snapshot.referenceFileSizeBytes);
 
     await waitForJobTerminal(manager, job.id);
     assert.equal(mockFlow.calls.length, 1);
@@ -381,8 +433,8 @@ test('comparação dos bytes enviados ao provedor com a referência esperada', a
 
     assert.ok(call.capturedReferenceBytes);
     const actualSha256 = crypto.createHash('sha256').update(call.capturedReferenceBytes).digest('hex');
-    assert.equal(actualSha256, expectedSha256);
-    assert.ok(call.capturedReferenceBytes.equals(DISTINCT_PNG_BYTES));
+    assert.equal(actualSha256, job.snapshot.referenceSha256);
+    assert.equal(call.capturedReferenceBytes.length, job.snapshot.referenceFileSizeBytes);
 
     // Ao término seguro, o arquivo temporário do job deve ter sido limpo
     assert.ok(call.options?.referenceImage);
@@ -471,7 +523,7 @@ test('edição posterior do projeto não modifica o snapshot do trabalho nem o s
   }
 });
 
-test('referência ausente ou inválida gera erro explícito', async () => {
+test('payload de esboço corrompido cai para os traços salvos em vez de quebrar', async () => {
   const env = await createTestEnv();
   const mockFlow = new InspectableFlowProvider();
 
@@ -496,35 +548,68 @@ test('referência ausente ou inválida gera erro explícito', async () => {
       flowProvider: mockFlow,
     });
 
-    // Caso A: Formato não suportado ou corrompido
+    // Formato não suportado: o esboço é re-renderizado a partir dos traços salvos.
+    const job = await manager.enqueueJob({
+      projectId: project.id,
+      referenceDataUrl: 'data:image/png;base64,corrupted-not-a-real-png-bytes',
+    });
+
+    const terminalJob = await waitForJobTerminal(manager, job.id);
+    assert.equal(terminalJob.status, 'completed');
+    assert.equal(mockFlow.calls.length, 1);
+    assert.equal(mockFlow.calls[0].options?.referenceKind, 'sketch');
+    assert.ok(mockFlow.calls[0].capturedReferenceBytes);
+    const metadata = await sharp(mockFlow.calls[0].capturedReferenceBytes!).metadata();
+    assert.equal(metadata.format, 'png');
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('anexo selecionado ilegível bloqueia a geração com erro explícito', async () => {
+  const env = await createTestEnv();
+  const mockFlow = new InspectableFlowProvider();
+
+  try {
+    const project = createDefaultProject({ id: 'proj-unreadable-ref-1' });
+    project.prompt = 'Anúncio com a foto do produto';
+    project.attachments = [
+      {
+        id: 'att-broken',
+        name: 'produto-corrompido.png',
+        dataUrl: 'data:image/png;base64,',
+        role: 'product',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    project.currentOrder = {
+      schemaVersion: 1,
+      version: '1.0.0',
+      id: 'order-unreadable-1',
+      prompt: project.prompt,
+      aspectRatio: '1:1',
+      selectedReferences: [{ attachmentId: 'att-broken', role: 'product' }],
+      createdAt: new Date().toISOString(),
+    };
+    await saveProject(project, env.projectsDir, env.assetsDir);
+
+    const manager = new SketchJobManager({
+      jobsDir: env.jobsDir,
+      assetsDir: env.assetsDir,
+      projectsDir: env.projectsDir,
+      flowProvider: mockFlow,
+    });
+
     await assert.rejects(
       async () => {
-        await manager.enqueueJob({
-          projectId: project.id,
-          referenceDataUrl: 'data:image/png;base64,corrupted-not-a-real-png-bytes',
-        });
+        await manager.enqueueJob({ projectId: project.id });
       },
       (err: unknown) => {
         const msg = err instanceof Error ? err.message : '';
-        return msg.includes('Referência visual inválida') || msg.includes('Formato não suportado');
+        return msg.includes('referência') && msg.includes('anexada');
       }
     );
 
-    // Caso B: dataUrl vazio ou buffer zerado
-    await assert.rejects(
-      async () => {
-        await manager.enqueueJob({
-          projectId: project.id,
-          referenceDataUrl: 'data:image/png;base64,',
-        });
-      },
-      (err: unknown) => {
-        const msg = err instanceof Error ? err.message : '';
-        return msg.includes('dataUrl inválido ou base64 vazio');
-      }
-    );
-
-    // O FlowProvider nunca deve ter sido chamado em caso de referência inválida
     assert.equal(mockFlow.calls.length, 0);
   } finally {
     await env.cleanup();

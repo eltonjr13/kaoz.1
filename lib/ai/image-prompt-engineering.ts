@@ -95,7 +95,18 @@ function countWords(value: string): number {
 function truncateWords(value: string, maximum: number): string {
   const words = value.split(/\s+/).filter(Boolean);
   if (words.length <= maximum) return value;
-  return `${words.slice(0, maximum).join(" ").replace(/[,:;.!?-]+$/, "")}.`;
+  const clipped = words.slice(0, maximum).join(" ").trim();
+  // Prefer cutting on a sentence boundary: a half-written directive is worse
+  // than a shorter prompt, because the generator still tries to follow it.
+  const lastBoundary = Math.max(
+    clipped.lastIndexOf(". "),
+    clipped.lastIndexOf("! "),
+    clipped.lastIndexOf("? ")
+  );
+  if (lastBoundary >= Math.floor(clipped.length * 0.4)) {
+    return clipped.slice(0, lastBoundary + 1);
+  }
+  return `${clipped.replace(/[,:;.!?-]+$/, "")}.`;
 }
 
 function hasReferenceLanguage(prompt: string): boolean {
@@ -350,12 +361,19 @@ export function prepareFlowImagePrompt(input: {
   operation?: ImageGenerationOperation;
   aspectRatio?: FlowImageAspectRatio;
   referenceKind?: FlowReferenceKind;
+  maxCoreWords?: number;
+  maxFinalWords?: number;
 }): string {
   const operation = input.operation || "simple";
   let core = cleanPromptEnvelope(input.prompt);
   if (!core) return "";
 
-  core = truncateWords(core, MAX_CORE_PROMPT_WORDS);
+  const coreLimit = input.maxCoreWords && input.maxCoreWords > 0 ? input.maxCoreWords : MAX_CORE_PROMPT_WORDS;
+  const finalLimit = input.maxFinalWords && input.maxFinalWords > 0
+    ? Math.max(input.maxFinalWords, coreLimit)
+    : Math.max(MAX_FINAL_PROMPT_WORDS, coreLimit);
+
+  core = truncateWords(core, coreLimit);
   const segments = [core];
   const assembledCore = core;
 
@@ -369,7 +387,7 @@ export function prepareFlowImagePrompt(input: {
   appendTextIntentSegments(segments, assembledCore);
 
   const prepared = normalizePromptWhitespace(segments.join(" "));
-  return countWords(prepared) > MAX_FINAL_PROMPT_WORDS
-    ? truncateWords(prepared, MAX_FINAL_PROMPT_WORDS)
+  return countWords(prepared) > finalLimit
+    ? truncateWords(prepared, finalLimit)
     : prepared;
 }

@@ -55,20 +55,29 @@
     new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())),
     byte => byte.toString(16).padStart(2, '0')
   ).join('');
-  async function attachReference(options) {
+  const referenceMimeType = (options, blob) => options.referenceMimeType || blob.type || 'image/png';
+  const referenceFileName = (options, mimeType) => {
+    const safeName = typeof options.referenceName === 'string' ? options.referenceName.replace(/[^A-Za-z0-9._-]/g, '') : '';
+    return safeName || 'kaoz-reference.' + (mimeType.split('/')[1] || 'png');
+  };
+  async function referenceFile(options) {
     const dataUrl = options.referenceImage;
-    if (!dataUrl) return false;
+    if (!dataUrl) return null;
     if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl) || dataUrl.length > 9 * 1024 * 1024) throw new Error('Referência inválida ou grande demais.');
     const blob = await (await fetch(dataUrl)).blob();
     if (options.referenceSha256) {
       const digest = await sha256(blob);
       if (digest !== options.referenceSha256) throw new Error('A referência chegou alterada ao Chrome. Geração interrompida para não usar a imagem errada.');
     }
-    const mimeType = options.referenceMimeType || blob.type || 'image/png';
-    const safeName = typeof options.referenceName === 'string' ? options.referenceName.replace(/[^A-Za-z0-9._-]/g, '') : '';
-    const before = new Set(Array.from(document.images).map(imageSource));
+    const mimeType = referenceMimeType(options, blob);
     const transfer = new DataTransfer();
-    transfer.items.add(new File([blob], safeName || 'kaoz-reference.' + (mimeType.split('/')[1] || 'png'), { type: mimeType }));
+    transfer.items.add(new File([blob], referenceFileName(options, mimeType), { type: mimeType }));
+    return transfer;
+  }
+  async function attachReference(options) {
+    const transfer = await referenceFile(options);
+    if (!transfer) return false;
+    const before = new Set(Array.from(document.images).map(imageSource));
     const input = composer();
     input.focus();
     input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));

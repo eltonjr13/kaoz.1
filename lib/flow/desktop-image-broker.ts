@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { ImageGenerationOptions, ImageGenerationResult } from '../../src/providers/flow/FlowTypes';
 import { getFlowStorageRoot } from '../runtime-paths.ts';
 import {
+  buildCompanionCommandSync,
   buildCompanionImageCommand,
   saveCompanionImages,
   type BrowserImageCommand,
@@ -82,14 +83,8 @@ export function desktopCompanionStatus(): DesktopCompanionSnapshot {
   };
 }
 
-export async function requestDesktopImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageGenerationResult> {
+function queueDesktopImage(command: BrowserImageCommand): Promise<ImageGenerationResult> {
   if (pending.size >= 20) throw new Error('A fila de imagens do desktop está cheia. Aguarde.');
-  const built = await buildCompanionImageCommand(prompt, options);
-  const command: BrowserImageCommand = {
-    id: randomUUID(),
-    prompt: built.prompt,
-    options: built.options,
-  };
   if (command.prompt.length > 16_000) throw new Error('O pedido preparado excede 16000 caracteres.');
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -105,6 +100,16 @@ export async function requestDesktopImage(prompt: string, options: ImageGenerati
     pending.set(command.id, { command, resolve, reject, timer, createdAt: Date.now(), status: 'queued' });
     persistSnapshot();
   });
+}
+
+export function requestDesktopImage(
+  prompt: string,
+  options: ImageGenerationOptions = {}
+): Promise<ImageGenerationResult> {
+  // Without a reference the command is ready synchronously, so the desktop
+  // bridge can pick it up on its very next poll.
+  if (!options.referenceImage) return queueDesktopImage(buildCompanionCommandSync(randomUUID(), prompt, options));
+  return buildCompanionImageCommand(prompt, options).then((command) => queueDesktopImage(command));
 }
 
 export function nextDesktopImage(version?: string): BrowserImageCommand | null {

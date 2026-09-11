@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { browserImageContext, browserTransportToken, withBrowserImageTransport } from '../lib/flow/browser-image-context.ts';
 import { requestBrowserImage, nextBrowserImage, completeBrowserImage } from '../lib/flow/browser-image-broker.ts';
 import { completeDesktopImage, desktopCompanionStatus, nextDesktopImage, requestDesktopImage } from '../lib/flow/desktop-image-broker.ts';
@@ -47,6 +48,41 @@ test('a reported failure finishes the waiting request without sending another ge
   await completeBrowserImage(token, command.id, { error: 'Login necessário' });
   await rejection;
   assert.equal(nextBrowserImage(token), null);
+});
+
+test('reference payload carries name, mime type and the exact byte hash for the extension', async () => {
+  const token = 'e'.repeat(64);
+  const jobsDir = getSketchJobsDir();
+  const referencePath = path.join(jobsDir, `ref_job-broker-hash-${Date.now()}.png`);
+  await fs.mkdir(jobsDir, { recursive: true });
+  const png = await sharp({ create: { width: 48, height: 48, channels: 3, background: '#224466' } }).png().toBuffer();
+  await fs.writeFile(referencePath, png);
+
+  try {
+    const generation = requestBrowserImage(token, 'Compose with this reference', {
+      operation: 'reference',
+      referenceKind: 'identity',
+      referenceImage: referencePath,
+    });
+    const rejection = assert.rejects(generation, /Teste encerrado/);
+    let command = nextBrowserImage(token);
+    for (let attempt = 0; !command && attempt < 30; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      command = nextBrowserImage(token);
+    }
+
+    assert.ok(command);
+    assert.equal(command!.options.referenceName, path.basename(referencePath));
+    assert.equal(command!.options.referenceMimeType, 'image/png');
+    assert.equal(
+      command!.options.referenceSha256,
+      createHash('sha256').update(png).digest('hex')
+    );
+    await completeBrowserImage(token, command!.id, { error: 'Teste encerrado' });
+    await rejection;
+  } finally {
+    await fs.rm(referencePath, { force: true });
+  }
 });
 
 test('broker accepts the validated reference created by a Sketch job', async () => {

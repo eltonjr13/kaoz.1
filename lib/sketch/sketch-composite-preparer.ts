@@ -378,6 +378,25 @@ function assembleCreativeCompilation(
   return { compositionIntent, textRenderingStrategy, compiledPrompt, creativeCompilation };
 }
 
+export function resolveSelectedReferenceIds(project: SketchProjectData): Set<string> {
+  return new Set(
+    (project.currentOrder?.selectedReferences || [])
+      .map((reference) => reference.attachmentId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  );
+}
+
+function pushDiagnosticOnce(
+  diagnostics: SketchReferenceDiagnostic[],
+  code: string,
+  issues: string[]
+): void {
+  for (const issue of issues) {
+    if (diagnostics.some((entry) => entry.message === issue)) continue;
+    diagnostics.push({ code, severity: 'warning', message: issue });
+  }
+}
+
 export function prepareSketchCompositeReference(
   project: SketchProjectData,
   options?: PrepareSketchCompositeOptions
@@ -398,16 +417,11 @@ export function prepareSketchCompositeReference(
   );
   const activeRefRole = activeAtt ? (activeAtt.role as SketchReferenceRole) : undefined;
 
-  const selectedReferenceIds = new Set(
-    (project.currentOrder?.selectedReferences || [])
-      .map((reference) => reference.attachmentId)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)
-  );
   const unplacedDiag = checkUnplacedAttachments(
     project.attachments,
     placedInfo.placedAttachmentIds,
     project.activeReferenceId,
-    selectedReferenceIds
+    resolveSelectedReferenceIds(project)
   );
   diagnostics.push(...unplacedDiag);
 
@@ -433,6 +447,11 @@ export function prepareSketchCompositeReference(
     operation: referenceMode !== 'none' ? 'reference' : 'simple',
     aspectRatio: providerAspectRatio,
     referenceKind,
+    // The Sketch prompt is composed and curated by this pipeline, so it gets a
+    // larger budget than LLM text. Truncating it here used to delete the user's
+    // creative direction; validateCreativePrompt still warns above 320 words.
+    maxCoreWords: 400,
+    maxFinalWords: 440,
   });
 
   const finalPromptIssues = validateCreativePrompt(
@@ -445,25 +464,8 @@ export function prepareSketchCompositeReference(
     }
   );
 
-  for (const issue of finalPromptIssues) {
-    if (!diagnostics.some((d) => d.message === issue)) {
-      diagnostics.push({
-        code: 'PROMPT_QUALITY_ISSUE',
-        severity: 'warning',
-        message: issue,
-      });
-    }
-  }
-
-  for (const issue of checkIdeaPreservation(preparedPrompt, project.prompt)) {
-    if (!diagnostics.some((d) => d.message === issue)) {
-      diagnostics.push({
-        code: 'PROMPT_IDEA_NOT_PRESERVED',
-        severity: 'warning',
-        message: issue,
-      });
-    }
-  }
+  pushDiagnosticOnce(diagnostics, 'PROMPT_QUALITY_ISSUE', finalPromptIssues);
+  pushDiagnosticOnce(diagnostics, 'PROMPT_IDEA_NOT_PRESERVED', checkIdeaPreservation(preparedPrompt, project.prompt));
 
   creative.creativeCompilation.compiledPrompt = preparedPrompt;
   creative.creativeCompilation.validationIssues = finalPromptIssues;

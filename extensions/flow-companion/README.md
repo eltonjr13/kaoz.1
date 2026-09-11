@@ -28,6 +28,18 @@ Instalação local conforme a [documentação oficial do Chrome](https://develop
    a geração e envia os arquivos originais ao Kaoz.
 4. O Kaoz valida e salva PNG, JPEG ou WebP em `storage/generated/images/companion`.
 
+### Referências visuais
+
+O Flow aceita **uma** imagem de referência por pedido. Quando o anúncio tem
+esboço, foto de produto ou outras referências, o Kaoz monta antes uma única
+imagem de referência e a extensão recebe esse arquivo com nome, tipo e
+`sha256`. A extensão confere o hash, cola o arquivo no editor e só envia o
+pedido depois de confirmar que o anexo apareceu e continua no campo. Se o
+anexo não entrar, a geração para e nada é enviado ao Flow.
+
+O texto do prompt é digitado no editor e comparado caractere por caractere com
+o pedido preparado antes do clique em **Iniciar geração**.
+
 O teste envia o prompt informado ao Google e utiliza a geração disponível na conta.
 A extensão não solicita permissões de cookies, histórico ou depuração. A sessão
 permanece no Chrome. O painel recebe somente o resultado desta solicitação.
@@ -63,6 +75,20 @@ permanece no Chrome. O painel recebe somente o resultado desta solicitação.
   1024x1024 salvo como Versão #1 e exibido na tela de resultado.
 - Um esboço real com 19 traços passou como `kaoz-reference.png`: geração 3:4 x1,
   JPEG 896x1200 salvo como Versão #2 e rótulo confirmado na interface.
+
+## Validação em 2026-09-11
+
+- A referência passou a ser **montada no servidor**: esboço + anexos viram uma
+  única imagem (prancha) antes de chegar ao Chrome. O envio do esboço pela
+  interface deixou de substituir as fotos anexadas.
+- O prompt do Sketch abre com a ideia escrita pelo usuário e não usa mais o
+  marcador genérico `Featured commercial product`.
+- A extensão 0.3.1 passou a conferir nome, tipo e `sha256` do anexo e a exigir
+  que ele continue no campo antes de clicar em **Iniciar geração**.
+- Testes focados em Node passaram: 142 do Sketch (incluindo composição de
+  referências) e 15 do Flow Companion/broker.
+- A geração real no Flow com uma foto anexada ainda depende de uma sessão do
+  Google autenticada no seu Chrome.
 
 Arquitetura: Kaoz → broker do servidor → página do Kaoz → service worker → projeto
 autenticado do Flow → arquivo original → validação e armazenamento no Kaoz.

@@ -106,29 +106,47 @@ export class FlowProvider {
     }
     this.activeTasksCount++;
     try {
-      return await this.runBrowserTaskExclusive(async () => {
-        onLockAcquired?.();
-        const page = await this.session.getPage();
-        const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
-        const preparedPrompt = options?.promptPrepared
-          ? prompt.trim()
-          : prepareFlowImagePrompt({
-              prompt,
-              operation,
-              aspectRatio: options?.aspectRatio,
-              referenceKind: options?.referenceKind,
-            });
-        logger.info('Prompt de imagem preparado para o Google Flow.', {
-          operation,
-          aspectRatio: options?.aspectRatio || '1:1',
-          originalChars: prompt.length,
-          preparedChars: preparedPrompt.length,
-        });
-        return await this.imageGenerator.generate(page, preparedPrompt, this.config.timeout, options);
-      });
+      return await this.runBrowserTaskExclusive(() => this.generateWithPlaywright(prompt, options, onLockAcquired));
     } finally {
       this.activeTasksCount = Math.max(0, this.activeTasksCount - 1);
     }
+  }
+
+  /**
+   * Legacy Playwright path: prepares the prompt and drives the bundled browser.
+   */
+  private async generateWithPlaywright(
+    prompt: string,
+    options?: ImageGenerationOptions,
+    onLockAcquired?: () => void
+  ): Promise<ImageGenerationResult> {
+    onLockAcquired?.();
+    const page = await this.session.getPage();
+    const { operation, preparedPrompt } = this.prepareProviderPrompt(prompt, options);
+    logger.info('Prompt de imagem preparado para o Google Flow.', {
+      operation,
+      aspectRatio: options?.aspectRatio || '1:1',
+      originalChars: prompt.length,
+      preparedChars: preparedPrompt.length,
+    });
+    return await this.imageGenerator.generate(page, preparedPrompt, this.config.timeout, options);
+  }
+
+  private prepareProviderPrompt(
+    prompt: string,
+    options?: ImageGenerationOptions
+  ): { operation: NonNullable<ImageGenerationOptions['operation']>; preparedPrompt: string } {
+    const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
+    if (options?.promptPrepared) return { operation, preparedPrompt: prompt.trim() };
+    return {
+      operation,
+      preparedPrompt: prepareFlowImagePrompt({
+        prompt,
+        operation,
+        aspectRatio: options?.aspectRatio,
+        referenceKind: options?.referenceKind,
+      }),
+    };
   }
 
   /**

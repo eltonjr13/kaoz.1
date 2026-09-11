@@ -659,6 +659,10 @@ export interface SketchJobSnapshot {
   referenceFileSizeBytes?: number;
   referenceSha256?: string;
   referenceDimensions?: { width: number; height: number };
+  referenceIncludedRoles?: SketchReferenceRole[];
+  referenceAttachmentIds?: string[];
+  referenceSource?: string;
+  compiledPromptSha256?: string;
   compositionIntent?: CompositionIntent;
   textRenderingStrategy?: TextRenderingStrategy;
   compiledPrompt: string;

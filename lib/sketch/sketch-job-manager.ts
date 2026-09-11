@@ -38,6 +38,15 @@ import type { ImageGenerationOptions, ImageGenerationResult } from '../../src/pr
 
 const SAFE_JOB_ID_REGEX = /^job-[a-zA-Z0-9_-]{1,128}$/;
 
+function describeReferenceUsage(snapshot: SketchJobSnapshot): string {
+  const parts: string[] = [];
+  if (snapshot.referenceIncludedRoles?.includes('composition')) parts.push('esboço');
+  const attachments = snapshot.referenceAttachmentIds?.length || 0;
+  if (attachments === 1) parts.push('1 referência anexada');
+  if (attachments > 1) parts.push(`${attachments} referências anexadas`);
+  return parts.length > 0 ? parts.join(' + ') : 'sem referência visual';
+}
+
 export const ACTIVE_JOB_STEPS = new Set<SketchJobStep>([
   'queued',
   'preparing_reference',
@@ -378,7 +387,8 @@ export class SketchJobManager {
   private createSnapshot(
     project: SketchProjectData,
     compiled: import('../../types/sketch.ts').SketchGenerationRequest,
-    persistedRef?: PersistedJobReference
+    persistedRef?: PersistedJobReference,
+    builtReference?: import('./sketch-reference-builder.ts').BuiltSketchReference
   ): SketchJobSnapshot {
     const dims = persistedRef ? { width: persistedRef.width, height: persistedRef.height } : undefined;
     return {
@@ -401,6 +411,10 @@ export class SketchJobManager {
       referenceFileSizeBytes: persistedRef?.sizeBytes,
       referenceSha256: persistedRef?.sha256,
       referenceDimensions: dims,
+      referenceIncludedRoles: builtReference?.includedRoles,
+      referenceAttachmentIds: builtReference?.attachmentIds,
+      referenceSource: builtReference?.source,
+      compiledPromptSha256: crypto.createHash('sha256').update(compiled.preparedPrompt).digest('hex'),
       compositionIntent: compiled.compositionIntent,
       textRenderingStrategy: compiled.textRenderingStrategy,
       compiledPrompt: compiled.preparedPrompt,
@@ -438,6 +452,29 @@ export class SketchJobManager {
     });
   }
 
+  /**
+   * Folds the composed reference back into the compiled request. A selected
+   * reference that cannot be read stops the generation loudly instead of
+   * quietly producing an image without the user's own material.
+   */
+  private applyBuiltReference(
+    compiled: import('../../types/sketch.ts').SketchGenerationRequest,
+    builtReference: import('./sketch-reference-builder.ts').BuiltSketchReference
+  ): void {
+    const blockingReference = builtReference.diagnostics.find((item) => item.severity === 'error');
+    if (blockingReference) throw new Error(blockingReference.message);
+
+    compiled.referenceMode = builtReference.mode;
+    compiled.referenceKind = builtReference.kind;
+    compiled.preparedReferenceImage = builtReference.dataUrl;
+    compiled.diagnostics.push(...builtReference.diagnostics);
+
+    if (!compiled.compositePreview) return;
+    compiled.compositePreview.dataUrl = builtReference.dataUrl;
+    compiled.compositePreview.includedReferencesCount = builtReference.attachmentIds.length;
+    compiled.compositePreview.includedRoles = builtReference.includedRoles;
+  }
+
   private async createAndEnqueueJobInternal(params: EnqueueSketchJobParams): Promise<SketchJobData> {
     const project = await getProject(params.projectId, this.projectsDir);
     if (!project) {
@@ -464,15 +501,7 @@ export class SketchJobManager {
       clientSketchDataUrl: params.referenceDataUrl,
       assetsDir: this.assetsDir,
     });
-    compiled.referenceMode = builtReference.mode;
-    compiled.referenceKind = builtReference.kind;
-    compiled.preparedReferenceImage = builtReference.dataUrl;
-    compiled.diagnostics.push(...builtReference.diagnostics);
-    if (compiled.compositePreview) {
-      compiled.compositePreview.dataUrl = builtReference.dataUrl;
-      compiled.compositePreview.includedReferencesCount = builtReference.attachmentIds.length;
-      compiled.compositePreview.includedRoles = builtReference.includedRoles;
-    }
+    this.applyBuiltReference(compiled, builtReference);
 
     const id = `job-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
     let persistedRef: PersistedJobReference | undefined;
@@ -487,7 +516,7 @@ export class SketchJobManager {
       persistedRef = await validateAndPersistJobReference(this.jobsDir, id, refDataUrl, compiled.referenceMode);
     }
 
-    const snapshot = this.createSnapshot(project, compiled, persistedRef);
+    const snapshot = this.createSnapshot(project, compiled, persistedRef, builtReference);
     const now = new Date().toISOString();
 
     const job: SketchJobData = {
@@ -499,7 +528,7 @@ export class SketchJobManager {
       idempotencyToken: params.idempotencyToken,
       status: 'queued',
       progressPercentage: 5,
-      stepMessage: 'Trabalho enfileirado no estúdio Sketch.',
+      stepMessage: `Trabalho enfileirado no estúdio Sketch (${describeReferenceUsage(snapshot)}).`,
       snapshot,
       referenceImagePath: persistedRef?.filePath,
       tempFilesToCleanup: persistedRef ? [persistedRef.filePath] : [],
@@ -713,7 +742,7 @@ export class SketchJobManager {
         if (job.status !== 'cancelled') {
           job.status = 'generating_with_flow';
           job.progressPercentage = 60;
-          job.stepMessage = 'Gerando anúncio com FlowProvider no navegador.';
+          job.stepMessage = `Gerando anúncio com o Flow (${describeReferenceUsage(job.snapshot)}).`;
           void this.persistJob(job);
         }
       }

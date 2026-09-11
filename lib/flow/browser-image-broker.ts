@@ -82,40 +82,44 @@ export function companionQuantity(value: ImageGenerationOptions['quantity']): nu
  * Single place that turns provider options into the payload the Chrome
  * extension receives, for both the browser tab and the desktop bridge.
  */
-export async function buildCompanionImageCommand(
+export function buildCompanionCommandSync(
+  id: string,
   prompt: string,
   options: ImageGenerationOptions = {}
-): Promise<{ prompt: string; options: BrowserImageCommandOptions }> {
+): BrowserImageCommand {
   const operation = options.operation || (options.referenceImage ? 'reference' : 'simple');
   const preparedPrompt = options.promptPrepared
     ? prompt.trim()
     : prepareFlowImagePrompt({ prompt, operation, aspectRatio: options.aspectRatio, referenceKind: options.referenceKind });
 
-  const commandOptions: BrowserImageCommandOptions = {
-    aspectRatio: options.aspectRatio || '1:1',
-    quantity: companionQuantity(options.quantity),
-    model: options.model || 'Nano Banana 2',
+  return {
+    id,
+    prompt: preparedPrompt,
+    options: {
+      aspectRatio: options.aspectRatio || '1:1',
+      quantity: companionQuantity(options.quantity),
+      model: options.model || 'Nano Banana 2',
+    },
   };
-
-  if (options.referenceImage) {
-    const reference = await companionReferencePayload(options.referenceImage);
-    commandOptions.referenceImage = reference.dataUrl;
-    commandOptions.referenceName = reference.name;
-    commandOptions.referenceMimeType = reference.mimeType;
-    commandOptions.referenceSha256 = reference.sha256;
-  }
-
-  return { prompt: preparedPrompt, options: commandOptions };
 }
 
-export async function requestBrowserImage(token: string, prompt: string, options: ImageGenerationOptions = {}): Promise<ImageGenerationResult> {
+export async function buildCompanionImageCommand(
+  prompt: string,
+  options: ImageGenerationOptions = {}
+): Promise<BrowserImageCommand> {
+  const command = buildCompanionCommandSync(randomUUID(), prompt, options);
+  if (!options.referenceImage) return command;
+
+  const reference = await companionReferencePayload(options.referenceImage);
+  command.options.referenceImage = reference.dataUrl;
+  command.options.referenceName = reference.name;
+  command.options.referenceMimeType = reference.mimeType;
+  command.options.referenceSha256 = reference.sha256;
+  return command;
+}
+
+function queueBrowserImage(token: string, command: BrowserImageCommand): Promise<ImageGenerationResult> {
   if (pending.size >= 100) throw new Error('A fila de imagens está cheia. Aguarde.');
-  const built = await buildCompanionImageCommand(prompt, options);
-  const command: BrowserImageCommand = {
-    id: randomUUID(),
-    prompt: built.prompt,
-    options: built.options,
-  };
   if (command.prompt.length > 16000) throw new Error('O pedido preparado excede 16000 caracteres.');
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -124,6 +128,17 @@ export async function requestBrowserImage(token: string, prompt: string, options
     }, 8 * 60_000);
     pending.set(command.id, { token, command, resolve, reject, timer, expires: Date.now() + 8 * 60_000 });
   });
+}
+
+export function requestBrowserImage(
+  token: string,
+  prompt: string,
+  options: ImageGenerationOptions = {}
+): Promise<ImageGenerationResult> {
+  // Without a reference the command is ready synchronously, so callers that
+  // poll for it right away never miss the queued request.
+  if (!options.referenceImage) return queueBrowserImage(token, buildCompanionCommandSync(randomUUID(), prompt, options));
+  return buildCompanionImageCommand(prompt, options).then((command) => queueBrowserImage(token, command));
 }
 
 export function nextBrowserImage(token: string): BrowserImageCommand | null {
