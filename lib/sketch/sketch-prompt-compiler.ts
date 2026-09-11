@@ -374,6 +374,7 @@ export function compileCreativeGenerationPrompt(input: CreativeCompileInput): st
   const sections: string[] = [];
   pushSection(sections, buildIdeaSection(input.prompt));
   pushSection(sections, buildChangeDirective(input.changeIntent));
+  sections.push(buildOutputFormatInstruction());
   sections.push(buildBriefingDirective(input.briefing));
   sections.push(buildCompositionIntentInstruction(intent));
   pushSection(sections, buildReferenceGuideInstruction(input.hasCompositeReference));
@@ -403,6 +404,14 @@ function buildIdeaSection(prompt?: string): string {
 function buildSketchNote(hasSketch?: boolean): string {
   if (!hasSketch) return '';
   return 'Layout sketch guide: Spatial composition guide only; render a finished photorealistic commercial advertising photograph and do not keep or reproduce rough sketch lines, scribbles, pencil marks, or wireframe boxes. Translate every drawn mark into real rendered subjects: never draw stick figures, doodles, arrows, symbols or cartoon outlines, and never replace a photographed person with a drawn character.';
+}
+
+/**
+ * The studio always produces advertising. Without this line a short request can
+ * be interpreted as a generic scene instead of a finished ad image.
+ */
+export function buildOutputFormatInstruction(): string {
+  return 'Output format: one finished commercial advertising image, professionally lit and ready to publish.';
 }
 
 function hasTextProhibition(lower: string): boolean {

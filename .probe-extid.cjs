@@ -1,0 +1,10 @@
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const manifest = JSON.parse(fs.readFileSync('D:/apps/mrchicken/extensions/flow-companion/manifest.json', 'utf8'));
+const der = Buffer.from(manifest.key, 'base64');
+const digest = crypto.createHash('sha256').update(der).digest('hex').slice(0, 32);
+const id = digest.split('').map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+console.log('ID derivado da chave do manifest:', id);
+console.log('ID exigido pelo host nativo  : eogpaadohpepjiedfbmigenebifdlldi');
+console.log('coincide:', id === 'eogpaadohpepjiedfbmigenebifdlldi');
+console.log('versao do manifest:', manifest.version);

@@ -107,6 +107,10 @@ test('fluxo simples usa o esboço como guia e descarta a copy residual da campan
   assert.equal(request.textRenderingStrategy, 'layer');
   assert.ok(request.preparedPrompt.includes('Reference handling:'), 'Deve instruir o tratamento do guia');
   assert.ok(request.preparedPrompt.includes('Single-scene rule:'), 'Deve exigir cena única');
+  assert.ok(
+    request.preparedPrompt.includes('one finished commercial advertising image'),
+    'A arte precisa ser encomendada como anúncio, não como cena genérica'
+  );
   assert.ok(request.preparedPrompt.includes('Referenced subjects:'), 'Deve declarar o papel de cada anexo');
   assert.ok(request.preparedPrompt.includes('preserve the exact product design'));
   assert.equal(request.preparedPrompt.includes('O Futuro Chegou Hoje'), false, 'Copy antiga não pode entrar no prompt');
