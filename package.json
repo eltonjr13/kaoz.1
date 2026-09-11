@@ -32,7 +32,7 @@
     "test:product-surface": "node --no-warnings --test tests/product-surface-retirement.test.mjs",
     "test:chat-context": "node --no-warnings scripts/test-chat-context-leakage.mjs",
     "test:flow-image": "node --no-warnings --test tests/flow-image-contract.test.mjs",
-    "test:flow-companion": "node --experimental-strip-types --no-warnings --test tests/flow-companion.test.mjs tests/flow-companion-broker.test.ts tests/flow-native-host.test.cjs",
+    "test:flow-companion": "node --experimental-strip-types --no-warnings --test tests/loopback-origin.test.ts tests/flow-companion.test.mjs tests/flow-companion-broker.test.ts tests/flow-native-host.test.cjs",
     "test:flow-agents": "node --no-warnings --test tests/flow-agent-specialization.test.mjs",
     "test:multiagent-migration": "node --no-warnings --test tests/multiagent-final-migration.test.mjs",
     "test:image-prompt": "node --experimental-strip-types --no-warnings --test tests/image-prompt-engineering.test.ts",

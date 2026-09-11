@@ -21,6 +21,7 @@ let updateCheckPromise;
 let installingUpdate = false;
 let updateStatus = { state: "idle", currentVersion: app.getVersion(), supported: false };
 let flowNativeRegistration = { registered: false, reason: "not-started" };
+let flowNativeRegistrationRetryAt = 0;
 const flowNativeToken = randomBytes(32).toString("hex");
 
 const isDevelopment = Boolean(process.env.ELECTRON_START_URL);
@@ -44,6 +45,42 @@ function flowNativeExecutablePath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, "flow-native-host", "kaoz-flow-native-host.exe")
     : path.join(__dirname, "..", "build", "runtime", "flow-native-host", "kaoz-flow-native-host.exe");
+}
+
+function flowNativeLogPath() {
+  return path.join(app.getPath("userData"), "logs", "flow-companion.log");
+}
+
+function logFlowNative(message) {
+  try {
+    const file = flowNativeLogPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${message}\n`, "utf8");
+  } catch {
+    // O log é acessório: nunca deve interromper a inicialização.
+  }
+}
+
+/**
+ * Registra a ponte do Chrome e guarda o motivo de eventual falha. Antes o erro
+ * era engolido em memória: a tela dizia apenas "Ponte indisponível" e o motivo
+ * (registro recusado, executável ausente) ficava invisível.
+ */
+function ensureFlowNativeHostRegistered() {
+  if (flowNativeRegistration.registered) return flowNativeRegistration;
+  const nativeHostPath = flowNativeExecutablePath();
+  try {
+    flowNativeRegistration = registerFlowNativeHost({
+      userDataPath: app.getPath("userData"),
+      nativeHostPath,
+    });
+    if (flowNativeRegistration.registered) logFlowNative(`ponte registrada em ${flowNativeRegistration.manifestPath}`);
+    else logFlowNative(`ponte não registrada (${flowNativeRegistration.reason}) usando ${nativeHostPath}`);
+  } catch (error) {
+    flowNativeRegistration = { registered: false, reason: error instanceof Error ? error.message : String(error) };
+    logFlowNative(`falha ao registrar a ponte usando ${nativeHostPath}: ${flowNativeRegistration.reason}`);
+  }
+  return flowNativeRegistration;
 }
 
 function publishFlowNativeRuntime(baseUrl) {
@@ -72,7 +109,17 @@ function installedChromePath() {
 }
 
 async function flowCompanionStatus() {
-  if (!applicationUrl) return { connected: false, busy: false, message: "O servidor local ainda está iniciando.", registered: flowNativeRegistration.registered };
+  // Se a ponte não está registrada, tenta de novo de tempos em tempos: o
+  // registro pode ter falhado por um motivo transitório no primeiro boot.
+  if (!flowNativeRegistration.registered && Date.now() >= flowNativeRegistrationRetryAt) {
+    flowNativeRegistrationRetryAt = Date.now() + 15_000;
+    ensureFlowNativeHostRegistered();
+  }
+  const registration = {
+    registered: flowNativeRegistration.registered,
+    registrationReason: flowNativeRegistration.reason,
+  };
+  if (!applicationUrl) return { connected: false, busy: false, message: "O servidor local ainda está iniciando.", ...registration };
   try {
     const response = await fetch(`${applicationUrl}/api/flow/desktop-companion?status=1`, {
       headers: { authorization: `Bearer ${flowNativeToken}` },
@@ -80,9 +127,9 @@ async function flowCompanionStatus() {
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "A ponte do Chrome não respondeu.");
-    return { ...payload.status, registered: flowNativeRegistration.registered, extensionId: FLOW_EXTENSION_ID };
+    return { ...payload.status, ...registration, extensionId: FLOW_EXTENSION_ID };
   } catch (error) {
-    return { connected: false, busy: false, registered: flowNativeRegistration.registered, extensionId: FLOW_EXTENSION_ID, message: error instanceof Error ? error.message : String(error) };
+    return { connected: false, busy: false, ...registration, extensionId: FLOW_EXTENSION_ID, message: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -595,14 +642,7 @@ app.whenReady().then(async () => {
       legacyRoot: path.join(app.getPath("appData"), "MrChicken")
     });
     getDesktopPreferences();
-    try {
-      flowNativeRegistration = registerFlowNativeHost({
-        userDataPath: app.getPath("userData"),
-        nativeHostPath: flowNativeExecutablePath(),
-      });
-    } catch (error) {
-      flowNativeRegistration = { registered: false, reason: error instanceof Error ? error.message : String(error) };
-    }
+    ensureFlowNativeHostRegistered();
     configureAutoUpdater();
     createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());

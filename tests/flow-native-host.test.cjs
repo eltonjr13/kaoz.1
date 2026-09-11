@@ -26,11 +26,11 @@ test('missing native executable never mutates the Chrome registry', () => {
 });
 
 const nativeExecutable = path.resolve('build/runtime/flow-native-host/kaoz-flow-native-host.exe');
-test('compiled native host sends the authenticated desktop descriptor to Chrome', { skip: !fs.existsSync(nativeExecutable) }, async (t) => {
+
+async function readFirstNativeMessage(t, runtime) {
   const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'kaoz-native-host-'));
   const runtimeDir = path.join(appData, 'Kaoz.1');
   fs.mkdirSync(runtimeDir, { recursive: true });
-  const runtime = { baseUrl: 'http://127.0.0.1:4321', token: 'b'.repeat(64), pid: process.pid, updatedAt: new Date().toISOString() };
   fs.writeFileSync(path.join(runtimeDir, 'flow-companion-runtime.json'), JSON.stringify(runtime));
   const child = spawn(nativeExecutable, [`chrome-extension://${FLOW_EXTENSION_ID}/`], {
     env: { ...process.env, APPDATA: appData },
@@ -56,4 +56,22 @@ test('compiled native host sends the authenticated desktop descriptor to Chrome'
     });
   });
   assert.deepEqual(message, { type: 'configure', baseUrl: runtime.baseUrl, token: runtime.token, desktopPid: runtime.pid });
+}
+
+test('compiled native host sends the authenticated desktop descriptor to Chrome', { skip: !fs.existsSync(nativeExecutable) }, async (t) => {
+  await readFirstNativeMessage(t, {
+    baseUrl: 'http://127.0.0.1:4321',
+    token: 'b'.repeat(64),
+    pid: process.pid,
+    updatedAt: new Date().toISOString(),
+  });
+});
+
+test('compiled native host accepts a localhost runtime', { skip: !fs.existsSync(nativeExecutable) }, async (t) => {
+  await readFirstNativeMessage(t, {
+    baseUrl: 'http://localhost:4321',
+    token: 'c'.repeat(64),
+    pid: process.pid,
+    updatedAt: new Date().toISOString(),
+  });
 });

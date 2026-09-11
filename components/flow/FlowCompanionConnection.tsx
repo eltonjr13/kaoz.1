@@ -8,6 +8,7 @@ type DesktopCompanionState = {
   busy: boolean;
   message: string;
   registered?: boolean;
+  registrationReason?: string;
   extensionId?: string;
   version?: string;
 };
@@ -53,6 +54,9 @@ export function FlowCompanionConnection({ compact = false }: { compact?: boolean
         </span>
         {!desktopState.connected && <button className="rounded-lg bg-lime-300 px-4 py-2 text-sm font-medium text-black" onClick={() => void openChrome()}>Abrir extensão no Chrome</button>}
       </div>
+      {!desktopState.registered && desktopState.registrationReason && desktopState.registrationReason !== 'not-started' && (
+        <p className="mt-3 text-xs text-amber-200/80">Motivo registrado: {desktopState.registrationReason}</p>
+      )}
       <p className="mt-3 text-xs text-zinc-400">As imagens do aplicativo desktop usam sua sessão normal do Google Flow no Chrome.</p>
     </section>;
   }

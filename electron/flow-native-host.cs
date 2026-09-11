@@ -31,12 +31,19 @@ internal static class KaozFlowNativeHost
             object token;
             object pid;
             if (!value.TryGetValue("baseUrl", out baseUrl) || !Uri.TryCreate(Convert.ToString(baseUrl), UriKind.Absolute, out url)) return null;
-            if (url.Scheme != "http" || url.Host != "127.0.0.1" || url.IsDefaultPort) return null;
+            if (url.Scheme != "http" || !IsLoopbackHost(url.Host) || url.IsDefaultPort) return null;
             if (!value.TryGetValue("token", out token) || !System.Text.RegularExpressions.Regex.IsMatch(Convert.ToString(token), "^[a-f0-9]{64}$")) return null;
             if (!value.TryGetValue("pid", out pid) || Convert.ToInt32(pid) < 1) return null;
             return value;
         }
         catch { return null; }
+    }
+
+    private static bool IsLoopbackHost(string host)
+    {
+        if (String.IsNullOrWhiteSpace(host)) return false;
+        string normalized = host.Trim().TrimStart('[').TrimEnd(']').ToLowerInvariant();
+        return normalized == "127.0.0.1" || normalized == "localhost" || normalized == "::1";
     }
 
     private static void WriteMessage(object message)

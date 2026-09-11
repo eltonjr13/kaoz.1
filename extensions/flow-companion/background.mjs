@@ -120,7 +120,8 @@ const routes = {
 function validDesktopConfiguration(message) {
   try {
     const url = new URL(message.baseUrl);
-    return message.type === 'configure' && url.protocol === 'http:' && url.hostname === '127.0.0.1' && Boolean(url.port)
+    const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase());
+    return message.type === 'configure' && url.protocol === 'http:' && loopback && Boolean(url.port)
       && /^[a-f0-9]{64}$/.test(message.token);
   } catch { return false; }
 }

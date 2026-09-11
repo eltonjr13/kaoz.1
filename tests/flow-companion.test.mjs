@@ -77,3 +77,52 @@ test('worker resumes an existing request after restart and rejects another origi
   assert.equal((await send({ type: 'acknowledge', jobId: request.requestId })).ok, true);
   delete globalThis.chrome;
 });
+
+test('desktop bridge accepts localhost and rejects hosts outside loopback', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const polled = [];
+  let portListener;
+  globalThis.fetch = async (url) => {
+    polled.push(String(url));
+    return { ok: true, json: async () => ({ command: null }) };
+  };
+  const area = data => ({ get: async key => ({ [key]: data[key] }), set: async values => Object.assign(data, values) });
+  globalThis.chrome = {
+    runtime: {
+      getManifest: () => ({ version: '0.3.1' }),
+      onMessageExternal: { addListener() {} },
+      connectNative: () => ({
+        onMessage: { addListener(listener) { portListener = listener; } },
+        onDisconnect: { addListener() {} },
+        postMessage() {},
+      }),
+    },
+    storage: { session: area({}), local: area({}) },
+    scripting: { executeScript: async () => {} },
+    tabs: {},
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    delete globalThis.chrome;
+  });
+
+  await import('../extensions/flow-companion/background.mjs?native');
+  assert.equal(typeof portListener, 'function');
+
+  // Host fora de loopback nunca vira destino.
+  portListener({ type: 'configure', baseUrl: 'http://evil.test:4321', token: 'd'.repeat(64), desktopPid: 1 });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(polled, []);
+
+  // Localhost é o que o Next reporta: precisa ser aceito.
+  portListener({ type: 'configure', baseUrl: 'http://localhost:4321', token: 'e'.repeat(64), desktopPid: 2 });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.ok(
+    polled.some(url => url.startsWith('http://localhost:4321/api/flow/desktop-companion')),
+    `esperava chamada para localhost:4321, veio ${JSON.stringify(polled)}`
+  );
+
+  // Encerra o runner para não deixar temporizador pendente no fim da suíte.
+  portListener({ type: 'unavailable' });
+  await new Promise(resolve => setTimeout(resolve, 1700));
+});

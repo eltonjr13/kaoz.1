@@ -149,8 +149,30 @@ test('desktop companion accepts only the rotating token for its loopback server'
     assert.deepEqual(await readDesktopCompanionRuntime(), runtime);
     const authorized = await authorizeDesktopCompanion(new Request(`${runtime.baseUrl}/api/flow/desktop-companion`, { headers: { authorization: `Bearer ${runtime.token}` } }));
     assert.deepEqual(authorized, runtime);
+    // O Next monta a URL da requisição como localhost, mesmo com o runtime em
+    // 127.0.0.1: é o mesmo host local na mesma porta.
+    const viaLocalhost = await authorizeDesktopCompanion(
+      new Request('http://localhost:4321/api/flow/desktop-companion?status=1', { headers: { authorization: `Bearer ${runtime.token}` } })
+    );
+    assert.deepEqual(viaLocalhost, runtime);
+    await assert.rejects(
+      authorizeDesktopCompanion(new Request('http://localhost:4322/api/flow/desktop-companion', { headers: { authorization: `Bearer ${runtime.token}` } })),
+      /Destino/
+    );
+    await assert.rejects(
+      authorizeDesktopCompanion(new Request('http://evil.test:4321/api/flow/desktop-companion', { headers: { authorization: `Bearer ${runtime.token}` } })),
+      /Destino/
+    );
     await assert.rejects(authorizeDesktopCompanion(new Request(`${runtime.baseUrl}/api/flow/desktop-companion`, { headers: { authorization: 'Bearer invalid' } })), /não autorizada/);
     await assert.rejects(authorizeDesktopCompanion(new Request('http://127.0.0.1:4322/api/flow/desktop-companion', { headers: { authorization: `Bearer ${runtime.token}` } })), /Destino/);
+
+    // Um runtime gravado como localhost também é aceito.
+    await fs.writeFile(file, JSON.stringify({ ...runtime, baseUrl: 'http://localhost:4321' }));
+    assert.deepEqual((await readDesktopCompanionRuntime())?.baseUrl, 'http://localhost:4321');
+
+    // Sem porta explícita o runtime é recusado.
+    await fs.writeFile(file, JSON.stringify({ ...runtime, baseUrl: 'http://127.0.0.1' }));
+    assert.equal(await readDesktopCompanionRuntime(), null);
   } finally {
     if (previous === undefined) delete process.env.KAOZ1_FLOW_NATIVE_RUNTIME_FILE;
     else process.env.KAOZ1_FLOW_NATIVE_RUNTIME_FILE = previous;
