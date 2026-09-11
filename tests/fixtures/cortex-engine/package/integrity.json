@@ -1,0 +1,6 @@
+{
+  "row-pointers.bin": "7410c047b3c970ec0110b2873731aed6d90c7018cae2012dfe2cb5e316e0c28c",
+  "column-indices.bin": "55822b4e41fb56cb798cfdc5ca64944401fe121cc61280e193bccb99bbb0c888",
+  "weights.bin": "ad5420f552fa76311b25ab0c438ea8c0bcfcb6886ad34a1c4b8fe1b4de061ddd",
+  "geometry/positions.bin": "3025613b45bd29a7745cab09f3b65e13c2331ef4ee189c81c7af1bf5dd903486"
+}

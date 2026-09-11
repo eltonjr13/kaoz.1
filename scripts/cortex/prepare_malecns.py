@@ -323,7 +323,6 @@ def select_subgraph(
             "a seleção usa apenas estrutura do dataset; nenhuma memória do usuário "
             "participou da escolha",
         ],
-        "_fraction": fraction,
     }
     return Selection(
         body_ids=chosen, index_of=index_of, edges=final_edges, provenance=provenance
