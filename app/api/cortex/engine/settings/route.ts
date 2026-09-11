@@ -12,6 +12,7 @@ import {
   saveSettings,
 } from '../../../../../services/cortex-engine/cortex-engine.settings.ts';
 import { engineStatus } from '../../../../../services/cortex-engine/engine-status.ts';
+import { shutdownRetrievalService } from '../../../../../services/cortex-engine/retrieval-context-adapter.ts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +38,15 @@ export async function PATCH(request: Request) {
       return apiError(ApiErrorCode.INVALID_PARAMETERS, 'Corpo da requisição inválido.', 400);
     }
     const patch = sanitizeSettings(body);
+    const before = await loadSettings();
     const settings = await saveSettings(patch);
+
+    // Troca de modo é uma referência atômica: o serviço em cache precisa ser
+    // descartado, senão a nova configuração só valeria no próximo reinício
+    // (plano, seção 17).
+    if (before.mode !== settings.mode) {
+      await shutdownRetrievalService();
+    }
 
     // Ligar `malecns` sem pacote válido não pode prometer capacidade inexistente:
     // devolvemos o estado real junto, para a interface mostrar o fallback.

@@ -36,11 +36,11 @@ treinamento são decisões da Kaoz.
 | Preparação | `scripts/cortex/prepare_malecns.py`, `requirements.txt` |
 | Corpus/treino | `scripts/cortex/build_corpus.py`, `train_readout.py`, `run_evaluation.py` |
 | Empacotamento | `scripts/cortex/build-worker.mjs` |
-| Integração | `lib/cognitive-memory/chat/memory-selection.ts`, `services/cortex-engine/retrieval-context-adapter.ts`, `male-cns-selection.ts` |
+| Integração | `lib/cognitive-memory/chat/memory-selection.ts`, `services/cortex-engine/retrieval-context-adapter.ts`, `male-cns-selection.ts`, `agent-candidate-window.ts` |
 | UI | `components/cortex/brain/{cortex-brain,brain-canvas,brain-trace-list,brain-trace-details,use-engine-data}` |
 | APIs | `app/api/cortex/engine/{status,topology,traces,traces/[id],settings}` |
 | Fixtures | `tests/fixtures/cortex-engine/{corpus.json,package/,trained/}` |
-| Testes | `tests/cortex-engine-{package,numeric,scope,task-state,retrieval,integration,vertical-slice,worker,parity}.test.ts` |
+| Testes | `tests/cortex-engine-{package,numeric,scope,task-state,retrieval,integration,vertical-slice,agent-memory,worker,parity}.test.ts` |
 
 ---
 
@@ -235,6 +235,31 @@ em modo `legacy`, em `shadow`, em fallback e em contexto imediato. Com `null`,
 registra o evento do turno no estado temporal (`user-request` ou
 `explicit-correction`) e propaga o `traceId` no log. A identidade continua sendo
 resolvida no servidor; o cliente nunca define `profileId`.
+
+### Memória dos agentes — o defeito de ordem
+
+O plano apontava (seção 3): *"o adapter dos agentes seleciona episódios recentes
+antes de aplicar alguns filtros"*. Confirmado em
+`services/agents/memory/memory-manager.adapter.ts`: `getRecentEpisodes(limit)`
+cortava a janela **dentro da própria recuperação**, e só depois vinham os filtros
+de escopo e de valor. Um episódio elegível fora do top-N recente — outro projeto
+dominando a lista, por exemplo — nunca era considerado.
+
+Corrigido para **recuperar → filtrar → cortar**, com a regra isolada em
+`services/cortex-engine/agent-candidate-window.ts` (módulo puro). Dois pontos
+deliberados:
+
+1. **A ampliação vale para todas as variantes**, inclusive a linha de base
+   convencional. Sem isso, qualquer melhoria medida seria atribuída ao motor
+   quando na verdade veio do aumento de candidatos — exatamente o erro que o
+   plano manda evitar.
+2. **`getEligibleMemories` expõe a lista sem o corte final**, para que um
+   reranker possa reordenar antes do corte (um reranker não recupera documentos
+   que nunca chegaram à lista).
+
+O motor MaleCNS **ainda não está ligado** a este caminho: o que foi corrigido é o
+defeito de ordem que o plano identificou como pré-requisito. Ligar o reranker
+aqui é o trabalho seguinte.
 
 ### Desvios do plano, com motivo
 

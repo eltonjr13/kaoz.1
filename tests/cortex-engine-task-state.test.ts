@@ -22,6 +22,8 @@ import {
   scopeBaseKey,
   scopeKey,
 } from "../services/cortex-engine/task-state.ts";
+import { encodeText } from "../services/cortex-engine/text-encoder.ts";
+import { cosineSimilarity } from "../services/cortex-engine/readout.ts";
 import type {
   RetrievalScope,
   TaskEventKind,
@@ -311,6 +313,63 @@ test("desligar o Cortex descarta o derivado preservando o estado explícito", as
     store.getExplicit("task-1")?.objective,
     "referência explícita",
     "as referências explícitas não são descartadas pelo desligamento"
+  );
+});
+
+test("MESMO espaço de codificação: estado da tarefa e vetor da consulta são comparáveis", () => {
+  // Um único evento: depois de normalizar, o vetor do estado precisa ser
+  // IDÊNTICO ao vetor que o codificador produz para o mesmo texto. Se forem
+  // espaços diferentes, `state-cosine` e `state-distance` não medem nada.
+  const text = "a iluminação aprovada usa luz quente de 3200K";
+  const state = buildDerivedState({
+    scope: scope(),
+    explicit: emptyExplicitState("task-1"),
+    events: [event(1, "user-request", text)],
+    dimension: 32,
+    sourceVersions: {},
+  });
+  const queryVector = encodeText(text, 32);
+  assert.deepEqual(
+    Array.from(state.vector),
+    Array.from(queryVector),
+    "o vetor do estado precisa estar no MESMO espaço do vetor da consulta"
+  );
+});
+
+test("cosseno entre estado da tarefa e consulta idêntica é 1, não ~0", () => {
+  const text = "gerar peça vertical com luz aprovada";
+  const state = buildDerivedState({
+    scope: scope(),
+    explicit: emptyExplicitState("task-1"),
+    events: [event(1, "user-request", text)],
+    dimension: 64,
+    sourceVersions: {},
+  });
+  const cosine = cosineSimilarity(state.vector, encodeText(text, 64));
+  assert.ok(
+    cosine > 0.999,
+    `o cosseno precisa ser ~1 para texto idêntico; obtido ${cosine}`
+  );
+});
+
+test("eventos diferentes produzem direções diferentes no mesmo espaço", () => {
+  const first = buildDerivedState({
+    scope: scope(),
+    explicit: emptyExplicitState("task-1"),
+    events: [event(1, "user-request", "gerar peca vertical com luz quente aprovada")],
+    dimension: 64,
+    sourceVersions: {},
+  });
+  const second = buildDerivedState({
+    scope: scope(),
+    explicit: emptyExplicitState("task-1"),
+    events: [event(1, "user-request", "revisar trilha sonora do episodio piloto")],
+    dimension: 64,
+    sourceVersions: {},
+  });
+  assert.ok(
+    cosineSimilarity(first.vector, second.vector) < 0.9,
+    "conteúdos distintos precisam apontar para direções distintas"
   );
 });
 

@@ -9,6 +9,20 @@ import type {
   MemoryRecord,
   PersistMemoryInput,
 } from "./memory.types.ts";
+import { DEFAULT_MEMORY_LIMIT } from "./memory.types.ts";
+import {
+  candidateWindowSize,
+  selectWithinWindow,
+} from "../../cortex-engine/agent-candidate-window.ts";
+
+/**
+ * Reexportado para os chamadores do adapter.
+ *
+ * A regra em si vive em `services/cortex-engine/agent-candidate-window.ts`,
+ * módulo puro e testável (o gerenciador de memória usa imports sem extensão,
+ * que o runner de testes não resolve).
+ */
+export { CANDIDATE_WINDOW_FACTOR } from "../../cortex-engine/agent-candidate-window.ts";
 
 /**
  * Compatibility boundary for the existing cognitive MemoryManager.
@@ -28,18 +42,52 @@ export class MemoryManagerAdapter implements MemoryBackend {
   }
 
   async getMemories(query: MemoryQuery): Promise<readonly MemoryRecord[]> {
+    const limit = query.limit ?? DEFAULT_MEMORY_LIMIT;
+    const eligible = await this.eligibleCandidates(query, limit);
+    return Object.freeze(eligible.slice(0, limit).map(mapEpisode));
+  }
+
+  /**
+   * Recupera candidatos ELEGÍVEIS antes do corte final.
+   *
+   * Antes, `getRecentEpisodes(limit)` cortava a janela ANTES de aplicar os
+   * filtros de projeto/sessão/tipo e o valor da memória — um episódio elegível
+   * fora do top-N recente nunca tinha chance, mesmo sendo o único relevante.
+   *
+   * A janela ampliada é pedida para TODAS as variantes, inclusive a linha de
+   * base convencional. Sem isso, qualquer melhoria medida seria atribuída ao
+   * motor quando na verdade veio do aumento de candidatos (plano, seção 3).
+   */
+  private async eligibleCandidates(
+    query: MemoryQuery,
+    limit: number
+  ): Promise<EpisodicMemoryNode[]> {
     const episodes = await memoryManager.hippocampus.getRecentEpisodes(
       query.avatarId,
-      query.limit ?? 15,
+      candidateWindowSize(limit)
     );
-    return Object.freeze(
-      episodes
-        .filter((episode) => matchesQuery(episode, query))
-        .filter((episode) =>
-          memoryManager.amygdala.isMemoryValuable(episode),
-        )
-        .map(mapEpisode),
-    );
+    // A ordem correta: filtrar DENTRO da janela e só então cortar.
+    return selectWithinWindow(
+      episodes,
+      (episode) =>
+        matchesQuery(episode, query) &&
+        memoryManager.amygdala.isMemoryValuable(episode),
+      limit
+    ).eligible;
+  }
+
+  /**
+   * Mesma coleta, exposta para os caminhos que precisam ranquear ANTES do corte.
+   *
+   * O reranker não recupera documentos que nunca chegaram à lista, então quem
+   * for reordenar deve pedir os candidatos por aqui e cortar depois.
+   */
+  public async getEligibleMemories(
+    query: MemoryQuery,
+  ): Promise<readonly MemoryRecord[]> {
+    const limit = query.limit ?? DEFAULT_MEMORY_LIMIT;
+    const eligible = await this.eligibleCandidates(query, limit);
+    return Object.freeze(eligible.map(mapEpisode));
   }
 
   async persist(input: PersistMemoryInput): Promise<MemoryRecord> {

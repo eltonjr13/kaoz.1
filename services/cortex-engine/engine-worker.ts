@@ -33,6 +33,7 @@ import type {
   EngineWorkerResponse,
   FallbackReason,
 } from "./cortex-engine.types.ts";
+import { CANDIDATE_META_STRIDE } from "./cortex-engine.types.ts";
 
 interface WorkerInit {
   packageDir: string;
@@ -48,6 +49,22 @@ interface LoadedState {
   geometry: ConnectomeGeometry;
   dimension: number;
   sampleSize: number;
+}
+
+/**
+ * Parâmetros fixados da dinâmica.
+ *
+ * Devem coincidir com os usados no treino (`scripts/cortex/train_readout.py`),
+ * senão o readout opera sobre features fora da distribuição aprendida.
+ */
+function reservoirParams(dimension: number) {
+  return {
+    alpha: 0.5,
+    steps: 6,
+    seed: 20260911,
+    rowGain: 0.9,
+    inputDimension: dimension,
+  };
 }
 
 let state: LoadedState | null = null;
@@ -101,6 +118,17 @@ function rank(request: EngineWorkerRequest): EngineWorkerResponse {
     // Estado de referência único: TODOS os candidatos partem dele, em cópia
     // isolada. O estado persistente da tarefa nunca é atualizado aqui.
     const reference = request.withTaskState ? request.taskVector : undefined;
+
+    // O estado da CONSULTA precisa vir do mesmo processo que o dos candidatos.
+    // Antes era passado o vetor codificado da consulta, que vive em outro
+    // espaço — o cosseno e a distância do readout não mediam nada.
+    const queryState = runSteps(
+      matrix,
+      projection,
+      reservoirParams(dimension),
+      request.queryVector
+    ).state;
+
     const samples: ActivitySample[] = [];
     const scores = new Float32Array(count);
     const readout = buildReadout();
@@ -112,22 +140,26 @@ function rank(request: EngineWorkerRequest): EngineWorkerResponse {
       const { state: candidateState, samples: rowSamples } = runSteps(
         matrix,
         projection,
-        { alpha: 0.5, steps: 6, seed: 20260911, rowGain: 0.9, inputDimension: dimension },
+        reservoirParams(dimension),
         vector,
         reference,
         request.sampleActivity && row < 4,
         state.sampleSize
       );
       if (request.sampleActivity && row < 4) samples.push(...rowSamples);
-      const candidateBase = request.baselineScores[row] ?? 0;
+
+      // Metadados REAIS do candidato: as features precisam sair daqui, não de
+      // constantes — senão o readout treinado opera fora da distribuição.
+      const metaBase = row * CANDIDATE_META_STRIDE;
+      const baselineScore = request.baselineScores[row] ?? 0;
       const features = extractFeatures({
-        baselineScore: candidateBase,
-        semanticDot: candidateBase,
-        recencyDays: 0,
-        explicit: false,
-        confidenceScore: 0.5,
-        occurrences: 1,
-        queryState: request.queryVector,
+        baselineScore,
+        semanticDot: request.candidateMeta[metaBase] ?? 0,
+        recencyDays: request.candidateMeta[metaBase + 1] ?? 0,
+        explicit: (request.candidateMeta[metaBase + 2] ?? 0) > 0.5,
+        confidenceScore: request.candidateMeta[metaBase + 3] ?? 0.5,
+        occurrences: request.candidateMeta[metaBase + 4] ?? 1,
+        queryState,
         candidateState,
         readoutEnergy: energy(candidateState),
       });

@@ -358,11 +358,23 @@ export interface EngineWorkerRequest {
   candidateVectors: Float32Array;
   candidateIds: string[];
   baselineScores: number[];
+  /**
+   * Metadados por candidato, com passo `CANDIDATE_META_STRIDE`.
+   *
+   * Sem isto o worker não consegue calcular as features que dependem da
+   * memória (recência, explicitude, confiança, recorrência) e teria que
+   * inventar constantes — o que coloca o readout treinado fora da distribuição
+   * aprendida. Ordem: semanticDot, recencyDays, explicit, confidence, occurrences.
+   */
+  candidateMeta: Float32Array;
   taskVector?: Float32Array;
   /** Estado inicial: cada candidato parte da mesma referência, em cópia isolada. */
   withTaskState: boolean;
   sampleActivity: boolean;
 }
+
+/** Quantos valores de metadado cada candidato carrega. */
+export const CANDIDATE_META_STRIDE = 5;
 
 export interface EngineWorkerResponse {
   requestId: string;

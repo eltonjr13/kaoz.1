@@ -13,6 +13,14 @@ export type MemoryTaskType =
   | "refine"
   | "ad-creative";
 
+/**
+ * Limite padrão de memórias devolvidas quando a consulta não informa um.
+ *
+ * Fonte única: usado tanto pelo serviço quanto pelo adapter de memória dos
+ * agentes, para que os dois não divirjam.
+ */
+export const DEFAULT_MEMORY_LIMIT = 15;
+
 export interface MemoryRecord {
   readonly id: string;
   readonly avatarId: string;

@@ -201,6 +201,9 @@ export class RetrievalService {
         candidateVectors: vectors,
         candidateIds: ids,
         baselineScores: list.map((entry) => entry.lexicalScore ?? 0),
+        // Metadados reais: sem eles o worker teria que inventar constantes para
+        // metade das features e o readout operaria fora da distribuição.
+        candidateMeta: buildCandidateMeta(list, byId, queryVector, this.deps.now),
         taskVector,
         withTaskState: Boolean(taskVector),
         sampleActivity: this.settings.activitySampleSize > 0,

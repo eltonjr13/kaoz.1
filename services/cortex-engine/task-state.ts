@@ -16,6 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getStateDir } from "./cortex-engine.settings.ts";
 import {
+  encodeText,
   l2Normalize,
   lexicalScore,
 } from "./text-encoder.ts";
@@ -191,8 +192,14 @@ function eventWeight(kind: TaskEventKind): number {
 }
 
 /**
- * Acumula a contribuição de um texto no vetor. Usa a codificação lexical
- * determinística: a mesma entrada produz sempre o mesmo vetor.
+ * Acumula a contribuição de um texto no vetor do estado da tarefa.
+ *
+ * Usa o MESMO codificador dos candidatos (`encodeText`). Antes havia aqui um
+ * segundo codificador — um slot por token, sem sinal e sem n-gramas — que
+ * produzia vetores num espaço DIFERENTE. Como o worker calcula `state-cosine` e
+ * `state-distance` entre o vetor da consulta e o da tarefa, a comparação era
+ * feita entre espaços incompatíveis e aquelas features não mediam nada
+ * (plano, seção 6.4).
  */
 function accumulate(
   vector: Float32Array,
@@ -201,31 +208,11 @@ function accumulate(
   dimension: number
 ): void {
   if (!text) return;
-  const encoded = encodeInto(text, dimension);
+  const encoded = encodeText(text, dimension);
   // Escala pela relevância lexical relativa do próprio texto para não deixar
   // eventos longos dominarem apenas por comprimento.
   const magnitude = weight * (1 + lexicalScore(text, text));
   for (let i = 0; i < vector.length; i++) vector[i] += encoded[i] * magnitude;
-}
-
-function encodeInto(text: string, dimension: number): Float32Array {
-  const vector = new Float32Array(dimension);
-  const tokens = text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length > 2);
-  if (!tokens.length) return vector;
-  for (const token of tokens) {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < token.length; i++) {
-      hash ^= token.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    vector[hash % dimension] += 1;
-  }
-  return l2Normalize(vector);
 }
 
 // ---------------------------------------------------------------------------

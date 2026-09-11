@@ -16,8 +16,8 @@ import type {
   PersistMemoryInput,
   PersistMemoryOptions,
 } from "./memory.types.ts";
+import { DEFAULT_MEMORY_LIMIT } from "./memory.types.ts";
 
-const DEFAULT_MEMORY_LIMIT = 15;
 
 const systemClock: MemoryServiceClock = {
   now: () => new Date(),
