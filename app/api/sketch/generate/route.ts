@@ -5,15 +5,27 @@ import {
   DuplicateJobError,
 } from '@/lib/sketch/sketch-job-manager';
 import { browserTransportToken } from '@/lib/flow/browser-image-context';
+import type { SketchChangeRequest } from '@/lib/sketch/sketch-prompt-compiler';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const CHANGE_INTENT_TYPES = new Set(['refine_text', 'refine_visual', 'new_concept']);
+
+function parseChangeIntent(raw: unknown): SketchChangeRequest | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.type !== 'string' || !CHANGE_INTENT_TYPES.has(value.type)) return undefined;
+  const feedback = typeof value.userFeedback === 'string' ? value.userFeedback.trim().slice(0, 600) : '';
+  return { type: value.type as SketchChangeRequest['type'], userFeedback: feedback || undefined };
+}
 
 function parseRequestBody(raw: unknown): {
   projectId: string;
   idempotencyToken?: string;
   referenceDataUrl?: string;
   model?: string;
+  changeIntent?: SketchChangeRequest;
 } | null {
   if (!raw || typeof raw !== 'object') return null;
   const body = raw as Record<string, unknown>;
@@ -25,6 +37,7 @@ function parseRequestBody(raw: unknown): {
     idempotencyToken: typeof body.idempotencyToken === 'string' ? body.idempotencyToken.trim() : undefined,
     referenceDataUrl: typeof body.referenceDataUrl === 'string' ? body.referenceDataUrl : undefined,
     model: typeof body.model === 'string' ? body.model.trim() : undefined,
+    changeIntent: parseChangeIntent(body.changeIntent),
   };
 }
 

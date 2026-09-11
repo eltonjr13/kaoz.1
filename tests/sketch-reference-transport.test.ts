@@ -198,10 +198,16 @@ test('projeto somente com sketch chega ao provedor como imagem (não simple)', a
     const job = await manager.enqueueJob({
       projectId: project.id,
       referenceDataUrl: sketchBoard,
+      changeIntent: { type: 'new_concept', userFeedback: 'quero uma cena ao ar livre' },
     });
 
     const terminalJob = await waitForJobTerminal(manager, job.id);
     assert.equal(terminalJob.status, 'completed');
+
+    // O pedido de iteração precisa chegar ao trabalho e ao prompt do Flow.
+    assert.equal(job.snapshot.requestedChange?.type, 'new_concept');
+    assert.equal(job.snapshot.requestedChange?.userFeedback, 'quero uma cena ao ar livre');
+    assert.ok(job.snapshot.compiledPrompt.includes('quero uma cena ao ar livre'));
 
     assert.equal(mockFlow.calls.length, 1);
     const call = mockFlow.calls[0];
@@ -302,6 +308,15 @@ test('projeto com sketch e produto unifica esboço e anexo em uma única referê
     assert.equal(metadata.height, 1080);
     assert.equal(job.snapshot.referenceKind, 'composite');
     assert.equal(job.snapshot.referenceMode, 'composite');
+
+    // A prévia servível mostra exatamente o que foi enviado ao Flow.
+    assert.match(job.snapshot.referencePreviewUrl || '', /^\/api\/sketch\/assets\/ref-preview-.+\.jpg\?v=\d+$/);
+    const previewName = path.basename((job.snapshot.referencePreviewUrl || '').split('?')[0]);
+    const previewBytes = await fsp.readFile(path.join(env.assetsDir, previewName));
+    const previewMetadata = await sharp(previewBytes).metadata();
+    assert.equal(previewMetadata.format, 'jpeg');
+    assert.ok(previewMetadata.width && previewMetadata.width <= 720);
+    assert.ok(previewBytes.length < 400 * 1024, 'A prévia precisa ser leve para a interface');
   } finally {
     await env.cleanup();
   }

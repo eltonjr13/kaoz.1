@@ -181,6 +181,35 @@ test('com anexo de produto marcado o aviso não aparece', async () => {
   );
 });
 
+test('pedido de ajuste do usuário entra no prompt final', async () => {
+  const project = simpleFlowProject('proj-change-1', 'venda desse produto encapsulado');
+  project.attachments = [attachment('att-product', await pngDataUrl('#1e3a8a'), 'product')];
+  withOrder(project, [{ attachmentId: 'att-product', role: 'product' }]);
+
+  const request = compileCreativeGenerationRequest(project, {
+    changeIntent: { type: 'refine_text', userFeedback: 'troque o fundo para uma cozinha clara de manhã' },
+  });
+
+  assert.match(request.preparedPrompt, /Iteration request: apply this adjustment requested by the user/);
+  assert.ok(
+    request.preparedPrompt.includes('troque o fundo para uma cozinha clara de manhã'),
+    'O pedido de ajuste precisa chegar ao Flow'
+  );
+});
+
+test('"Outra ideia" pede conceito diferente sem virar texto literal no prompt', async () => {
+  const project = simpleFlowProject('proj-change-2', 'venda desse produto encapsulado');
+  project.attachments = [attachment('att-product', await pngDataUrl('#4c1d95'), 'product')];
+  withOrder(project, [{ attachmentId: 'att-product', role: 'product' }]);
+
+  const request = compileCreativeGenerationRequest(project, {
+    changeIntent: { type: 'new_concept', userFeedback: 'Outra ideia' },
+  });
+
+  assert.match(request.preparedPrompt, /clearly different creative concept from the previous version/);
+  assert.equal(/User note: Outra ideia/i.test(request.preparedPrompt), false, 'O rótulo do botão não é direção de arte');
+});
+
 test('frase entre aspas é renderizada na imagem; pedido de CTA sem frase gera aviso', async () => {
   const withWording = simpleFlowProject(
     'proj-simple-prompt-2',

@@ -663,6 +663,7 @@ export interface SketchJobSnapshot {
   referenceAttachmentIds?: string[];
   referenceSource?: string;
   referencePreviewUrl?: string;
+  requestedChange?: { type: string; userFeedback?: string };
   compiledPromptSha256?: string;
   compositionIntent?: CompositionIntent;
   textRenderingStrategy?: TextRenderingStrategy;

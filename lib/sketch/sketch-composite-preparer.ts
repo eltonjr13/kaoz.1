@@ -36,6 +36,7 @@ import {
   extractSubjectPlacements,
   extractCompositionGuides,
   type CreativeSubjectRole,
+  type SketchChangeRequest,
 } from './sketch-prompt-compiler.ts';
 
 interface SketchAnalysis {
@@ -310,6 +311,7 @@ export interface PrepareSketchCompositeOptions {
   referenceDataUrlOverride?: string;
   quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
   model?: string;
+  changeIntent?: SketchChangeRequest;
 }
 
 function resolveCanvasRatio(project: SketchProjectData): SketchCanvasAspectRatio {
@@ -479,6 +481,7 @@ function assembleCreativeCompilation(
   hasSketch: boolean,
   referenceMode: string,
   selectedReferenceCount: number,
+  changeIntent: SketchChangeRequest | undefined,
   diagnostics: SketchReferenceDiagnostic[]
 ): {
   compositionIntent: 'follow' | 'explore';
@@ -508,6 +511,7 @@ function assembleCreativeCompilation(
     hasCompositeReference,
     subjectCount: selectedReferenceCount > 0 ? selectedReferenceCount : undefined,
     subjectRoles,
+    changeIntent,
   });
 
   const promptIssues = validateCreativePrompt(compiledPrompt, textRenderingStrategy, {
@@ -603,6 +607,7 @@ export function prepareSketchCompositeReference(
     sketchInfo.hasSketch,
     referenceMode,
     resolveSelectedReferenceIds(project).size || placedInfo.placedImages.length,
+    options?.changeIntent,
     diagnostics
   );
 

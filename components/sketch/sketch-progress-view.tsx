@@ -64,10 +64,12 @@ function ProgressErrorCard({
 function ProgressActiveCard({
   message,
   percentage,
+  referencePreviewUrl,
   onCancel,
 }: {
   message: string;
   percentage: number;
+  referencePreviewUrl?: string;
   onCancel?: () => void;
 }) {
   return (
@@ -96,6 +98,19 @@ function ProgressActiveCard({
           <span>Processando</span>
         </div>
       </div>
+
+      {referencePreviewUrl && (
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-zinc-500">
+            Referência enviada ao Flow
+          </span>
+          <img
+            src={referencePreviewUrl}
+            alt="Referência enviada ao Flow"
+            className="max-h-56 w-auto rounded-xl border border-zinc-800 bg-white object-contain shadow-lg"
+          />
+        </div>
+      )}
 
       {onCancel && (
         <button
@@ -128,6 +143,7 @@ export function SketchProgressView({
     <ProgressActiveCard
       message={message}
       percentage={percentage}
+      referencePreviewUrl={job?.snapshot?.referencePreviewUrl}
       onCancel={onCancel}
     />
   );

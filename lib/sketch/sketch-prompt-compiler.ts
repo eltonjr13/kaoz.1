@@ -307,6 +307,33 @@ export interface CreativeCompileInput {
   hasCompositeReference?: boolean;
   subjectCount?: number;
   subjectRoles?: CreativeSubjectRole[];
+  changeIntent?: SketchChangeRequest;
+}
+
+export interface SketchChangeRequest {
+  type: 'refine_text' | 'refine_visual' | 'new_concept';
+  userFeedback?: string;
+}
+
+const GENERIC_CONCEPT_LABELS = /^(outra ideia|another idea|nova ideia)$/i;
+
+/**
+ * The studio offers "Outra ideia" and "O que você quer mudar?". Without this
+ * directive those requests were sent to the API and dropped, so the generator
+ * produced the same concept again.
+ */
+export function buildChangeDirective(change?: SketchChangeRequest): string {
+  if (!change?.type) return '';
+  const feedback = (change.userFeedback || '').trim();
+
+  if (change.type === 'new_concept') {
+    const note = feedback && !GENERIC_CONCEPT_LABELS.test(feedback) ? ` User note: ${feedback}.` : '';
+    return `Iteration request: produce a clearly different creative concept from the previous version. Change the environment, staging, camera angle, lighting mood and props while keeping the same product, the referenced identities and every stated fact, and do not reuse the previous layout.${note}`;
+  }
+
+  if (!feedback) return '';
+  const scope = change.type === 'refine_visual' ? 'apply this visual adjustment' : 'apply this adjustment';
+  return `Iteration request: ${scope} requested by the user: ${feedback}. Change only what the adjustment asks for and keep everything else consistent: same subjects, identity, product design and materials.`;
 }
 
 export interface CreativeSubjectRole {
@@ -346,6 +373,7 @@ export function compileCreativeGenerationPrompt(input: CreativeCompileInput): st
 
   const sections: string[] = [];
   pushSection(sections, buildIdeaSection(input.prompt));
+  pushSection(sections, buildChangeDirective(input.changeIntent));
   sections.push(buildBriefingDirective(input.briefing));
   sections.push(buildCompositionIntentInstruction(intent));
   pushSection(sections, buildReferenceGuideInstruction(input.hasCompositeReference));

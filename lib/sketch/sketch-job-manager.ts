@@ -48,6 +48,28 @@ function describeReferenceUsage(snapshot: SketchJobSnapshot): string {
   return parts.length > 0 ? parts.join(' + ') : 'sem referência visual';
 }
 
+function buildPersistedReferenceFields(source?: PersistedJobReference): Partial<SketchJobSnapshot> {
+  if (!source) return {};
+  return {
+    referenceImagePath: source.filePath,
+    referenceFileSizeBytes: source.sizeBytes,
+    referenceSha256: source.sha256,
+    referenceDimensions: { width: source.width, height: source.height },
+  };
+}
+
+function buildBuiltReferenceFields(
+  builtReference?: import('./sketch-reference-builder.ts').BuiltSketchReference,
+  referencePreviewUrl?: string
+): Partial<SketchJobSnapshot> {
+  return {
+    referenceIncludedRoles: builtReference?.includedRoles,
+    referenceAttachmentIds: builtReference?.attachmentIds,
+    referenceSource: builtReference?.source,
+    referencePreviewUrl,
+  };
+}
+
 export const ACTIVE_JOB_STEPS = new Set<SketchJobStep>([
   'queued',
   'preparing_reference',
@@ -128,6 +150,7 @@ export interface EnqueueSketchJobParams {
   referenceDataUrl?: string;
   model?: string;
   browserTransportToken?: string;
+  changeIntent?: import('./sketch-prompt-compiler.ts').SketchChangeRequest;
 }
 
 export class DuplicateJobError extends Error {
@@ -388,10 +411,13 @@ export class SketchJobManager {
   private createSnapshot(
     project: SketchProjectData,
     compiled: import('../../types/sketch.ts').SketchGenerationRequest,
-    persistedRef?: PersistedJobReference,
-    builtReference?: import('./sketch-reference-builder.ts').BuiltSketchReference
+    extras: {
+      persistedRef?: PersistedJobReference;
+      builtReference?: import('./sketch-reference-builder.ts').BuiltSketchReference;
+      referencePreviewUrl?: string;
+      requestedChange?: { type: string; userFeedback?: string };
+    } = {}
   ): SketchJobSnapshot {
-    const dims = persistedRef ? { width: persistedRef.width, height: persistedRef.height } : undefined;
     return {
       projectId: project.id,
       projectTitle: project.title,
@@ -408,13 +434,9 @@ export class SketchJobManager {
       useSketchAsReference: project.useSketchAsReference !== false,
       referenceMode: compiled.referenceMode,
       referenceKind: compiled.referenceKind,
-      referenceImagePath: persistedRef?.filePath,
-      referenceFileSizeBytes: persistedRef?.sizeBytes,
-      referenceSha256: persistedRef?.sha256,
-      referenceDimensions: dims,
-      referenceIncludedRoles: builtReference?.includedRoles,
-      referenceAttachmentIds: builtReference?.attachmentIds,
-      referenceSource: builtReference?.source,
+      ...buildPersistedReferenceFields(extras.persistedRef),
+      ...buildBuiltReferenceFields(extras.builtReference, extras.referencePreviewUrl),
+      requestedChange: extras.requestedChange,
       compiledPromptSha256: crypto.createHash('sha256').update(compiled.preparedPrompt).digest('hex'),
       compositionIntent: compiled.compositionIntent,
       textRenderingStrategy: compiled.textRenderingStrategy,
@@ -513,6 +535,7 @@ export class SketchJobManager {
 
     const compiled = prepareSketchCompositeReference(project, {
       referenceDataUrlOverride: params.referenceDataUrl,
+      changeIntent: params.changeIntent,
     });
 
     // The Flow provider accepts one reference per request, so the single image
@@ -542,7 +565,14 @@ export class SketchJobManager {
       referencePreviewUrl = await this.writeReferencePreview(project.id, persistedRef.filePath);
     }
 
-    const snapshot = this.createSnapshot(project, compiled, persistedRef, builtReference, referencePreviewUrl);
+    const snapshot = this.createSnapshot(project, compiled, {
+      persistedRef,
+      builtReference,
+      referencePreviewUrl,
+      requestedChange: params.changeIntent
+        ? { type: params.changeIntent.type, userFeedback: params.changeIntent.userFeedback }
+        : undefined,
+    });
     const now = new Date().toISOString();
 
     const job: SketchJobData = {
