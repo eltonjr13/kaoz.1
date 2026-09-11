@@ -1,0 +1,59 @@
+{
+  "base": "http://localhost:3000",
+  "marker": "ZZ-TESTE-VALIDACAO-CORTEX",
+  "log": [
+    {
+      "step": "criada",
+      "detail": "id=8289610c | Usuario informou: ZZ-TESTE-VALIDACAO-CORTEX usa luz quente de 3200K"
+    },
+    {
+      "step": "visivel na lista",
+      "detail": "true"
+    },
+    {
+      "step": "versoes na serie",
+      "detail": "2 (ativas=1, superseded=1)"
+    },
+    {
+      "step": "1. uma unica versao ativa",
+      "detail": "true"
+    },
+    {
+      "step": "2. a ativa tem o conteudo novo",
+      "detail": "true"
+    },
+    {
+      "step": "3. a anterior esta superseded",
+      "detail": "true"
+    },
+    {
+      "step": "4. nenhuma ativa com conteudo antigo",
+      "detail": "true"
+    },
+    {
+      "step": "5. linhagem preservada",
+      "detail": "true"
+    },
+    {
+      "step": "interface rotula a versao antiga",
+      "detail": "true"
+    },
+    {
+      "step": "nenhuma versao ativa apos esquecer",
+      "detail": "true"
+    },
+    {
+      "step": "cerebro",
+      "detail": "{\"skeleton\":0,\"pacoteAusente\":true,\"erro\":false}"
+    },
+    {
+      "step": "resultado",
+      "detail": "CICLO COMPLETO OK"
+    },
+    {
+      "step": "limpeza",
+      "detail": "serie de teste removida do armazenamento real"
+    }
+  ],
+  "pageErrors": []
+}

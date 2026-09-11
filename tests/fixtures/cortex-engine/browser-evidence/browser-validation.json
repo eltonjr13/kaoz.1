@@ -1,6 +1,6 @@
 {
-  "base": "http://127.0.0.1:3000",
-  "validatedAt": "2026-09-11T22:40:00.977Z",
+  "base": "http://localhost:3000",
+  "validatedAt": "2026-09-11T22:47:20.024Z",
   "widths": [
     390,
     768,
@@ -13,7 +13,7 @@
       "pageOverflow": {
         "overflowX": 0,
         "worst": {
-          "excess": 395,
+          "excess": 427,
           "tag": "div",
           "cls": "inline-flex min-w-full sm:min-w-0 items-center gap-1 rounded-xl border border-[v"
         }
@@ -31,17 +31,17 @@
         "covered": []
       },
       "skeleton": {
-        "hasSrOnly": true,
-        "mentionsLoading": true
+        "hasSrOnly": false,
+        "mentionsLoading": false
       },
       "hydration": {
-        "tabReactKeys": 0,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "tabReactKeys": 2,
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
-        "skeleton": 1,
-        "pacoteAusente": false,
+        "skeleton": 0,
+        "pacoteAusente": true,
         "erroCarregar": false
       },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-390.png"
@@ -75,8 +75,8 @@
       },
       "hydration": {
         "tabReactKeys": -1,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
         "skeleton": 0,
@@ -91,7 +91,7 @@
       "pageOverflow": {
         "overflowX": 0,
         "worst": {
-          "excess": 417,
+          "excess": 449,
           "tag": "div",
           "cls": "inline-flex min-w-full sm:min-w-0 items-center gap-1 rounded-xl border border-[v"
         }
@@ -102,17 +102,17 @@
         "covered": []
       },
       "skeleton": {
-        "hasSrOnly": true,
-        "mentionsLoading": true
+        "hasSrOnly": false,
+        "mentionsLoading": false
       },
       "hydration": {
-        "tabReactKeys": 0,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "tabReactKeys": 2,
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
-        "skeleton": 1,
-        "pacoteAusente": false,
+        "skeleton": 0,
+        "pacoteAusente": true,
         "erroCarregar": false
       },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-768.png"
@@ -139,8 +139,8 @@
       },
       "hydration": {
         "tabReactKeys": -1,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
         "skeleton": 0,
@@ -166,17 +166,17 @@
         "covered": []
       },
       "skeleton": {
-        "hasSrOnly": true,
-        "mentionsLoading": true
+        "hasSrOnly": false,
+        "mentionsLoading": false
       },
       "hydration": {
-        "tabReactKeys": 0,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "tabReactKeys": 2,
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
-        "skeleton": 1,
-        "pacoteAusente": false,
+        "skeleton": 0,
+        "pacoteAusente": true,
         "erroCarregar": false
       },
       "shot": "D:\\apps\\mrchicken\\tests\\fixtures\\cortex-engine\\browser-evidence\\cortex-1280.png"
@@ -203,8 +203,8 @@
       },
       "hydration": {
         "tabReactKeys": -1,
-        "buttonReactKeys": 0,
-        "hydrated": false
+        "buttonReactKeys": 2,
+        "hydrated": true
       },
       "brainStates": {
         "skeleton": 0,
@@ -215,27 +215,95 @@
     }
   ],
   "consoleErrors": [
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=xAYxPpcpzFRBJcIj42gTu' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[390] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=6DsAUZcr03v16ePAaozFR' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=q8wWBxOfr1RGRGc8EBGJy' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[768] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=hYlBopq9sfldM6cuAWO_V' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=fJXIC7I8OIrYnfSCayQJz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
-    "[1280] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=s7ugq3ghzNC4cbhT-L_IN' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+    "[390] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[390] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[768] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1280] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[1280] Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
-  "failedRequests": []
+  "failedRequests": [
+    "[390] GET http://localhost:3000/settings?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/video?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/model-p?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/sketch?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/supervision?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/video?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/settings?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/model-p?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/sketch?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/cortex?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/supervision?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow/images?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/model-p?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/sketch?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/cortex?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/supervision?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow/images?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow/chat-1d7e1bac-b20b-4cf0-b62e-b9e81249540b?_rsc=YqVhXeZtBRUIt7NW :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/settings?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/video?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/model-p?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/sketch?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/api/flow/media?path=D%3A%5Capps%5Cmrchicken%5Cstorage%5Cgenerated%5C3d%5Chunyuan3d_78dfeccb-296f-4 :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/cortex?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/supervision?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[390] GET http://localhost:3000/flow?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/settings?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/video?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/model-p?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/sketch?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/supervision?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/settings?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/video?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/model-p?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/cortex?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/sketch?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/supervision?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/settings?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow/images?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/video?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/model-p?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/sketch?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/cortex?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/supervision?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow/images?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow/chat-1d7e1bac-b20b-4cf0-b62e-b9e81249540b?_rsc=t13nWPkW642v4JnQ :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/settings?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/video?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/model-p?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/cortex?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/supervision?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[768] GET http://localhost:3000/flow?_rsc=asAe--ntUfBq53nc :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/settings?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/video?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/model-p?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/sketch?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/supervision?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/flow?_rsc=u8uLHliDVvw88IgB :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/video?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/settings?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/model-p?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/sketch?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/cortex?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/supervision?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/flow?_rsc=HwC98qQneF0sWYIm :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/cortex?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/api/flow/media?path=D%3A%5Capps%5Cmrchicken%5Cstorage%5Cgenerated%5C3d%5Chunyuan3d_78dfeccb-296f-4 :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/supervision?_rsc=hYl6D5TgR-x3of93 :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/flow/images?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/flow/chat-1d7e1bac-b20b-4cf0-b62e-b9e81249540b?_rsc=7eDn2lDJPDk3sHUy :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/settings?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/model-p?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/video?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/sketch?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/cortex?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/supervision?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/flow?_rsc=wWE4jdZpXnDQgJGb :: net::ERR_ABORTED",
+    "[1280] GET http://localhost:3000/api/flow/media?path=D%3A%5Capps%5Cmrchicken%5Cstorage%5Cgenerated%5C3d%5Chunyuan3d_78dfeccb-296f-4 :: net::ERR_ABORTED"
+  ]
 }

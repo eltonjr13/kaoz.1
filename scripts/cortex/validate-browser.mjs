@@ -9,7 +9,7 @@
  *   - erros de console e requisições falhas;
  *   - capturas de tela por largura.
  *
- * Uso: node scripts/cortex/validate-browser.mjs [--base http://127.0.0.1:3000]
+ * Uso: node scripts/cortex/validate-browser.mjs [--base http://localhost:3000]
  */
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
@@ -17,7 +17,7 @@ import path from "node:path";
 
 const BASE = process.argv.includes("--base")
   ? process.argv[process.argv.indexOf("--base") + 1]
-  : "http://127.0.0.1:3000";
+  : "http://localhost:3000";
 
 const WIDTHS = [390, 768, 1280];
 const ROUTES = ["/cortex", "/flow"];
