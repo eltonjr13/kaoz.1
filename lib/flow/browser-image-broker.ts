@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -9,7 +9,17 @@ import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 export interface BrowserImageCommand {
   id: string;
   prompt: string;
-  options: { aspectRatio: string; quantity: number; model: string; referenceImage?: string };
+  options: BrowserImageCommandOptions;
+}
+
+export interface BrowserImageCommandOptions {
+  aspectRatio: string;
+  quantity: number;
+  model: string;
+  referenceImage?: string;
+  referenceName?: string;
+  referenceMimeType?: string;
+  referenceSha256?: string;
 }
 interface Pending {
   token: string;
@@ -26,7 +36,14 @@ const receiptState = globalThis as typeof globalThis & { kaozBrowserImageReceipt
 const receipts = receiptState.kaozBrowserImageReceipts ??= new Map();
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
-export async function companionReferenceData(file: string): Promise<string> {
+export interface CompanionReferencePayload {
+  dataUrl: string;
+  name: string;
+  mimeType: string;
+  sha256: string;
+}
+
+export async function companionReferencePayload(file: string): Promise<CompanionReferencePayload> {
   const resolved = await fs.realpath(file);
   const roots = await Promise.all([getFlowGeneratedDir(), getFlowTempUploadsDir()].map(root => fs.realpath(root).catch(() => path.resolve(root))));
   const inside = (root: string) => {
@@ -42,7 +59,17 @@ export async function companionReferenceData(file: string): Promise<string> {
   const bytes = await fs.readFile(resolved);
   const metadata = await sharp(bytes).metadata();
   if (!['png', 'jpeg', 'webp'].includes(metadata.format || '')) throw new Error('Referência precisa ser PNG, JPEG ou WebP.');
-  return `data:image/${metadata.format};base64,${bytes.toString('base64')}`;
+  const mimeType = `image/${metadata.format}`;
+  return {
+    dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    name: path.basename(resolved),
+    mimeType,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+}
+
+export async function companionReferenceData(file: string): Promise<string> {
+  return (await companionReferencePayload(file)).dataUrl;
 }
 
 export function companionQuantity(value: ImageGenerationOptions['quantity']): number {
@@ -51,16 +78,43 @@ export function companionQuantity(value: ImageGenerationOptions['quantity']): nu
   return count;
 }
 
+/**
+ * Single place that turns provider options into the payload the Chrome
+ * extension receives, for both the browser tab and the desktop bridge.
+ */
+export async function buildCompanionImageCommand(
+  prompt: string,
+  options: ImageGenerationOptions = {}
+): Promise<{ prompt: string; options: BrowserImageCommandOptions }> {
+  const operation = options.operation || (options.referenceImage ? 'reference' : 'simple');
+  const preparedPrompt = options.promptPrepared
+    ? prompt.trim()
+    : prepareFlowImagePrompt({ prompt, operation, aspectRatio: options.aspectRatio, referenceKind: options.referenceKind });
+
+  const commandOptions: BrowserImageCommandOptions = {
+    aspectRatio: options.aspectRatio || '1:1',
+    quantity: companionQuantity(options.quantity),
+    model: options.model || 'Nano Banana 2',
+  };
+
+  if (options.referenceImage) {
+    const reference = await companionReferencePayload(options.referenceImage);
+    commandOptions.referenceImage = reference.dataUrl;
+    commandOptions.referenceName = reference.name;
+    commandOptions.referenceMimeType = reference.mimeType;
+    commandOptions.referenceSha256 = reference.sha256;
+  }
+
+  return { prompt: preparedPrompt, options: commandOptions };
+}
+
 export async function requestBrowserImage(token: string, prompt: string, options: ImageGenerationOptions = {}): Promise<ImageGenerationResult> {
   if (pending.size >= 100) throw new Error('A fila de imagens está cheia. Aguarde.');
-  const operation = options.operation || (options.referenceImage ? 'reference' : 'simple');
+  const built = await buildCompanionImageCommand(prompt, options);
   const command: BrowserImageCommand = {
     id: randomUUID(),
-    prompt: prepareFlowImagePrompt({ prompt, operation, aspectRatio: options.aspectRatio, referenceKind: options.referenceKind }),
-    options: {
-      aspectRatio: options.aspectRatio || '1:1', quantity: companionQuantity(options.quantity), model: options.model || 'Nano Banana 2',
-      referenceImage: options.referenceImage ? await companionReferenceData(options.referenceImage) : undefined,
-    },
+    prompt: built.prompt,
+    options: built.options,
   };
   if (command.prompt.length > 16000) throw new Error('O pedido preparado excede 16000 caracteres.');
   return new Promise((resolve, reject) => {

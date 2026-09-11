@@ -89,6 +89,8 @@ export interface ImageGenerationOptions {
   quantity?: 1 | 2 | 3 | 4 | '1x' | 'x2' | 'x3' | 'x4';
   model?: string;
   referenceImage?: string;
+  /** The caller already compiled the final provider prompt; skip re-preparation. */
+  promptPrepared?: boolean;
   forceReferenceUpload?: boolean;
   useExistingFlowReference?: boolean;
   folderName?: string;

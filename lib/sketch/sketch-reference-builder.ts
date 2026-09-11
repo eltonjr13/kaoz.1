@@ -5,6 +5,7 @@ import {
   ASPECT_RATIO_PRESETS,
   type FlowSupportedAspectRatio,
   type SketchAttachment,
+  type SketchDrawingLayer,
   type SketchLayer,
   type SketchPath,
   type SketchProjectData,
@@ -85,7 +86,7 @@ function escapeXml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function isProviderVisibleSketchLayer(layer: SketchLayer): boolean {
+export function isProviderVisibleSketchLayer(layer: SketchLayer): layer is SketchDrawingLayer {
   return layer.type === 'sketch' && layer.visible !== false && layer.exportToProvider !== false;
 }
 
@@ -328,11 +329,27 @@ async function prepareSketchBoard(
 ): Promise<Buffer | null> {
   const source = clientSketch || renderedSketch;
   if (!source) return null;
-  return await sharp(source, { limitInputPixels: 40_000_000 })
-    .resize({ width: canvasWidth, height: canvasHeight, fit: 'contain', background: '#ffffff' })
-    .flatten({ background: '#ffffff' })
-    .png()
-    .toBuffer();
+  try {
+    return await sharp(source, { limitInputPixels: 40_000_000 })
+      .resize({ width: canvasWidth, height: canvasHeight, fit: 'contain', background: '#ffffff' })
+      .flatten({ background: '#ffffff' })
+      .png()
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/** A payload that decodes as an image, or nothing at all. */
+async function decodeSketchPayload(buffer: Buffer | null): Promise<Buffer | null> {
+  if (!buffer) return null;
+  try {
+    const metadata = await sharp(buffer, { limitInputPixels: 40_000_000 }).metadata();
+    if (!metadata.width || !metadata.height) return null;
+    return buffer;
+  } catch {
+    return null;
+  }
 }
 
 async function composeBoard(input: {
@@ -341,7 +358,7 @@ async function composeBoard(input: {
   sketch?: Buffer | null;
   images: Buffer[];
 }): Promise<Buffer> {
-  const compositions: sharp.OverlayOptions[] = [];
+  const compositions: { input: Buffer; left: number; top: number }[] = [];
   const hasSketch = Boolean(input.sketch);
 
   if (input.sketch) {
@@ -374,8 +391,17 @@ export async function buildSketchProviderReference(
   const preset = resolveAspectPreset(input.providerAspectRatio);
   const useSketch = input.project.useSketchAsReference !== false;
   const sketchPaths = collectProviderSketchPaths(input.project.layers);
-  let sketchBuffer = useSketch ? extractDataUrlBuffer(input.clientSketchDataUrl) : null;
+  const declaredSketch = useSketch ? extractDataUrlBuffer(input.clientSketchDataUrl) : null;
+  let sketchBuffer = await decodeSketchPayload(declaredSketch);
   let sketchSource: BuiltSketchReference['source'] | undefined = sketchBuffer ? 'client-sketch' : undefined;
+
+  if (useSketch && declaredSketch && !sketchBuffer) {
+    diagnostics.push({
+      code: 'SKETCH_PAYLOAD_IGNORED',
+      severity: 'warning',
+      message: 'O esboço recebido da interface não é uma imagem válida e foi descartado.',
+    });
+  }
 
   if (useSketch && !sketchBuffer && sketchPaths.length > 0) {
     try {
@@ -394,14 +420,6 @@ export async function buildSketchProviderReference(
         message: 'Não foi possível rasterizar o esboço salvo; a geração seguirá apenas com as referências anexadas.',
       });
     }
-  }
-
-  if (useSketch && !sketchBuffer && input.clientSketchDataUrl) {
-    diagnostics.push({
-      code: 'SKETCH_PAYLOAD_IGNORED',
-      severity: 'warning',
-      message: 'O esboço recebido da interface não é uma imagem válida e foi descartado.',
-    });
   }
 
   const selected = resolveSelectedAttachments(input.project);
@@ -441,6 +459,13 @@ export async function buildSketchProviderReference(
   if (hasSketch && !includedRoles.includes('composition')) includedRoles.unshift('composition');
 
   if (imageBuffers.length === 0 && !hasSketch) {
+    if (selected.length > 0) {
+      diagnostics.push({
+        code: 'REFERENCE_UNAVAILABLE',
+        severity: 'error',
+        message: `Nenhuma das ${selected.length} referência(s) anexada(s) pôde ser usada na geração. Reenvie a imagem e tente novamente.`,
+      });
+    }
     return {
       mode: 'none',
       includedRoles: [],

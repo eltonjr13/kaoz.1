@@ -3,10 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ImageGenerationOptions, ImageGenerationResult } from '../../src/providers/flow/FlowTypes';
 import { getFlowStorageRoot } from '../runtime-paths.ts';
-import { prepareFlowImagePrompt } from '../ai/image-prompt-engineering.ts';
 import {
-  companionQuantity,
-  companionReferenceData,
+  buildCompanionImageCommand,
   saveCompanionImages,
   type BrowserImageCommand,
 } from './browser-image-broker.ts';
@@ -86,16 +84,11 @@ export function desktopCompanionStatus(): DesktopCompanionSnapshot {
 
 export async function requestDesktopImage(prompt: string, options: ImageGenerationOptions = {}): Promise<ImageGenerationResult> {
   if (pending.size >= 20) throw new Error('A fila de imagens do desktop está cheia. Aguarde.');
-  const operation = options.operation || (options.referenceImage ? 'reference' : 'simple');
+  const built = await buildCompanionImageCommand(prompt, options);
   const command: BrowserImageCommand = {
     id: randomUUID(),
-    prompt: prepareFlowImagePrompt({ prompt, operation, aspectRatio: options.aspectRatio, referenceKind: options.referenceKind }),
-    options: {
-      aspectRatio: options.aspectRatio || '1:1',
-      quantity: companionQuantity(options.quantity),
-      model: options.model || 'Nano Banana 2',
-      referenceImage: options.referenceImage ? await companionReferenceData(options.referenceImage) : undefined,
-    },
+    prompt: built.prompt,
+    options: built.options,
   };
   if (command.prompt.length > 16_000) throw new Error('O pedido preparado excede 16000 caracteres.');
   return new Promise((resolve, reject) => {

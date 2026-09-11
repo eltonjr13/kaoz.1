@@ -50,18 +50,41 @@
     if (!trigger.textContent.includes(options.model)) throw new Error('O Flow não confirmou o modelo solicitado.');
     if (!trigger.textContent.includes('x' + options.quantity)) throw new Error('O Flow não confirmou a quantidade solicitada.');
   }
-  async function attachReference(dataUrl) {
-    if (!dataUrl) return;
+  const freshImages = before => Array.from(document.images).filter(image => !before.has(imageSource(image)) && visible(image));
+  const sha256 = async blob => Array.from(
+    new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())),
+    byte => byte.toString(16).padStart(2, '0')
+  ).join('');
+  async function attachReference(options) {
+    const dataUrl = options.referenceImage;
+    if (!dataUrl) return false;
     if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl) || dataUrl.length > 9 * 1024 * 1024) throw new Error('Referência inválida ou grande demais.');
-    const before = new Set(Array.from(document.images).map(imageSource));
     const blob = await (await fetch(dataUrl)).blob();
+    if (options.referenceSha256) {
+      const digest = await sha256(blob);
+      if (digest !== options.referenceSha256) throw new Error('A referência chegou alterada ao Chrome. Geração interrompida para não usar a imagem errada.');
+    }
+    const mimeType = options.referenceMimeType || blob.type || 'image/png';
+    const safeName = typeof options.referenceName === 'string' ? options.referenceName.replace(/[^A-Za-z0-9._-]/g, '') : '';
+    const before = new Set(Array.from(document.images).map(imageSource));
     const transfer = new DataTransfer();
-    transfer.items.add(new File([blob], 'kaoz-reference.' + blob.type.split('/')[1], { type: blob.type }));
+    transfer.items.add(new File([blob], safeName || 'kaoz-reference.' + (mimeType.split('/')[1] || 'png'), { type: mimeType }));
     const input = composer();
     input.focus();
     input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
-    await waitFor(() => Array.from(document.images).some(image => !before.has(imageSource(image)) && visible(image)),
-      'O Flow não confirmou o anexo. A geração foi interrompida para não ignorar sua referência.', 20000);
+    await waitFor(() => freshImages(before)[0], 'O Flow não confirmou o anexo. A geração foi interrompida para não ignorar sua referência.', 20000);
+    await delay(600);
+    if (freshImages(before).length === 0) throw new Error('O Flow descartou o anexo antes de enviar o pedido. Geração interrompida.');
+    job.referenceAttached = true;
+    job.attachmentSources = freshImages(before).map(imageSource);
+    return true;
+  }
+  function verifyAttachment() {
+    if (!job.referenceAttached) return;
+    const current = new Set(Array.from(document.images).map(imageSource));
+    if (!(job.attachmentSources || []).some(source => current.has(source))) {
+      throw new Error('A referência saiu do pedido antes do envio. Geração interrompida.');
+    }
   }
   async function submit(prompt) {
     const input = composer();
@@ -69,6 +92,7 @@
     if (!document.execCommand('insertText', false, prompt)) throw new Error('O editor não aceitou o pedido.');
     const normalizeText = value => value.replace(/\s+/g, ' ').trim();
     if (normalizeText(input.innerText || input.textContent) !== normalizeText(prompt)) throw new Error('O texto do editor diverge do pedido.');
+    verifyAttachment();
     const submit = await waitFor(() => {
       const element = button(/^(Iniciar geração|Start generation)$/i);
       return element && !element.disabled ? element : null;
@@ -108,7 +132,8 @@
     job.stage = 'Configurando modelo e formato';
     await configure(options);
     job.stage = 'Preparando referência';
-    await attachReference(options.referenceImage);
+    job.referenceAttached = false;
+    await attachReference(options);
     const previous = new Set(imageList().map(imageSource));
     job.stage = 'Enviando pedido ao Flow';
     await submit(message.prompt);

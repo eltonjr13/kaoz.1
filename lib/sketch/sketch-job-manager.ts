@@ -454,13 +454,31 @@ export class SketchJobManager {
       referenceDataUrlOverride: params.referenceDataUrl,
     });
 
+    // The Flow provider accepts one reference per request, so the single image
+    // is assembled here from every reference the user actually selected. The
+    // sketch the interface sends is one ingredient, never a replacement for the
+    // attached product/reference images.
+    const builtReference = await buildSketchProviderReference({
+      project,
+      providerAspectRatio: compiled.providerAspectRatio,
+      clientSketchDataUrl: params.referenceDataUrl,
+      assetsDir: this.assetsDir,
+    });
+    compiled.referenceMode = builtReference.mode;
+    compiled.referenceKind = builtReference.kind;
+    compiled.preparedReferenceImage = builtReference.dataUrl;
+    compiled.diagnostics.push(...builtReference.diagnostics);
+    if (compiled.compositePreview) {
+      compiled.compositePreview.dataUrl = builtReference.dataUrl;
+      compiled.compositePreview.includedReferencesCount = builtReference.attachmentIds.length;
+      compiled.compositePreview.includedRoles = builtReference.includedRoles;
+    }
+
     const id = `job-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
     let persistedRef: PersistedJobReference | undefined;
 
     if (compiled.referenceMode !== 'none') {
-      const refDataUrl =
-        params.referenceDataUrl ||
-        (await resolveFallbackReferenceSource(project, compiled.referenceMode, this.assetsDir));
+      const refDataUrl = builtReference.dataUrl;
       if (!refDataUrl) {
         throw new Error(
           `Referência visual obrigatória ausente para o modo "${compiled.referenceMode}". A geração foi abortada sem fallback silencioso.`
@@ -681,6 +699,10 @@ export class SketchJobManager {
       aspectRatio: job.snapshot.providerAspectRatio,
       referenceImage: isRefRequired ? referenceImage : undefined,
       referenceKind: isRefRequired ? job.snapshot.referenceKind : undefined,
+      // The sketch pipeline already compiled the prompt with the operation,
+      // aspect ratio and reference kind. Re-preparing it downstream truncated
+      // the user's idea and the creative directives.
+      promptPrepared: true,
     };
 
     const provider = await this.getEffectiveFlowProvider();

@@ -110,12 +110,14 @@ export class FlowProvider {
         onLockAcquired?.();
         const page = await this.session.getPage();
         const operation = options?.operation || (options?.referenceImage ? 'reference' : 'simple');
-        const preparedPrompt = prepareFlowImagePrompt({
-          prompt,
-          operation,
-          aspectRatio: options?.aspectRatio,
-          referenceKind: options?.referenceKind,
-        });
+        const preparedPrompt = options?.promptPrepared
+          ? prompt.trim()
+          : prepareFlowImagePrompt({
+              prompt,
+              operation,
+              aspectRatio: options?.aspectRatio,
+              referenceKind: options?.referenceKind,
+            });
         logger.info('Prompt de imagem preparado para o Google Flow.', {
           operation,
           aspectRatio: options?.aspectRatio || '1:1',
