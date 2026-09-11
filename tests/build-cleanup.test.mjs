@@ -221,6 +221,55 @@ test("inclui SDK MCP, Playwright e suas dependencias no runtime desktop", async 
   }
 });
 
+test("remove lixo do workspace do standalone sem tocar nos diretorios originais", async () => {
+  const testRootParent = path.join(process.cwd(), ".generated", "build-cleanup-tests");
+  await mkdir(testRootParent, { recursive: true });
+  const root = await mkdtemp(path.join(testRootParent, "workspace-junk-case-"));
+
+  try {
+    const standalone = path.join(root, ".next", "standalone");
+    const junk = [
+      path.join(standalone, "release", "Kaoz.1-Setup-0.0.1.exe"),
+      path.join(standalone, "dist", "standalone", "server.js"),
+      path.join(standalone, "docs", "README.md"),
+      path.join(standalone, "tests", "e2e.test.ts"),
+      path.join(standalone, ".git", "HEAD"),
+      path.join(standalone, "electron", "main.cjs"),
+      path.join(standalone, "build", "cache", "whisper", "source.zip"),
+      path.join(standalone, ".env.local"),
+    ];
+    const kept = [
+      path.join(standalone, "server.js"),
+      path.join(standalone, "public", "logo.png"),
+      path.join(standalone, "scripts", "build-next.mjs"),
+    ];
+    for (const file of [...junk, ...kept]) {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, "ok", "utf8");
+    }
+    // O release/ real do workspace nunca pode ser tocado pelo prune do standalone.
+    const originalRelease = path.join(root, "release", "Kaoz.1-Setup-0.0.1.exe");
+    await mkdir(path.dirname(originalRelease), { recursive: true });
+    await writeFile(originalRelease, "real", "utf8");
+    // Nem o .env.local do desenvolvedor: só a cópia dentro do standalone é removida.
+    const originalEnvironment = path.join(root, ".env.local");
+    await writeFile(originalEnvironment, "OPENAI_API_KEY=segredo\n", "utf8");
+
+    const removed = pruneNextStandalone(root);
+
+    for (const entry of ["release", "dist", "electron", "build/cache", ".git", "docs", "tests", ".env.local"]) {
+      assert.ok(removed.includes(entry), `esperava podar ${entry}`);
+    }
+    const { access } = await import("node:fs/promises");
+    for (const file of junk) await assert.rejects(() => access(file), /ENOENT/);
+    for (const file of kept) await assert.doesNotReject(() => access(file));
+    await assert.doesNotReject(() => access(originalRelease));
+    await assert.doesNotReject(() => access(originalEnvironment));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("copia e valida o manifesto do servidor standalone", async () => {
   const testRootParent = path.join(process.cwd(), ".generated", "build-cleanup-tests");
   await mkdir(testRootParent, { recursive: true });
