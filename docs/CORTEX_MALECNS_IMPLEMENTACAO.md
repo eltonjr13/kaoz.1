@@ -261,6 +261,43 @@ O motor MaleCNS **ainda não está ligado** a este caminho: o que foi corrigido 
 defeito de ordem que o plano identificou como pré-requisito. Ligar o reranker
 aqui é o trabalho seguinte.
 
+### Espaço de codificação — dois defeitos de incompatibilidade
+
+Ao trabalhar a integração apareceram dois defeitos que faziam as features de
+estado do readout medirem **nada**. Ambos corrigidos.
+
+**1. Dois codificadores na mesma feature.** `task-state.ts` tinha um
+codificador próprio (`encodeInto`: um slot por token, sempre positivo, sem
+n-gramas) diferente do usado nos candidatos (`encodeText`: assinado por
+`mulberry32`, dois slots, com n-gramas). Os vetores viviam em espaços distintos,
+e o `state-cosine`/`state-distance` do readout comparava um com o outro. Agora
+há **um** codificador; o teste fixa que o vetor do estado e o vetor da consulta
+para o mesmo texto são paralelos (cosseno > 0,9999).
+
+**2. O worker passava o vetor da consulta como se fosse estado do reservatório.**
+`queryState` recebia `request.queryVector` — o vetor *codificado* — enquanto
+`candidateState` era o estado *do reservatório* do candidato. São objetos de
+natureza diferente e dimensão diferente. O worker agora roda o reservatório uma
+vez sobre a consulta e usa o estado resultante, que é o mesmo processo aplicado
+aos candidatos.
+
+### Features constantes no worker
+
+O worker preenchia **quatro das dez features com constantes** — `recencyDays: 0`,
+`explicit: false`, `confidenceScore: 0.5`, `occurrences: 1` — enquanto o treino
+em Python (`scripts/cortex/run_evaluation.py`) usava os valores reais de cada
+candidato. O readout exportado era então aplicado a entradas fora da
+distribuição aprendida, e o produto não reproduzia o número medido.
+
+Corrigido: `EngineWorkerRequest` passou a carregar `candidateMeta` (passo
+`CANDIDATE_META_STRIDE` = 5: `semanticDot`, `recencyDays`, `explicit`,
+`confidenceScore`, `occurrences`), montado em `retrieval-service.ts` por
+`buildCandidateMeta` a partir das memórias reais.
+
+**Consequência:** os números da avaliação passam a corresponder ao que o produto
+executa. Antes, o caminho de produto e o caminho avaliado divergiam — o valor
+medido não descrevia o comportamento entregue.
+
 ### Desvios do plano, com motivo
 
 | Item do plano | O que foi feito | Por quê |

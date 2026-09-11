@@ -167,3 +167,11 @@ que a topologia MaleCNS não agrega nesta tarefa — e o `legacy` permanece.
 - A validação **não** incluiu navegador nem app Windows empacotado. Não afirmo
   que o recurso funciona de ponta a ponta no produto — apenas que o motor
   funciona, sob teste, e que a UI compila.
+- Os números vêm do caminho **Python** (`scripts/cortex/run_evaluation.py`). Para
+  que descrevam o que o produto executa, o worker precisou ser alinhado ao
+  treino: ele mantinha quatro das dez features constantes e comparava estados
+  em espaços incompatíveis. Feito — sem isso, o valor medido aqui não
+  corresponderia ao comportamento entregue (ver `CORTEX_MALECNS_IMPLEMENTACAO.md`,
+  seções "Espaço de codificação" e "Features constantes no worker").
+- O ganho medido (+0,0091 sobre a linha de base, IC [−0,0012, +0,0113]) tem
+  limite inferior abaixo de zero: **não** é um ganho estabelecido.

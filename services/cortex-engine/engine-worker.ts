@@ -147,22 +147,7 @@ function rank(request: EngineWorkerRequest): EngineWorkerResponse {
         state.sampleSize
       );
       if (request.sampleActivity && row < 4) samples.push(...rowSamples);
-
-      // Metadados REAIS do candidato: as features precisam sair daqui, não de
-      // constantes — senão o readout treinado opera fora da distribuição.
-      const metaBase = row * CANDIDATE_META_STRIDE;
-      const baselineScore = request.baselineScores[row] ?? 0;
-      const features = extractFeatures({
-        baselineScore,
-        semanticDot: request.candidateMeta[metaBase] ?? 0,
-        recencyDays: request.candidateMeta[metaBase + 1] ?? 0,
-        explicit: (request.candidateMeta[metaBase + 2] ?? 0) > 0.5,
-        confidenceScore: request.candidateMeta[metaBase + 3] ?? 0.5,
-        occurrences: request.candidateMeta[metaBase + 4] ?? 1,
-        queryState,
-        candidateState,
-        readoutEnergy: energy(candidateState),
-      });
+      const features = rowFeatures(request, row, queryState, candidateState);
       scores[row] = scoreWithReadout(request.candidateIds[row], features, readout).score;
     }
     return {
@@ -181,6 +166,44 @@ function energy(vector: Float32Array): number {
   let sum = 0;
   for (let i = 0; i < vector.length; i++) sum += vector[i] * vector[i];
   return Math.sqrt(sum / Math.max(1, vector.length));
+}
+
+/** Lê um metadado com valor de reserva, rejeitando ausente/NaN. */
+function metaAt(
+  meta: Float32Array,
+  base: number,
+  offset: number,
+  fallback: number
+): number {
+  const value = meta[base + offset];
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Features de UM candidato.
+ *
+ * Os metadados vêm do pedido (calculados sobre as memórias reais). Constantes
+ * aqui colocariam as features correspondentes fora da distribuição em que o
+ * readout foi treinado.
+ */
+function rowFeatures(
+  request: EngineWorkerRequest,
+  row: number,
+  queryState: Float32Array,
+  candidateState: Float32Array
+): Float32Array {
+  const base = row * CANDIDATE_META_STRIDE;
+  return extractFeatures({
+    baselineScore: request.baselineScores[row] ?? 0,
+    semanticDot: metaAt(request.candidateMeta, base, 0, 0),
+    recencyDays: metaAt(request.candidateMeta, base, 1, 0),
+    explicit: metaAt(request.candidateMeta, base, 2, 0) > 0.5,
+    confidenceScore: metaAt(request.candidateMeta, base, 3, 0.5),
+    occurrences: metaAt(request.candidateMeta, base, 4, 1),
+    queryState,
+    candidateState,
+    readoutEnergy: energy(candidateState),
+  });
 }
 
 function buildReadout() {
