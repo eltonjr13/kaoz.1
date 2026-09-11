@@ -1,0 +1,6 @@
+# Dependências de preparação do pacote MaleCNS.
+# Isoladas do Python de outras funções do app: o aplicativo instalado NÃO exige
+# que o usuário instale nada disto para conversar (plano, seção 6.1).
+pyarrow>=15
+numpy>=1.24
+scipy>=1.11
