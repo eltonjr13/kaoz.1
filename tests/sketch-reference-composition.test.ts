@@ -111,6 +111,16 @@ test('fluxo simples usa o esboço como guia e descarta a copy residual da campan
   assert.ok(request.preparedPrompt.includes('preserve the exact product design'));
   assert.equal(request.preparedPrompt.includes('O Futuro Chegou Hoje'), false, 'Copy antiga não pode entrar no prompt');
   assert.equal(/headline in .*area/i.test(request.preparedPrompt), false, 'Sem zonas reservadas para copy inexistente');
+  assert.equal(
+    /Guide layer "T[íi]tulo \(Headline\)"/i.test(request.preparedPrompt),
+    false,
+    'Nome de camada de texto antiga não pode virar guia'
+  );
+  assert.match(
+    request.preparedPrompt,
+    /Never draw placeholder words/i,
+    'Camadas de texto nunca podem virar texto fictício na imagem'
+  );
   assert.equal(request.creativeCompilation?.copy.headline, '');
   assert.equal(request.creativeCompilation?.reservedCopyZones.length, 0);
   assert.equal(
@@ -135,6 +145,35 @@ test('papéis de pessoa e produto entram no prompt com instruções distintas', 
 
   assert.ok(request.preparedPrompt.includes('person (att-person.png): preserve the human identity, face and body'));
   assert.ok(request.preparedPrompt.includes('product (att-product.png): preserve the exact product design'));
+});
+
+test('ideia de produto sem anexo de produto gera aviso acionável', async () => {
+  const project = simpleFlowProject(
+    'proj-product-missing-1',
+    'venda desse action figure estremamente limitado, o nome dele e "DURMA NAO PAINHO"'
+  );
+  project.attachments = [attachment('att-person', await pngDataUrl('#1f2937'), 'person')];
+  withOrder(project, [{ attachmentId: 'att-person', role: 'person' }]);
+
+  const request = compileCreativeGenerationRequest(project);
+
+  assert.ok(
+    request.diagnostics.some((item) => item.code === 'PRODUCT_REFERENCE_MISSING'),
+    'Deve avisar que falta referência do produto mencionado na ideia'
+  );
+});
+
+test('com anexo de produto marcado o aviso não aparece', async () => {
+  const project = simpleFlowProject('proj-product-ok-1', 'venda desse produto encapsulado');
+  project.attachments = [attachment('att-product', await pngDataUrl('#155e75'), 'product')];
+  withOrder(project, [{ attachmentId: 'att-product', role: 'product' }]);
+
+  const request = compileCreativeGenerationRequest(project);
+
+  assert.equal(
+    request.diagnostics.some((item) => item.code === 'PRODUCT_REFERENCE_MISSING'),
+    false
+  );
 });
 
 test('frase entre aspas é renderizada na imagem; pedido de CTA sem frase gera aviso', async () => {

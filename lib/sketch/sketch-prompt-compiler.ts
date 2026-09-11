@@ -167,7 +167,7 @@ export function buildTextStrategyInstruction(
   // previous behaviour reserved zones for leftover campaign text and produced
   // finished ads with empty typography banners.
   if (!hasCopyText(copy)) {
-    return 'Text rendering strategy: No text in the image. Do NOT render, generate, or burn any typography, printed words, letters, headline text, call-to-action buttons, badges, or logos. Keep surfaces clean and uncluttered, and do not leave artificial empty banners or placeholder boxes.';
+    return 'Text rendering strategy: No text in the image. Do NOT render, generate, or burn any typography, printed words, letters, headline text, call-to-action buttons, badges, or logos. Keep surfaces clean and uncluttered, and do not leave artificial empty banners or placeholder boxes. Never draw placeholder words, dummy labels, empty buttons, banners, badges or blank rectangles.';
   }
 
   if (strategy === 'baked') {
@@ -181,7 +181,7 @@ export function buildTextStrategyInstruction(
   }
 
   const zonesClause = buildTextZonesClause(zones);
-  return `Text rendering strategy: Layered typography overlay. Reserve clean, low-clutter, copy-safe negative space in ${zonesClause}. No text in image. Do NOT render, generate, or burn any typography, printed words, letters, headline text, call-to-action buttons, or logos into the image. Keep background surfaces in reserved areas uncluttered for post-generation typography layers.`;
+  return `Text rendering strategy: Layered typography overlay. Reserve clean, low-clutter, copy-safe negative space in ${zonesClause}. No text in image. Do NOT render, generate, or burn any typography, printed words, letters, headline text, call-to-action buttons, or logos into the image. Never draw placeholder words, dummy labels, the words "headline", "subheadline", "cta", empty buttons, banners, badges or blank rectangles inside those areas: keep them as plain, uncluttered background surfaces for post-generation typography layers.`;
 }
 
 /**
@@ -374,7 +374,7 @@ function buildIdeaSection(prompt?: string): string {
 
 function buildSketchNote(hasSketch?: boolean): string {
   if (!hasSketch) return '';
-  return 'Layout sketch guide: Spatial composition guide only; render a finished photorealistic commercial advertising photograph and do not keep or reproduce rough sketch lines, scribbles, pencil marks, or wireframe boxes.';
+  return 'Layout sketch guide: Spatial composition guide only; render a finished photorealistic commercial advertising photograph and do not keep or reproduce rough sketch lines, scribbles, pencil marks, or wireframe boxes. Translate every drawn mark into real rendered subjects: never draw stick figures, doodles, arrows, symbols or cartoon outlines, and never replace a photographed person with a drawn character.';
 }
 
 function hasTextProhibition(lower: string): boolean {

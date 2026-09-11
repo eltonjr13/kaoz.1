@@ -426,6 +426,28 @@ function resolveSubjectRoles(project: SketchProjectData): CreativeSubjectRole[] 
   return roles;
 }
 
+const PRODUCT_INTENT_REGEX = /\b(produto|produtos|product|vendendo|vender|venda|selling|compre|compra|lan[cç]amento)\b/i;
+
+/**
+ * When the idea advertises a product but the attached references only show the
+ * person, the generator cannot show the product without inventing it. Warning
+ * here is cheaper than a finished ad with the product missing.
+ */
+function checkProductReferenceCoverage(
+  project: SketchProjectData,
+  subjectRoles: CreativeSubjectRole[]
+): SketchReferenceDiagnostic | null {
+  if (!project.currentOrder || subjectRoles.length === 0) return null;
+  if (subjectRoles.some((subject) => subject.role === 'product' || subject.role === 'logo')) return null;
+  if (!PRODUCT_INTENT_REGEX.test(project.prompt || '')) return null;
+  return {
+    code: 'PRODUCT_REFERENCE_MISSING',
+    severity: 'warning',
+    message:
+      'A ideia vende um produto, mas nenhum anexo está marcado como Produto. Anexe a foto do produto (ou marque a imagem certa como Produto) para ela aparecer na arte; sem referência o gerador não inventa o produto.',
+  };
+}
+
 /**
  * In the simple flow the layout is a rough pencil sketch over pasted photos, so
  * the generator must treat it as guidance instead of reproducing it. Older
@@ -470,6 +492,9 @@ function assembleCreativeCompilation(
   const compositionIntent = resolveCompositionIntent(project, hasSketch, selectedReferenceCount);
   const textRenderingStrategy = effective.strategy;
   const hasCompositeReference = willUseCompositeReference(referenceMode, hasSketch, selectedReferenceCount);
+  const subjectRoles = resolveSubjectRoles(project);
+  const missingProductReference = checkProductReferenceCoverage(project, subjectRoles);
+  if (missingProductReference) diagnostics.push(missingProductReference);
 
   const compiledPrompt = compileCreativeGenerationPrompt({
     prompt: project.prompt,
@@ -482,7 +507,7 @@ function assembleCreativeCompilation(
     hasSketch,
     hasCompositeReference,
     subjectCount: selectedReferenceCount > 0 ? selectedReferenceCount : undefined,
-    subjectRoles: resolveSubjectRoles(project),
+    subjectRoles,
   });
 
   const promptIssues = validateCreativePrompt(compiledPrompt, textRenderingStrategy, {

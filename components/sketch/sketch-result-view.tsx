@@ -8,12 +8,14 @@ import {
   Send,
   ArrowLeft,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import type {
   FlowSupportedAspectRatio,
   SketchCreativeResult,
   SketchProjectData,
 } from '@/types/sketch';
+import type { SketchJobWarning } from '@/lib/sketch/sketch-job-warnings';
 
 export interface SketchResultViewProps {
   project: SketchProjectData;
@@ -26,6 +28,7 @@ export interface SketchResultViewProps {
   onApplyAdjustment: (adjustmentPrompt: string) => void;
   onBackToEdit: () => void;
   isGenerating?: boolean;
+  warnings?: SketchJobWarning[];
 }
 
 function resolveAspectRatioClass(ratio: FlowSupportedAspectRatio): string {
@@ -112,6 +115,7 @@ export function SketchResultView({
   onApplyAdjustment,
   onBackToEdit,
   isGenerating = false,
+  warnings = [],
 }: SketchResultViewProps) {
   const ratioClass = resolveAspectRatioClass(aspectRatio);
   const lineageLabel = resolveIterationLabel(
@@ -148,6 +152,22 @@ export function SketchResultView({
           className="h-full w-full object-contain"
         />
       </div>
+
+      {warnings.length > 0 && (
+        <div className="w-full rounded-xl border border-amber-900/60 bg-amber-950/30 p-3 text-[11px] text-amber-200">
+          <div className="flex items-center gap-1.5 font-medium text-amber-300">
+            <AlertTriangle size={13} />
+            <span>Confira antes de usar este resultado</span>
+          </div>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {warnings.slice(0, 3).map((warning) => (
+              <li key={warning.code + warning.message} className="leading-relaxed">
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-3 w-full">
         <button

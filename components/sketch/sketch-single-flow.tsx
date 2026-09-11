@@ -25,6 +25,7 @@ import {
   CANVAS_ASPECT_RATIO_PRESETS,
 } from '@/types/sketch';
 import { isJobActive } from '@/lib/sketch/sketch-job-state';
+import { collectJobWarnings } from '@/lib/sketch/sketch-job-warnings';
 import { SketchSaveCoordinator, type SaveStatus } from '@/lib/sketch/sketch-save-coordinator';
 import { createCleanProject } from '@/lib/sketch/sketch-project-defaults';
 import { renderSketchOnlyDataUrl } from '@/lib/sketch/sketch-exporter';
@@ -708,6 +709,7 @@ export function SketchSingleFlow() {
             onApplyAdjustment={(adj) => handleGenerate('refine_text', adj)}
             onBackToEdit={() => setFlowState('input')}
             isGenerating={isGenerating}
+            warnings={collectJobWarnings(activeJob?.snapshot)}
           />
         )}
 
