@@ -47,36 +47,42 @@ async function audit(page, width, route) {
     return { overflowX, worst };
   });
 
+  // Duas passadas enxutas em vez de uma com muitos ramos: alvos pequenos e
+  // alvos cobertos medem coisas diferentes e não precisam decidir juntos.
   const targets = await page.evaluate((min) => {
     const sel =
       'button, a[href], [role="button"], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-    const out = { total: 0, tooSmall: [], covered: [] };
+    const tooSmall = [];
+    const covered = [];
+    let total = 0;
+    const descreve = (el) => (el.textContent || "").trim().slice(0, 40);
+    const visivel = (rect) => rect.width > 0 && rect.height > 0;
+    const coberto = (el, rect) => {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return null;
+      const top = document.elementFromPoint(cx, cy);
+      if (!top || top === el || el.contains(top) || top.contains(el)) return null;
+      return top.tagName.toLowerCase();
+    };
     for (const el of document.querySelectorAll(sel)) {
       const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
-      out.total++;
+      if (!visivel(rect)) continue;
+      total++;
       if (rect.width < min || rect.height < min) {
-        out.tooSmall.push({
+        tooSmall.push({
           tag: el.tagName.toLowerCase(),
-          text: (el.textContent || "").trim().slice(0, 40),
+          text: descreve(el),
           w: Math.round(rect.width),
           h: Math.round(rect.height),
         });
       }
-      // Centro coberto por outro elemento = ação inacessível na prática.
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue;
-      const top = document.elementFromPoint(cx, cy);
-      if (top && top !== el && !el.contains(top) && !top.contains(el)) {
-        out.covered.push({
-          tag: el.tagName.toLowerCase(),
-          text: (el.textContent || "").trim().slice(0, 40),
-          by: top.tagName.toLowerCase(),
-        });
+      const por = coberto(el, rect);
+      if (por) {
+        covered.push({ tag: el.tagName.toLowerCase(), text: descreve(el), by: por });
       }
     }
-    return out;
+    return { total, tooSmall, covered };
   }, MIN_TARGET);
 
   const skeleton = await page.evaluate(() => {

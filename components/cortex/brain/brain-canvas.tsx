@@ -15,11 +15,36 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ActivitySample, ConnectomeNode } from "@/services/cortex-engine/cortex-engine.types";
+import {
+  mapToAnatomyFrame,
+  projectNodes,
+  type ProjectedPoint,
+} from "./brain-geometry";
 
 export interface BrainCanvasProps {
   nodes: ConnectomeNode[];
   /** Posições normalizadas [0,1] por eixo, 3 por nó. */
   positions: number[];
+  /**
+   * Anatomia COMPLETA do CNS, apenas como fundo de referência.
+   *
+   * Conjunto separado do motor (141.781 pontos contra os 1.536 do recorte).
+   * Desenhada esmaecida para dar a forma anatômica sem sugerir que participa do
+   * cálculo — o recorte destacado por cima mostra onde o motor realmente opera.
+   */
+  backgroundPositions?: Float32Array | null;
+  /**
+   * Enquadramento para alinhar o recorte com a anatomia.
+   *
+   * Obrigatório quando `backgroundPositions` é usado: sem ele o recorte seria
+   * desenhado no próprio sistema de coordenadas e pareceria cobrir o CNS todo.
+   */
+  frame?: {
+    motorMin: number[];
+    motorMax: number[];
+    anatomyMin: number[];
+    anatomyMax: number[];
+  } | null;
   /** Amostras reais de atividade; ausentes = estado estático. */
   samples?: ActivitySample[];
   isActive?: boolean;
@@ -30,10 +55,114 @@ export interface BrainCanvasProps {
 
 const BACKGROUND_DENSITY = 0.35;
 const MAX_EDGES_DRAWN = 400;
+/** Cor do fundo anatômico: presente, mas claramente fora de foco. */
+const COLOR_ANATOMY_BACKGROUND = "rgba(138,150,182,0.30)";
+
+/**
+ * Decide o sistema de coordenadas do recorte.
+ *
+ * Com anatomia de fundo E enquadramento, o recorte é convertido para o
+ * enquadramento da anatomia. Sem qualquer um dos dois, mantém-se o
+ * comportamento anterior (recorte no próprio sistema).
+ */
+function resolveDisplayPositions(
+  positions: number[],
+  frame: BrainCanvasProps["frame"],
+  backgroundPositions: Float32Array | null
+): ArrayLike<number> {
+  if (!frame || !backgroundPositions) return positions;
+  return mapToAnatomyFrame(
+    positions,
+    frame.motorMin,
+    frame.motorMax,
+    frame.anatomyMin,
+    frame.anatomyMax
+  );
+}
+
+/**
+ * Rasteriza o fundo anatômico em um canvas próprio.
+ *
+ * São dezenas de milhares de pontos; redesenhá-los a cada movimento do mouse
+ * custaria caro. O fundo vira imagem e o desenho só a sobrepõe.
+ */
+function buildBackgroundLayer(
+  backgroundPositions: Float32Array | null | undefined,
+  width: number,
+  height: number
+): HTMLCanvasElement | null {
+  if (!backgroundPositions || backgroundPositions.length < 3) return null;
+  if (width === 0 || height === 0) return null;
+  const off = document.createElement("canvas");
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  off.width = Math.floor(width * dpr);
+  off.height = Math.floor(height * dpr);
+  const ctx = off.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pontos = Math.floor(backgroundPositions.length / 3);
+  drawAnatomyBackground(ctx, width, height, projectNodes(backgroundPositions, pontos));
+  return off;
+}
+
+/**
+ * Prepara o canvas para desenho e devolve o contexto.
+ *
+ * Extraído do efeito para concentrar aqui as guardas de tamanho e a escala por
+ * devicePixelRatio (sem ela o desenho fica borrado em telas 4K).
+ */
+function prepareCanvas(
+  canvas: HTMLCanvasElement | null,
+  size: { width: number; height: number }
+): CanvasRenderingContext2D | null {
+  if (!canvas) return null;
+  if (size.width === 0 || size.height === 0) return null;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width = Math.floor(size.width * dpr);
+  canvas.height = Math.floor(size.height * dpr);
+  canvas.style.width = `${size.width}px`;
+  canvas.style.height = `${size.height}px`;
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return context;
+}
+
+/** Quantos pontos de fundo desenhar; `undefined` quando não há anatomia. */
+function countBackgroundPoints(
+  backgroundPositions: Float32Array | null | undefined
+): number | undefined {
+  return backgroundPositions ? Math.floor(backgroundPositions.length / 3) : undefined;
+}
+
+/**
+ * Observa o tamanho do container.
+ *
+ * ResizeObserver em vez de `window.resize`: o sidebar pode colapsar sem que a
+ * janela mude de tamanho.
+ */
+function useContainerSize(
+  ref: React.RefObject<HTMLDivElement | null>
+): { width: number; height: number } {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
 
 export function BrainCanvas({
   nodes,
   positions,
+  backgroundPositions = null,
+  frame = null,
   samples,
   isActive = true,
   selectedIndex = null,
@@ -42,51 +171,59 @@ export function BrainCanvas({
 }: BrainCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const size = useContainerSize(containerRef);
   const [hovered, setHovered] = useState<number | null>(null);
 
   const reducedMotion = usePrefersReducedMotion();
   const visible = usePageVisibility();
 
+  // Alinhamento ao fundo: o recorte sai do próprio enquadramento e entra no da
+  // anatomia ANTES de projetar, para que desenho e teste de clique usem a mesma
+  // geometria.
+  const displayPositions = useMemo(
+    () => resolveDisplayPositions(positions, frame, backgroundPositions),
+    [positions, frame, backgroundPositions]
+  );
+
   // A geometria é projetada uma única vez: a projeção 2,5D é determinística.
-  const projected = useMemo(() => projectNodes(positions, nodes.length), [positions, nodes.length]);
+  const projected = useMemo(
+    () => projectNodes(displayPositions, nodes.length),
+    [displayPositions, nodes.length]
+  );
   const magnitudeByNode = useMemo(() => buildMagnitudeMap(samples), [samples]);
+  const backgroundPointCount = countBackgroundPoints(backgroundPositions);
 
-  // ResizeObserver em vez de window.resize: o sidebar pode colapsar sem que a
-  // janela mude de tamanho.
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  // Fundo anatômico: rasterizado uma vez por tamanho/dados. Mesma convenção
+  // [0,1] da anatomia, então o recorte já convertido cai na região certa.
+  const backgroundLayer = useMemo(
+    () => buildBackgroundLayer(backgroundPositions, size.width, size.height),
+    [backgroundPositions, size.width, size.height]
+  );
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || size.width === 0 || size.height === 0) return;
-    const context = canvas.getContext("2d");
+    const context = prepareCanvas(canvasRef.current, size);
     if (!context) return;
-    // devicePixelRatio: sem isso o desenho fica borrado em telas 4K.
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    canvas.width = Math.floor(size.width * dpr);
-    canvas.height = Math.floor(size.height * dpr);
-    canvas.style.width = `${size.width}px`;
-    canvas.style.height = `${size.height}px`;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw(context, {
       width: size.width,
       height: size.height,
       projected,
+      backgroundLayer,
       nodes,
       magnitudeByNode,
       selectedIndex: selectedIndex ?? hovered,
       reducedMotion,
     });
-  }, [size, projected, nodes, magnitudeByNode, selectedIndex, hovered, reducedMotion]);
+  }, [
+    size,
+    projected,
+    backgroundLayer,
+    backgroundPositions,
+    nodes,
+    magnitudeByNode,
+    selectedIndex,
+    hovered,
+    reducedMotion,
+  ]);
 
   // Pausa total quando a aba está oculta ou a seção inativa.
   const running = isActive && visible;
@@ -114,7 +251,7 @@ export function BrainCanvas({
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label={describeAnatomy(nodes.length)}
+        aria-label={describeAnatomy(nodes.length, backgroundPointCount)}
         className="h-full w-full cursor-crosshair outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-bright)]"
         tabIndex={0}
         onMouseMove={(event) => setHovered(nodeAt(event.clientX, event.clientY))}
@@ -138,32 +275,6 @@ export function BrainCanvas({
   );
 }
 
-interface ProjectedPoint {
-  x: number;
-  y: number;
-  depth: number;
-}
-
-/** Projeção 2,5D determinística: leve rotação em Y para dar profundidade. */
-export function projectNodes(positions: number[], count: number): ProjectedPoint[] {
-  const angle = 0.55;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const out: ProjectedPoint[] = [];
-  for (let index = 0; index < count; index++) {
-    const x = positions[index * 3] ?? 0.5;
-    const y = positions[index * 3 + 1] ?? 0.5;
-    const z = positions[index * 3 + 2] ?? 0.5;
-    const cx = x - 0.5;
-    const cz = z - 0.5;
-    out.push({
-      x: 0.5 + (cx * cos - cz * sin) * 0.8,
-      y: 0.5 - (y - 0.5) * 0.8,
-      depth: cx * sin + cz * cos,
-    });
-  }
-  return out;
-}
 
 function buildMagnitudeMap(samples?: ActivitySample[]): Map<number, number> {
   const map = new Map<number, number>();
@@ -179,6 +290,8 @@ interface DrawOptions {
   width: number;
   height: number;
   projected: ProjectedPoint[];
+  /** Camada de fundo já rasterizada; ver comentário no componente. */
+  backgroundLayer: HTMLCanvasElement | null;
   nodes: ConnectomeNode[];
   magnitudeByNode: Map<number, number>;
   selectedIndex: number | null;
@@ -186,11 +299,26 @@ interface DrawOptions {
 }
 
 function draw(context: CanvasRenderingContext2D, options: DrawOptions): void {
-  const { width, height, projected, nodes, magnitudeByNode, selectedIndex, reducedMotion } = options;
+  const {
+    width,
+    height,
+    projected,
+    backgroundLayer,
+    nodes,
+    magnitudeByNode,
+    selectedIndex,
+    reducedMotion,
+  } = options;
   context.clearRect(0, 0, width, height);
 
   // Contorno anatômico apenas contextual: eixos e limites do recorte.
   drawAxes(context, width, height);
+
+  // Fundo: anatomia COMPLETA do CNS, já rasterizada em canvas próprio. Não é o
+  // conjunto do motor — dá a forma anatômica ao recorte destacado por cima.
+  if (backgroundLayer) {
+    context.drawImage(backgroundLayer, 0, 0, width, height);
+  }
 
   const hasActivity = magnitudeByNode.size > 0;
   projected.forEach((point, index) => {
@@ -234,6 +362,26 @@ function nodeColor(node: ConnectomeNode, emphasis: number, isSelected: boolean):
   return COLOR_IDLE;
 }
 
+/**
+ * Desenha a anatomia completa como fundo estático.
+ *
+ * `fillRect` de 1 px em vez de `arc`: são dezenas de milhares de pontos e o
+ * arco custa caro. O fundo é desenhado uma vez por mudança de dados, não por
+ * quadro, então não há animação fingindo atividade.
+ */
+function drawAnatomyBackground(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  projected: ProjectedPoint[]
+): void {
+  if (!projected.length) return;
+  context.fillStyle = COLOR_ANATOMY_BACKGROUND;
+  for (const point of projected) {
+    context.fillRect(point.x * width, point.y * height, 1, 1);
+  }
+}
+
 function drawAxes(context: CanvasRenderingContext2D, width: number, height: number): void {
   context.strokeStyle = "rgba(255,255,255,0.06)";
   context.lineWidth = 1;
@@ -268,8 +416,11 @@ function drawEdgeHints(
   context.stroke();
 }
 
-function describeAnatomy(count: number): string {
-  return `Anatomia do recorte com ${count} neurônios reais do conectoma MaleCNS. Use as setas para navegar entre neurônios e Enter para inspecionar.`;
+function describeAnatomy(count: number, backgroundPoints?: number): string {
+  const fundo = backgroundPoints
+    ? `Ao fundo, a referência anatômica do CNS completo com ${backgroundPoints} neurônios, apenas para orientação visual. O motor não computa sobre ela. `
+    : "";
+  return `${fundo}Em destaque, o recorte que o motor usa: ${count} neurônios reais do conectoma MaleCNS. Use as setas para navegar entre neurônios e Enter para inspecionar.`;
 }
 
 function handleCanvasKeys(

@@ -43,6 +43,19 @@ export function defaultReadoutPath(): string {
   return path.join(defaultPackageDir(), "readout.json");
 }
 
+/**
+ * Anatomia COMPLETA do CNS — camada de visualização, não de computação.
+ *
+ * É um artefato separado do pacote de propósito: o motor computa sobre um
+ * recorte de 1.536 neurônios, enquanto este conjunto (todos os neurônios com
+ * posição real) existe apenas para desenhar a referência anatômica.
+ */
+export function defaultAnatomyDir(): string {
+  const override = process.env.KAOZ1_CORTEX_ANATOMY_DIR?.trim();
+  if (override) return path.resolve(override);
+  return path.join(getLocalDataDir(), "cortex-engine", "anatomy", "male-cns-v1.0");
+}
+
 export async function engineStatus(
   settings: CortexEngineSettings
 ): Promise<EngineStatusPayload> {

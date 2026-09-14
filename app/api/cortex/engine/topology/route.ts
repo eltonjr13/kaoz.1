@@ -9,6 +9,7 @@ import { apiError, apiSuccess, ApiErrorCode } from '../../../../../lib/cortex/ap
 import {
   loadGeometry,
   loadNodes,
+  PackageError,
   readManifest,
 } from '../../../../../services/cortex-engine/connectome-package.ts';
 import { defaultPackageDir } from '../../../../../services/cortex-engine/engine-status.ts';
@@ -76,12 +77,37 @@ function publicManifest(manifest: Awaited<ReturnType<typeof readManifest>>) {
   };
 }
 
+/** Pacote ausente é estado esperado; o resto é falha de verdade. */
+function ehPacoteAusente(err: any): boolean {
+  if (err instanceof PackageError) return true;
+  // Reserva para erros que não são de pacote mas descrevem ausência.
+  return /indisponível|ausente|não encontrado|pacote/i.test(err?.message || '');
+}
+
+/**
+ * Traduz a falha da topologia em resposta.
+ *
+ * "Pacote não preparado" é um estado ESPERADO — a interface pede a topologia em
+ * cada poll e trata o 404 como vazio. Registrá-lo em nível de erro com stack
+ * trace enche o log de ruído e esconde falha de verdade, então esse caso fica em
+ * nível informativo e sem stack. Só o inesperado (500) vira erro.
+ */
 function topologyError(err: any) {
+  if (ehPacoteAusente(err)) {
+    console.info(
+      '[API Cortex Engine] GET topology: pacote não preparado (404 esperado):',
+      err?.reason ?? 'package-missing'
+    );
+    return apiError(
+      ApiErrorCode.NOT_FOUND,
+      err?.message || 'Pacote do recorte ainda não preparado.',
+      404
+    );
+  }
   console.error('[API Cortex Engine] GET topology:', err);
-  const missing = /indisponível|ausente|não encontrado|pacote/i.test(err?.message || '');
   return apiError(
-    missing ? ApiErrorCode.NOT_FOUND : ApiErrorCode.INTERNAL_ERROR,
+    ApiErrorCode.INTERNAL_ERROR,
     err?.message || 'Erro ao carregar a topologia do recorte.',
-    missing ? 404 : 500
+    500
   );
 }

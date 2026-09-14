@@ -4,7 +4,7 @@
   "log": [
     {
       "step": "criada",
-      "detail": "id=8289610c | Usuario informou: ZZ-TESTE-VALIDACAO-CORTEX usa luz quente de 3200K"
+      "detail": "id=ad8dacdf | Usuario informou: ZZ-TESTE-VALIDACAO-CORTEX usa luz quente de 3200K"
     },
     {
       "step": "visivel na lista",
@@ -12,7 +12,7 @@
     },
     {
       "step": "versoes na serie",
-      "detail": "2 (ativas=1, superseded=1)"
+      "detail": "total=2 ativas=1 superseded=1"
     },
     {
       "step": "1. uma unica versao ativa",

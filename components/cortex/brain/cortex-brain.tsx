@@ -16,8 +16,10 @@ import { BrainCanvas } from "./brain-canvas";
 import { BrainTraceDetails } from "./brain-trace-details";
 import { BrainTraceList } from "./brain-trace-list";
 import {
+  useCnsAnatomy,
   useEngineData,
   useIsForeground,
+  type CnsAnatomy,
   type EngineStatusName,
   type EngineStatusPayload,
   type TopologyPayload,
@@ -48,6 +50,8 @@ const STATUS_LABELS: Record<EngineStatusName, { label: string; tone: string }> =
 
 export function CortexBrain({ isActive = true }: CortexBrainProps) {
   const { status, topology, traces, loading, error, reload } = useEngineData(isActive);
+  // Anatomia completa: busca única, fora do polling (artefato estático).
+  const anatomy = useCnsAnatomy(isActive);
   const [selectedTrace, setSelectedTrace] = useState<EngineTrace | null>(null);
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
   const foreground = useIsForeground();
@@ -70,6 +74,7 @@ export function CortexBrain({ isActive = true }: CortexBrainProps) {
           topology={topology!}
           status={status}
           samples={activitySamples}
+          anatomy={anatomy}
           isActive={isActive && foreground}
           selectedNode={selectedNode}
           onSelectNode={setSelectedNode}
@@ -162,6 +167,7 @@ function AnatomyPanel({
   topology,
   status,
   samples,
+  anatomy,
   isActive,
   selectedNode,
   onSelectNode,
@@ -169,15 +175,32 @@ function AnatomyPanel({
   topology: TopologyPayload;
   status: EngineStatusPayload | null;
   samples: Parameters<typeof BrainCanvas>[0]["samples"];
+  anatomy: CnsAnatomy;
   isActive: boolean;
   selectedNode: number | null;
   onSelectNode: (index: number | null) => void;
 }) {
+  // Alinha o recorte ao enquadramento da anatomia. Sem os dois lados do
+  // retângulo, não há como posicionar corretamente — e é melhor não desenhar
+  // do que desenhar errado.
+  const frame = useMemo(() => {
+    if (!anatomy.motorFrame || !anatomy.transform) return null;
+    const aMin = anatomy.transform.min;
+    const aMax = anatomy.transform.max;
+    if (!aMin?.length || !aMax?.length) return null;
+    return {
+      motorMin: anatomy.motorFrame.min,
+      motorMax: anatomy.motorFrame.max,
+      anatomyMin: aMin,
+      anatomyMax: aMax,
+    };
+  }, [anatomy.motorFrame, anatomy.transform]);
+
   return (
     <section className="flex min-h-[280px] flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-          Anatomia do recorte
+          Anatomia do CNS
         </h3>
         <span className="text-[10px] text-[var(--muted)]">{topology.transform}</span>
       </div>
@@ -185,15 +208,35 @@ function AnatomyPanel({
         <BrainCanvas
           nodes={topology.nodes}
           positions={topology.positions}
+          backgroundPositions={frame ? anatomy.positions : null}
+          frame={frame}
           samples={samples}
           isActive={isActive}
           selectedIndex={selectedNode}
           onSelectNode={onSelectNode}
         />
       </div>
+      {/*
+        A distinção precisa estar na tela: o fundo é referência anatômica e o
+        destaque é o conjunto que o motor realmente computa. Sem isto o desenho
+        sugere que o motor processa o CNS inteiro.
+      */}
       <p className="text-[10px] leading-relaxed text-[var(--muted)]">
+        {anatomy.positions ? (
+          <>
+            Fundo: {anatomy.points.toLocaleString("pt-BR")} neurônios de referência
+            anatômica (CNS completo, exibição estática). Motor:{" "}
+            {topology.manifest.stats.neurons.toLocaleString("pt-BR")} neurônios do
+            recorte.{" "}
+          </>
+        ) : null}
         {topology.manifest.activityScale.note} {status?.scopeNotice ?? ""}
       </p>
+      {anatomy.error ? (
+        <p className="text-[10px] leading-relaxed text-[var(--muted)]">
+          Anatomia completa indisponível: {anatomy.error}
+        </p>
+      ) : null}
     </section>
   );
 }
