@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ChevronLeft,
@@ -17,16 +17,21 @@ import {
   Search,
   UserCheck,
   Pencil,
+  NotebookPen,
+  PanelRightOpen,
+  Mic,
 } from "lucide-react";
 import { useHotkey } from "@/lib/shortcuts/use-hotkeys";
 import { useShortcuts } from "@/lib/shortcuts/ShortcutContext";
 import { KbdBadge } from "@/components/shortcuts/KbdBadge";
+import { useMeetingNotes } from "@/components/meeting-notes/MeetingNotesProvider";
 
 const navItems = [
   { href: "/flow", label: "Kaoz.1", icon: Sparkles, shortcut: "Alt+1" },
   { href: "/supervision", label: "Supervisor", icon: Activity, shortcut: "Alt+2" },
   { href: "/cortex", label: "Córtex", icon: Brain, shortcut: "Alt+3" },
   { href: "/sketch", label: "Sketch", icon: Pencil, shortcut: "Alt+7" },
+  { href: "/meeting-notes", label: "Reuniões", icon: NotebookPen, shortcut: "Alt+8" },
   { href: "/model-p", label: "Model P", icon: UserCheck, shortcut: "Alt+6" },
   { href: "/video", label: "Edição de vídeo", icon: Video, shortcut: "Alt+4" },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: "Alt+5" },
@@ -143,6 +148,32 @@ function SidebarNav({
   );
 }
 
+function MeetingRecordingBadge({
+  collapsed,
+  onCloseMobile,
+}: {
+  collapsed: boolean;
+  onCloseMobile: () => void;
+}) {
+  const router = useRouter();
+  const { captureState } = useMeetingNotes();
+  if (captureState === "idle") return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => { onCloseMobile(); router.push("/meeting-notes"); }}
+      aria-label="Voltar à reunião em gravação"
+      className={`mb-3 flex h-10 items-center gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 text-left text-[13px] font-medium text-red-200 ${collapsed ? "md:justify-center md:px-0" : ""}`}
+    >
+      <Mic size={16} className="shrink-0" aria-hidden="true" />
+      <span className={collapsed ? "md:hidden" : undefined}>
+        {captureState === "recording" ? "Reunião gravando" : "Reunião em andamento"}
+      </span>
+    </button>
+  );
+}
+
 function SidebarFooter({
   collapsed,
   onOpenCommands,
@@ -248,6 +279,23 @@ export function AppShell({
   const { openCommandPalette, openCheatsheet } = useShortcuts();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const openQuickAssistant = () => {
+    setSidebarOpen(false);
+    const openPanel = window.kaoz1Desktop?.openQuickAssistant;
+    if (openPanel) {
+      void openPanel();
+      return;
+    }
+    router.push("/quick-assistant");
+  };
+
+  useEffect(() => {
+    return window.kaoz1Desktop?.onMainRouteRequested?.((route) => {
+      if (route === "/flow" || route === "/meeting-notes" || /^\/flow\/[a-zA-Z0-9-]+$/.test(route)) {
+        router.push(route);
+      }
+    });
+  }, [router]);
 
   // Quick navigation hotkeys
   useHotkey(["alt+1"], () => router.push("/flow"));
@@ -257,6 +305,7 @@ export function AppShell({
   useHotkey(["alt+5"], () => router.push("/settings"));
   useHotkey(["alt+6"], () => router.push("/model-p"));
   useHotkey(["alt+7"], () => router.push("/sketch"));
+  useHotkey(["alt+8"], () => router.push("/meeting-notes"));
   useHotkey(["ctrl+b", "meta+b"], () => setSidebarCollapsed((val) => !val));
 
   return (
@@ -298,6 +347,17 @@ export function AppShell({
             onCloseMobile={() => setSidebarOpen(false)}
             onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
           />
+          <button
+            type="button"
+            onClick={openQuickAssistant}
+            aria-label="Abrir painel rápido"
+            title="Abrir painel rápido (Ctrl+Alt+K)"
+            className={`mb-3 flex h-10 items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 text-left text-[13px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--panel-strong)] ${sidebarCollapsed ? "md:justify-center md:px-0" : ""}`}
+          >
+            <PanelRightOpen size={16} className="shrink-0" aria-hidden="true" />
+            <span className={sidebarCollapsed ? "md:hidden" : undefined}>Painel rápido</span>
+          </button>
+          <MeetingRecordingBadge collapsed={sidebarCollapsed} onCloseMobile={() => setSidebarOpen(false)} />
           <SidebarNav
             pathname={pathname}
             collapsed={sidebarCollapsed}

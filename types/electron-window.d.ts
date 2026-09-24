@@ -13,6 +13,11 @@ declare global {
   }
 
   interface Window {
+    kaoz1QuickAssistant?: {
+      hide: () => Promise<boolean>;
+      openMain: (route: string) => Promise<boolean>;
+      readClipboardText: () => Promise<string | null>;
+    };
     kaoz1Desktop?: {
       minimize: () => Promise<boolean>;
       toggleMaximize: () => Promise<boolean>;
@@ -36,6 +41,7 @@ declare global {
         version?: string;
       } | null>;
       openFlowCompanion: () => Promise<{ opened: boolean; message?: string } | null>;
+      openQuickAssistant: () => Promise<boolean>;
       saveFile?: (payload: {
         defaultName: string;
         buffer: ArrayBuffer;
@@ -43,6 +49,7 @@ declare global {
       }) => Promise<{ savedPath?: string } | null>;
       onMaximizedChanged: (listener: (isMaximized: boolean) => void) => () => void;
       onNavigationStateChanged: (listener: (state: Kaoz1NavigationState) => void) => () => void;
+      onMainRouteRequested: (listener: (route: string) => void) => () => void;
       getUpdateStatus: () => Promise<Kaoz1UpdateStatus>;
       checkForUpdates: () => Promise<Kaoz1UpdateStatus>;
       downloadUpdate: () => Promise<Kaoz1UpdateStatus>;

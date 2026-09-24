@@ -18,6 +18,7 @@ if (process.platform === "win32") {
     saveFile: (payload) => ipcRenderer.invoke("kaoz1-desktop:save-file", payload),
     getFlowCompanionStatus: () => ipcRenderer.invoke("kaoz1-flow-companion:get-status"),
     openFlowCompanion: () => ipcRenderer.invoke("kaoz1-flow-companion:open"),
+    openQuickAssistant: () => ipcRenderer.invoke("kaoz1-quick-assistant:show"),
     getUpdateStatus: () => ipcRenderer.invoke("kaoz1-update:get-status"),
     checkForUpdates: () => ipcRenderer.invoke("kaoz1-update:check"),
     downloadUpdate: () => ipcRenderer.invoke("kaoz1-update:download"),
@@ -36,6 +37,11 @@ if (process.platform === "win32") {
       const handler = (_event, state) => listener(state);
       ipcRenderer.on("kaoz1-navigation:state-changed", handler);
       return () => ipcRenderer.removeListener("kaoz1-navigation:state-changed", handler);
-    }
+    },
+    onMainRouteRequested: (listener) => {
+      const handler = (_event, route) => listener(route);
+      ipcRenderer.on("kaoz1-navigation:open-route", handler);
+      return () => ipcRenderer.removeListener("kaoz1-navigation:open-route", handler);
+    },
   });
 }

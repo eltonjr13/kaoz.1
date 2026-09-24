@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const COMMANDS = [
   { href: "/flow", label: "Chat", description: "Conversar e criar com o Kaoz.1", keywords: "inicio conversa agente" },
+  { href: "/meeting-notes", label: "Reuniões", description: "Transcrever e organizar anotações", keywords: "reuniao transcricao notas tarefas" },
   { href: "/supervision", label: "Supervisor", description: "Acompanhar agentes e execuções", keywords: "atividade tarefas agentes" },
   { href: "/cortex", label: "Córtex", description: "Explorar memória e conhecimento", keywords: "memoria conhecimento" },
   { href: "/model-p", label: "Model P", description: "Visualizar o modelo pessoal do usuário", keywords: "perfil preferencias fatos modelo pessoal" },

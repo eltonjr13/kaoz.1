@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { readDesktopPreferences, shouldHideWindowOnClose, writeDesktopPreferences } = require("./desktop-preferences.cjs");
 const { updateErrorDetails } = require("./update-errors.cjs");
@@ -13,6 +13,7 @@ const { FLOW_EXTENSION_ID } = require("./flow-native-constants.cjs");
 const { registerFlowNativeHost } = require("./flow-native-registration.cjs");
 
 let mainWindow;
+let quickAssistantWindow;
 let nextServer;
 let tray;
 let applicationUrl;
@@ -161,6 +162,89 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+const QUICK_ASSISTANT_SHORTCUT = "Control+Alt+K";
+const QUICK_ASSISTANT_PATH = "/quick-assistant";
+
+function quickAssistantPosition(width, height) {
+  const point = screen.getCursorScreenPoint();
+  const { workArea } = screen.getDisplayNearestPoint(point);
+  return {
+    x: workArea.x + Math.max(0, workArea.width - width - 16),
+    y: workArea.y + Math.max(0, workArea.height - height - 16),
+  };
+}
+
+function createQuickAssistantWindow() {
+  if (!applicationUrl || quickAssistantWindow && !quickAssistantWindow.isDestroyed()) return quickAssistantWindow;
+  const width = 420;
+  const height = 620;
+  quickAssistantWindow = new BrowserWindow({
+    width,
+    height,
+    minWidth: 360,
+    minHeight: 440,
+    ...quickAssistantPosition(width, height),
+    show: false,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: true,
+    backgroundColor: "#101217",
+    icon: path.join(__dirname, "..", "build", "icon.png"),
+    webPreferences: {
+      preload: path.join(__dirname, "quick-assistant-preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  quickAssistantWindow.removeMenu();
+  quickAssistantWindow.on("close", (event) => {
+    if (app.isQuitting || installingUpdate) return;
+    event.preventDefault();
+    quickAssistantWindow.hide();
+  });
+  quickAssistantWindow.on("closed", () => { quickAssistantWindow = undefined; });
+  quickAssistantWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  const panelUrl = new URL(QUICK_ASSISTANT_PATH, applicationUrl).toString();
+  quickAssistantWindow.webContents.on("will-navigate", (event, target) => {
+    if (target !== panelUrl) event.preventDefault();
+  });
+  void quickAssistantWindow.loadURL(panelUrl);
+  return quickAssistantWindow;
+}
+
+function showQuickAssistant() {
+  const panel = createQuickAssistantWindow();
+  if (!panel) return false;
+  if (panel.isMinimized()) panel.restore();
+  panel.show();
+  panel.focus();
+  return true;
+}
+
+function toggleQuickAssistant() {
+  if (quickAssistantWindow && !quickAssistantWindow.isDestroyed() && quickAssistantWindow.isVisible()) {
+    quickAssistantWindow.hide();
+    return;
+  }
+  showQuickAssistant();
+}
+
+function openMainRoute(route) {
+  const allowed = route === "/flow" || route === "/meeting-notes" || /^\/flow\/chat-[a-zA-Z0-9-]+$/.test(route);
+  if (!allowed || !applicationUrl) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow(applicationUrl, route);
+  else if (!mainWindow.webContents.getURL().startsWith(applicationUrl)) {
+    void mainWindow.loadURL(new URL(route, applicationUrl).toString());
+  } else if (new URL(mainWindow.webContents.getURL()).pathname !== route) {
+    mainWindow.webContents.send("kaoz1-navigation:open-route", route);
+  }
+  showMainWindow();
+  return true;
+}
+
 function quitApplication() {
   app.isQuitting = true;
   app.quit();
@@ -173,12 +257,16 @@ function createTray() {
   tray = new Tray(trayIcon);
   tray.setToolTip("Kaoz.1");
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Painel rápido (Ctrl+Alt+K)", click: showQuickAssistant },
     { label: "Abrir Kaoz.1", click: showMainWindow },
     { type: "separator" },
     { label: "Sair", click: quitApplication }
   ]));
-  tray.on("click", showMainWindow);
-  tray.on("double-click", showMainWindow);
+  tray.on("click", toggleQuickAssistant);
+  tray.on("double-click", () => {
+    if (quickAssistantWindow && !quickAssistantWindow.isDestroyed()) quickAssistantWindow.hide();
+    showMainWindow();
+  });
 }
 
 function notifyTrayOnce() {
@@ -431,6 +519,27 @@ ipcMain.handle("kaoz1-flow-companion:open", (event) => {
   return openFlowCompanion();
 });
 
+ipcMain.handle("kaoz1-quick-assistant:show", (event) => {
+  if (!getMainWindowForEvent(event)) return false;
+  return showQuickAssistant();
+});
+
+ipcMain.handle("kaoz1-quick-assistant:hide", (event) => {
+  if (BrowserWindow.fromWebContents(event.sender) !== quickAssistantWindow) return false;
+  quickAssistantWindow.hide();
+  return true;
+});
+
+ipcMain.handle("kaoz1-quick-assistant:open-main", (event, route) => {
+  if (BrowserWindow.fromWebContents(event.sender) !== quickAssistantWindow || typeof route !== "string") return false;
+  return openMainRoute(route);
+});
+
+ipcMain.handle("kaoz1-quick-assistant:read-clipboard", (event) => {
+  if (BrowserWindow.fromWebContents(event.sender) !== quickAssistantWindow) return null;
+  return clipboard.readText().slice(0, 6000);
+});
+
 function findFreePort(start = 3210) {
   return new Promise((resolve, reject) => {
     const tryPort = (port) => {
@@ -555,7 +664,7 @@ async function stopProductionServer() {
   await stopProcessTree(server);
 }
 
-function createWindow(url) {
+function createWindow(url, initialPath = "/") {
   applicationUrl = url;
   publishFlowNativeRuntime(url);
   const appOrigin = new URL(url).origin;
@@ -590,7 +699,8 @@ function createWindow(url) {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      backgroundThrottling: false
     }
   });
 
@@ -624,7 +734,7 @@ function createWindow(url) {
     shell.openExternal(target);
     return { action: "deny" };
   });
-  mainWindow.loadURL(url);
+  mainWindow.loadURL(new URL(initialPath, url).toString());
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -646,6 +756,7 @@ app.whenReady().then(async () => {
     configureAutoUpdater();
     createTray();
     createWindow(isDevelopment ? process.env.ELECTRON_START_URL : await startProductionServer());
+    globalShortcut.register(QUICK_ASSISTANT_SHORTCUT, toggleQuickAssistant);
     if (updaterIsSupported() && getDesktopPreferences().autoDownloadUpdates) {
       void requestUpdateCheck();
     }
@@ -661,6 +772,7 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   app.isQuitting = true;
+  globalShortcut.unregister(QUICK_ASSISTANT_SHORTCUT);
   clearFlowNativeRuntime();
   void stopProductionServer();
 });
